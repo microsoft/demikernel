@@ -17,7 +17,10 @@ use demikernel::{
     QToken,
 };
 use std::{
-    collections::HashMap,
+    collections::{
+        HashMap,
+        HashSet,
+    },
     net::SocketAddrV4,
 };
 
@@ -47,6 +50,8 @@ pub struct TcpClient {
     libos: LibOS,
     /// Address of remote peer.
     remote: SocketAddrV4,
+    /// Open queue descriptors.
+    qds: HashSet<QDesc>,
     /// Number of clients that established a connection.
     clients_connected: usize,
     /// Number of clients that closed their connection.
@@ -66,6 +71,7 @@ impl TcpClient {
         Ok(Self {
             libos,
             remote,
+            qds: HashSet::<QDesc>::default(),
             clients_connected: 0,
             clients_closed: 0,
             should_async_close,
@@ -77,16 +83,12 @@ impl TcpClient {
         // Open several connections.
         for i in 0..nclients {
             // Create TCP socket.
-            let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+            let qd: QDesc = self.issue_socket()?;
 
             // Connect TCP socket.
-            // If error, close sockets.
-            // FIXME: https://github.com/demikernel/demikernel/issues/640
-            let qt: QToken = self.libos.connect(sockqd, self.remote)?;
+            let qt: QToken = self.libos.connect(qd, self.remote)?;
 
             // Wait for connection to be established.
-            // If error, close sockets.
-            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
 
             // Parse result.
@@ -95,18 +97,14 @@ impl TcpClient {
                     println!("{} clients connected", i + 1);
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
-                    // Close socket on error.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
                 },
                 qr_opcode => {
-                    // Close socket on error.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
                 },
             }
 
-            self.issue_close(sockqd)?;
+            self.issue_close(qd)?;
         }
 
         Ok(())
@@ -114,19 +112,15 @@ impl TcpClient {
 
     /// Attempts to close several connections concurrently.
     pub fn run_concurrent(&mut self, nclients: usize) -> Result<()> {
-        let mut qds: Vec<QDesc> = Vec::default();
         let mut qts: Vec<QToken> = Vec::default();
         let mut qts_reverse: HashMap<QToken, QDesc> = HashMap::default();
 
         // Open several connections.
         for _ in 0..nclients {
             // Create TCP socket.
-            let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            qds.push(qd);
+            let qd: QDesc = self.issue_socket()?;
 
             // Connect TCP socket.
-            // If error, close sockets.
-            // FIXME: https://github.com/demikernel/demikernel/issues/640
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             qts_reverse.insert(qt, qd);
             qts.push(qt);
@@ -140,8 +134,6 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
-                // If error, close sockets.
-                // FIXME: https://github.com/demikernel/demikernel/issues/640
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
                 let qt: QToken = qts.remove(index);
                 qts_reverse
@@ -162,13 +154,9 @@ impl TcpClient {
                     self.issue_close(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
-                    // Close socket on error.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
                 },
                 qr_opcode => {
-                    // Close socket on error.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
                 },
             }
@@ -182,8 +170,8 @@ impl TcpClient {
     pub fn run_sequential_expecting_server_to_close_sockets(&mut self, nclients: usize) -> Result<()> {
         for i in 0..nclients {
             // Connect to the server and wait.
-            let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            let qt: QToken = self.libos.connect(sockqd, self.remote)?;
+            let qd: QDesc = self.issue_socket()?;
+            let qt: QToken = self.libos.connect(qd, self.remote)?;
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
 
             match qr.qr_opcode {
@@ -191,30 +179,25 @@ impl TcpClient {
                     println!("{} clients connected", i + 1);
 
                     // Pop immediately after connect and wait.
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
-                    let pop_qt: QToken = self.libos.pop(sockqd, None)?;
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
+                    let pop_qt: QToken = self.libos.pop(qd, None)?;
                     let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, None)?;
 
                     match pop_qr.qr_opcode {
                         demi_opcode_t::DEMI_OPC_POP => {
                             let sga: demi_sgarray_t = unsafe { pop_qr.qr_value.sga };
                             let received_len: u32 = sga.sga_segs[0].sgaseg_len;
-                            // If error, close sockets.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/640
                             self.libos.sgafree(sga)?;
                             // 0 len pop represents socket closed from other side.
-                            assert_eq!(
-                                received_len, 0,
+                            demikernel::ensure_eq!(
+                                received_len,
+                                0,
                                 "server should have had closed the connection, but it has not"
                             );
                             println!("server disconnected (pop returned 0 len buffer)");
                         },
                         demi_opcode_t::DEMI_OPC_FAILED => {
                             let errno: i32 = qr.qr_ret;
-                            assert_eq!(
+                            demikernel::ensure_eq!(
                                 errno,
                                 libc::ECONNRESET,
                                 "server should have had closed the connection, but it has not"
@@ -222,26 +205,19 @@ impl TcpClient {
                             println!("server disconnected (ECONNRESET)");
                         },
                         qr_opcode => {
-                            // If error, close sockets.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/640
                             anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
                         },
                     }
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
                 },
                 qr_opcode => {
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
                 },
             }
 
-            // FIXME: https://github.com/demikernel/demikernel/issues/646
-            self.issue_close(sockqd)?;
+            self.issue_close(qd)?;
         }
 
         Ok(())
@@ -249,15 +225,11 @@ impl TcpClient {
 
     /// Attempts to make several connections concurrently.
     pub fn run_concurrent_expecting_server_to_close_sockets(&mut self, num_clients: usize) -> Result<()> {
-        let mut qds: Vec<QDesc> = Vec::default();
         let mut qts: Vec<QToken> = Vec::default();
 
         // Create several TCP sockets and connect.
         for _i in 0..num_clients {
-            let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            qds.push(qd);
-            // If error, close sockets.
-            // FIXME: https://github.com/demikernel/demikernel/issues/640
+            let qd: QDesc = self.issue_socket()?;
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             qts.push(qt);
         }
@@ -270,8 +242,6 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
-                // If error, close sockets.
-                // FIXME: https://github.com/demikernel/demikernel/issues/640
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
                 let _qt: QToken = qts.remove(index);
                 qr
@@ -279,25 +249,19 @@ impl TcpClient {
 
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
-                    let sockqd: QDesc = qr.qr_qd.into();
+                    let qd: QDesc = qr.qr_qd.into();
                     self.clients_connected += 1;
                     println!("{} clients connected", self.clients_connected);
                     // pop immediately after connect.
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
-                    let pop_qt: QToken = self.libos.pop(sockqd, None)?;
+                    let pop_qt: QToken = self.libos.pop(qd, None)?;
                     qts.push(pop_qt);
                 },
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let received_len: u32 = sga.sga_segs[0].sgaseg_len;
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     self.libos.sgafree(sga)?;
 
                     // 0 len pop represents socket closed from other side.
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     assert_eq!(
                         received_len, 0,
                         "server should have had closed the connection, but it has not"
@@ -319,8 +283,6 @@ impl TcpClient {
                     self.issue_close(qr.qr_qd.into())?;
                 },
                 qr_opcode => {
-                    // If error, close sockets.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/640
                     anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
                 },
             }
@@ -329,22 +291,47 @@ impl TcpClient {
         Ok(())
     }
 
-    /// Issues a close() operation.
+    /// Issues an open socket() operation and registers the queue descriptor for cleanup.
+    fn issue_socket(&mut self) -> Result<QDesc> {
+        let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+        self.qds.insert(qd);
+        Ok(qd)
+    }
+
+    /// Issues a close() operation and deregisters the queue descriptor.
     fn issue_close(&mut self, qd: QDesc) -> Result<()> {
         if self.should_async_close {
             let qt: QToken = self.libos.async_close(qd)?;
 
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => (),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET => (),
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }
         } else {
             match self.libos.close(qd) {
-                Ok(_) => Ok(()),
-                Err(e) if e.errno == libc::ECONNRESET => Ok(()),
+                Ok(_) => (),
+                Err(e) if e.errno == libc::ECONNRESET => (),
                 Err(_) => anyhow::bail!("wait() should succeed with close()"),
+            }
+        }
+        self.qds.remove(&qd);
+        Ok(())
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for TcpClient {
+    // Releases all resources allocated to a pipe client.
+    fn drop(&mut self) {
+        for qd in self.qds.clone().drain() {
+            if let Err(e) = self.issue_close(qd) {
+                println!("ERROR: close() failed (error={:?}", e);
+                println!("WARN: leaking qd={:?}", qd);
             }
         }
     }
