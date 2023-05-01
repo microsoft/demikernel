@@ -136,8 +136,8 @@ impl Application {
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET_VALUE, SOCK_DGRAM, 0) {
-            Ok(qd) => qd,
-            Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
         // Bind to local address.
@@ -145,8 +145,11 @@ impl Application {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/651
-                anyhow::bail!("failed to bind socket: {:?}", e.cause)
+                if let Err(e) = libos.close(sockqd) {
+                    println!("ERROR: close() failed (error={:?}", e);
+                    println!("WARN: leaking sockqd={:?}", sockqd);
+                }
+                anyhow::bail!("failed to bind socket: {:?}", e)
             },
         };
 
@@ -165,11 +168,7 @@ impl Application {
         // Pop first packet.
         let qt: QToken = match self.libos.pop(self.sockqd, None) {
             Ok(qt) => qt,
-            Err(e) => {
-                // If error, close socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/651
-                anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
-            },
+            Err(e) => anyhow::bail!("failed to pop data from socket: {:?}", e),
         };
         qtokens.push(qt);
 
@@ -183,11 +182,7 @@ impl Application {
 
             let (i, qr) = match self.libos.wait_any(&qtokens, None) {
                 Ok((i, qr)) => (i, qr),
-                Err(e) => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("operation failed: {:?}", e)
-                },
+                Err(e) => anyhow::bail!("operation failed: {:?}", e),
             };
             qtokens.swap_remove(i);
 
@@ -195,61 +190,51 @@ impl Application {
             match qr.qr_opcode {
                 // Pop completed.
                 demi_opcode_t::DEMI_OPC_POP => {
-                    let qd: QDesc = qr.qr_qd.into();
+                    let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let saddr: SocketAddrV4 = match Self::sockaddr_to_socketaddrv4(unsafe { &qr.qr_value.sga.sga_addr })
                     {
                         Ok(saddr) => saddr,
                         Err(e) => {
-                            // If error, close socket.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/651
+                            // If error, free scatter-gather array.
+                            if let Err(e) = self.libos.sgafree(sga) {
+                                println!("ERROR: sgafree() failed (error={:?})", e);
+                                println!("WARN: leaking sga");
+                            };
                             anyhow::bail!("could not parse sockaddr: {}", e)
                         },
                     };
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;
                     // Push packet back.
-                    let qt: QToken = match self.libos.pushto(qd, &sga, saddr) {
+                    let qt: QToken = match self.libos.pushto(sockqd, &sga, saddr) {
                         Ok(qt) => qt,
                         Err(e) => {
-                            // If error, close socket.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/651
-                            anyhow::bail!("failed to push data to socket: {:?}", e.cause)
+                            // If error, free scatter-gather array.
+                            if let Err(e) = self.libos.sgafree(sga) {
+                                println!("ERROR: sgafree() failed (error={:?})", e);
+                                println!("WARN: leaking sga");
+                            };
+                            anyhow::bail!("failed to push data to socket: {:?}", e)
                         },
                     };
                     qtokens.push(qt);
-                    match self.libos.sgafree(sga) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            // If error, close socket.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/651
-                            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-                        },
+                    if let Err(e) = self.libos.sgafree(sga) {
+                        println!("ERROR: sgafree() failed (error={:?})", e);
+                        println!("WARN: leaking sga");
                     }
                 },
                 // Push completed.
                 demi_opcode_t::DEMI_OPC_PUSH => {
                     // Pop another packet.
-                    let qd: QDesc = qr.qr_qd.into();
-                    let qt: QToken = match self.libos.pop(qd, None) {
+                    let sockqd: QDesc = qr.qr_qd.into();
+                    let qt: QToken = match self.libos.pop(sockqd, None) {
                         Ok(qt) => qt,
-                        Err(e) => {
-                            // If error, close socket.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/651
-                            anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
-                        },
+                        Err(e) => anyhow::bail!("failed to pop data from socket: {:?}", e),
                     };
                     qtokens.push(qt);
                 },
-                demi_opcode_t::DEMI_OPC_FAILED => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("operation failed")
-                },
-                _ => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("unexpected result")
-                },
+                demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("operation failed"),
+                _ => anyhow::bail!("unexpected result"),
             };
         }
     }
@@ -283,6 +268,19 @@ impl Application {
     }
 }
 
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for Application {
+    fn drop(&mut self) {
+        if let Err(e) = self.libos.close(self.sockqd) {
+            println!("ERROR: close() failed (error={:?}", e);
+            println!("WARN: leaking sockqd={:?}", self.sockqd);
+        }
+    }
+}
+
 //==============================================================================
 
 fn main() -> Result<()> {
@@ -298,7 +296,7 @@ fn main() -> Result<()> {
     };
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => panic!("failed to initialize libos: {:?}", e),
     };
 
     Application::new(libos, &args)?.run()
