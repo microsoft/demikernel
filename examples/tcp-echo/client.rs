@@ -101,8 +101,6 @@ impl TcpEchoClient {
             let qt: QToken = self.libos.connect(sockqd, self.remote)?;
             let qr: demi_qresult_t = self.libos.wait(qt, None)?;
             if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
-                // Close any open sockets.
-                // FIXME: https://github.com/demikernel/demikernel/issues/642
                 anyhow::bail!("failed to connect to server")
             }
 
@@ -110,8 +108,6 @@ impl TcpEchoClient {
 
             // Push first request.
             self.issue_push(sockqd)?;
-            // If there are errors, close open sockets and exit.
-            // FIXME: https://github.com/demikernel/demikernel/issues/642
         }
 
         loop {
@@ -139,16 +135,12 @@ impl TcpEchoClient {
             }
 
             let qr: demi_qresult_t = {
-                // If there is an error, close sockets and exit.
-                // FIXME: https://github.com/demikernel/demikernel/issues/642
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
                 self.unregister_operation(index)?;
                 qr
             };
 
             // Parse result.
-            // If there are errors, close sockets and exit.
-            // FIXME: https://github.com/demikernel/demikernel/issues/642
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_PUSH => self.handle_push(&qr)?,
                 demi_opcode_t::DEMI_OPC_POP => self.handle_pop(&qr)?,
@@ -181,16 +173,12 @@ impl TcpEchoClient {
         // Open several connections.
         for i in 0..nclients {
             let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            // If there is an error on connect, close all open sockets and exit.
-            // FIXME: https://github.com/demikernel/demikernel/issues/642
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             self.register_operation(qd, qt);
 
             // First client connects synchronously.
             if i == 0 {
                 let qr: demi_qresult_t = {
-                    // If there are any errors, close open sockets and exit.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/642
                     let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
                     self.unregister_operation(index)?;
                     qr
@@ -247,8 +235,6 @@ impl TcpEchoClient {
                     println!("INFO: {} clients connected", self.clients.len());
 
                     // Push first request.
-                    // If there is an error, close all open sockets and exit.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/642
                     self.issue_push(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_PUSH => self.handle_push(&qr)?,
@@ -387,8 +373,6 @@ impl TcpEchoClient {
     fn issue_push(&mut self, qd: QDesc) -> Result<()> {
         let fill_char: u8 = (self.npushed % (u8::MAX as usize - 1) + 1) as u8;
         let sga: demi_sgarray_t = self.mksga(self.bufsize, fill_char)?;
-        // Free scatter-gather array on error.
-        // FIXME: https://github.com/demikernel/demikernel/issues/642
         let qt: QToken = self.libos.push(qd, &sga)?;
         self.register_operation(qd, qt);
         Ok(())
@@ -417,5 +401,22 @@ impl TcpEchoClient {
             .remove(&qt)
             .ok_or(anyhow::anyhow!("unregistered queue token qt={:?}", qt))?;
         Ok(())
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for TcpEchoClient {
+    // Releases all resources allocated to a pipe client.
+    fn drop(&mut self) {
+        // Close all connections.
+        for (qd, _) in self.clients.drain().collect::<Vec<_>>() {
+            if let Err(e) = self.handle_close(qd) {
+                println!("ERROR: close() failed (error={:?}", e);
+                println!("WARN: leaking qd={:?}", qd);
+            }
+        }
     }
 }
