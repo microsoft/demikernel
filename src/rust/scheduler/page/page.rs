@@ -15,7 +15,7 @@ use crate::scheduler::waker64::{
 //==============================================================================
 
 /// Size of Pages (in bytes)
-pub const WAKER_PAGE_SIZE: usize = 64;
+pub const WAKER_PAGE_SIZE: usize = 32;
 
 //==============================================================================
 // Structures
@@ -32,9 +32,7 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 /// own size. We rely on these two properties to distribute raw pointers to the
 /// scheduler, so that it may cast back a raw pointer and operate on a specific
 /// future whenever needed.
-///
-/// TODO: use the unused space in this structure to something useful.
-#[repr(align(64))]
+#[repr(align(32))]
 pub struct WakerPage {
     /// Reference count for the page.
     refcount: Waker64,
@@ -44,8 +42,6 @@ pub struct WakerPage {
     completed: Waker64,
     /// Flags whether or not a given future has ben dropped.
     dropped: Waker64,
-    /// Padding required to make the structure 64-byte big.
-    _unused: [u8; 32],
 }
 
 //==============================================================================
@@ -161,7 +157,6 @@ impl Default for WakerPage {
             notified: Waker64::new(0),
             completed: Waker64::new(0),
             dropped: Waker64::new(0),
-            _unused: Default::default(),
         }
     }
 }

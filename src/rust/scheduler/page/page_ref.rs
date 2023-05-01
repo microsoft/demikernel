@@ -223,10 +223,6 @@ mod tests {
         let refcount: u64 = p.refcount_get();
         crate::ensure_eq!(refcount, 3);
 
-        let _: NonNull<u8> = p.into_raw_waker_ref(63);
-        let refcount: u64 = p.refcount_get();
-        crate::ensure_eq!(refcount, 4);
-
         Ok(())
     }
 }

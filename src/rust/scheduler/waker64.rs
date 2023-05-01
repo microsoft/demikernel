@@ -15,7 +15,7 @@ use ::std::{
 //==============================================================================
 
 /// Log2 of [WAKER_BIT_LENGTH].
-pub const WAKER_BIT_LENGTH_SHIFT: usize = 6;
+pub const WAKER_BIT_LENGTH_SHIFT: usize = 5;
 
 /// Number of Bits in a [Waker64]
 pub const WAKER_BIT_LENGTH: usize = 1 << WAKER_BIT_LENGTH_SHIFT;
