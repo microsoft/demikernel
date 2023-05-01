@@ -27,6 +27,8 @@ pub struct PipeServer {
     libos: LibOS,
     /// Pipe name.
     pipe_name: String,
+    /// Pipe queue descriptor.
+    qd: Option<QDesc>,
 }
 
 //======================================================================================================================
@@ -36,19 +38,21 @@ pub struct PipeServer {
 impl PipeServer {
     /// Creates a new pipe server.
     pub fn new(libos: LibOS, pipe_name: String) -> Result<Self> {
-        Ok(Self { libos, pipe_name })
+        Ok(Self {
+            libos,
+            pipe_name,
+            qd: None,
+        })
     }
 
     /// Runs the target pipe server.
     pub fn run(&mut self) -> Result<()> {
-        let pipeqd: QDesc = self.libos.create_pipe(&format!("{}:rx", self.pipe_name))?;
+        let qd: QDesc = self.libos.create_pipe(&format!("{}:rx", self.pipe_name))?;
+        // Set the queue for freeing on drop.
+        self.qd = Some(qd);
 
-        while self.pop_and_wait(pipeqd)? > 0 {
-            // Close pipe on error.
-            // FIXME: https://github.com/demikernel/demikernel/issues/638
-        }
-
-        self.libos.close(pipeqd)?;
+        while self.pop_and_wait(qd)? > 0 {}
+        self.libos.close(qd)?;
 
         Ok(())
     }
@@ -89,5 +93,18 @@ impl PipeServer {
         }
 
         Ok(0)
+    }
+}
+
+impl Drop for PipeServer {
+    // Releases all resources allocated to a pipe client.
+    fn drop(&mut self) {
+        if let Some(qd) = self.qd {
+            // Ignore error.
+            if let Err(e) = self.libos.close(qd) {
+                println!("WARN: leaking pipeqd={:?}", qd);
+                println!("ERROR: close() failed (error={:?})", e);
+            }
+        }
     }
 }
