@@ -123,8 +123,8 @@ impl Application {
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
-            Ok(qd) => qd,
-            Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
         // Bind to local address.
@@ -132,8 +132,11 @@ impl Application {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/651
-                anyhow::bail!("failed to bind socket: {:?}", e.cause)
+                if let Err(e) = libos.close(sockqd) {
+                    println!("ERROR: close() failed (error={:?}", e);
+                    println!("WARN: leaking sockqd={:?}", sockqd);
+                }
+                anyhow::bail!("failed to bind socket: {:?}", e)
             },
         };
 
@@ -159,36 +162,32 @@ impl Application {
             // Drain packets.
             let qt: QToken = match self.libos.pop(self.sockqd, None) {
                 Ok(qt) => qt,
-                Err(e) => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("failed to pop data from socket: {:?}", e.cause)
-                },
+                Err(e) => anyhow::bail!("failed to pop data from socket: {:?}", e),
             };
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     nbytes += sga.sga_segs[0].sgaseg_len as usize;
-                    match self.libos.sgafree(sga) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            // If error, close socket.
-                            // FIXME: https://github.com/demikernel/demikernel/issues/651
-                            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-                        },
+                    if let Err(e) = self.libos.sgafree(sga) {
+                        println!("ERROR: sgafree() failed (error={:?})", e);
+                        println!("WARN: leaking sga");
                     }
                 },
-                Err(e) => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("operation failed: {:?}", e.cause)
-                },
-                _ => {
-                    // If error, close socket.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/651
-                    anyhow::bail!("unexpected result")
-                },
+                Ok(_) => anyhow::bail!("unexpected result"),
+                Err(e) => anyhow::bail!("operation failed: {:?}", e),
             }
+        }
+    }
+}
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for Application {
+    fn drop(&mut self) {
+        if let Err(e) = self.libos.close(self.sockqd) {
+            println!("ERROR: close() failed (error={:?}", e);
+            println!("WARN: leaking sockqd={:?}", self.sockqd);
         }
     }
 }
@@ -209,7 +208,7 @@ fn main() -> Result<()> {
     };
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => panic!("failed to initialize libos: {:?}", e),
     };
 
     Application::new(libos, &args)?.run()

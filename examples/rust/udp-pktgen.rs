@@ -230,12 +230,8 @@ impl Application {
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 1) {
-            Ok(qd) => qd,
-            Err(e) => {
-                // If error, close socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/651
-                anyhow::bail!("failed to create socket: {:?}", e.cause)
-            },
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
         // Bind to local address.
@@ -243,8 +239,11 @@ impl Application {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
-                // FIXME: https://github.com/demikernel/demikernel/issues/651
-                anyhow::bail!("failed to bind socket: {:?}", e.cause)
+                if let Err(e) = libos.close(sockqd) {
+                    println!("ERROR: close() failed (error={:?}", e);
+                    println!("WARN: leaking sockqd={:?}", sockqd);
+                }
+                anyhow::bail!("failed to bind socket: {:?}", e)
             },
         };
 
@@ -281,29 +280,38 @@ impl Application {
 
                 let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote) {
                     Ok(qt) => qt,
-                    Err(e) => panic!("failed to push data to socket: {:?}", e.cause),
+                    Err(e) => {
+                        // If error, free scatter-gather array.
+                        if let Err(e) = self.libos.sgafree(sga) {
+                            println!("ERROR: sgafree() failed (error={:?})", e);
+                            println!("WARN: leaking sga");
+                        };
+                        anyhow::bail!("failed to push data to socket: {:?}", e)
+                    },
                 };
                 match self.libos.wait(qt, None) {
                     Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-                    Err(e) => {
-                        // If error, close socket.
-                        // FIXME: https://github.com/demikernel/demikernel/issues/651
-                        anyhow::bail!("operation failed: {:?}", e.cause)
-                    },
-                    _ => {
-                        // If error, close socket.
-                        // FIXME: https://github.com/demikernel/demikernel/issues/651
+                    Ok(_) => {
+                        // If error, free scatter-gather array.
+                        if let Err(e) = self.libos.sgafree(sga) {
+                            println!("ERROR: sgafree() failed (error={:?})", e);
+                            println!("WARN: leaking sga");
+                        };
                         anyhow::bail!("unexpected result")
+                    },
+                    Err(e) => {
+                        // If error, free scatter-gather array.
+                        if let Err(e) = self.libos.sgafree(sga) {
+                            println!("ERROR: sgafree() failed (error={:?})", e);
+                            println!("WARN: leaking sga");
+                        };
+                        anyhow::bail!("operation failed: {:?}", e)
                     },
                 };
                 nbytes += sga.sga_segs[0].sgaseg_len as usize;
-                match self.libos.sgafree(sga) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        // If error, close socket.
-                        // FIXME: https://github.com/demikernel/demikernel/issues/651
-                        anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-                    },
+                if let Err(e) = self.libos.sgafree(sga) {
+                    println!("ERROR: sgafree() failed (error={:?})", e);
+                    println!("WARN: leaking sga");
                 }
 
                 last_push = Instant::now();
@@ -320,8 +328,18 @@ impl Application {
         };
 
         // Ensure that scatter-gather array has the requested size.
-        assert_eq!(sga.sga_segs[0].sgaseg_len as usize, size);
-
+        // If error, free scatter-gather array.
+        if sga.sga_segs[0].sgaseg_len as usize != size {
+            if let Err(e) = self.libos.sgafree(sga) {
+                println!("ERROR: sgafree() failed (error={:?})", e);
+                println!("WARN: leaking sga");
+            };
+            anyhow::bail!(
+                "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
+                size,
+                sga.sga_segs[0].sgaseg_len
+            );
+        }
         // Fill in scatter-gather array.
         let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
         let len: usize = sga.sga_segs[0].sgaseg_len as usize;
@@ -329,6 +347,19 @@ impl Application {
         slice.fill(value);
 
         Ok(sga)
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for Application {
+    fn drop(&mut self) {
+        if let Err(e) = self.libos.close(self.sockqd) {
+            println!("ERROR: close() failed (error={:?}", e);
+            println!("WARN: leaking sockqd={:?}", self.sockqd);
+        }
     }
 }
 
@@ -348,7 +379,7 @@ fn main() -> Result<()> {
     };
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,
-        Err(e) => panic!("failed to initialize libos: {:?}", e.cause),
+        Err(e) => panic!("failed to initialize libos: {:?}", e),
     };
 
     Application::new(libos, &args)?.run()
