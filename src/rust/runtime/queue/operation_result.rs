@@ -8,15 +8,11 @@
 use crate::runtime::{
     fail::Fail,
     memory::DemiBuffer,
-    network::types::Port16,
     QDesc,
 };
 use ::std::{
     fmt,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddrV4,
 };
 
 //==============================================================================
@@ -33,15 +29,6 @@ pub enum OperationResult {
     Failed(Fail),
 }
 
-/// Result for IO Queue Operations
-pub enum QResult {
-    Connect,
-    Accept(QDesc),
-    Push,
-    PushTo,
-    Pop(Option<(Ipv4Addr, Port16)>, Vec<u8>),
-    Failed(Fail),
-}
 //==============================================================================
 // Trait Implementations
 //==============================================================================

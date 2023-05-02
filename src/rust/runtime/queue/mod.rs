@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod qdesc;
-mod qresult;
+mod operation_result;
 mod qtoken;
 mod qtype;
 
@@ -23,10 +23,7 @@ use ::std::future::Future;
 
 pub use self::{
     qdesc::QDesc,
-    qresult::{
-        OperationResult,
-        QResult,
-    },
+    operation_result::OperationResult,
     qtoken::QToken,
     qtype::QType,
 };

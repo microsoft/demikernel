@@ -68,7 +68,6 @@ pub use crate::runtime::{
     },
     OperationResult,
     QDesc,
-    QResult,
     QToken,
     QType,
 };

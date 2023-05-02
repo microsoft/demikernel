@@ -20,7 +20,6 @@ pub use queue::{
     OperationResult,
     OperationTask,
     QDesc,
-    QResult,
     QToken,
     QType,
 };
