@@ -624,7 +624,8 @@ impl InetStack {
 
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
-                handle.take_key();
+                // FIXME: https://github.com/demikernel/demikernel/issues/593
+                handle.take_token();
             }
         }
     }
