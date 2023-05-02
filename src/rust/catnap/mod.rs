@@ -694,6 +694,25 @@ impl CatnapLibOS {
     }
 }
 
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for CatnapLibOS {
+    // Releases all sockets allocated by Catnap.
+    fn drop(&mut self) {
+        for (_, queue) in self.qtable.borrow().get_values() {
+            if let Some(fd) = queue.get_fd() {
+                if unsafe { libc::close(fd) } != 0 {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                    error!("close() failed (error={:?}", errno);
+                    warn!("leaking fd={:?}", fd);
+                }
+            }
+        }
+    }
+}
+
 //==============================================================================
 // Standalone Functions
 //==============================================================================
