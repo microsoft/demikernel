@@ -135,12 +135,10 @@ impl TcpServer {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let qd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let seglen: usize = sga.sga_segs[0].sgaseg_len as usize;
 
                     // Ensure that client has closed the connection.
-                    assert_eq!(
-                        sga.sga_segs[0].sgaseg_len, 0,
-                        "client must have had closed the connection, but it has not"
-                    );
+                    assert_eq!(seglen, 0, "client must have had closed the connection, but it has not");
 
                     self.libos.sgafree(sga)?;
 
@@ -155,13 +153,13 @@ impl TcpServer {
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     let qd: QDesc = qr.qr_qd.into();
-                    let errno: i32 = qr.qr_ret;
+                    let errno: i64 = qr.qr_ret;
 
                     // Ensure that this error was triggered because
                     // the client has terminated the connection.
                     assert_eq!(
                         errno,
-                        libc::ECONNRESET,
+                        libc::ECONNRESET as i64,
                         "client should have had terminated the connection, but it has not"
                     );
 
@@ -280,7 +278,9 @@ impl TcpServer {
 
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET as i64 => {
+                    Ok(())
+                },
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }

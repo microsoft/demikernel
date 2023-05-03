@@ -70,7 +70,7 @@ extern "C"
      */
     typedef struct demi_accept_result
     {
-        int qd;                  /**< Socket I/O queue descriptor of accepted connection. */
+        int32_t qd;                  /**< Socket I/O queue descriptor of accepted connection. */
         struct sockaddr_in addr; /**< Remote address of accepted connection.              */
     } demi_accept_result_t;
 
@@ -80,9 +80,9 @@ extern "C"
     typedef struct demi_qresult
     {
         enum demi_opcode qr_opcode; /**< Opcode of completed operation.                              */
-        int qr_qd;                  /**< I/O queue descriptor associated to the completed operation. */
+        int32_t qr_qd;              /**< I/O queue descriptor associated to the completed operation. */
         demi_qtoken_t qr_qt;        /**< I/O queue token of the completed operation.                 */
-        int qr_ret;                 /**< Return code.                                                */
+        int64_t qr_ret;             /**< Return code.                                                */
 
         /**
          * @brief Result value.

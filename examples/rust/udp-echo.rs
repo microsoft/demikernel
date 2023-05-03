@@ -192,7 +192,7 @@ impl Application {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    let saddr: SocketAddrV4 = match Self::sockaddr_to_socketaddrv4(unsafe { &qr.qr_value.sga.sga_addr })
+                    let saddr: SocketAddrV4 = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr })
                     {
                         Ok(saddr) => saddr,
                         Err(e) => {

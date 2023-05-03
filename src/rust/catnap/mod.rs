@@ -774,7 +774,7 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt,
-                    qr_ret: e.errno,
+                    qr_ret: e.errno as i64,
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
@@ -792,7 +792,7 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
                 qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                 qr_qd: qd.into(),
                 qr_qt: qt,
-                qr_ret: e.errno,
+                qr_ret: e.errno as i64,
                 qr_value: unsafe { mem::zeroed() },
             }
         },
