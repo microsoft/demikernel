@@ -113,13 +113,17 @@ impl LibOS {
 
     /// Creates a new memory queue.
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
-        match self {
+        let result: Result<QDesc, Fail> = match self {
             LibOS::NetworkLibOS(_) => Err(Fail::new(
                 libc::ENOTSUP,
                 "create_pipe() is not supported on network liboses",
             )),
             LibOS::MemoryLibOS(libos) => libos.create_pipe(name),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Opens an existing memory queue.
@@ -140,73 +144,109 @@ impl LibOS {
         socket_type: libc::c_int,
         protocol: libc::c_int,
     ) -> Result<QDesc, Fail> {
-        match self {
+        let result: Result<QDesc, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "socket() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Binds a socket to a local address.
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
-        match self {
+        let result: Result<(), Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "bind() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Marks a socket as a passive one.
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
-        match self {
+        let result: Result<(), Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "listen() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Accepts an incoming connection on a TCP socket.
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "accept() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Initiates a connection with a remote TCP socket.
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "connect() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Closes an I/O queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        match self {
+        let result: Result<(), Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.close(qd),
             LibOS::MemoryLibOS(libos) => libos.close(qd),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.async_close(qd),
             _ => unimplemented!("No async close for memory libOSes"),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Pushes a scatter-gather array to an I/O queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
             LibOS::MemoryLibOS(libos) => libos.push(qd, sga),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "pushto() is not supported on memory liboses")),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Pops data from a an I/O queue.
@@ -221,10 +261,14 @@ impl LibOS {
             }
         }
 
-        match self {
+        let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
             LibOS::MemoryLibOS(libos) => libos.pop(qd, size),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Waits for a pending I/O operation to complete or a timeout to expire.
@@ -306,19 +350,27 @@ impl LibOS {
     }
 
     /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        match self {
+    pub fn sgaalloc(&mut self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        let result: Result<demi_sgarray_t, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
             LibOS::MemoryLibOS(libos) => libos.sgaalloc(size),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Releases a scatter-gather array.
-    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        match self {
+    pub fn sgafree(&mut self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        let result: Result<(), Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
             LibOS::MemoryLibOS(libos) => libos.sgafree(sga),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Waits for any operation in an I/O queue.
