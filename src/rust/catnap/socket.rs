@@ -27,6 +27,8 @@ enum SocketState {
     Connecting,
     /// A socket that is connected to a remote address.
     Connected,
+    /// A socket that is closing.
+    Closing,
     /// A socket that is closed.
     Closed,
 }
@@ -90,6 +92,7 @@ impl Socket {
                 &(format!("socket is connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
@@ -127,6 +130,7 @@ impl Socket {
                 &(format!("socket is connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
@@ -161,6 +165,7 @@ impl Socket {
                 &(format!("socket is connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
@@ -195,6 +200,7 @@ impl Socket {
                 &(format!("socket is already connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
@@ -228,6 +234,7 @@ impl Socket {
                 &(format!("socket is already connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
@@ -266,11 +273,12 @@ impl Socket {
                 &(format!("socket is already connected to address: {:?}", self.remote)),
                 libc::EISCONN,
             )),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
             SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
         }
     }
 
-    /// Constructs from [self] a socket that is closed.
+    /// Constructs from [self] a socket that is closing.
     pub fn close(&self) -> Result<Self, Fail> {
         const FN_NAME: &str = "close";
         match self.state {
@@ -280,6 +288,26 @@ impl Socket {
             | SocketState::Accepting
             | SocketState::Connecting
             | SocketState::Connected => Ok(Self {
+                state: SocketState::Closing,
+                local: self.local,
+                remote: self.remote,
+            }),
+            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
+            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+        }
+    }
+
+    /// Constructs from [self] a socket that is closed.
+    pub fn closed(&self) -> Result<Self, Fail> {
+        const FN_NAME: &str = "close";
+        match self.state {
+            SocketState::NotBound
+            | SocketState::Bound
+            | SocketState::Listening
+            | SocketState::Accepting
+            | SocketState::Connecting
+            | SocketState::Connected => Err(fail(FN_NAME, &(format!("socket is busy")), libc::EBUSY)),
+            SocketState::Closing => Ok(Self {
                 state: SocketState::Closed,
                 local: self.local,
                 remote: self.remote,

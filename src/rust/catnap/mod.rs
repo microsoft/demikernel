@@ -423,11 +423,10 @@ impl CatnapLibOS {
         match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    // Create a closed socket.
-                    let closed_socket: Socket = {
-                        let socket: &Socket = queue.get_socket();
-                        socket.close()?
-                    };
+                    // Set socket as closing.
+                    let socket: &Socket = queue.get_socket();
+                    let closing_socket: Socket = socket.close()?;
+                    queue.set_socket(&closing_socket);
 
                     // Close underlying socket.
                     if unsafe { libc::close(fd) } != 0 {
@@ -439,8 +438,12 @@ impl CatnapLibOS {
 
                     // Cancel all pending operations.
                     queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-                    // Update socket.
+
+                    // Update socket state.
+                    let socket: &Socket = queue.get_socket();
+                    let closed_socket: Socket = socket.closed()?;
                     queue.set_socket(&closed_socket);
+
                     qtable.free(&qd);
                     Ok(())
                 },
@@ -458,12 +461,10 @@ impl CatnapLibOS {
         match qtable.get_mut(&qd) {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
-                    // Create a closed socket. Should set this to a closing state.
-                    // FIXME: https://github.com/demikernel/demikernel/issues/625
-                    let closed_socket: Socket = {
-                        let socket: &Socket = queue.get_socket();
-                        socket.close()?
-                    };
+                    // Set socket as closing.
+                    let socket: &Socket = queue.get_socket();
+                    let closing_socket: Socket = socket.close()?;
+                    queue.set_socket(&closing_socket);
 
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     // Don't register this Yielder because we shouldn't have to cancel the close operation.
@@ -481,6 +482,16 @@ impl CatnapLibOS {
                                         // Cancel all pending operations.
                                         queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
                                         // Update socket state.
+                                        let socket: &Socket = queue.get_socket();
+                                        let closed_socket: Socket = match socket.closed() {
+                                            Ok(socket) => socket,
+                                            Err(e) => {
+                                                // This is unlikely to happen. If it does, it means that we have
+                                                // some uncovered race condition in the close co-routine.
+                                                warn!("close(): failed to set socket state ({:?})", e);
+                                                return (qd, OperationResult::Failed(e));
+                                            },
+                                        };
                                         queue.set_socket(&closed_socket);
                                     },
                                     None => {
