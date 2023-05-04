@@ -377,7 +377,7 @@ impl CatmemLibOS {
                         qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                         qr_qd: qd.into(),
                         qr_qt: qt.into(),
-                        qr_ret: e.errno,
+                        qr_ret: e.errno as i64,
                         qr_value: unsafe { mem::zeroed() },
                     }
                 },
@@ -388,7 +388,7 @@ impl CatmemLibOS {
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt.into(),
-                    qr_ret: e.errno,
+                    qr_ret: e.errno as i64,
                     qr_value: unsafe { mem::zeroed() },
                 }
             },

@@ -318,10 +318,11 @@ impl Application {
                 println!("ERROR: sgafree() failed (error={:?})", e);
                 println!("WARN: leaking sga");
             }
+            let seglen: usize = sga.sga_segs[0].sgaseg_len as usize;
             anyhow::bail!(
                 "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
                 size,
-                sga.sga_segs[0].sgaseg_len
+                seglen
             );
         }
 

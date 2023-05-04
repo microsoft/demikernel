@@ -98,7 +98,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
                     qr_qt: qt,
-                    qr_ret: e.errno,
+                    qr_ret: e.errno as i64,
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
@@ -116,7 +116,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                 qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                 qr_qd: qd.into(),
                 qr_qt: qt,
-                qr_ret: e.errno,
+                qr_ret: e.errno as i64,
                 qr_value: unsafe { mem::zeroed() },
             }
         },

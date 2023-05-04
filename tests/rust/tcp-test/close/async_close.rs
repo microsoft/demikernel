@@ -106,7 +106,7 @@ fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
 
     // wait() for the second close() qt.
     match libos.wait(qt2, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
         _ => anyhow::bail!("wait() should fail with async_close()"),
     }
 
@@ -126,7 +126,7 @@ fn async_close_socket_and_wait_in_rev_order(libos: &mut LibOS) -> Result<()> {
 
     // wait() for the second close() qt.
     match libos.wait(qt2, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
         _ => anyhow::bail!("wait() should fail with async_close()"),
     }
 

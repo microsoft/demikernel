@@ -346,10 +346,10 @@ impl TcpEchoClient {
     fn handle_fail(&mut self, qr: &demi_qresult_t) -> Result<()> {
         let qd: QDesc = qr.qr_qd.into();
         let qt: QToken = qr.qr_qt.into();
-        let errno: i32 = qr.qr_ret;
+        let errno: i64 = qr.qr_ret;
 
         // Check if client has reset the connection.
-        if errno == libc::ECONNRESET {
+        if errno == libc::ECONNRESET as i64 {
             println!("INFO: server reset connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {

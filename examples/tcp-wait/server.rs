@@ -140,7 +140,7 @@ impl TcpServer {
                         "client should not have any pending operations, but it has"
                     );
                 },
-                demi_opcode_t::DEMI_OPC_FAILED if qr.qr_ret == libc::ECONNRESET => {
+                demi_opcode_t::DEMI_OPC_FAILED if qr.qr_ret == libc::ECONNRESET as i64 => {
                     let qd: QDesc = qr.qr_qd.into();
                     let _: Vec<QToken> = self.terminate_connection(qd)?;
                 },

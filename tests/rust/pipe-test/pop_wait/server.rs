@@ -78,7 +78,9 @@ impl PipeServer {
         // Wait for operation to complete.
         if !pop_completed {
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
+                    Ok(())
+                },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => self.handle_pop(&qr),
                 Ok(_) => {
                     anyhow::bail!("wait() should either complete successfully or fail with ECANCELED")
@@ -87,7 +89,9 @@ impl PipeServer {
             }
         } else {
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
+                    Ok(())
+                },
                 Ok(_) => anyhow::bail!("wait() should fail with ECANCELLED"),
                 Err(e) => anyhow::bail!("wait() failed (error={:?})", e),
             }
@@ -135,7 +139,9 @@ impl PipeServer {
         // Wait for operation to complete.
         if !pop_completed {
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
+                    Ok(())
+                },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => self.handle_pop(&qr),
                 Ok(_) => {
                     anyhow::bail!("wait() should either complete successfully or fail with ECANCELED")
@@ -144,7 +150,9 @@ impl PipeServer {
             }
         } else {
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => Ok(()),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
+                    Ok(())
+                },
                 Ok(_) => anyhow::bail!("wait() should fail with ECANCELLED"),
                 Err(e) => anyhow::bail!("wait() failed (error={:?})", e),
             }

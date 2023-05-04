@@ -89,7 +89,7 @@ fn connect_unbound_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
         // If completes successfully, something has gone wrong.
@@ -106,8 +106,8 @@ fn connect_unbound_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()
     if !connect_finished {
         // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -138,7 +138,7 @@ fn connect_to_bad_remote(libos: &mut LibOS) -> Result<()> {
 
     // Poll for enough time to get the connection refused.
     match libos.wait(qt, Some(Duration::from_secs(75))) {
-        Ok(qr) if qr.qr_ret == libc::ECONNREFUSED => {},
+        Ok(qr) if qr.qr_ret == libc::ECONNREFUSED as i64 => {},
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -172,7 +172,7 @@ fn connect_bound_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &Socket
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
         // If completes successfully, something has gone wrong.
@@ -189,8 +189,8 @@ fn connect_bound_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &Socket
     if !connect_finished {
         // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -239,7 +239,7 @@ fn connect_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
         // If completes successfully, something has gone wrong.
@@ -266,8 +266,8 @@ fn connect_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result
     if !connect_finished {
         // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -314,7 +314,7 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &So
 
     // Poll again to check that the accept() co-routine completed with an error and was properly canceled.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
         // If we found a connection to accept, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")

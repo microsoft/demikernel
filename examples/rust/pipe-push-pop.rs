@@ -42,10 +42,11 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     // Ensure that scatter-gather array has the requested size.
     if sga.sga_segs[0].sgaseg_len as usize != size {
         freesga(libos, sga);
+        let seglen: usize = sga.sga_segs[0].sgaseg_len as usize;
         anyhow::bail!(
             "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
             size,
-            sga.sga_segs[0].sgaseg_len
+            seglen
         );
     }
 
