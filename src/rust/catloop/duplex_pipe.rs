@@ -94,8 +94,9 @@ impl DuplexPipe {
 
         // Return this operation to the scheduling queue by removing the associated key
         // (which would otherwise cause the operation to be freed).
+        // FIXME: https://github.com/demikernel/demikernel/issues/593
         if !handle.has_completed() {
-            handle.take_key();
+            handle.take_token();
             return Ok(None);
         }
 

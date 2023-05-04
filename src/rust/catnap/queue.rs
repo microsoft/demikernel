@@ -92,7 +92,7 @@ impl CatnapQueue {
             // Remove the key so this doesn't cause the scheduler to drop the whole task.
             // We need a better explicit mechanism to remove tasks from the scheduler.
             // FIXME: https://github.com/demikernel/demikernel/issues/593
-            scheduler_handle.take_key();
+            scheduler_handle.take_token();
         }
     }
 }

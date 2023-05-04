@@ -31,8 +31,10 @@ use ::std::{
 /// This is used to uniquely identify a future in the scheduler.
 #[derive(Clone)]
 pub struct SchedulerHandle {
+    /// External identifying token.
+    task_id: Option<u64>,
     /// Corresponding location in the scheduler's memory chunk.
-    key: Option<u64>,
+    offset: Option<usize>,
     /// Memory chunk in which the corresponding handle lives.
     chunk: WakerPageRef,
 }
@@ -53,27 +55,30 @@ pub struct YielderHandle {
 /// Associate Functions for Scheduler Handlers
 impl SchedulerHandle {
     /// Creates a new Scheduler Handle.
-    pub fn new(key: u64, waker_page: WakerPageRef) -> Self {
+    pub fn new(task_id: u64, offset: usize, waker_page: WakerPageRef) -> Self {
         Self {
-            key: Some(key),
+            offset: Some(offset),
+            task_id: Some(task_id),
             chunk: waker_page,
         }
     }
 
     /// Takes out the key stored in the target [SchedulerHandle].
-    pub fn take_key(&mut self) -> Option<u64> {
-        self.key.take()
+    pub fn take_token(&mut self) -> Option<u64> {
+        self.offset.take();
+        self.task_id.take()
     }
 
     /// Queries whether or not the future associated with the target [SchedulerHandle] has completed.
     pub fn has_completed(&self) -> bool {
-        let subpage_ix: usize = self.key.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
+        let subpage_ix: usize = self.offset.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
         self.chunk.has_completed(subpage_ix)
     }
 
     /// Returns the raw key stored in the target [SchedulerHandle].
     pub fn into_raw(mut self) -> u64 {
-        self.key.take().unwrap()
+        self.offset.take();
+        self.task_id.take().unwrap()
     }
 }
 
@@ -119,7 +124,7 @@ impl YielderHandle {
 impl Drop for SchedulerHandle {
     /// Decreases the reference count of the target [SchedulerHandle].
     fn drop(&mut self) {
-        if let Some(key) = self.key.take() {
+        if let Some(key) = self.offset.take() {
             let subpage_ix: usize = key as usize & (WAKER_BIT_LENGTH - 1);
             self.chunk.mark_dropped(subpage_ix);
         }
@@ -129,7 +134,7 @@ impl Drop for SchedulerHandle {
 impl Hash for SchedulerHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let key: u64 = self
-            .key
+            .task_id
             .expect("SchedulerHandle should have a key to insert into hashmap");
         key.hash(state);
     }
@@ -137,7 +142,7 @@ impl Hash for SchedulerHandle {
 
 impl PartialEq for SchedulerHandle {
     fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
+        self.task_id == other.task_id
     }
 }
 impl Eq for SchedulerHandle {}
