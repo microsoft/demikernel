@@ -382,12 +382,32 @@ impl CatnapLibOS {
                         let active_socket: &Socket = queue.get_socket();
                         active_socket.connect(remote)?
                     };
+
+                    // Spawn connect co-rountine.
+                    let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
                     let yielder: Yielder = Yielder::new();
                     let yielder_handle: YielderHandle = yielder.get_handle();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         let result: Result<(), Fail> = connect_coroutine(fd, remote, yielder).await;
                         match result {
-                            Ok(()) => (qd, OperationResult::Connect),
+                            Ok(()) => {
+                                // Succeeded to connect, thus set socket as "connected".
+                                let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+                                let queue: &mut CatnapQueue = qtable_.get_mut(&qd).expect("queue cannot be None");
+                                let connecting_socket: &Socket = queue.get_socket();
+                                let connected_socket: Socket = match connecting_socket.connected(remote) {
+                                    Ok(socket) => socket,
+                                    Err(e) => {
+                                        warn!(
+                                            "connect() failed to set socket as connected (qd={:?}, error={:?})",
+                                            qd, &e
+                                        );
+                                        return (qd, OperationResult::Failed(e));
+                                    },
+                                };
+                                queue.set_socket(&connected_socket);
+                                (qd, OperationResult::Connect)
+                            },
                             Err(e) => {
                                 warn!("connect() qd={:?}: {:?}", qd, &e);
                                 (qd, OperationResult::Failed(e))
