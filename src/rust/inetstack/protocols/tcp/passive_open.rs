@@ -78,14 +78,14 @@ struct InflightAccept {
     handle: SchedulerHandle,
 }
 
-struct ReadySockets {
-    ready: VecDeque<Result<ControlBlock, Fail>>,
+struct ReadySockets<const N: usize> {
+    ready: VecDeque<Result<ControlBlock<N>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
     waker: Option<Waker>,
 }
 
-impl ReadySockets {
-    fn push_ok(&mut self, cb: ControlBlock) {
+impl<const N: usize> ReadySockets<N> {
+    fn push_ok(&mut self, cb: ControlBlock<N>) {
         assert!(self.endpoints.insert(cb.get_remote()));
         self.ready.push_back(Ok(cb));
         if let Some(w) = self.waker.take() {
@@ -100,7 +100,7 @@ impl ReadySockets {
         }
     }
 
-    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
+    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<N>, Fail>> {
         let r = match self.ready.pop_front() {
             Some(r) => r,
             None => {
@@ -119,32 +119,32 @@ impl ReadySockets {
     }
 }
 
-pub struct PassiveSocket {
+pub struct PassiveSocket<const N: usize> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
-    ready: Rc<RefCell<ReadySockets>>,
+    ready: Rc<RefCell<ReadySockets<N>>>,
 
     max_backlog: usize,
     isn_generator: IsnGenerator,
 
     local: SocketAddrV4,
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     scheduler: Scheduler,
     clock: TimerRc,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
-    arp: ArpPeer,
+    arp: ArpPeer<N>,
 }
 
-impl PassiveSocket {
+impl<const N: usize> PassiveSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
         clock: TimerRc,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         nonce: u32,
     ) -> Self {
         let ready = ReadySockets {
@@ -173,7 +173,7 @@ impl PassiveSocket {
         self.local
     }
 
-    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
+    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<ControlBlock<N>, Fail>> {
         self.ready.borrow_mut().poll(ctx)
     }
 
@@ -313,12 +313,12 @@ impl PassiveSocket {
         remote_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         clock: TimerRc,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        arp: ArpPeer,
-        ready: Rc<RefCell<ReadySockets>>,
+        arp: ArpPeer<N>,
+        ready: Rc<RefCell<ReadySockets<N>>>,
     ) -> impl Future<Output = ()> {
         let handshake_retries: usize = tcp_config.get_handshake_retries();
         let handshake_timeout: Duration = tcp_config.get_handshake_timeout();

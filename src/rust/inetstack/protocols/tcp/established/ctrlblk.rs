@@ -163,11 +163,11 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // TODO: Make all public fields in this structure private.
-pub struct ControlBlock {
+pub struct ControlBlock<const N: usize> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     pub scheduler: Scheduler,
     pub clock: TimerRc,
     local_link_addr: MacAddress,
@@ -175,10 +175,10 @@ pub struct ControlBlock {
 
     // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
-    arp: Rc<ArpPeer>,
+    arp: Rc<ArpPeer<N>>,
 
     // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
-    sender: Sender,
+    sender: Sender<N>,
 
     // TCP Connection State.
     state: Cell<State>,
@@ -230,16 +230,16 @@ pub struct ControlBlock {
 
 //==============================================================================
 
-impl ControlBlock {
+impl<const N: usize> ControlBlock<N> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -251,7 +251,7 @@ impl ControlBlock {
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
-        let sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
+        let sender: Sender<N> = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self {
             local,
             remote,
@@ -261,7 +261,7 @@ impl ControlBlock {
             local_link_addr,
             tcp_config,
             arp: Rc::new(arp),
-            sender: sender,
+            sender,
             state: Cell::new(State::Established),
             ack_delay_timeout,
             ack_deadline: WatchedValue::new(None),
@@ -287,7 +287,7 @@ impl ControlBlock {
     }
 
     // TODO: Remove this.  ARP doesn't belong at this layer.
-    pub fn arp(&self) -> Rc<ArpPeer> {
+    pub fn arp(&self) -> Rc<ArpPeer<N>> {
         self.arp.clone()
     }
 

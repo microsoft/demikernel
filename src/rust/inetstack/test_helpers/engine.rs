@@ -43,15 +43,15 @@ use ::std::{
 
 use super::TestRuntime;
 
-pub struct Engine {
+pub struct Engine<const N: usize> {
     pub rt: Rc<TestRuntime>,
     pub clock: TimerRc,
-    pub arp: ArpPeer,
-    pub ipv4: Peer,
-    pub qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+    pub arp: ArpPeer<N>,
+    pub ipv4: Peer<N>,
+    pub qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
 }
 
-impl Engine {
+impl<const N: usize> Engine<N> {
     pub fn new(rt: TestRuntime, scheduler: Scheduler, clock: TimerRc) -> Result<Self, Fail> {
         let rt = Rc::new(rt);
         let link_addr = rt.link_addr;
@@ -59,7 +59,7 @@ impl Engine {
         let arp_options = rt.arp_options.clone();
         let udp_config = rt.udp_config.clone();
         let tcp_config = rt.tcp_config.clone();
-        let qtable = Rc::new(RefCell::new(IoQueueTable::<InetQueue>::new()));
+        let qtable = Rc::new(RefCell::new(IoQueueTable::<InetQueue<N>>::new()));
         let arp = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
@@ -135,7 +135,7 @@ impl Engine {
         self.ipv4.tcp.do_socket()
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<N> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint).unwrap()
     }
 
@@ -143,7 +143,7 @@ impl Engine {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture {
+    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture<N> {
         let (_, future) = self.ipv4.tcp.do_accept(fd);
         future
     }
@@ -152,7 +152,7 @@ impl Engine {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture {
+    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture<N> {
         self.ipv4.tcp.pop(socket_fd, None)
     }
 

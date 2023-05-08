@@ -16,38 +16,31 @@ use ::futures::{
     channel::mpsc,
     FutureExt,
 };
-use ::std::{
-    future::Future,
-    rc::Rc,
-};
+use ::std::rc::Rc;
 
-pub type BackgroundCoroutine = impl Future<Output = ()>;
-
-pub fn background(
-    cb: Rc<ControlBlock>,
+pub async fn background<const N: usize>(
+    cb: Rc<ControlBlock<N>>,
     fd: QDesc,
     _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-) -> BackgroundCoroutine {
-    async move {
-        let acknowledger = acknowledger(cb.clone()).fuse();
-        futures::pin_mut!(acknowledger);
+) {
+    let acknowledger = acknowledger(cb.clone()).fuse();
+    futures::pin_mut!(acknowledger);
 
-        let retransmitter = retransmitter(cb.clone()).fuse();
-        futures::pin_mut!(retransmitter);
+    let retransmitter = retransmitter(cb.clone()).fuse();
+    futures::pin_mut!(retransmitter);
 
-        let sender = sender(cb.clone()).fuse();
-        futures::pin_mut!(sender);
+    let sender = sender(cb.clone()).fuse();
+    futures::pin_mut!(sender);
 
-        let r = futures::select_biased! {
-            r = acknowledger => r,
-            r = retransmitter => r,
-            r = sender => r,
-        };
-        error!("Connection (fd {:?}) terminated: {:?}", fd, r);
+    let r = futures::select_biased! {
+        r = acknowledger => r,
+        r = retransmitter => r,
+        r = sender => r,
+    };
+    error!("Connection (fd {:?}) terminated: {:?}", fd, r);
 
-        // TODO Properly clean up Peer state for this connection.
-        // dead_socket_tx
-        //     .unbounded_send(fd)
-        //     .expect("Failed to terminate connection");
-    }
+    // TODO Properly clean up Peer state for this connection.
+    // dead_socket_tx
+    //     .unbounded_send(fd)
+    //     .expect("Failed to terminate connection");
 }

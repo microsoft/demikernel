@@ -20,6 +20,7 @@ use crate::{
         fail::Fail,
         libdpdk::load_mlx_driver,
         memory::MemoryRuntime,
+        network::consts::RECEIVE_BATCH_SIZE,
         timer::{
             Timer,
             TimerRc,
@@ -57,7 +58,7 @@ use crate::timer;
 /// Catnip LibOS
 pub struct CatnipLibOS {
     scheduler: Scheduler,
-    inetstack: InetStack,
+    inetstack: InetStack<RECEIVE_BATCH_SIZE>,
     rt: Rc<DPDKRuntime>,
 }
 
@@ -84,7 +85,7 @@ impl CatnipLibOS {
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let scheduler: Scheduler = Scheduler::default();
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: InetStack = InetStack::new(
+        let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
             rt.clone(),
             scheduler.clone(),
             clock,
@@ -177,7 +178,7 @@ impl CatnipLibOS {
 
 /// De-Reference Trait Implementation for Catnip LibOS
 impl Deref for CatnipLibOS {
-    type Target = InetStack;
+    type Target = InetStack<RECEIVE_BATCH_SIZE>;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack

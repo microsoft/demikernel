@@ -86,15 +86,15 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 /// Per-queue metadata: UDP Control Block
 
 /// UDP Peer
-pub struct UdpPeer {
+pub struct UdpPeer<const N: usize> {
     /// Underlying runtime.
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     /// Underlying ARP peer.
-    arp: ArpPeer,
+    arp: ArpPeer<N>,
     /// Ephemeral ports.
     ephemeral_ports: EphemeralPorts,
     /// Opened sockets.
-    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+    qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
     /// Bound sockets to look up incoming packets.
     bound: HashMap<SocketAddrV4, QDesc>,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
@@ -117,17 +117,17 @@ pub struct UdpPeer {
 //======================================================================================================================
 
 /// Associate functions for [UdpPeer].
-impl UdpPeer {
+impl<const N: usize> UdpPeer<N> {
     /// Creates a Udp peer.
     pub fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
         rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
     ) -> Result<Self, Fail> {
         let send_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> =
             SharedQueue::<SharedQueueSlot<DemiBuffer>>::new(SEND_QUEUE_MAX_SIZE);
@@ -167,11 +167,11 @@ impl UdpPeer {
 
     /// Asynchronously send unsent datagrams to remote peer.
     async fn background_sender(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         offload_checksum: bool,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         mut rx: SharedQueue<SharedQueueSlot<DemiBuffer>>,
     ) {
         loop {
@@ -205,7 +205,7 @@ impl UdpPeer {
     pub fn do_socket(&mut self) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::socket");
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = self.qtable.borrow_mut();
         let new_qd: QDesc = qtable.alloc(InetQueue::Udp(UdpQueue::new()));
         Ok(new_qd)
     }
@@ -214,7 +214,7 @@ impl UdpPeer {
     pub fn do_bind(&mut self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::bind");
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = self.qtable.borrow_mut();
         if self.bound.contains_key(&addr) {
             return Err(Fail::new(libc::EADDRINUSE, "address in use"));
         }
@@ -262,7 +262,7 @@ impl UdpPeer {
     pub fn do_close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::close");
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = self.qtable.borrow_mut();
         // Lookup associated endpoint.
         match qtable.free(&qd) {
             Some(InetQueue::Udp(queue)) => match queue.get_addr() {
@@ -280,7 +280,7 @@ impl UdpPeer {
     pub fn do_pushto(&self, qd: QDesc, data: DemiBuffer, remote: SocketAddrV4) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
-        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = self.qtable.borrow();
         // Lookup associated endpoint.
         match qtable.get(&qd) {
             Some(InetQueue::Udp(queue)) => {
@@ -312,7 +312,7 @@ impl UdpPeer {
     pub fn do_pop(&self, qd: QDesc, size: Option<usize>) -> UdpPopFuture {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
-        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = self.qtable.borrow();
         // Lookup associated receiver-side shared queue.
         match qtable.get(&qd) {
             // Issue pop operation.
@@ -325,7 +325,7 @@ impl UdpPeer {
     pub fn do_receive(&mut self, ipv4_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
-        let qtable: Ref<IoQueueTable<InetQueue>> = self.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = self.qtable.borrow();
         // Parse datagram.
         let (hdr, data): (UdpHeader, DemiBuffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
         debug!("UDP received {:?}", hdr);
@@ -362,7 +362,7 @@ impl UdpPeer {
 
     /// Sends a UDP datagram.
     fn do_send(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
         remote_link_addr: MacAddress,

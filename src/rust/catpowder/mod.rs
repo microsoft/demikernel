@@ -19,6 +19,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
+        network::consts::RECEIVE_BATCH_SIZE,
         timer::{
             Timer,
             TimerRc,
@@ -57,7 +58,7 @@ use crate::timer;
 /// Catpowder LibOS
 pub struct CatpowderLibOS {
     scheduler: Scheduler,
-    inetstack: InetStack,
+    inetstack: InetStack<RECEIVE_BATCH_SIZE>,
     rt: Rc<LinuxRuntime>,
 }
 
@@ -79,7 +80,7 @@ impl CatpowderLibOS {
         let scheduler: Scheduler = Scheduler::default();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: InetStack = InetStack::new(
+        let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
             rt.clone(),
             scheduler.clone(),
             clock,
@@ -172,7 +173,7 @@ impl CatpowderLibOS {
 
 /// De-Reference Trait Implementation for Catpowder LibOS
 impl Deref for CatpowderLibOS {
-    type Target = InetStack;
+    type Target = InetStack<RECEIVE_BATCH_SIZE>;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack

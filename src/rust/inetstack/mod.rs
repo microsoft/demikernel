@@ -96,20 +96,20 @@ const MAX_RECV_ITERS: usize = 2;
 // Structures
 //======================================================================================================================
 
-pub struct InetStack {
-    arp: ArpPeer,
-    ipv4: Peer,
-    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
-    rt: Rc<dyn NetworkRuntime>,
+pub struct InetStack<const N: usize> {
+    arp: ArpPeer<N>,
+    ipv4: Peer<N>,
+    qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
     scheduler: Scheduler,
     clock: TimerRc,
     ts_iters: usize,
 }
 
-impl InetStack {
+impl<const N: usize> InetStack<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
@@ -119,8 +119,9 @@ impl InetStack {
         rng_seed: [u8; 32],
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let qtable: Rc<RefCell<IoQueueTable<InetQueue>>> = Rc::new(RefCell::new(IoQueueTable::<InetQueue>::new()));
-        let arp: ArpPeer = ArpPeer::new(
+        let qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>> =
+            Rc::new(RefCell::new(IoQueueTable::<InetQueue<N>>::new()));
+        let arp: ArpPeer<N> = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
             clock.clone(),
@@ -128,7 +129,7 @@ impl InetStack {
             local_ipv4_addr,
             arp_config,
         )?;
-        let ipv4: Peer = Peer::new(
+        let ipv4: Peer<N> = Peer::new(
             rt.clone(),
             scheduler.clone(),
             qtable.clone(),
@@ -282,8 +283,8 @@ impl InetStack {
         // Search for target queue descriptor.
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
-                let (new_qd, future): (QDesc, AcceptFuture) = self.ipv4.tcp.do_accept(qd);
-                let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue>>> = self.qtable.clone();
+                let (new_qd, future): (QDesc, AcceptFuture<N>) = self.ipv4.tcp.do_accept(qd);
+                let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue<N>>>> = self.qtable.clone();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Wait for accept to complete.
                     let result: Result<(QDesc, SocketAddrV4), Fail> = future.await;
@@ -332,7 +333,7 @@ impl InetStack {
 
         let task: OperationTask = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
-                let future: ConnectFuture = self.ipv4.tcp.connect(qd, remote)?;
+                let future: ConnectFuture<N> = self.ipv4.tcp.connect(qd, remote)?;
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Wait for connect to complete.
                     let result: Result<(), Fail> = future.await;
@@ -396,10 +397,10 @@ impl InetStack {
         timer!("inetstack::async_close");
         trace!("async_close(): qd={:?}", qd);
 
-        let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue>>> = self.qtable.clone();
+        let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue<N>>>> = self.qtable.clone();
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
-                let future: CloseFuture = self.ipv4.tcp.do_async_close(qd)?;
+                let future: CloseFuture<N> = self.ipv4.tcp.do_async_close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     let result: Result<(), Fail> = future.await;
@@ -534,7 +535,7 @@ impl InetStack {
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
                 let task_id: String = format!("Inetstack::TCP::pop for qd={:?}", qd);
-                let future: PopFuture = self.ipv4.tcp.pop(qd, size);
+                let future: PopFuture<N> = self.ipv4.tcp.pop(qd, size);
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Wait for pop to complete.
                     let result: Result<DemiBuffer, Fail> = future.await;

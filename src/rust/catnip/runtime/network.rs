@@ -17,7 +17,6 @@ use crate::{
         },
         memory::DemiBuffer,
         network::{
-            consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
             PacketBuf,
         },
@@ -34,7 +33,7 @@ use crate::timer;
 //==============================================================================
 
 /// Network Runtime Trait Implementation for DPDK Runtime
-impl NetworkRuntime for DPDKRuntime {
+impl<const N: usize> NetworkRuntime<N> for DPDKRuntime {
     fn transmit(&self, buf: Box<dyn PacketBuf>) {
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
@@ -136,17 +135,17 @@ impl NetworkRuntime for DPDKRuntime {
         }
     }
 
-    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
         let mut out = ArrayVec::new();
 
-        let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
+        let mut packets: [*mut rte_mbuf; N] = unsafe { mem::zeroed() };
         let nb_rx = unsafe {
             #[cfg(feature = "profiler")]
             timer!("catnip_libos::receive::rte_eth_rx_burst");
 
-            rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16)
+            rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), N as u16)
         };
-        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
+        assert!(nb_rx as usize <= N);
 
         {
             #[cfg(feature = "profiler")]

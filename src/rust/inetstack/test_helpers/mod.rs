@@ -46,7 +46,7 @@ pub const CARRIE_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 3);
 // Standalone Functions
 //==============================================================================
 
-pub fn new_alice(now: Instant) -> Engine {
+pub fn new_alice<const N: usize>(now: Instant) -> Engine<N> {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),
@@ -62,7 +62,7 @@ pub fn new_alice(now: Instant) -> Engine {
     Engine::new(rt, scheduler, clock).unwrap()
 }
 
-pub fn new_bob(now: Instant) -> Engine {
+pub fn new_bob<const N: usize>(now: Instant) -> Engine<N> {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),
@@ -78,7 +78,7 @@ pub fn new_bob(now: Instant) -> Engine {
     Engine::new(rt, scheduler, clock).unwrap()
 }
 
-pub fn new_alice2(now: Instant) -> Engine {
+pub fn new_alice2<const N: usize>(now: Instant) -> Engine<N> {
     let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
     arp.insert(ALICE_IPV4, ALICE_MAC);
     arp.insert(BOB_IPV4, BOB_MAC);
@@ -97,7 +97,7 @@ pub fn new_alice2(now: Instant) -> Engine {
     Engine::new(rt, scheduler, clock).unwrap()
 }
 
-pub fn new_bob2(now: Instant) -> Engine {
+pub fn new_bob2<const N: usize>(now: Instant) -> Engine<N> {
     let mut arp: HashMap<Ipv4Addr, MacAddress> = HashMap::<Ipv4Addr, MacAddress>::new();
     arp.insert(BOB_IPV4, BOB_MAC);
     arp.insert(ALICE_IPV4, ALICE_MAC);
@@ -116,7 +116,7 @@ pub fn new_bob2(now: Instant) -> Engine {
     Engine::new(rt, scheduler, clock).unwrap()
 }
 
-pub fn new_carrie(now: Instant) -> Engine {
+pub fn new_carrie<const N: usize>(now: Instant) -> Engine<N> {
     let arp_options = ArpConfig::new(
         Some(Duration::from_secs(600)),
         Some(Duration::from_secs(1)),

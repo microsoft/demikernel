@@ -59,40 +59,40 @@ use ::std::{
     },
 };
 
-struct ConnectResult {
+struct ConnectResult<const N: usize> {
     waker: Option<Waker>,
-    result: Option<Result<ControlBlock, Fail>>,
+    result: Option<Result<ControlBlock<N>, Fail>>,
 }
 
-pub struct ActiveOpenSocket {
+pub struct ActiveOpenSocket<const N: usize> {
     local_isn: SeqNumber,
 
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     scheduler: Scheduler,
     clock: TimerRc,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
-    arp: ArpPeer,
+    arp: ArpPeer<N>,
 
     #[allow(unused)]
     handle: SchedulerHandle,
-    result: Rc<RefCell<ConnectResult>>,
+    result: Rc<RefCell<ConnectResult<N>>>,
 }
 
-impl ActiveOpenSocket {
+impl<const N: usize> ActiveOpenSocket<N> {
     pub fn new(
         scheduler: Scheduler,
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         clock: TimerRc,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
     ) -> Self {
         let result = ConnectResult {
             waker: None,
@@ -135,7 +135,7 @@ impl ActiveOpenSocket {
         }
     }
 
-    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock, Fail>> {
+    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock<N>, Fail>> {
         let mut r = self.result.borrow_mut();
         match r.result.take() {
             None => {
@@ -146,7 +146,7 @@ impl ActiveOpenSocket {
         }
     }
 
-    fn set_result(&mut self, result: Result<ControlBlock, Fail>) {
+    fn set_result(&mut self, result: Result<ControlBlock<N>, Fail>) {
         let mut r = self.result.borrow_mut();
         if let Some(w) = r.waker.take() {
             w.wake()
@@ -267,12 +267,12 @@ impl ActiveOpenSocket {
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: ArpPeer,
-        result: Rc<RefCell<ConnectResult>>,
+        arp: ArpPeer<N>,
+        result: Rc<RefCell<ConnectResult<N>>>,
     ) -> impl Future<Output = ()> {
         let handshake_retries: usize = tcp_config.get_handshake_retries();
         let handshake_timeout = tcp_config.get_handshake_timeout();

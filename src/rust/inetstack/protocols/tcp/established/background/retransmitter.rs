@@ -18,7 +18,7 @@ use ::std::{
     },
 };
 
-pub async fn retransmitter(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn retransmitter<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();

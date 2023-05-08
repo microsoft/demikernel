@@ -88,12 +88,12 @@ use crate::timer;
 // Enumerations
 //==============================================================================
 
-pub enum Socket {
+pub enum Socket<const N: usize> {
     Inactive(Option<SocketAddrV4>),
-    Listening(PassiveSocket),
-    Connecting(ActiveOpenSocket),
-    Established(EstablishedSocket),
-    Closing(EstablishedSocket),
+    Listening(PassiveSocket<N>),
+    Connecting(ActiveOpenSocket<N>),
+    Established(EstablishedSocket<N>),
+    Closing(EstablishedSocket<N>),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -106,42 +106,42 @@ enum SocketId {
 // Structures
 //==============================================================================
 
-pub struct Inner {
+pub struct Inner<const N: usize> {
     isn_generator: IsnGenerator,
     ephemeral_ports: EphemeralPorts,
     // queue descriptor -> per queue metadata
-    qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+    qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
     scheduler: Scheduler,
     clock: TimerRc,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
-    arp: ArpPeer,
+    arp: ArpPeer<N>,
     rng: Rc<RefCell<SmallRng>>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer {
-    pub(super) inner: Rc<RefCell<Inner>>,
+pub struct TcpPeer<const N: usize> {
+    pub(super) inner: Rc<RefCell<Inner<N>>>,
 }
 
 //==============================================================================
 // Associated Functions
 //==============================================================================
 
-impl TcpPeer {
+impl<const N: usize> TcpPeer<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let (tx, rx) = mpsc::unbounded();
@@ -165,14 +165,14 @@ impl TcpPeer {
     pub fn do_socket(&self) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
-        let inner: Ref<Inner> = self.inner.borrow();
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+        let inner: Ref<Inner<N>> = self.inner.borrow();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow_mut();
         let new_qd: QDesc = qtable.alloc(InetQueue::Tcp(TcpQueue::new()));
         Ok(new_qd)
     }
 
     pub fn bind(&self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
 
         // Check if address is already bound.
         for (socket_id, _) in &inner.addresses {
@@ -238,9 +238,9 @@ impl TcpPeer {
     pub fn listen(&self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         // This code borrows a reference to inner, instead of the entire self structure,
         // so we can still borrow self later.
-        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
-        let inner: &mut Inner = &mut *inner_;
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+        let mut inner_: RefMut<Inner<N>> = self.inner.borrow_mut();
+        let inner: &mut Inner<N> = &mut *inner_;
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow_mut();
         // Get bound address while checking for several issues.
         match qtable.get_mut(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
@@ -284,9 +284,9 @@ impl TcpPeer {
     }
 
     /// Accepts an incoming connection.
-    pub fn do_accept(&self, qd: QDesc) -> (QDesc, AcceptFuture) {
-        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
-        let inner: &mut Inner = &mut *inner_;
+    pub fn do_accept(&self, qd: QDesc) -> (QDesc, AcceptFuture<N>) {
+        let mut inner_: RefMut<Inner<N>> = self.inner.borrow_mut();
+        let inner: &mut Inner<N> = &mut *inner_;
 
         let new_qd: QDesc = inner.qtable.borrow_mut().alloc(InetQueue::Tcp(TcpQueue::new()));
         (new_qd, AcceptFuture::new(qd, new_qd, self.inner.clone()))
@@ -299,9 +299,9 @@ impl TcpPeer {
         new_qd: QDesc,
         ctx: &mut Context,
     ) -> Poll<Result<(QDesc, SocketAddrV4), Fail>> {
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
 
-        let cb: ControlBlock = match inner.qtable.borrow_mut().get_mut(&qd) {
+        let cb: ControlBlock<N> = match inner.qtable.borrow_mut().get_mut(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
                 Socket::Listening(socket) => match socket.poll_accept(ctx) {
                     Poll::Pending => return Poll::Pending,
@@ -318,7 +318,7 @@ impl TcpPeer {
             _ => return Poll::Ready(Err(Fail::new(libc::EBADF, "invalid queue descriptor"))),
         };
 
-        let established: EstablishedSocket = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
+        let established: EstablishedSocket<N> = EstablishedSocket::new(cb, new_qd, inner.dead_socket_tx.clone());
         let local: SocketAddrV4 = established.cb.get_local();
         let remote: SocketAddrV4 = established.cb.get_remote();
         match inner.qtable.borrow_mut().get_mut(&new_qd) {
@@ -336,10 +336,10 @@ impl TcpPeer {
         Poll::Ready(Ok((new_qd, remote)))
     }
 
-    pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture, Fail> {
-        let mut inner_: RefMut<Inner> = self.inner.borrow_mut();
-        let inner: &mut Inner = &mut *inner_;
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+    pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture<N>, Fail> {
+        let mut inner_: RefMut<Inner<N>> = self.inner.borrow_mut();
+        let inner: &mut Inner<N> = &mut *inner_;
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow_mut();
 
         // Get local address bound to socket.
         match qtable.get_mut(&qd) {
@@ -356,7 +356,7 @@ impl TcpPeer {
 
                     // Create active socket.
                     let local_isn: SeqNumber = inner.isn_generator.generate(&local, &remote);
-                    let socket: ActiveOpenSocket = ActiveOpenSocket::new(
+                    let socket: ActiveOpenSocket<N> = ActiveOpenSocket::new(
                         inner.scheduler.clone(),
                         local_isn,
                         local,
@@ -386,8 +386,8 @@ impl TcpPeer {
     }
 
     pub fn poll_recv(&self, qd: QDesc, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
-        let inner: Ref<Inner> = self.inner.borrow();
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = inner.qtable.borrow_mut();
+        let inner: Ref<Inner<N>> = self.inner.borrow();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow_mut();
         match qtable.get_mut(&qd) {
             Some(InetQueue::Tcp(ref mut queue)) => match queue.get_mut_socket() {
                 Socket::Established(ref mut socket) => socket.poll_recv(ctx, size),
@@ -410,7 +410,7 @@ impl TcpPeer {
     }
 
     /// TODO: Should probably check for valid queue descriptor before we schedule the future
-    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> PopFuture {
+    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> PopFuture<N> {
         PopFuture {
             qd,
             size,
@@ -432,7 +432,7 @@ impl TcpPeer {
 
     /// Closes a TCP socket.
     pub fn do_close(&self, qd: QDesc) -> Result<(), Fail> {
-        let mut inner: RefMut<Inner> = self.inner.borrow_mut();
+        let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
         // TODO: Currently we do not handle close correctly because we continue to receive packets at this point to finish the TCP close protocol.
         // 1. We do not remove the endpoint from the addresses table
         // 2. We do not remove the queue from the queue table.
@@ -481,7 +481,7 @@ impl TcpPeer {
     }
 
     /// Closes a TCP socket.
-    pub fn do_async_close(&self, qd: QDesc) -> Result<CloseFuture, Fail> {
+    pub fn do_async_close(&self, qd: QDesc) -> Result<CloseFuture<N>, Fail> {
         match self.inner.borrow().qtable.borrow_mut().get_mut(&qd) {
             Some(InetQueue::Tcp(queue)) => {
                 match queue.get_socket() {
@@ -526,7 +526,7 @@ impl TcpPeer {
 
     pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {
         let inner = self.inner.borrow();
-        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow();
         match qtable.get(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
                 Socket::Established(socket) => Ok(socket.remote_mss()),
@@ -538,7 +538,7 @@ impl TcpPeer {
 
     pub fn current_rto(&self, qd: QDesc) -> Result<Duration, Fail> {
         let inner = self.inner.borrow();
-        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow();
         match qtable.get(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
                 Socket::Established(socket) => Ok(socket.current_rto()),
@@ -550,7 +550,7 @@ impl TcpPeer {
 
     pub fn endpoints(&self, qd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
         let inner = self.inner.borrow();
-        let qtable: Ref<IoQueueTable<InetQueue>> = inner.qtable.borrow();
+        let qtable: Ref<IoQueueTable<InetQueue<N>>> = inner.qtable.borrow();
         match qtable.get(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_socket() {
                 Socket::Established(socket) => Ok(socket.endpoints()),
@@ -561,16 +561,16 @@ impl TcpPeer {
     }
 }
 
-impl Inner {
+impl<const N: usize> Inner<N> {
     fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable<InetQueue>>>,
+        qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         rng_seed: [u8; 32],
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         _dead_socket_rx: mpsc::UnboundedReceiver<QDesc>,
@@ -670,11 +670,11 @@ impl Inner {
     }
 
     pub(super) fn poll_connect_finished(&mut self, qd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
-        let mut qtable: RefMut<IoQueueTable<InetQueue>> = self.qtable.borrow_mut();
+        let mut qtable: RefMut<IoQueueTable<InetQueue<N>>> = self.qtable.borrow_mut();
         match qtable.get_mut(&qd) {
             Some(InetQueue::Tcp(queue)) => match queue.get_mut_socket() {
                 Socket::Connecting(socket) => {
-                    let result: Result<ControlBlock, Fail> = match socket.poll_result(context) {
+                    let result: Result<ControlBlock<N>, Fail> = match socket.poll_result(context) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(r) => r,
                     };
