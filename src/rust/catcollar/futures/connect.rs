@@ -30,7 +30,7 @@ pub struct ConnectFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Connect address.
-    sockaddr: libc::sockaddr_in,
+    saddr: libc::sockaddr,
 }
 
 //==============================================================================
@@ -43,7 +43,7 @@ impl ConnectFuture {
     pub fn new(fd: RawFd, addr: SocketAddrV4) -> Self {
         Self {
             fd,
-            sockaddr: linux::socketaddrv4_to_sockaddr_in(&addr),
+            saddr: linux::socketaddrv4_to_sockaddr(&addr),
         }
     }
 }
@@ -62,13 +62,13 @@ impl Future for ConnectFuture {
         match unsafe {
             libc::connect(
                 self_.fd,
-                (&self_.sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
+                &self_.saddr as *const libc::sockaddr,
                 mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {
             // Operation completed.
             stats if stats == 0 => {
-                trace!("connection established ({:?})", self_.sockaddr);
+                trace!("connection established ({:?})", self_.saddr);
                 Poll::Ready(Ok(()))
             },
 

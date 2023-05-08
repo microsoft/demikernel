@@ -27,7 +27,6 @@ use ::std::{
         HashMap,
         HashSet,
     },
-    mem,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
     rc::Rc,
@@ -120,9 +119,7 @@ impl IoUringRuntime {
                             None
                         } else {
                             let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
-                            let sin: libc::sockaddr_in =
-                                unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
-                            Some(linux::sockaddr_in_to_socketaddrv4(&sin))
+                            Some(linux::sockaddr_to_socketaddrv4(unsafe { &*saddr }))
                         };
 
                         // This is not the request that we are waiting for.

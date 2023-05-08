@@ -117,10 +117,10 @@ impl IoUring {
     ) -> Result<*mut liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data_ptr: *const u8 = buf.as_ptr();
-        let saddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
-        let (sockaddr, addrlen): (&libc::sockaddr_in, socklen_t) =
+        let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
+        let (saddr_ref, addrlen): (&libc::sockaddr, socklen_t) =
             (&saddr, mem::size_of::<libc::sockaddr_in>() as libc::socklen_t);
-        let sockaddr_ptr: *const libc::sockaddr_in = sockaddr as *const libc::sockaddr_in;
+        let saddr_ptr: *const libc::sockaddr = saddr_ref as *const libc::sockaddr;
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {
@@ -139,7 +139,7 @@ impl IoUring {
             });
             let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Box<liburing::msghdr> = Box::new(liburing::msghdr {
-                msg_name: sockaddr_ptr as *mut c_void,
+                msg_name: saddr_ptr as *mut c_void,
                 msg_namelen: addrlen as u32,
                 msg_iov: iov_ptr,
                 msg_iovlen: 1,

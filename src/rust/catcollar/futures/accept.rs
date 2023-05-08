@@ -30,7 +30,7 @@ pub struct AcceptFuture {
     /// Underlying file descriptor.
     fd: RawFd,
     /// Socket address of accept connection.
-    sockaddr: libc::sockaddr_in,
+    saddr: libc::sockaddr,
 }
 
 //==============================================================================
@@ -43,7 +43,7 @@ impl AcceptFuture {
     pub fn new(fd: RawFd) -> Self {
         Self {
             fd,
-            sockaddr: unsafe { mem::zeroed() },
+            saddr: unsafe { mem::zeroed() },
         }
     }
 }
@@ -61,11 +61,7 @@ impl Future for AcceptFuture {
         let self_: &mut AcceptFuture = self.get_mut();
         match unsafe {
             let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
-            libc::accept(
-                self_.fd,
-                (&mut self_.sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
-                &mut address_len,
-            )
+            libc::accept(self_.fd, &mut self_.saddr as *mut libc::sockaddr, &mut address_len)
         } {
             // Operation completed.
             new_fd if new_fd >= 0 => {
@@ -87,7 +83,7 @@ impl Future for AcceptFuture {
                     }
                 }
 
-                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&self_.sockaddr);
+                let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&self_.saddr);
                 Poll::Ready(Ok((new_fd, addr)))
             },
 
