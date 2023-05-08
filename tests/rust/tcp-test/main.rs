@@ -86,7 +86,7 @@ fn main() -> Result<()> {
 
     crate::collect!(result, socket::run(&mut libos));
     crate::collect!(result, bind::run(&mut libos, &args.local().ip(), &args.remote().ip()));
-    crate::collect!(result, listen::run(&mut libos, &args.local()));
+    crate::collect!(result, listen::run(&mut libos, &args.local(), &args.remote()));
     crate::collect!(result, accept::run(&mut libos, &args.local()));
     crate::collect!(result, connect::run(&mut libos, &args.local(), &args.remote()));
     crate::collect!(result, close::run(&mut libos, &args.local()));
