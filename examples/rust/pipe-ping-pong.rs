@@ -168,109 +168,164 @@ fn close(libos: &mut LibOS, pipeqd: QDesc) {
     }
 }
 
-//======================================================================================================================
-// server()
-//======================================================================================================================
-
-fn server(name: &str) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-
-    // Setup peer.
-    let pipeqd_rx: QDesc = match libos.create_pipe(&format!("{}:rx", name)) {
-        Ok(qd) => qd,
-        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
-    };
-
-    // Setup peer.
-    let pipeqd_tx: QDesc = match libos.create_pipe(&format!("{}:tx", name)) {
-        Ok(qd) => qd,
-        Err(e) => {
-            // Clean up open pipes on error.
-            close(&mut libos, pipeqd_rx);
-            anyhow::bail!("failed to open memory queue: {:?}", e)
-        },
-    };
-
-    // Send and receive bytes in a locked step.
-    for i in 0..NROUNDS {
-        // Clean up open pipes on error.
-        if let Err(e) = pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i) {
-            close(&mut libos, pipeqd_rx);
-            close(&mut libos, pipeqd_tx);
-            anyhow::bail!("failed to pop memory queue: {:?}", e);
-        }
-
-        if let Err(e) = push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i) {
-            close(&mut libos, pipeqd_rx);
-            close(&mut libos, pipeqd_tx);
-            anyhow::bail!("failed to push memory queue: {:?}", e);
-        }
-        println!("pong {:?}", i);
-    }
-
-    close(&mut libos, pipeqd_rx);
-    close(&mut libos, pipeqd_tx);
-
-    Ok(())
+// The pipe server.
+pub struct PipeServer {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Tx pipe qd.
+    tx_pipeqd: Option<QDesc>,
+    /// Rx pipe qd.
+    rx_pipeqd: Option<QDesc>,
 }
 
-//======================================================================================================================
-// client()
-//======================================================================================================================
-
-fn client(name: &str) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
-    };
-
-    // Setup peer.
-    let pipeqd_tx: QDesc = match libos.open_pipe(&format!("{}:rx", name)) {
-        Ok(qd) => qd,
-        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
-    };
-    let pipeqd_rx: QDesc = match libos.open_pipe(&format!("{}:tx", name)) {
-        Ok(qd) => qd,
-        Err(e) => {
-            // If error, close open pipes.
-            close(&mut libos, pipeqd_tx);
-            anyhow::bail!("failed to open memory queue: {:?}", e.cause)
-        },
-    };
-
-    // Send and receive bytes in a locked step.
-    for i in 0..NROUNDS {
-        // If error, close open pipes.
-        // Clean up open pipes on error.
-        if let Err(e) = push_and_wait(&mut libos, pipeqd_tx, BUFFER_SIZE, i) {
-            close(&mut libos, pipeqd_rx);
-            close(&mut libos, pipeqd_tx);
-            anyhow::bail!("failed to pop memory queue: {:?}", e);
-        }
-
-        if let Err(e) = pop_and_wait(&mut libos, pipeqd_rx, BUFFER_SIZE, i) {
-            close(&mut libos, pipeqd_rx);
-            close(&mut libos, pipeqd_tx);
-            anyhow::bail!("failed to push memory queue: {:?}", e);
-        }
-        println!("pong {:?}", i);
+// Implementation of the pipe server.
+impl PipeServer {
+    pub fn new(libos: LibOS) -> Result<Self> {
+        return Ok(Self {
+            libos,
+            tx_pipeqd: None,
+            rx_pipeqd: None,
+        });
     }
 
-    close(&mut libos, pipeqd_rx);
-    close(&mut libos, pipeqd_tx);
+    pub fn run(&mut self, pipe_name: &str) -> Result<()> {
+        // Setup the Rx pipe.
+        self.rx_pipeqd = match self.libos.create_pipe(&format!("{}:rx", pipe_name)) {
+            Ok(qd) => Some(qd),
+            Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
+        };
 
-    Ok(())
+        // Setup the Tx pipe.
+        self.tx_pipeqd = match self.libos.create_pipe(&format!("{}:tx", pipe_name)) {
+            Ok(qd) => Some(qd),
+            Err(e) => {
+                if let Some(rx_pipeqd) = self.rx_pipeqd {
+                    close(&mut self.libos, rx_pipeqd);
+                    self.rx_pipeqd = None;
+                }
+                anyhow::bail!("failed to open memory queue: {:?}", e)
+            },
+        };
+
+        // Send and receive bytes in a locked step.
+        for i in 0..NROUNDS {
+            if let Err(e) = pop_and_wait(
+                &mut self.libos,
+                self.rx_pipeqd.expect("should be a valid pipe qd"),
+                BUFFER_SIZE,
+                i,
+            ) {
+                anyhow::bail!("failed to pop memory queue: {:?}", e);
+            }
+
+            if let Err(e) = push_and_wait(
+                &mut self.libos,
+                self.tx_pipeqd.expect("should be a valid pipe qd"),
+                BUFFER_SIZE,
+                i,
+            ) {
+                anyhow::bail!("failed to push memory queue: {:?}", e);
+            }
+            println!("pong {:?}", i);
+        }
+
+        Ok(())
+    }
+}
+
+// Drop implementation for the pipe server.
+impl Drop for PipeServer {
+    fn drop(&mut self) {
+        if let Some(rx_pipeqd) = self.rx_pipeqd {
+            close(&mut self.libos, rx_pipeqd);
+        }
+        if let Some(tx_pipeqd) = self.tx_pipeqd {
+            close(&mut self.libos, tx_pipeqd);
+        }
+    }
+}
+
+// The pipe client.
+pub struct PipeClient {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Tx pipe qd.
+    tx_pipeqd: Option<QDesc>,
+    /// Rx pipe qd.
+    rx_pipeqd: Option<QDesc>,
+}
+
+// Implementation of the pipe client.
+impl PipeClient {
+    pub fn new(libos: LibOS) -> Result<Self> {
+        return Ok(Self {
+            libos,
+            tx_pipeqd: None,
+            rx_pipeqd: None,
+        });
+    }
+
+    pub fn run(&mut self, pipe_name: &str) -> Result<()> {
+        // Setup the Tx pipe. This is inverted from the server's perspsective,
+        // because the server reads from it's rx_pipeqd, but the clients writes
+        // from it.
+        self.tx_pipeqd = match self.libos.open_pipe(&format!("{}:rx", pipe_name)) {
+            Ok(qd) => Some(qd),
+            Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
+        };
+
+        // Setup the Rx pipe. This is inverted from the server's perspsective,
+        // because the server writes from it's tx_pipeqd, but the clients reads
+        // from it.
+        self.rx_pipeqd = match self.libos.open_pipe(&format!("{}:tx", pipe_name)) {
+            Ok(qd) => Some(qd),
+            Err(e) => {
+                if let Some(tx_pipeqd) = self.tx_pipeqd {
+                    close(&mut self.libos, tx_pipeqd);
+                    self.tx_pipeqd = None;
+                }
+                anyhow::bail!("failed to open memory queue: {:?}", e.cause)
+            },
+        };
+
+        // Send and receive bytes.
+        for i in 0..NROUNDS {
+            match push_and_wait(
+                &mut self.libos,
+                self.tx_pipeqd.expect("should be a valid pipe qd"),
+                BUFFER_SIZE,
+                i,
+            ) {
+                Err(e) => anyhow::bail!("failed to pop memory queue: {:?}", e),
+                _ => (),
+            }
+
+            match pop_and_wait(
+                &mut self.libos,
+                self.rx_pipeqd.expect("should be a valid pipe qd"),
+                BUFFER_SIZE,
+                i,
+            ) {
+                Err(e) => anyhow::bail!("failed to push memory queue: {:?}", e),
+                _ => (),
+            }
+            println!("pong {:?}", i);
+        }
+
+        Ok(())
+    }
+}
+
+// Drop implementation for the pipe client.
+impl Drop for PipeClient {
+    fn drop(&mut self) {
+        if let Some(rx_pipeqd) = self.rx_pipeqd {
+            close(&mut self.libos, rx_pipeqd);
+        }
+        if let Some(tx_pipeqd) = self.tx_pipeqd {
+            close(&mut self.libos, tx_pipeqd);
+        }
+    }
 }
 
 //======================================================================================================================
@@ -293,12 +348,24 @@ pub fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {
+        // Create the libos instance.
+        let libos_name: LibOSName = match LibOSName::from_env() {
+            Ok(libos_name) => libos_name.into(),
+            Err(e) => anyhow::bail!("{:?}", e),
+        };
+        let libos: LibOS = match LibOS::new(libos_name) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
+        };
+        let pipe_name: &str = &args[2];
+
+        // Invoke the appropriate peer.
         if args[1] == "--server" {
-            let ret: Result<()> = server(&args[2]);
-            return ret;
+            let mut server: PipeServer = PipeServer::new(libos)?;
+            return server.run(pipe_name);
         } else if args[1] == "--client" {
-            let ret: Result<()> = client(&args[2]);
-            return ret;
+            let mut client: PipeClient = PipeClient::new(libos)?;
+            return client.run(pipe_name);
         }
     }
 
