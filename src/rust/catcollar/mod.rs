@@ -190,7 +190,7 @@ impl CatcollarLibOS {
             libc::bind(
                 fd,
                 (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                mem::size_of_val(&sockaddr) as u32,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {
             stats if stats == 0 => {

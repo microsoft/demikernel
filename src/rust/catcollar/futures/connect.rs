@@ -63,7 +63,7 @@ impl Future for ConnectFuture {
             libc::connect(
                 self_.fd,
                 (&self_.sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                mem::size_of_val(&self_.sockaddr) as u32,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {
             // Operation completed.

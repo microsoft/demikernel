@@ -36,7 +36,7 @@ pub async fn push_coroutine(
     let (sockaddr_ptr, sockaddr_len) = if let Some(sockaddr) = dest_addr.as_ref() {
         (
             (sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-            mem::size_of_val(sockaddr) as u32,
+            mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
         )
     } else {
         (ptr::null(), 0)

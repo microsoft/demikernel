@@ -24,7 +24,7 @@ pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) 
             libc::connect(
                 fd,
                 (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                mem::size_of_val(&sockaddr) as u32,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {
             // Operation completed.
