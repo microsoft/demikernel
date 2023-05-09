@@ -26,15 +26,15 @@ use ::std::{
 // Structures
 //==============================================================================
 
-/// Scheduler Handle
+/// Task Handle
 ///
-/// This is used to uniquely identify a future in the scheduler.
+/// This is used to uniquely identify a Task in the scheduler. Used to check on the status of the coroutine.
 #[derive(Clone)]
-pub struct SchedulerHandle {
+pub struct TaskHandle {
     /// External identifying token.
     task_id: Option<u64>,
     /// Corresponding location in the scheduler's memory chunk.
-    offset: Option<usize>,
+    index: Option<usize>,
     /// Memory chunk in which the corresponding handle lives.
     chunk: WakerPageRef,
 }
@@ -53,31 +53,31 @@ pub struct YielderHandle {
 //==============================================================================
 
 /// Associate Functions for Scheduler Handlers
-impl SchedulerHandle {
+impl TaskHandle {
     /// Creates a new Scheduler Handle.
-    pub fn new(task_id: u64, offset: usize, waker_page: WakerPageRef) -> Self {
+    pub fn new(task_id: u64, index: usize, waker_page: WakerPageRef) -> Self {
         Self {
-            offset: Some(offset),
+            index: Some(index),
             task_id: Some(task_id),
             chunk: waker_page,
         }
     }
 
     /// Takes out the key stored in the target [SchedulerHandle].
-    pub fn take_token(&mut self) -> Option<u64> {
-        self.offset.take();
+    pub fn take_task_id(&mut self) -> Option<u64> {
+        self.index.take();
         self.task_id.take()
     }
 
     /// Queries whether or not the future associated with the target [SchedulerHandle] has completed.
     pub fn has_completed(&self) -> bool {
-        let subpage_ix: usize = self.offset.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
+        let subpage_ix: usize = self.index.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
         self.chunk.has_completed(subpage_ix)
     }
 
     /// Returns the raw key stored in the target [SchedulerHandle].
-    pub fn into_raw(mut self) -> u64 {
-        self.offset.take();
+    pub fn get_task_id(mut self) -> u64 {
+        self.index.take();
         self.task_id.take().unwrap()
     }
 }
@@ -121,17 +121,17 @@ impl YielderHandle {
 //==============================================================================
 
 /// Drop Trait Implementation for Scheduler Handlers
-impl Drop for SchedulerHandle {
+impl Drop for TaskHandle {
     /// Decreases the reference count of the target [SchedulerHandle].
     fn drop(&mut self) {
-        if let Some(key) = self.offset.take() {
+        if let Some(key) = self.index.take() {
             let subpage_ix: usize = key as usize & (WAKER_BIT_LENGTH - 1);
             self.chunk.mark_dropped(subpage_ix);
         }
     }
 }
 
-impl Hash for SchedulerHandle {
+impl Hash for TaskHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let key: u64 = self
             .task_id
@@ -140,9 +140,9 @@ impl Hash for SchedulerHandle {
     }
 }
 
-impl PartialEq for SchedulerHandle {
+impl PartialEq for TaskHandle {
     fn eq(&self, other: &Self) -> bool {
         self.task_id == other.task_id
     }
 }
-impl Eq for SchedulerHandle {}
+impl Eq for TaskHandle {}

@@ -46,7 +46,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::rand::{
@@ -109,7 +109,7 @@ pub struct UdpPeer<const N: usize> {
     /// The background co-routine sends unset UDP packets.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: SchedulerHandle,
+    background: TaskHandle,
 }
 
 //======================================================================================================================
@@ -140,7 +140,7 @@ impl<const N: usize> UdpPeer<N> {
             send_queue.clone(),
         );
         let task: BackgroundTask = BackgroundTask::new(String::from("Inetstack::UDP::background"), Box::pin(future));
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(

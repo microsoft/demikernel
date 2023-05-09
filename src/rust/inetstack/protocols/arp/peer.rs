@@ -30,7 +30,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::futures::{
@@ -80,7 +80,7 @@ pub struct ArpPeer<const N: usize> {
     /// The background co-routine cleans up the ARP cache from time to time.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: Rc<SchedulerHandle>,
+    background: Rc<TaskHandle>,
 }
 
 //==============================================================================
@@ -108,7 +108,7 @@ impl<const N: usize> ArpPeer<N> {
             String::from("Inetstack::arp::background"),
             Box::pin(Self::background(clock.clone(), cache.clone())),
         );
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 return Err(Fail::new(

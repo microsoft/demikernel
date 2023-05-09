@@ -15,7 +15,7 @@ use crate::{
         QDesc,
         QToken,
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
 };
 use ::std::net::SocketAddrV4;
 
@@ -276,7 +276,7 @@ impl NetworkLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.schedule(qt),
@@ -293,7 +293,7 @@ impl NetworkLibOS {
         }
     }
 
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.pack_result(handle, qt),

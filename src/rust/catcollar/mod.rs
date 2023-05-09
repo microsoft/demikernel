@@ -54,7 +54,7 @@ use crate::{
             demi_sgarray_t,
         },
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
 };
 use ::std::{
     cell::{
@@ -268,14 +268,14 @@ impl CatcollarLibOS {
         });
         let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
         let task: OperationTask = OperationTask::new(task_id, coroutine);
-        let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+        let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 qtable.free(&new_qd);
                 return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
             },
         };
-        Ok(handle.into_raw().into())
+        Ok(handle.get_task_id().into())
     }
 
     /// Establishes a connection to a remote endpoint.
@@ -298,11 +298,11 @@ impl CatcollarLibOS {
                     });
                     let task_id: String = format!("Catcollar::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    Ok(handle.into_raw().into())
+                    Ok(handle.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -357,11 +357,11 @@ impl CatcollarLibOS {
                     });
                     let task_id: String = format!("Catcollar::close for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    Ok(handle.into_raw().into())
+                    Ok(handle.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -396,11 +396,11 @@ impl CatcollarLibOS {
                     });
                     let task_id: String = format!("Catcollar::push for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    Ok(handle.into_raw().into())
+                    Ok(handle.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -435,11 +435,11 @@ impl CatcollarLibOS {
                             });
                             let task_id: String = format!("Catcollar::pushto for qd={:?}", qd);
                             let task: OperationTask = OperationTask::new(task_id, coroutine);
-                            let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                            let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
-                            Ok(handle.into_raw().into())
+                            Ok(handle.get_task_id().into())
                         },
                         None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
                     },
@@ -478,11 +478,11 @@ impl CatcollarLibOS {
                     });
                     let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    let qt: QToken = handle.into_raw().into();
+                    let qt: QToken = handle.get_task_id().into();
                     Ok(qt)
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
@@ -495,14 +495,14 @@ impl CatcollarLibOS {
         self.runtime.scheduler.poll()
     }
 
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
-        match self.runtime.scheduler.from_raw_handle(qt.into()) {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        match self.runtime.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         }
     }
 
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
         Ok(pack_result(&self.runtime, r, qd, qt.into()))
     }
@@ -520,8 +520,8 @@ impl CatcollarLibOS {
     }
 
     /// Takes out the operation result descriptor associated with the target scheduler handle.
-    fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.runtime.scheduler.take(handle).as_any());
+    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        let task: OperationTask = OperationTask::from(self.runtime.scheduler.remove(handle).as_any());
         task.get_result().expect("The coroutine has not finished")
     }
 }

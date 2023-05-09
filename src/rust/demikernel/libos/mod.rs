@@ -27,7 +27,7 @@ use crate::{
         QDesc,
         QToken,
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
 };
 use ::std::{
     env,
@@ -246,7 +246,7 @@ impl LibOS {
         trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
 
         // Retrieve associated schedule handle.
-        let mut handle: SchedulerHandle = self.schedule(qt)?;
+        let mut handle: TaskHandle = self.schedule(qt)?;
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -261,7 +261,7 @@ impl LibOS {
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
                 // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_token();
+                handle.take_task_id();
                 return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
             }
         }
@@ -282,7 +282,7 @@ impl LibOS {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = self.schedule(qt)?;
+                let mut handle: TaskHandle = self.schedule(qt)?;
 
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
@@ -292,7 +292,7 @@ impl LibOS {
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
                 // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_token();
+                handle.take_task_id();
             }
 
             // If we have a timeout, check for expiration.
@@ -322,14 +322,14 @@ impl LibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+    fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.schedule(qt),
             LibOS::MemoryLibOS(libos) => libos.schedule(qt),
         }
     }
 
-    fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
             LibOS::MemoryLibOS(libos) => libos.pack_result(handle, qt),

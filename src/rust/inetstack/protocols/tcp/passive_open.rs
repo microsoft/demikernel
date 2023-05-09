@@ -40,7 +40,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::libc::{
@@ -75,7 +75,7 @@ struct InflightAccept {
     mss: usize,
 
     #[allow(unused)]
-    handle: SchedulerHandle,
+    handle: TaskHandle,
 }
 
 struct ReadySockets<const N: usize> {
@@ -276,7 +276,7 @@ impl<const N: usize> PassiveSocket<N> {
             String::from("Inetstack::TCP::passiveopen::background"),
             Box::pin(future),
         );
-        let handle: SchedulerHandle = match self.scheduler.insert(task) {
+        let handle: TaskHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

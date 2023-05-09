@@ -39,7 +39,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
         TaskWithResult,
     },
 };
@@ -230,7 +230,7 @@ impl CatmemLibOS {
                         };
                         let task_id: String = format!("Catmem::push for qd={:?}", qd);
                         let task: OperationTask = OperationTask::new(task_id, coroutine);
-                        let handle: SchedulerHandle = match self.scheduler.insert(task) {
+                        let handle: TaskHandle = match self.scheduler.insert(task) {
                             Some(handle) => handle,
                             None => {
                                 let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
@@ -238,7 +238,7 @@ impl CatmemLibOS {
                                 return Err(Fail::new(libc::EAGAIN, &cause));
                             },
                         };
-                        let qt: QToken = handle.into_raw().into();
+                        let qt: QToken = handle.get_task_id().into();
                         trace!("push() qt={:?}", qt);
                         Ok(qt)
                     },
@@ -303,7 +303,7 @@ impl CatmemLibOS {
 
                 let task_id: String = format!("Catmem::pop for qd={:?}", qd);
                 let task: OperationTask = OperationTask::new(task_id, coroutine);
-                let handle: SchedulerHandle = match self.scheduler.insert(task) {
+                let handle: TaskHandle = match self.scheduler.insert(task) {
                     Some(handle) => handle,
                     None => {
                         let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
@@ -311,7 +311,7 @@ impl CatmemLibOS {
                         return Err(Fail::new(libc::EAGAIN, &cause));
                     },
                 };
-                let qt: QToken = handle.into_raw().into();
+                let qt: QToken = handle.get_task_id().into();
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
             },
@@ -334,13 +334,13 @@ impl CatmemLibOS {
     }
 
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
-    fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.scheduler.take(handle).as_any());
+    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
         task.get_result().expect("The coroutine has not finished")
     }
 
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
-        match self.scheduler.from_raw_handle(qt.into()) {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        match self.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => {
                 let cause: String = format!("invalid queue token (qt={:?})", qt);
@@ -350,7 +350,7 @@ impl CatmemLibOS {
         }
     }
 
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, result): (QDesc, OperationResult) = self.take_result(handle);
         let qr = match result {
             OperationResult::Push => demi_qresult_t {

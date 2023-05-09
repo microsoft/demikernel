@@ -15,7 +15,7 @@ use crate::{
         QDesc,
         QToken,
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
 };
 
 #[cfg(feature = "catmem-libos")]
@@ -109,7 +109,7 @@ impl MemoryLibOS {
 
     /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
             MemoryLibOS::Catmem(libos) => libos.schedule(qt),
@@ -118,7 +118,7 @@ impl MemoryLibOS {
     }
 
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
             MemoryLibOS::Catmem(libos) => libos.pack_result(handle, qt),

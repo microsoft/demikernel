@@ -57,7 +57,7 @@ use crate::{
         QType,
     },
     scheduler::{
-        SchedulerHandle,
+        TaskHandle,
         Yielder,
         YielderHandle,
     },
@@ -357,14 +357,11 @@ impl CatnapLibOS {
         let task_id: String = format!("Catnap::pop for qd={:?}", qd);
         let task: OperationTask = OperationTask::new(task_id, coroutine);
         match self.runtime.scheduler.insert(task) {
-            Some(scheduler_handle) => {
+            Some(handle) => {
                 // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
                 // Safe to unwrap here because we have a linear flow from the last time that we looked up the queue.
-                qtable
-                    .get_mut(&qd)
-                    .unwrap()
-                    .add_pending_op(&scheduler_handle, &yielder_handle);
-                Ok(scheduler_handle.into_raw().into())
+                qtable.get_mut(&qd).unwrap().add_pending_op(&handle, &yielder_handle);
+                Ok(handle.get_task_id().into())
             },
             None => {
                 qtable.free(&new_qd);
@@ -399,16 +396,16 @@ impl CatnapLibOS {
                     });
                     let task_id = format!("Catnap::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
 
                     // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
-                    queue.add_pending_op(&scheduler_handle, &yielder_handle);
+                    queue.add_pending_op(&handle, &yielder_handle);
                     // Update socket.
                     queue.set_socket(&connecting_socket);
-                    Ok(scheduler_handle.into_raw().into())
+                    Ok(handle.get_task_id().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
@@ -511,11 +508,11 @@ impl CatnapLibOS {
                     });
                     let task_id: String = format!("Catnap::close for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
-                    Ok(scheduler_handle.into_raw().into())
+                    Ok(handle.get_task_id().into())
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
             },
@@ -552,14 +549,14 @@ impl CatnapLibOS {
                             });
                             let task_id: String = format!("Catnap::push for qd={:?}", qd);
                             let task: OperationTask = OperationTask::new(task_id, coroutine);
-                            let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                            let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
                             // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
-                            queue.add_pending_op(&scheduler_handle, &yielder_handle);
+                            queue.add_pending_op(&handle, &yielder_handle);
 
-                            Ok(scheduler_handle.into_raw().into())
+                            Ok(handle.get_task_id().into())
                         },
                         None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
@@ -600,13 +597,13 @@ impl CatnapLibOS {
                             });
                             let task_id: String = format!("Catnap::pushto for qd={:?}", qd);
                             let task: OperationTask = OperationTask::new(task_id, Box::pin(coroutine));
-                            let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                            let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                                 Some(handle) => handle,
                                 None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                             };
                             // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
-                            queue.add_pending_op(&scheduler_handle, &yielder_handle);
-                            Ok(scheduler_handle.into_raw().into())
+                            queue.add_pending_op(&handle, &yielder_handle);
+                            Ok(handle.get_task_id().into())
                         },
                         None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
                     },
@@ -645,13 +642,13 @@ impl CatnapLibOS {
                     });
                     let task_id: String = format!("Catnap::pop for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, Box::pin(coroutine));
-                    let scheduler_handle: SchedulerHandle = match self.runtime.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                     };
                     // Borrow the scheduler handle and yielder handle to register a way to wake the coroutine.
-                    queue.add_pending_op(&scheduler_handle, &yielder_handle);
-                    let qt: QToken = scheduler_handle.into_raw().into();
+                    queue.add_pending_op(&handle, &yielder_handle);
+                    let qt: QToken = handle.get_task_id().into();
                     Ok(qt)
                 },
                 None => unreachable!("CatnapQueue has invalid underlying file descriptor"),
@@ -664,14 +661,14 @@ impl CatnapLibOS {
         self.runtime.scheduler.poll()
     }
 
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
-        match self.runtime.scheduler.from_raw_handle(qt.into()) {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        match self.runtime.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         }
     }
 
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
         Ok(pack_result(&self.runtime, r, qd, qt.into()))
     }
@@ -689,8 +686,8 @@ impl CatnapLibOS {
     }
 
     /// Takes out the result from the [OperationTask] associated with the target [SchedulerHandle].
-    fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.runtime.scheduler.take(handle.clone()).as_any());
+    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        let task: OperationTask = OperationTask::from(self.runtime.scheduler.remove(handle.clone()).as_any());
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
         match result {
             OperationResult::Close => {},

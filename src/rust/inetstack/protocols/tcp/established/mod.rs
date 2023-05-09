@@ -20,7 +20,7 @@ use crate::{
         queue::BackgroundTask,
         QDesc,
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
 };
 use ::futures::channel::mpsc;
 use ::std::{
@@ -39,7 +39,7 @@ pub struct EstablishedSocket<const N: usize> {
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: Rc<SchedulerHandle>,
+    background: Rc<TaskHandle>,
 }
 
 impl<const N: usize> EstablishedSocket<N> {
@@ -50,8 +50,8 @@ impl<const N: usize> EstablishedSocket<N> {
             String::from("Inetstack::TCP::established::background"),
             Box::pin(background::background(cb.clone(), qd, dead_socket_tx)),
         );
-        let handle: Rc<SchedulerHandle> = match cb.scheduler.insert(task) {
-            Some(handle) => Rc::<SchedulerHandle>::new(handle),
+        let handle: Rc<TaskHandle> = match cb.scheduler.insert(task) {
+            Some(handle) => Rc::<TaskHandle>::new(handle),
             None => panic!("failed to insert task in the scheduler"),
         };
         Self {

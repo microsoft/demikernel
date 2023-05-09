@@ -21,8 +21,8 @@ use crate::scheduler::{
         WAKER_BIT_LENGTH,
         WAKER_BIT_LENGTH_SHIFT,
     },
-    SchedulerHandle,
     Task,
+    TaskHandle,
 };
 use ::bit_iter::BitIter;
 use ::rand::{
@@ -66,7 +66,7 @@ const SCHEDULER_SEED: u64 = 42;
 pub struct Scheduler {
     /// Stores all the tasks that are held by the scheduler.
     tasks: Rc<RefCell<PinSlab<Box<dyn Task>>>>,
-    /// Maps between externally meaningful ids and the offset of the task in the slab.
+    /// Maps between externally meaningful ids and the index of the task in the slab.
     task_ids: Rc<RefCell<HashMap<u64, usize>>>,
     /// Holds the waker bits for controlling task scheduling.
     pages: Rc<RefCell<Vec<WakerPageRef>>>,
@@ -80,80 +80,80 @@ pub struct Scheduler {
 
 /// Associate Functions for Scheduler
 impl Scheduler {
-    /// Given a handle representing a future, remove the future from the scheduler returning it.
-    pub fn take(&self, mut handle: SchedulerHandle) -> Box<dyn Task> {
+    /// Given a handle to a task, remove it from the scheduler
+    pub fn remove(&self, mut handle: TaskHandle) -> Box<dyn Task> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let offset: usize = *self
+        let index: usize = *self
             .task_ids
             .borrow()
-            .get(&handle.take_token().unwrap())
+            .get(&handle.take_task_id().unwrap())
             .expect("Token should be in the token table");
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_offsets(offset);
+            let (pages_ix, subpage_ix) = self.get_page_indices(index);
             (&pages[pages_ix], subpage_ix)
         };
         assert!(!page.was_dropped(subpage_ix));
         page.clear(subpage_ix);
-        self.tasks.borrow_mut().remove_unpin(offset).unwrap()
+        self.tasks.borrow_mut().remove_unpin(index).unwrap()
     }
 
-    /// Given the raw `token` representing this future return a proper handle.
-    pub fn from_raw_handle(&self, task_id: u64) -> Option<SchedulerHandle> {
+    /// Given a task id return a handle to the task.
+    pub fn from_task_id(&self, task_id: u64) -> Option<TaskHandle> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
-        let offset: usize = match self.task_ids.borrow().get(&task_id) {
-            Some(offset) => *offset,
+        let index: usize = match self.task_ids.borrow().get(&task_id) {
+            Some(index) => *index,
             None => return None,
         };
-        self.tasks.borrow().get(offset as usize)?;
+        self.tasks.borrow().get(index)?;
         let page: &WakerPageRef = {
-            let (pages_ix, _) = self.get_page_offsets(offset);
+            let (pages_ix, _) = self.get_page_indices(index);
             &pages[pages_ix]
         };
-        let handle: SchedulerHandle = SchedulerHandle::new(task_id, offset, page.clone());
+        let handle: TaskHandle = TaskHandle::new(task_id, index, page.clone());
         Some(handle)
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert<F: Task>(&self, future: F) -> Option<SchedulerHandle> {
+    pub fn insert<F: Task>(&self, future: F) -> Option<TaskHandle> {
         let mut pages: RefMut<Vec<WakerPageRef>> = self.pages.borrow_mut();
         let mut id_gen: RefMut<SmallRng> = self.id_gen.borrow_mut();
         // Allocate an offset into the slab and a token for identifying the task.
-        let offset: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
+        let index: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
-        let id: u64 = loop {
+        let task_id: u64 = loop {
             let id: u64 = id_gen.next_u64();
-            if self.task_ids.borrow_mut().insert(id, offset).is_none() {
+            if self.task_ids.borrow_mut().insert(id, index).is_none() {
                 break id;
             }
         };
 
         trace!(
             "scheduler::insert() inserting task with id={:?} and offset={:?}",
-            id,
-            offset
+            task_id,
+            index
         );
 
         // Add a new page to hold this future's status if the current page is filled.
-        while offset as usize >= pages.len() << WAKER_BIT_LENGTH_SHIFT {
+        while index >= pages.len() << WAKER_BIT_LENGTH_SHIFT {
             pages.push(WakerPageRef::default());
         }
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_offsets(offset);
+            let (pages_ix, subpage_ix) = self.get_page_indices(index);
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
         let (page, _): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_offsets(offset);
+            let (pages_ix, subpage_ix) = self.get_page_indices(index);
             (&pages[pages_ix], subpage_ix)
         };
-        Some(SchedulerHandle::new(id, offset, page.clone()))
+        Some(TaskHandle::new(task_id, index, page.clone()))
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
-    fn get_page_offsets(&self, offset: usize) -> (usize, usize) {
-        (offset >> WAKER_BIT_LENGTH_SHIFT, offset & (WAKER_BIT_LENGTH - 1))
+    fn get_page_indices(&self, index: usize) -> (usize, usize) {
+        (index >> WAKER_BIT_LENGTH_SHIFT, index & (WAKER_BIT_LENGTH - 1))
     }
 
     /// Poll all futures which are ready to run again. Tasks in our scheduler are notified when
@@ -241,7 +241,7 @@ mod tests {
     use crate::scheduler::{
         scheduler::{
             Scheduler,
-            SchedulerHandle,
+            TaskHandle,
         },
         task::TaskWithResult,
     };
@@ -296,7 +296,7 @@ mod tests {
         b.iter(|| {
             let task: DummyTask =
                 DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
-            let handle: SchedulerHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
+            let handle: TaskHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
             black_box(handle);
         });
     }
@@ -308,19 +308,19 @@ mod tests {
 
         // Insert a task and make sure the task id is not a simple counter.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
-        let task_id: u64 = handle.into_raw();
+        let task_id: u64 = handle.get_task_id();
 
         // Insert another task and make sure the task id is not sequentially after the previous one.
         let task2: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
-        let handle2: SchedulerHandle = match scheduler.insert(task2) {
+        let handle2: TaskHandle = match scheduler.insert(task2) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
-        let task_id2: u64 = handle2.into_raw();
+        let task_id2: u64 = handle2.get_task_id();
         crate::ensure_neq!(task_id2, task_id + 1);
 
         Ok(())
@@ -332,7 +332,7 @@ mod tests {
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
@@ -353,7 +353,7 @@ mod tests {
         // Insert a single future in the scheduler. This future shall complete
         // with two poll operations.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(1)));
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
@@ -379,11 +379,11 @@ mod tests {
 
         // Create and run a task.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
-        let task_id: u64 = handle.clone().into_raw();
+        let task_id: u64 = handle.clone().get_task_id();
         scheduler.poll();
 
         // Ensure that the first task has completed.
@@ -391,11 +391,11 @@ mod tests {
 
         // Create another task.
         let task2: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
-        let handle2: SchedulerHandle = match scheduler.insert(task2) {
+        let handle2: TaskHandle = match scheduler.insert(task2) {
             Some(handle) => handle,
             None => anyhow::bail!("insert() failed"),
         };
-        let task_id2: u64 = handle2.into_raw();
+        let task_id2: u64 = handle2.get_task_id();
 
         // Ensure that the second task has a unique id.
         crate::ensure_neq!(task_id2, task_id);
@@ -406,13 +406,13 @@ mod tests {
     #[bench]
     fn bench_scheduler_poll(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
-        let mut handles: Vec<SchedulerHandle> = Vec::<SchedulerHandle>::with_capacity(1024);
+        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(1024);
 
         // Insert 1024 futures in the scheduler.
         // Half of them will be ready.
         for val in 0..1024 {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
-            let handle: SchedulerHandle = match scheduler.insert(task) {
+            let handle: TaskHandle = match scheduler.insert(task) {
                 Some(handle) => handle,
                 None => panic!("insert() failed"),
             };
