@@ -188,7 +188,7 @@ impl PipeServer {
         });
     }
 
-    pub fn run(&mut self, pipe_name: &str) -> Result<()> {
+    pub fn run(&mut self, pipe_name: &str, nrounds: u8) -> Result<()> {
         // Setup the Rx pipe.
         self.rx_pipeqd = match self.libos.create_pipe(&format!("{}:rx", pipe_name)) {
             Ok(qd) => Some(qd),
@@ -208,7 +208,7 @@ impl PipeServer {
         };
 
         // Send and receive bytes in a locked step.
-        for i in 0..NROUNDS {
+        for i in 0..nrounds {
             if let Err(e) = pop_and_wait(
                 &mut self.libos,
                 self.rx_pipeqd.expect("should be a valid pipe qd"),
@@ -265,18 +265,16 @@ impl PipeClient {
         });
     }
 
-    pub fn run(&mut self, pipe_name: &str) -> Result<()> {
-        // Setup the Tx pipe. This is inverted from the server's perspsective,
-        // because the server reads from it's rx_pipeqd, but the clients writes
-        // from it.
+    pub fn run(&mut self, pipe_name: &str, nrounds: u8) -> Result<()> {
+        // Setup the Tx pipe. This is inverted from the server's perspsective, because the server reads from it's
+        // rx_pipeqd, but the clients writes from it.
         self.tx_pipeqd = match self.libos.open_pipe(&format!("{}:rx", pipe_name)) {
             Ok(qd) => Some(qd),
             Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
         };
 
-        // Setup the Rx pipe. This is inverted from the server's perspsective,
-        // because the server writes from it's tx_pipeqd, but the clients reads
-        // from it.
+        // Setup the Rx pipe. This is inverted from the server's perspsective, because the server writes from it's
+        // tx_pipeqd, but the clients reads from it.
         self.rx_pipeqd = match self.libos.open_pipe(&format!("{}:tx", pipe_name)) {
             Ok(qd) => Some(qd),
             Err(e) => {
@@ -289,25 +287,23 @@ impl PipeClient {
         };
 
         // Send and receive bytes.
-        for i in 0..NROUNDS {
-            match push_and_wait(
+        for i in 0..nrounds {
+            if let Err(e) = push_and_wait(
                 &mut self.libos,
                 self.tx_pipeqd.expect("should be a valid pipe qd"),
                 BUFFER_SIZE,
                 i,
             ) {
-                Err(e) => anyhow::bail!("failed to pop memory queue: {:?}", e),
-                _ => (),
+                anyhow::bail!("failed to pop memory queue: {:?}", e)
             }
 
-            match pop_and_wait(
+            if let Err(e) = pop_and_wait(
                 &mut self.libos,
                 self.rx_pipeqd.expect("should be a valid pipe qd"),
                 BUFFER_SIZE,
                 i,
             ) {
-                Err(e) => anyhow::bail!("failed to push memory queue: {:?}", e),
-                _ => (),
+                anyhow::bail!("failed to push memory queue: {:?}", e)
             }
             println!("pong {:?}", i);
         }
@@ -362,10 +358,10 @@ pub fn main() -> Result<()> {
         // Invoke the appropriate peer.
         if args[1] == "--server" {
             let mut server: PipeServer = PipeServer::new(libos)?;
-            return server.run(pipe_name);
+            return server.run(pipe_name, NROUNDS);
         } else if args[1] == "--client" {
             let mut client: PipeClient = PipeClient::new(libos)?;
-            return client.run(pipe_name);
+            return client.run(pipe_name, NROUNDS);
         }
     }
 
