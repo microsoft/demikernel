@@ -39,7 +39,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::libc::{
@@ -78,7 +78,7 @@ pub struct ActiveOpenSocket<const N: usize> {
     arp: ArpPeer<N>,
 
     #[allow(unused)]
-    handle: SchedulerHandle,
+    handle: TaskHandle,
     result: Rc<RefCell<ConnectResult<N>>>,
 }
 
@@ -114,7 +114,7 @@ impl<const N: usize> ActiveOpenSocket<N> {
         let task: BackgroundTask =
             BackgroundTask::new(String::from("Inetstack::TCP::activeopen::background"), Box::pin(future));
 
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };

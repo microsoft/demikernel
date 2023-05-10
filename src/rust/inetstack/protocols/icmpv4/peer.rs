@@ -35,7 +35,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::futures::{
@@ -134,7 +134,7 @@ pub struct Icmpv4Peer<const N: usize> {
     /// The background co-routine relies to incoming PING requests.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: SchedulerHandle,
+    background: TaskHandle,
 }
 
 impl<const N: usize> Icmpv4Peer<N> {
@@ -161,7 +161,7 @@ impl<const N: usize> Icmpv4Peer<N> {
                 rx,
             )),
         );
-        let handle: SchedulerHandle = match scheduler.insert(task) {
+        let handle: TaskHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
                 let message: String = format!("failed to schedule background co-routine for ICMPv4 module");

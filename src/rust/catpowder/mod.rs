@@ -34,7 +34,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::std::{
@@ -112,11 +112,11 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_push(qd, buf)?;
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                let handle: TaskHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                 };
-                let qt: QToken = handle.into_raw().into();
+                let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
             Err(e) => Err(e),
@@ -133,25 +133,25 @@ impl CatpowderLibOS {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
                 let future = self.do_pushto(qd, buf, to)?;
-                let handle: SchedulerHandle = match self.scheduler.insert(future) {
+                let handle: TaskHandle = match self.scheduler.insert(future) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
                 };
-                let qt: QToken = handle.into_raw().into();
+                let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
             Err(e) => Err(e),
         }
     }
 
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
-        match self.scheduler.from_raw_handle(qt.into()) {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        match self.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         }
     }
 
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
         Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
     }

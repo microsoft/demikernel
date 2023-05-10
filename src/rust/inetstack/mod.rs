@@ -55,7 +55,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
     },
 };
 use ::libc::c_int;
@@ -299,13 +299,13 @@ impl<const N: usize> InetStack<N> {
                 });
                 let task_id: String = format!("Inetstack::TCP::accept for qd={:?}", qd);
                 let task: OperationTask = OperationTask::new(task_id, coroutine);
-                let handle: SchedulerHandle = match self.scheduler.insert(task) {
+                let handle: TaskHandle = match self.scheduler.insert(task) {
                     Some(handle) => handle,
                     None => {
                         return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine"));
                     },
                 };
-                Ok(handle.into_raw().into())
+                Ok(handle.get_task_id().into())
             },
             // This queue descriptor does not concern a TCP socket.
             Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
@@ -350,11 +350,11 @@ impl<const N: usize> InetStack<N> {
             None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         };
 
-        let handle: SchedulerHandle = match self.scheduler.insert(task) {
+        let handle: TaskHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
-        let qt: QToken = handle.into_raw().into();
+        let qt: QToken = handle.get_task_id().into();
         trace!("connect() qt={:?}", qt);
         Ok(qt)
     }
@@ -427,11 +427,11 @@ impl<const N: usize> InetStack<N> {
             None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         };
 
-        let handle: SchedulerHandle = match self.scheduler.insert(OperationTask::new(task_id, coroutine)) {
+        let handle: TaskHandle = match self.scheduler.insert(OperationTask::new(task_id, coroutine)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
-        let qt: QToken = handle.into_raw().into();
+        let qt: QToken = handle.get_task_id().into();
         trace!("async_close() qt={:?}", qt);
         Ok(qt)
     }
@@ -474,11 +474,11 @@ impl<const N: usize> InetStack<N> {
 
         // Issue operation.
         let task: OperationTask = self.do_push(qd, buf)?;
-        let handle: SchedulerHandle = match self.scheduler.insert(task) {
+        let handle: TaskHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
-        let qt: QToken = handle.into_raw().into();
+        let qt: QToken = handle.get_task_id().into();
         trace!("push2() qt={:?}", qt);
         Ok(qt)
     }
@@ -512,11 +512,11 @@ impl<const N: usize> InetStack<N> {
         }
         let task: OperationTask = self.do_pushto(qd, buf, remote)?;
         // Issue operation.
-        let handle: SchedulerHandle = match self.scheduler.insert(task) {
+        let handle: TaskHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
-        let qt: QToken = handle.into_raw().into();
+        let qt: QToken = handle.get_task_id().into();
         trace!("pushto2() qt={:?}", qt);
         Ok(qt)
     }
@@ -563,11 +563,11 @@ impl<const N: usize> InetStack<N> {
             None => return Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         };
 
-        let handle: SchedulerHandle = match self.scheduler.insert(OperationTask::new(task_id, coroutine)) {
+        let handle: TaskHandle = match self.scheduler.insert(OperationTask::new(task_id, coroutine)) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
         };
-        let qt: QToken = handle.into_raw().into();
+        let qt: QToken = handle.get_task_id().into();
         trace!("pop() qt={:?}", qt);
         Ok(qt)
     }
@@ -580,7 +580,7 @@ impl<const N: usize> InetStack<N> {
         trace!("wait2(): qt={:?}", qt);
 
         // Retrieve associated schedule handle.
-        let handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
+        let handle: TaskHandle = match self.scheduler.from_task_id(qt.into()) {
             Some(handle) => handle,
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
         };
@@ -612,7 +612,7 @@ impl<const N: usize> InetStack<N> {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: SchedulerHandle = match self.scheduler.from_raw_handle(qt.into()) {
+                let mut handle: TaskHandle = match self.scheduler.from_task_id(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
                 };
@@ -626,7 +626,7 @@ impl<const N: usize> InetStack<N> {
                 // Return this operation to the scheduling queue by removing the associated key
                 // (which would otherwise cause the operation to be freed).
                 // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_token();
+                handle.take_task_id();
             }
         }
     }
@@ -635,8 +635,8 @@ impl<const N: usize> InetStack<N> {
     /// and the file descriptor for this connection.
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
-    pub fn take_operation(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.scheduler.take(handle).as_any());
+    pub fn take_operation(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
 
         task.get_result().expect("Coroutine not finished")
     }

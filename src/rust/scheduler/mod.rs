@@ -44,7 +44,7 @@ pub mod yielder;
 
 pub use self::{
     handle::{
-        SchedulerHandle,
+        TaskHandle,
         YielderHandle,
     },
     scheduler::Scheduler,

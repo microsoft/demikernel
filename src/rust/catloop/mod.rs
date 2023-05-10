@@ -41,7 +41,7 @@ use crate::{
     },
     scheduler::{
         Scheduler,
-        SchedulerHandle,
+        TaskHandle,
         TaskWithResult,
     },
     QType,
@@ -293,7 +293,7 @@ impl CatloopLibOS {
                     self.next_port += 1;
                     let task_id: String = format!("Catloop::accept for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => {
                             qtable.free(&new_qd);
@@ -302,7 +302,7 @@ impl CatloopLibOS {
                             return Err(Fail::new(libc::EAGAIN, &cause));
                         },
                     };
-                    let qt: QToken = handle.into_raw().into();
+                    let qt: QToken = handle.get_task_id().into();
                     self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
 
                     // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
@@ -355,7 +355,7 @@ impl CatloopLibOS {
                     });
                     let task_id: String = format!("Catloop::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: SchedulerHandle = match self.scheduler.insert(task) {
+                    let handle: TaskHandle = match self.scheduler.insert(task) {
                         Some(handle) => handle,
                         None => {
                             let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
@@ -363,7 +363,7 @@ impl CatloopLibOS {
                             return Err(Fail::new(libc::EAGAIN, &cause));
                         },
                     };
-                    let qt: QToken = handle.into_raw().into();
+                    let qt: QToken = handle.get_task_id().into();
                     self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
 
                     // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
@@ -470,7 +470,7 @@ impl CatloopLibOS {
     }
 
     /// Inserts a queue token into the scheduler.
-    pub fn schedule(&mut self, qt: QToken) -> Result<SchedulerHandle, Fail> {
+    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         // Check if the queue token came from the Catloop LibOS.
         if let Some((ref opcode, _)) = self.catloop_qts.get(&qt) {
             // Check if the queue token concerns an expected operation.
@@ -481,7 +481,7 @@ impl CatloopLibOS {
             }
 
             // Resolve the queue token into the scheduler.
-            match self.scheduler.from_raw_handle(qt.into()) {
+            match self.scheduler.from_task_id(qt.into()) {
                 // Succeed to insert queue token in the scheduler.
                 Some(handle) => return Ok(handle),
                 // Failed to insert queue token in the scheduler.
@@ -516,7 +516,7 @@ impl CatloopLibOS {
     }
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
-    pub fn pack_result(&mut self, handle: SchedulerHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         // Check if the queue token came from the Catloop LibOS.
         if let Some((ref opcode, _)) = self.catloop_qts.remove(&qt) {
             // Check if the queue token concerns an expected operation.
@@ -569,8 +569,8 @@ impl CatloopLibOS {
     }
 
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
-    fn take_result(&mut self, handle: SchedulerHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.scheduler.take(handle).as_any());
+    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
         task.get_result().expect("The coroutine has not finished")
     }
 

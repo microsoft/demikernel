@@ -19,7 +19,7 @@ use crate::{
             demi_qresult_t,
         },
     },
-    scheduler::SchedulerHandle,
+    scheduler::TaskHandle,
     QToken,
 };
 use ::std::{
@@ -144,7 +144,7 @@ impl Future for AcceptFuture {
 //   - The completed I/O queue operation associated to the queue token qt
 //   concerns a pop() operation that has completed.
 //   - The payload received from that pop() operation is a valid and legit MAGIC_CONNECT message.
-fn check_connect_request(catmem: &Rc<RefCell<CatmemLibOS>>, handle: SchedulerHandle, qt: QToken) -> Result<(), Fail> {
+fn check_connect_request(catmem: &Rc<RefCell<CatmemLibOS>>, handle: TaskHandle, qt: QToken) -> Result<(), Fail> {
     // Parse and check request.
     let passed: bool = {
         let qr: demi_qresult_t = catmem.borrow_mut().pack_result(handle, qt)?;
