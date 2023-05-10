@@ -27,7 +27,10 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
-use demikernel::scheduler::scheduler::Scheduler;
+use demikernel::{
+    runtime::network::consts::RECEIVE_BATCH_SIZE,
+    scheduler::scheduler::Scheduler,
+};
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -56,7 +59,7 @@ impl DummyLibOS {
         tx: Sender<DemiBuffer>,
         rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Result<InetStack, Fail> {
+    ) -> Result<InetStack<RECEIVE_BATCH_SIZE>, Fail> {
         let now: Instant = Instant::now();
         let rt: Rc<DummyRuntime> = Rc::new(DummyRuntime::new(now, rx, tx));
         let arp_options: ArpConfig = ArpConfig::new(

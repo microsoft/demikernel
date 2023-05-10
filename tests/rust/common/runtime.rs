@@ -11,7 +11,6 @@ use ::demikernel::{
     runtime::{
         memory::DemiBuffer,
         network::{
-            consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
             PacketBuf,
         },
@@ -76,7 +75,7 @@ impl DummyRuntime {
 //==============================================================================
 
 /// Network Runtime Trait Implementation for Dummy Runtime
-impl NetworkRuntime for DummyRuntime {
+impl<const N: usize> NetworkRuntime<N> for DummyRuntime {
     fn transmit(&self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
@@ -93,7 +92,7 @@ impl NetworkRuntime for DummyRuntime {
         self.inner.borrow_mut().outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
             out.push(buf);

@@ -29,6 +29,7 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::{
+            consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             PacketBuf,
         },
@@ -63,15 +64,15 @@ use ::std::{
 //tests connection timeout.
 #[test]
 fn test_connection_timeout() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut now = Instant::now();
+    let mut ctx: Context = Context::from_waker(noop_waker_ref());
+    let mut now: Instant = Instant::now();
 
     // Connection parameters
     let listen_port: u16 = 80;
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup client.
-    let mut client = test_helpers::new_alice2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let nretries: usize = client.rt.tcp_config.get_handshake_retries();
     let timeout: Duration = client.rt.tcp_config.get_handshake_timeout();
 
@@ -79,7 +80,7 @@ fn test_connection_timeout() -> Result<()> {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (QDesc, ConnectFuture, DemiBuffer) =
+    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
         connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
@@ -118,17 +119,18 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server = test_helpers::new_bob2(now);
-    let mut client = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
+        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -185,17 +187,18 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server = test_helpers::new_bob2(now);
-    let mut client = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
+        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -252,17 +255,18 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server = test_helpers::new_bob2(now);
-    let mut client = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
+        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -344,16 +348,16 @@ fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
 //=============================================================================
 
 /// Triggers LISTEN -> SYN_SENT state transition.
-fn connection_setup_listen_syn_sent(
-    client: &mut Engine,
+fn connection_setup_listen_syn_sent<const N: usize>(
+    client: &mut Engine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<(QDesc, ConnectFuture, DemiBuffer)> {
+) -> Result<(QDesc, ConnectFuture<N>, DemiBuffer)> {
     // Issue CONNECT operation.
     let client_fd: QDesc = match client.tcp_socket() {
         Ok(fd) => fd,
         Err(e) => anyhow::bail!("client tcp socket returned error: {:?}", e),
     };
-    let connect_future: ConnectFuture = client.tcp_connect(client_fd, listen_addr);
+    let connect_future: ConnectFuture<N> = client.tcp_connect(client_fd, listen_addr);
 
     // SYN_SENT state.
     client.rt.poll_scheduler();
@@ -363,7 +367,10 @@ fn connection_setup_listen_syn_sent(
 }
 
 /// Triggers CLOSED -> LISTEN state transition.
-fn connection_setup_closed_listen(server: &mut Engine, listen_addr: SocketAddrV4) -> Result<AcceptFuture> {
+fn connection_setup_closed_listen<const N: usize>(
+    server: &mut Engine<N>,
+    listen_addr: SocketAddrV4,
+) -> Result<AcceptFuture<N>> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = match server.tcp_socket() {
         Ok(fd) => fd,
@@ -375,7 +382,7 @@ fn connection_setup_closed_listen(server: &mut Engine, listen_addr: SocketAddrV4
     if let Err(e) = server.tcp_listen(socket_fd, 1) {
         anyhow::bail!("server listen returned an error: {:?}", e);
     }
-    let accept_future: AcceptFuture = server.tcp_accept(socket_fd);
+    let accept_future: AcceptFuture<N> = server.tcp_accept(socket_fd);
 
     // LISTEN state.
     server.rt.poll_scheduler();
@@ -384,7 +391,7 @@ fn connection_setup_closed_listen(server: &mut Engine, listen_addr: SocketAddrV4
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
-fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: DemiBuffer) -> Result<DemiBuffer> {
+fn connection_setup_listen_syn_rcvd<const N: usize>(server: &mut Engine<N>, bytes: DemiBuffer) -> Result<DemiBuffer> {
     // SYN_RCVD state.
     server.receive(bytes).unwrap();
     server.rt.poll_scheduler();
@@ -392,14 +399,17 @@ fn connection_setup_listen_syn_rcvd(server: &mut Engine, bytes: DemiBuffer) -> R
 }
 
 /// Triggers SYN_SENT -> ESTABLISHED state transition.
-fn connection_setup_syn_sent_established(client: &mut Engine, bytes: DemiBuffer) -> Result<DemiBuffer> {
+fn connection_setup_syn_sent_established<const N: usize>(
+    client: &mut Engine<N>,
+    bytes: DemiBuffer,
+) -> Result<DemiBuffer> {
     client.receive(bytes).unwrap();
     client.rt.poll_scheduler();
     Ok(client.rt.pop_frame())
 }
 
 /// Triggers SYN_RCVD -> ESTABLISHED state transition.
-fn connection_setup_sync_rcvd_established(server: &mut Engine, bytes: DemiBuffer) -> Result<()> {
+fn connection_setup_sync_rcvd_established<const N: usize>(server: &mut Engine<N>, bytes: DemiBuffer) -> Result<()> {
     server.receive(bytes).unwrap();
     server.rt.poll_scheduler();
     Ok(())
@@ -485,7 +495,11 @@ fn check_packet_pure_ack_on_syn_ack(
 }
 
 /// Advances clock by one second.
-pub fn advance_clock(server: Option<&mut Engine>, client: Option<&mut Engine>, now: &mut Instant) {
+pub fn advance_clock<const N: usize>(
+    server: Option<&mut Engine<N>>,
+    client: Option<&mut Engine<N>>,
+    now: &mut Instant,
+) {
     *now += Duration::from_secs(1);
     if let Some(server) = server {
         server.clock.advance_clock(*now);
@@ -496,22 +510,22 @@ pub fn advance_clock(server: Option<&mut Engine>, client: Option<&mut Engine>, n
 }
 
 /// Runs 3-way connection setup.
-pub fn connection_setup(
+pub fn connection_setup<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine,
-    client: &mut Engine,
+    server: &mut Engine<N>,
+    client: &mut Engine<N>,
     listen_port: u16,
     listen_addr: SocketAddrV4,
 ) -> Result<((QDesc, SocketAddrV4), QDesc)> {
     // Server: LISTEN state at T(0).
-    let mut accept_future: AcceptFuture = connection_setup_closed_listen(server, listen_addr)?;
+    let mut accept_future: AcceptFuture<N> = connection_setup_closed_listen(server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture, DemiBuffer) =
+    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<N>, DemiBuffer) =
         connection_setup_listen_syn_sent(client, listen_addr)?;
 
     // Sanity check packet.
@@ -584,8 +598,8 @@ fn test_good_connect() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server = test_helpers::new_bob2(now);
-    let mut client = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;

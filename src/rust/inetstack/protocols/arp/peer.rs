@@ -64,14 +64,12 @@ use ::std::{
 // Structures
 //==============================================================================
 
-type BackgroundCoroutine = impl Future<Output = ()>;
-
 ///
 /// Arp Peer
 ///
 #[derive(Clone)]
-pub struct ArpPeer {
-    rt: Rc<dyn NetworkRuntime>,
+pub struct ArpPeer<const N: usize> {
+    rt: Rc<dyn NetworkRuntime<N>>,
     clock: TimerRc,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -89,16 +87,16 @@ pub struct ArpPeer {
 // Associate Functions
 //==============================================================================
 
-impl ArpPeer {
+impl<const N: usize> ArpPeer<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_config: ArpConfig,
-    ) -> Result<ArpPeer, Fail> {
-        let cache = Rc::new(RefCell::new(ArpCache::new(
+    ) -> Result<ArpPeer<N>, Fail> {
+        let cache: Rc<RefCell<ArpCache>> = Rc::new(RefCell::new(ArpCache::new(
             clock.clone(),
             Some(arp_config.get_cache_ttl()),
             Some(arp_config.get_initial_values()),
@@ -106,9 +104,10 @@ impl ArpPeer {
         )));
 
         // This is a future returned by the async function.
-        let background: BackgroundCoroutine = Self::background(clock.clone(), cache.clone());
-        let task: BackgroundTask =
-            BackgroundTask::new(String::from("Inetstack::arp::background"), Box::pin(background));
+        let task: BackgroundTask = BackgroundTask::new(
+            String::from("Inetstack::arp::background"),
+            Box::pin(Self::background(clock.clone(), cache.clone())),
+        );
         let handle: SchedulerHandle = match scheduler.insert(task) {
             Some(handle) => handle,
             None => {
@@ -118,7 +117,7 @@ impl ArpPeer {
                 ))
             },
         };
-        let peer = ArpPeer {
+        let peer: ArpPeer<N> = ArpPeer {
             rt,
             clock,
             local_link_addr,

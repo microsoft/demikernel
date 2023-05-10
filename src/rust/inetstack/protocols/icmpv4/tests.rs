@@ -1,7 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::test_helpers;
+use crate::{
+    inetstack::test_helpers::{
+        self,
+        Engine,
+    },
+    runtime::network::consts::RECEIVE_BATCH_SIZE,
+};
 use ::anyhow::Result;
 use ::futures::task::{
     noop_waker_ref,
@@ -26,9 +32,9 @@ fn ipv4_ping() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
-    let mut alice = test_helpers::new_alice2(now);
+    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
-    let mut bob = test_helpers::new_bob2(now);
+    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
 
     // Alice pings Bob.
     let mut ping_fut = Box::pin(alice.ipv4_ping(test_helpers::BOB_IPV4, None));
@@ -68,9 +74,9 @@ fn ipv4_ping_loop() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
-    let mut alice = test_helpers::new_alice2(now);
+    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
-    let mut bob = test_helpers::new_bob2(now);
+    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
 
     for _ in 1..1000 {
         // Alice pings Bob.

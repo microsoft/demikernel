@@ -108,9 +108,9 @@ impl ReqQueue {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer {
+pub struct Icmpv4Peer<const N: usize> {
     /// Underlying Runtime
-    rt: Rc<dyn NetworkRuntime>,
+    rt: Rc<dyn NetworkRuntime<N>>,
 
     clock: TimerRc,
 
@@ -118,7 +118,7 @@ pub struct Icmpv4Peer {
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
-    arp: ArpPeer,
+    arp: ArpPeer<N>,
 
     /// Transmitter
     tx: mpsc::UnboundedSender<(Ipv4Addr, u16, u16, DemiBuffer)>,
@@ -137,17 +137,17 @@ pub struct Icmpv4Peer {
     background: SchedulerHandle,
 }
 
-impl Icmpv4Peer {
+impl<const N: usize> Icmpv4Peer<N> {
     /// Creates a new peer for handling ICMP.
     pub fn new(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         rng_seed: [u8; 32],
-    ) -> Result<Icmpv4Peer, Fail> {
+    ) -> Result<Self, Fail> {
         let (tx, rx) = mpsc::unbounded();
         let requests = ReqQueue::new();
         let rng: Rc<RefCell<SmallRng>> = Rc::new(RefCell::new(SmallRng::from_seed(rng_seed)));
@@ -185,10 +185,10 @@ impl Icmpv4Peer {
 
     /// Background task for replying to ICMP messages.
     async fn background(
-        rt: Rc<dyn NetworkRuntime>,
+        rt: Rc<dyn NetworkRuntime<N>>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        arp: ArpPeer,
+        arp: ArpPeer<N>,
         mut rx: mpsc::UnboundedReceiver<(Ipv4Addr, u16, u16, DemiBuffer)>,
     ) {
         // Reply requests.
@@ -273,8 +273,8 @@ impl Icmpv4Peer {
         let id: u16 = self.make_id();
         let seq_num: u16 = self.make_seq_num();
         let echo_request: Icmpv4Type2 = Icmpv4Type2::EchoRequest { id, seq_num };
-        let arp: ArpPeer = self.arp.clone();
-        let rt: Rc<dyn NetworkRuntime> = self.rt.clone();
+        let arp: ArpPeer<N> = self.arp.clone();
+        let rt: Rc<dyn NetworkRuntime<N>> = self.rt.clone();
         let clock: TimerRc = self.clock.clone();
         let requests: Rc<RefCell<ReqQueue>> = self.requests.clone();
         let local_link_addr: MacAddress = self.local_link_addr.clone();

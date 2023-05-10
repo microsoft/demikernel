@@ -22,7 +22,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender(cb: Rc<ControlBlock>) -> Result<!, Fail> {
+pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.

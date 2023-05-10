@@ -8,12 +8,12 @@ use crate::runtime::queue::{
 };
 
 /// Per-queue metadata: Inet stack Control Block
-pub enum InetQueue {
+pub enum InetQueue<const N: usize> {
     Udp(UdpQueue),
-    Tcp(TcpQueue),
+    Tcp(TcpQueue<N>),
 }
 
-impl IoQueue for InetQueue {
+impl<const N: usize> IoQueue for InetQueue<N> {
     fn get_qtype(&self) -> QType {
         match self {
             Self::Udp(_) => QType::UdpSocket,

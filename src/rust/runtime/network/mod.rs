@@ -5,10 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    memory::DemiBuffer,
-    network::consts::RECEIVE_BATCH_SIZE,
-};
+use crate::runtime::memory::DemiBuffer;
 use ::arrayvec::ArrayVec;
 
 //==============================================================================
@@ -36,10 +33,10 @@ pub trait PacketBuf {
 }
 
 /// Network Runtime
-pub trait NetworkRuntime {
+pub trait NetworkRuntime<const N: usize> {
     /// Transmits a single [PacketBuf].
     fn transmit(&self, pkt: Box<dyn PacketBuf>);
 
     /// Receives a batch of [DemiBuffer].
-    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
+    fn receive(&self) -> ArrayVec<DemiBuffer, N>;
 }

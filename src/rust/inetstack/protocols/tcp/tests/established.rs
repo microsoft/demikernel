@@ -22,6 +22,7 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
+        network::consts::RECEIVE_BATCH_SIZE,
         QDesc,
     },
 };
@@ -54,11 +55,11 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
 
 //=============================================================================
 
-fn send_data(
+fn send_data<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    receiver: &mut Engine,
-    sender: &mut Engine,
+    receiver: &mut Engine<N>,
+    sender: &mut Engine<N>,
     sender_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
@@ -101,10 +102,10 @@ fn send_data(
 
 //=============================================================================
 
-fn recv_data(
+fn recv_data<const N: usize>(
     ctx: &mut Context,
-    receiver: &mut Engine,
-    sender: &mut Engine,
+    receiver: &mut Engine<N>,
+    sender: &mut Engine<N>,
     receiver_fd: QDesc,
     bytes: DemiBuffer,
 ) -> Result<()> {
@@ -132,7 +133,12 @@ fn recv_data(
 
 //=============================================================================
 
-fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, ack_num: SeqNumber) -> Result<()> {
+fn recv_pure_ack<const N: usize>(
+    now: &mut Instant,
+    sender: &mut Engine<N>,
+    receiver: &mut Engine<N>,
+    ack_num: SeqNumber,
+) -> Result<()> {
     trace!(
         "recv_pure_ack ====> ack: {:?} -> {:?}",
         sender.rt.ipv4_addr,
@@ -163,11 +169,11 @@ fn recv_pure_ack(now: &mut Instant, sender: &mut Engine, receiver: &mut Engine, 
 
 //=============================================================================
 
-fn send_recv(
+fn send_recv<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine,
-    client: &mut Engine,
+    server: &mut Engine<N>,
+    client: &mut Engine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -200,11 +206,11 @@ fn send_recv(
 
 //=============================================================================
 
-fn send_recv_round(
+fn send_recv_round<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine,
-    client: &mut Engine,
+    server: &mut Engine<N>,
+    client: &mut Engine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -240,11 +246,11 @@ fn send_recv_round(
 
 //=============================================================================
 
-fn connection_hangup(
+fn connection_hangup<const N: usize>(
     _ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine,
-    client: &mut Engine,
+    server: &mut Engine<N>,
+    client: &mut Engine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
 ) -> Result<()> {
@@ -313,8 +319,8 @@ pub fn test_send_recv_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine = test_helpers::new_bob2(now);
-    let mut client: Engine = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
     let max_window_size: u32 =
         match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
@@ -358,8 +364,8 @@ pub fn test_send_recv_round_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine = test_helpers::new_bob2(now);
-    let mut client: Engine = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
     let max_window_size: u32 =
         match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
@@ -405,8 +411,8 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine = test_helpers::new_bob2(now);
-    let mut client: Engine = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let window_scale: u8 = client.rt.tcp_config.get_window_scale();
     let max_window_size: u32 =
         match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
@@ -480,8 +486,8 @@ fn test_connect_disconnect() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine = test_helpers::new_bob2(now);
-    let mut client: Engine = test_helpers::new_alice2(now);
+    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;

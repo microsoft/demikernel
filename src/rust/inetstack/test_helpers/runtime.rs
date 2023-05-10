@@ -11,7 +11,6 @@ use crate::{
                 TcpConfig,
                 UdpConfig,
             },
-            consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             NetworkRuntime,
             PacketBuf,
@@ -114,7 +113,7 @@ impl TestRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl NetworkRuntime for TestRuntime {
+impl<const N: usize> NetworkRuntime<N> for TestRuntime {
     fn transmit(&self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
@@ -131,7 +130,7 @@ impl NetworkRuntime for TestRuntime {
         self.inner.borrow_mut().outgoing.push_back(buf);
     }
 
-    fn receive(&self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
             out.push(buf);

@@ -51,7 +51,7 @@ const UNSENT_QUEUE_CUTOFF: usize = 1024;
 
 // TODO: Consider moving retransmit timer and congestion control fields out of this structure.
 // TODO: Make all public fields in this structure private.
-pub struct Sender {
+pub struct Sender<const N: usize> {
     //
     // Send Sequence Space:
     //
@@ -93,7 +93,7 @@ pub struct Sender {
     mss: usize,
 }
 
-impl fmt::Debug for Sender {
+impl<const N: usize> fmt::Debug for Sender<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("send_unacked", &self.send_unacked)
@@ -106,7 +106,7 @@ impl fmt::Debug for Sender {
     }
 }
 
-impl Sender {
+impl<const N: usize> Sender<N> {
     pub fn new(seq_no: SeqNumber, send_window: u32, window_scale: u8, mss: usize) -> Self {
         Self {
             send_unacked: WatchedValue::new(seq_no),
@@ -154,7 +154,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send(&self, buf: DemiBuffer, cb: &ControlBlock) -> Result<(), Fail> {
+    pub fn send(&self, buf: DemiBuffer, cb: &ControlBlock<N>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending.get() {
@@ -270,7 +270,7 @@ impl Sender {
     }
 
     /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
-    pub fn retransmit(&self, cb: &ControlBlock) {
+    pub fn retransmit(&self, cb: &ControlBlock<N>) {
         // Check that we have an unacknowledged segment.
         if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
             // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
@@ -302,7 +302,7 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data(&self, cb: &ControlBlock, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data(&self, cb: &ControlBlock<N>, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {

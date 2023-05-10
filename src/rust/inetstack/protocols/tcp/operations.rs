@@ -23,18 +23,18 @@ use ::std::{
     },
 };
 
-pub struct ConnectFuture {
+pub struct ConnectFuture<const N: usize> {
     pub qd: QDesc,
-    pub inner: Rc<RefCell<Inner>>,
+    pub inner: Rc<RefCell<Inner<N>>>,
 }
 
-impl fmt::Debug for ConnectFuture {
+impl<const N: usize> fmt::Debug for ConnectFuture<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ConnectFuture({:?})", self.qd)
     }
 }
 
-impl Future for ConnectFuture {
+impl<const N: usize> Future for ConnectFuture<N> {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
@@ -44,39 +44,39 @@ impl Future for ConnectFuture {
 }
 
 /// Accept Operation Descriptor
-pub struct AcceptFuture {
+pub struct AcceptFuture<const N: usize> {
     /// Queue descriptor of listening socket.
     qd: QDesc,
     // Pre-booked queue descriptor for incoming connection.
     new_qd: QDesc,
     // Reference to associated inner TCP peer.
-    inner: Rc<RefCell<Inner>>,
+    inner: Rc<RefCell<Inner<N>>>,
 }
 
 /// Associated Functions for Accept Operation Descriptors
-impl AcceptFuture {
+impl<const N: usize> AcceptFuture<N> {
     /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner>>) -> Self {
+    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<N>>>) -> Self {
         Self { qd, new_qd, inner }
     }
 }
 
 /// Debug Trait Implementation for Accept Operation Descriptors
-impl fmt::Debug for AcceptFuture {
+impl<const N: usize> fmt::Debug for AcceptFuture<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "AcceptFuture({:?})", self.qd)
     }
 }
 
 /// Future Trait Implementation for Accept Operation Descriptors
-impl Future for AcceptFuture {
+impl<const N: usize> Future for AcceptFuture<N> {
     type Output = Result<(QDesc, SocketAddrV4), Fail>;
 
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_: &mut AcceptFuture = self.get_mut();
+        let self_: &mut AcceptFuture<N> = self.get_mut();
         // TODO: The following design pattern looks ugly. We should move poll_accept to the inner structure.
-        let peer: TcpPeer = TcpPeer {
+        let peer: TcpPeer<N> = TcpPeer {
             inner: self_.inner.clone(),
         };
         peer.poll_accept(self_.qd, self_.new_qd, context)
@@ -105,19 +105,19 @@ impl Future for PushFuture {
     }
 }
 
-pub struct PopFuture {
+pub struct PopFuture<const N: usize> {
     pub qd: QDesc,
     pub size: Option<usize>,
-    pub inner: Rc<RefCell<Inner>>,
+    pub inner: Rc<RefCell<Inner<N>>>,
 }
 
-impl fmt::Debug for PopFuture {
+impl<const N: usize> fmt::Debug for PopFuture<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PopFuture({:?})", self.qd)
     }
 }
 
-impl Future for PopFuture {
+impl<const N: usize> Future for PopFuture<N> {
     type Output = Result<DemiBuffer, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
@@ -130,18 +130,18 @@ impl Future for PopFuture {
     }
 }
 
-pub struct CloseFuture {
+pub struct CloseFuture<const N: usize> {
     pub qd: QDesc,
-    pub inner: Rc<RefCell<Inner>>,
+    pub inner: Rc<RefCell<Inner<N>>>,
 }
 
-impl fmt::Debug for CloseFuture {
+impl<const N: usize> fmt::Debug for CloseFuture<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "CloseFuture({:?})", self.qd)
     }
 }
 
-impl Future for CloseFuture {
+impl<const N: usize> Future for CloseFuture<N> {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {

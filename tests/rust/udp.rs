@@ -31,6 +31,7 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
+use demikernel::runtime::network::consts::RECEIVE_BATCH_SIZE;
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -57,7 +58,7 @@ use std::{
 //==============================================================================
 
 /// Opens and closes a socket using a non-ephemeral port.
-fn do_udp_setup(libos: &mut InetStack) -> Result<()> {
+fn do_udp_setup<const N: usize>(libos: &mut InetStack<N>) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_BASE);
     let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
@@ -79,7 +80,7 @@ fn do_udp_setup(libos: &mut InetStack) -> Result<()> {
 }
 
 /// Opens and closes a socket using an ephemeral port.
-fn do_udp_setup_ephemeral(libos: &mut InetStack) -> Result<()> {
+fn do_udp_setup_ephemeral<const N: usize>(libos: &mut InetStack<N>) -> Result<()> {
     const PORT_EPHEMERAL_BASE: u16 = 49152;
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, PORT_EPHEMERAL_BASE);
     let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
@@ -102,7 +103,7 @@ fn do_udp_setup_ephemeral(libos: &mut InetStack) -> Result<()> {
 }
 
 /// Opens and closes a socket using wildcard ephemeral port.
-fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) -> Result<()> {
+fn do_udp_setup_wildcard_ephemeral<const N: usize>(libos: &mut InetStack<N>) -> Result<()> {
     let local: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, 0);
     let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
         Ok(qd) => qd,
@@ -127,7 +128,7 @@ fn do_udp_setup_wildcard_ephemeral(libos: &mut InetStack) -> Result<()> {
 #[test]
 fn udp_setup() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+    let mut libos: InetStack<RECEIVE_BATCH_SIZE> = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
     };
@@ -143,7 +144,7 @@ fn udp_setup() -> Result<()> {
 #[test]
 fn udp_connect_loopback() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+    let mut libos: InetStack<RECEIVE_BATCH_SIZE> = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
     };
@@ -188,10 +189,11 @@ fn udp_push_remote() -> Result<()> {
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
-            Ok(libos) => libos,
-            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
-        };
+        let mut libos: InetStack<RECEIVE_BATCH_SIZE> =
+            match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+                Ok(libos) => libos,
+                Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+            };
 
         // Open connection.
         let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
@@ -256,7 +258,8 @@ fn udp_push_remote() -> Result<()> {
     });
 
     let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: InetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+        let mut libos: InetStack<RECEIVE_BATCH_SIZE> = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp())
+        {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -340,10 +343,11 @@ fn udp_loopback() -> Result<()> {
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(ALICE_IPV4, alice_port);
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
-            Ok(libos) => libos,
-            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
-        };
+        let mut libos: InetStack<RECEIVE_BATCH_SIZE> =
+            match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+                Ok(libos) => libos,
+                Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+            };
 
         // Open connection.
         let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
@@ -407,10 +411,11 @@ fn udp_loopback() -> Result<()> {
     });
 
     let bob = thread::spawn(move || {
-        let mut libos: InetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp()) {
-            Ok(libos) => libos,
-            Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
-        };
+        let mut libos: InetStack<RECEIVE_BATCH_SIZE> =
+            match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp()) {
+                Ok(libos) => libos,
+                Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+            };
 
         // Open connection.
         let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
@@ -476,7 +481,7 @@ fn udp_loopback() -> Result<()> {
 //======================================================================================================================
 
 /// Safe call to `wait2()`.
-fn safe_wait2(libos: &mut InetStack, qt: QToken) -> Result<(QDesc, OperationResult)> {
+fn safe_wait2<const N: usize>(libos: &mut InetStack<N>, qt: QToken) -> Result<(QDesc, OperationResult)> {
     match libos.wait2(qt) {
         Ok((qd, qr)) => Ok((qd, qr)),
         Err(e) => {
