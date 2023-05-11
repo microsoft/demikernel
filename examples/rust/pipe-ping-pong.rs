@@ -195,13 +195,13 @@ impl PipeServer {
     }
 
     // Send and receive bytes in a locked step.
-    pub fn run(&mut self, nrounds: u8) -> Result<()> {
+    pub fn run(&mut self, buffer_size: usize, nrounds: u8) -> Result<()> {
         for i in 0..nrounds {
-            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, BUFFER_SIZE, i) {
+            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, buffer_size, i) {
                 anyhow::bail!("failed to pop memory queue: {:?}", e);
             }
 
-            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, BUFFER_SIZE, i) {
+            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, buffer_size, i) {
                 anyhow::bail!("failed to push memory queue: {:?}", e);
             }
             println!("pong {:?}", i);
@@ -267,13 +267,13 @@ impl PipeClient {
     }
 
     // Send and receive bytes in a locked step.
-    pub fn run(&mut self, nrounds: u8) -> Result<()> {
+    pub fn run(&mut self, buffer_size: usize, nrounds: u8) -> Result<()> {
         for i in 0..nrounds {
-            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, BUFFER_SIZE, i) {
+            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, buffer_size, i) {
                 anyhow::bail!("failed to pop memory queue: {:?}", e)
             }
 
-            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, BUFFER_SIZE, i) {
+            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, buffer_size, i) {
                 anyhow::bail!("failed to push memory queue: {:?}", e)
             }
             println!("pong {:?}", i);
@@ -333,10 +333,10 @@ pub fn main() -> Result<()> {
         // Invoke the appropriate peer.
         if args[1] == "--server" {
             let mut server: PipeServer = PipeServer::new(libos, pipe_name)?;
-            return server.run(NROUNDS);
+            return server.run(BUFFER_SIZE, NROUNDS);
         } else if args[1] == "--client" {
             let mut client: PipeClient = PipeClient::new(libos, pipe_name)?;
-            return client.run(NROUNDS);
+            return client.run(BUFFER_SIZE, NROUNDS);
         }
     }
 
