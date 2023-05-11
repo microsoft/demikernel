@@ -13,7 +13,7 @@ use ::std::net::SocketAddrV4;
 //======================================================================================================================
 
 /// Encodes the state of a socket.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum SocketState {
     /// A socket that is not bound.
     NotBound,
@@ -299,7 +299,7 @@ impl Socket {
 
     /// Constructs from [self] a socket that is closed.
     pub fn closed(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "close";
+        const FN_NAME: &str = "closed";
         match self.state {
             SocketState::NotBound
             | SocketState::Bound
@@ -325,6 +325,11 @@ impl Socket {
     /// Returns the `remote` address tot which [self] is connected.
     pub fn remote(&self) -> Option<SocketAddrV4> {
         self.remote
+    }
+
+    /// Asserts if [self] is `Connecting`.
+    pub fn is_connecting(&self) -> bool {
+        self.state == SocketState::Connecting
     }
 }
 

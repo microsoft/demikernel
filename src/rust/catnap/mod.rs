@@ -378,10 +378,9 @@ impl CatnapLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     // Create a connecting socket.
-                    let connecting_socket: Socket = {
-                        let active_socket: &Socket = queue.get_socket();
-                        active_socket.connect(remote)?
-                    };
+                    let active_socket: &Socket = queue.get_socket();
+                    let previous_socket_state: Socket = active_socket.clone();
+                    let connecting_socket: Socket = active_socket.connect(remote)?;
 
                     // Spawn connect co-rountine.
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
@@ -389,6 +388,8 @@ impl CatnapLibOS {
                     let yielder_handle: YielderHandle = yielder.get_handle();
                     let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                         let result: Result<(), Fail> = connect_coroutine(fd, remote, yielder).await;
+
+                        // Parse result.
                         match result {
                             Ok(()) => {
                                 // Succeeded to connect, thus set socket as "connected".
@@ -409,12 +410,28 @@ impl CatnapLibOS {
                                 (qd, OperationResult::Connect)
                             },
                             Err(e) => {
-                                warn!("connect() qd={:?}: {:?}", qd, &e);
+                                // Failed to connect, check if that happened due to other reason than cancellation.
+                                if e.errno != libc::ECANCELED {
+                                    let mut qtable_: RefMut<IoQueueTable<CatnapQueue>> = qtable_ptr.borrow_mut();
+                                    let queue: &mut CatnapQueue = qtable_.get_mut(&qd).expect("queue cannot be None");
+                                    let socket: &Socket = queue.get_socket();
+
+                                    // Failed to connect, rollback only if the operation was not cancelled.
+                                    if socket.is_connecting() {
+                                        debug!(
+                                            "connect() rolling back socket state (qd={:?}, state={:?})",
+                                            qd, previous_socket_state
+                                        );
+                                        queue.set_socket(&previous_socket_state);
+                                    }
+                                }
+
+                                warn!("connect() failed (qd={:?}, error={:?})", qd, e.cause);
                                 (qd, OperationResult::Failed(e))
                             },
                         }
                     });
-                    let task_id = format!("Catnap::connect for qd={:?}", qd);
+                    let task_id: String = format!("Catnap::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
                         Some(handle) => handle,
@@ -472,7 +489,7 @@ impl CatnapLibOS {
 
     /// Asynchronous close
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("close() qd={:?}", qd);
+        trace!("async_close() qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
 
         match qtable.get_mut(&qd) {

@@ -38,18 +38,22 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for listen() on TCP sockets.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(
+    libos: &mut LibOS,
+    local: &SocketAddrV4,
+    remote: &SocketAddrV4,
+) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(listen_invalid_queue_descriptor(libos)));
     crate::collect!(result, crate::test!(listen_unbound_socket(libos)));
-    crate::collect!(result, crate::test!(listen_bound_socket(libos, addr)));
-    crate::collect!(result, crate::test!(listen_large_backlog_length(libos, addr)));
-    crate::collect!(result, crate::test!(listen_invalid_zero_backlog_length(libos, addr)));
-    crate::collect!(result, crate::test!(listen_listening_socket(libos, addr)));
-    crate::collect!(result, crate::test!(listen_connecting_socket(libos, addr)));
-    crate::collect!(result, crate::test!(listen_accepting_socket(libos, addr)));
-    crate::collect!(result, crate::test!(listen_closed_socket(libos, addr)));
+    crate::collect!(result, crate::test!(listen_bound_socket(libos, local)));
+    crate::collect!(result, crate::test!(listen_large_backlog_length(libos, local)));
+    crate::collect!(result, crate::test!(listen_invalid_zero_backlog_length(libos, local)));
+    crate::collect!(result, crate::test!(listen_listening_socket(libos, local)));
+    crate::collect!(result, crate::test!(listen_connecting_socket(libos, local, remote)));
+    crate::collect!(result, crate::test!(listen_accepting_socket(libos, local)));
+    crate::collect!(result, crate::test!(listen_closed_socket(libos, local)));
 
     result
 }
@@ -168,11 +172,12 @@ fn listen_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 }
 
 /// Attempts to listen for connections on a TCP socket that is connecting.
-fn listen_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+fn listen_connecting_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<()> {
     println!("{}", stringify!(listen_connecting_socket));
 
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    libos.bind(sockqd, local.to_owned())?;
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
     let mut connect_finished: bool = false;
 

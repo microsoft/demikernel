@@ -93,10 +93,10 @@ impl YielderHandle {
     /// Wake this yielded coroutine: Ok indicates there is work to be done and Fail indicates the coroutine should exit
     /// with an error.
     pub fn wake_with(&mut self, result: Result<(), Fail>) {
-        if let Some(res) = self.result_handle.borrow_mut().replace(result) {
+        if let Some(old_result) = self.result_handle.borrow_mut().replace(result) {
             debug!(
-                "YielderHandle::wake_with() already scheduled: overwriting previous wake result: {:?}",
-                res
+                "wake_with(): already scheduled, overwriting result (old={:?})",
+                old_result
             );
         }
 
