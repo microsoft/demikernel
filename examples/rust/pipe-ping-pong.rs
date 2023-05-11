@@ -156,74 +156,52 @@ fn pop_and_wait(libos: &mut LibOS, pipeqd: QDesc, expected_length: usize, expect
     Ok(())
 }
 
-//======================================================================================================================
-// close()
-//======================================================================================================================
-
-/// Closes a pipe and warns if not successful.
-fn close(libos: &mut LibOS, pipeqd: QDesc) {
-    if let Err(e) = libos.close(pipeqd) {
-        println!("ERROR: close() failed (error={:?})", e);
-        println!("WARN: leaking pipeqd={:?}", pipeqd);
-    }
-}
-
 // The pipe server.
 pub struct PipeServer {
     /// Underlying libOS.
     libos: LibOS,
-    /// Tx pipe qd.
-    tx_pipeqd: Option<QDesc>,
     /// Rx pipe qd.
-    rx_pipeqd: Option<QDesc>,
+    pipeqd_rx: QDesc,
+    /// Tx pipe qd.
+    pipeqd_tx: QDesc,
 }
 
 // Implementation of the pipe server.
 impl PipeServer {
-    pub fn new(libos: LibOS) -> Result<Self> {
-        return Ok(Self {
-            libos,
-            tx_pipeqd: None,
-            rx_pipeqd: None,
-        });
-    }
-
-    pub fn run(&mut self, pipe_name: &str, nrounds: u8) -> Result<()> {
-        // Setup the Rx pipe.
-        self.rx_pipeqd = match self.libos.create_pipe(&format!("{}:rx", pipe_name)) {
-            Ok(qd) => Some(qd),
+    pub fn new(mut libos: LibOS, pipe_name: &str) -> Result<Self> {
+        // Create the Rx pipe.
+        let pipeqd_rx = match libos.create_pipe(&format!("{}:rx", pipe_name)) {
+            Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
         };
 
-        // Setup the Tx pipe.
-        self.tx_pipeqd = match self.libos.create_pipe(&format!("{}:tx", pipe_name)) {
-            Ok(qd) => Some(qd),
+        // Create the Tx pipe.
+        let pipeqd_tx = match libos.create_pipe(&format!("{}:tx", pipe_name)) {
+            Ok(qd) => qd,
             Err(e) => {
-                if let Some(rx_pipeqd) = self.rx_pipeqd {
-                    close(&mut self.libos, rx_pipeqd);
-                    self.rx_pipeqd = None;
+                if let Err(e) = libos.close(pipeqd_rx) {
+                    println!("ERROR: close() failed (error={:?})", e);
+                    println!("WARN: leaking pipeqd={:?}", pipeqd_rx);
                 }
                 anyhow::bail!("failed to open memory queue: {:?}", e)
             },
         };
 
-        // Send and receive bytes in a locked step.
+        return Ok(Self {
+            libos,
+            pipeqd_tx,
+            pipeqd_rx,
+        });
+    }
+
+    // Send and receive bytes in a locked step.
+    pub fn run(&mut self, nrounds: u8) -> Result<()> {
         for i in 0..nrounds {
-            if let Err(e) = pop_and_wait(
-                &mut self.libos,
-                self.rx_pipeqd.expect("should be a valid pipe qd"),
-                BUFFER_SIZE,
-                i,
-            ) {
+            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, BUFFER_SIZE, i) {
                 anyhow::bail!("failed to pop memory queue: {:?}", e);
             }
 
-            if let Err(e) = push_and_wait(
-                &mut self.libos,
-                self.tx_pipeqd.expect("should be a valid pipe qd"),
-                BUFFER_SIZE,
-                i,
-            ) {
+            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, BUFFER_SIZE, i) {
                 anyhow::bail!("failed to push memory queue: {:?}", e);
             }
             println!("pong {:?}", i);
@@ -231,17 +209,21 @@ impl PipeServer {
 
         Ok(())
     }
+
+    // Closes a pipe and warns if not successful.
+    fn close(&mut self, pipeqd: QDesc) {
+        if let Err(e) = self.libos.close(pipeqd) {
+            println!("ERROR: close() failed (error={:?})", e);
+            println!("WARN: leaking pipeqd={:?}", pipeqd);
+        }
+    }
 }
 
 // Drop implementation for the pipe server.
 impl Drop for PipeServer {
     fn drop(&mut self) {
-        if let Some(rx_pipeqd) = self.rx_pipeqd {
-            close(&mut self.libos, rx_pipeqd);
-        }
-        if let Some(tx_pipeqd) = self.tx_pipeqd {
-            close(&mut self.libos, tx_pipeqd);
-        }
+        self.close(self.pipeqd_rx);
+        self.close(self.pipeqd_tx);
     }
 }
 
@@ -249,60 +231,49 @@ impl Drop for PipeServer {
 pub struct PipeClient {
     /// Underlying libOS.
     libos: LibOS,
-    /// Tx pipe qd.
-    tx_pipeqd: Option<QDesc>,
     /// Rx pipe qd.
-    rx_pipeqd: Option<QDesc>,
+    pipeqd_rx: QDesc,
+    /// Tx pipe qd.
+    pipeqd_tx: QDesc,
 }
 
 // Implementation of the pipe client.
 impl PipeClient {
-    pub fn new(libos: LibOS) -> Result<Self> {
-        return Ok(Self {
-            libos,
-            tx_pipeqd: None,
-            rx_pipeqd: None,
-        });
-    }
-
-    pub fn run(&mut self, pipe_name: &str, nrounds: u8) -> Result<()> {
-        // Setup the Tx pipe. This is inverted from the server's perspsective, because the server reads from it's
-        // rx_pipeqd, but the clients writes from it.
-        self.tx_pipeqd = match self.libos.open_pipe(&format!("{}:rx", pipe_name)) {
-            Ok(qd) => Some(qd),
+    pub fn new(mut libos: LibOS, pipe_name: &str) -> Result<Self> {
+        // Open the Tx pipe. This is inverted from the server's perspsective, because the server reads from it's
+        // pipeqd_rx, but the clients writes to it.
+        let pipeqd_tx = match libos.open_pipe(&format!("{}:rx", pipe_name)) {
+            Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
         };
 
-        // Setup the Rx pipe. This is inverted from the server's perspsective, because the server writes from it's
-        // tx_pipeqd, but the clients reads from it.
-        self.rx_pipeqd = match self.libos.open_pipe(&format!("{}:tx", pipe_name)) {
-            Ok(qd) => Some(qd),
+        // Open the Rx pipe. This is inverted from the server's perspsective, because the server writes from it's
+        // pipeqd_tx, but the clients reads from it.
+        let pipeqd_rx = match libos.open_pipe(&format!("{}:tx", pipe_name)) {
+            Ok(qd) => qd,
             Err(e) => {
-                if let Some(tx_pipeqd) = self.tx_pipeqd {
-                    close(&mut self.libos, tx_pipeqd);
-                    self.tx_pipeqd = None;
+                if let Err(e) = libos.close(pipeqd_tx) {
+                    println!("ERROR: close() failed (error={:?})", e);
+                    println!("WARN: leaking pipeqd={:?}", pipeqd_tx);
                 }
                 anyhow::bail!("failed to open memory queue: {:?}", e.cause)
             },
         };
+        return Ok(Self {
+            libos,
+            pipeqd_tx,
+            pipeqd_rx,
+        });
+    }
 
-        // Send and receive bytes.
+    // Send and receive bytes in a locked step.
+    pub fn run(&mut self, nrounds: u8) -> Result<()> {
         for i in 0..nrounds {
-            if let Err(e) = push_and_wait(
-                &mut self.libos,
-                self.tx_pipeqd.expect("should be a valid pipe qd"),
-                BUFFER_SIZE,
-                i,
-            ) {
+            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd_tx, BUFFER_SIZE, i) {
                 anyhow::bail!("failed to pop memory queue: {:?}", e)
             }
 
-            if let Err(e) = pop_and_wait(
-                &mut self.libos,
-                self.rx_pipeqd.expect("should be a valid pipe qd"),
-                BUFFER_SIZE,
-                i,
-            ) {
+            if let Err(e) = pop_and_wait(&mut self.libos, self.pipeqd_rx, BUFFER_SIZE, i) {
                 anyhow::bail!("failed to push memory queue: {:?}", e)
             }
             println!("pong {:?}", i);
@@ -310,17 +281,21 @@ impl PipeClient {
 
         Ok(())
     }
+
+    // Closes a pipe and warns if not successful.
+    fn close(&mut self, pipeqd: QDesc) {
+        if let Err(e) = self.libos.close(pipeqd) {
+            println!("ERROR: close() failed (error={:?})", e);
+            println!("WARN: leaking pipeqd={:?}", pipeqd);
+        }
+    }
 }
 
 // Drop implementation for the pipe client.
 impl Drop for PipeClient {
     fn drop(&mut self) {
-        if let Some(rx_pipeqd) = self.rx_pipeqd {
-            close(&mut self.libos, rx_pipeqd);
-        }
-        if let Some(tx_pipeqd) = self.tx_pipeqd {
-            close(&mut self.libos, tx_pipeqd);
-        }
+        self.close(self.pipeqd_rx);
+        self.close(self.pipeqd_tx);
     }
 }
 
@@ -357,11 +332,11 @@ pub fn main() -> Result<()> {
 
         // Invoke the appropriate peer.
         if args[1] == "--server" {
-            let mut server: PipeServer = PipeServer::new(libos)?;
-            return server.run(pipe_name, NROUNDS);
+            let mut server: PipeServer = PipeServer::new(libos, pipe_name)?;
+            return server.run(NROUNDS);
         } else if args[1] == "--client" {
-            let mut client: PipeClient = PipeClient::new(libos)?;
-            return client.run(pipe_name, NROUNDS);
+            let mut client: PipeClient = PipeClient::new(libos, pipe_name)?;
+            return client.run(NROUNDS);
         }
     }
 
