@@ -43,6 +43,9 @@ use ::demikernel::perftools::profiler;
 
 const BUFFER_SIZE: usize = 64;
 
+/// Number of rounds to execute.
+const NROUNDS: usize = 1024;
+
 //======================================================================================================================
 // mksga()
 //======================================================================================================================
@@ -186,10 +189,6 @@ fn pop_and_wait(libos: &mut LibOS, sockqd: QDesc, recvbuf: &mut [u8]) -> Result<
     Ok(())
 }
 
-//======================================================================================================================
-// close()
-//======================================================================================================================
-
 /// Closes a socket and warns if not successful.
 fn close(libos: &mut LibOS, sockqd: QDesc) {
     if let Err(e) = libos.close(sockqd) {
@@ -198,178 +197,174 @@ fn close(libos: &mut LibOS, sockqd: QDesc) {
     }
 }
 
-//======================================================================================================================
-// server()
-//======================================================================================================================
-
-fn server(local: SocketAddrV4) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-    let nrounds: usize = 1024;
-
-    // Setup peer.
-    let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
-        Ok(sockqd) => sockqd,
-        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
-    };
-    match libos.bind(sockqd, local) {
-        Ok(()) => (),
-        Err(e) => {
-            // If error, free socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("bind failed: {:?}", e)
-        },
-    };
-
-    // Mark as a passive one.
-    match libos.listen(sockqd, 16) {
-        Ok(()) => (),
-        Err(e) => {
-            // If error, free socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("listen failed: {:?}", e)
-        },
-    };
-
-    // Accept incoming connections.
-    // If error, free socket.
-    let sockqd: QDesc = match accept_and_wait(&mut libos, sockqd) {
-        Ok(sockqd) => sockqd,
-        Err(e) => {
-            close(&mut libos, sockqd);
-            anyhow::bail!("accept failed: {:?}", e)
-        },
-    };
-
-    // Perform multiple ping-pong rounds.
-    for i in 0..nrounds {
-        let mut fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
-
-        // Pop data, and sanity check it.
-        {
-            let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-            // If error, free socket.
-            if let Err(e) = pop_and_wait(&mut libos, sockqd, &mut recvbuf) {
-                close(&mut libos, sockqd);
-                anyhow::bail!("pop and wait failed: {:?}", e);
-            }
-
-            for x in &recvbuf {
-                if *x != fill_char {
-                    close(&mut libos, sockqd);
-                    anyhow::bail!("fill check failed: expected={:?} received={:?}", fill_char, *x);
-                }
-                fill_char = (fill_char % (u8::MAX - 1) + 1) as u8;
-            }
-        }
-
-        // Push data.
-        {
-            // If error, free socket.
-            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, (i % (u8::MAX as usize - 1) + 1) as u8)?;
-            if let Err(e) = push_and_wait(&mut libos, sockqd, &sga) {
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("push and wait failed: {:?}", e)
-            }
-
-            if let Err(e) = libos.sgafree(sga) {
-                // If error, free socket.
-                close(&mut libos, sockqd);
-                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-            }
-        }
-
-        println!("pong {:?}", i);
-    }
-
-    #[cfg(feature = "profiler")]
-    profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
-    // TODO: close socket when we get close working properly in catnip.
-
-    Ok(())
+// The TCP server.
+pub struct TcpServer {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Local socket queue descriptor.
+    sockqd: QDesc,
 }
 
-//======================================================================================================================
-// client()
-//======================================================================================================================
+// Implementation of the TCP server.
+impl TcpServer {
+    pub fn new(mut libos: LibOS) -> Result<Self> {
+        // Create the localsocket.
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
 
-fn client(remote: SocketAddrV4) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-    let nrounds: usize = 1024;
-
-    // Setup peer.
-    let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
-        Ok(sockqd) => sockqd,
-        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
-    };
-
-    if let Err(e) = connect_and_wait(&mut libos, sockqd, remote) {
-        close(&mut libos, sockqd);
-        anyhow::bail!("connect and wait failed: {:?}", e);
+        return Ok(Self { libos, sockqd });
     }
 
-    // Issue n sends.
-    for i in 0..nrounds {
-        let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+    pub fn run(&mut self, local: SocketAddrV4, nrounds: usize) -> Result<()> {
+        match self.libos.bind(self.sockqd, local) {
+            Ok(()) => (),
+            Err(e) => anyhow::bail!("bind failed: {:?}", e),
+        };
 
-        // Push data.
-        {
-            let sga: demi_sgarray_t = mksga(&mut libos, BUFFER_SIZE, fill_char)?;
-            if let Err(e) = push_and_wait(&mut libos, sockqd, &sga) {
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("push and wait failed: {:?}", e);
-            }
-            if let Err(e) = libos.sgafree(sga) {
-                // If error, free socket.
-                close(&mut libos, sockqd);
-                anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-            }
-        }
+        // Mark as a passive one.
+        match self.libos.listen(self.sockqd, 16) {
+            Ok(()) => (),
+            Err(e) => anyhow::bail!("listen failed: {:?}", e),
+        };
 
-        let mut fill_check: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+        // Accept incoming connections.
+        let accepted_qd: QDesc = match accept_and_wait(&mut self.libos, self.sockqd) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("accept failed: {:?}", e),
+        };
 
-        // Pop data, and sanity check it.
-        {
-            let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-            if let Err(e) = pop_and_wait(&mut libos, sockqd, &mut recvbuf) {
-                close(&mut libos, sockqd);
-                anyhow::bail!("pop and wait failed: {:?}", e);
-            }
-            for x in &recvbuf {
-                // If error, free socket.
-                if *x != fill_check {
-                    close(&mut libos, sockqd);
-                    anyhow::bail!("fill check failed: expected={:?} received={:?}", fill_check, *x);
+        // Perform multiple ping-pong rounds.
+        for i in 0..nrounds {
+            let mut fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+
+            // Pop data, and sanity check it.
+            {
+                let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                if let Err(e) = pop_and_wait(&mut self.libos, accepted_qd, &mut recvbuf) {
+                    close(&mut self.libos, accepted_qd);
+                    anyhow::bail!("pop and wait failed: {:?}", e);
                 }
-                fill_check = (fill_check % (u8::MAX - 1) + 1) as u8;
+
+                for x in &recvbuf {
+                    if *x != fill_char {
+                        close(&mut self.libos, accepted_qd);
+                        anyhow::bail!("fill check failed: expected={:?} received={:?}", fill_char, *x);
+                    }
+                    fill_char = (fill_char % (u8::MAX - 1) + 1) as u8;
+                }
             }
+
+            // Push data.
+            {
+                let sga: demi_sgarray_t = mksga(&mut self.libos, BUFFER_SIZE, (i % (u8::MAX as usize - 1) + 1) as u8)?;
+                if let Err(e) = push_and_wait(&mut self.libos, accepted_qd, &sga) {
+                    freesga(&mut self.libos, sga);
+                    close(&mut self.libos, accepted_qd);
+                    anyhow::bail!("push and wait failed: {:?}", e)
+                }
+
+                if let Err(e) = self.libos.sgafree(sga) {
+                    close(&mut self.libos, accepted_qd);
+                    anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+                }
+            }
+
+            println!("pong {:?}", i);
         }
 
-        println!("ping {:?}", i);
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
+        // TODO: close socket when we get close working properly in catnip.
+
+        Ok(())
+    }
+}
+
+// The Drop implementation for the TCP server.
+impl Drop for TcpServer {
+    fn drop(&mut self) {
+        close(&mut self.libos, self.sockqd);
+    }
+}
+
+// The TCP client.
+pub struct TcpClient {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Local socket queue descriptor.
+    sockqd: QDesc,
+}
+
+// Implementation of the TCP client.
+impl TcpClient {
+    pub fn new(mut libos: LibOS) -> Result<Self> {
+        // Create the localsocket.
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+
+        return Ok(Self { libos, sockqd });
     }
 
-    #[cfg(feature = "profiler")]
-    profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+    fn run(&mut self, remote: SocketAddrV4, nrounds: usize) -> Result<()> {
+        if let Err(e) = connect_and_wait(&mut self.libos, self.sockqd, remote) {
+            close(&mut self.libos, self.sockqd);
+            anyhow::bail!("connect and wait failed: {:?}", e);
+        }
 
-    // TODO: close socket when we get close working properly in catnip.
+        // Issue n sends.
+        for i in 0..nrounds {
+            let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
 
-    Ok(())
+            // Push data.
+            {
+                let sga: demi_sgarray_t = mksga(&mut self.libos, BUFFER_SIZE, fill_char)?;
+                if let Err(e) = push_and_wait(&mut self.libos, self.sockqd, &sga) {
+                    freesga(&mut self.libos, sga);
+                    anyhow::bail!("push and wait failed: {:?}", e);
+                }
+                if let Err(e) = self.libos.sgafree(sga) {
+                    anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+                }
+            }
+
+            let mut fill_check: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+
+            // Pop data, and sanity check it.
+            {
+                let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+                if let Err(e) = pop_and_wait(&mut self.libos, self.sockqd, &mut recvbuf) {
+                    anyhow::bail!("pop and wait failed: {:?}", e);
+                }
+                for x in &recvbuf {
+                    if *x != fill_check {
+                        anyhow::bail!("fill check failed: expected={:?} received={:?}", fill_check, *x);
+                    }
+                    fill_check = (fill_check % (u8::MAX - 1) + 1) as u8;
+                }
+            }
+
+            println!("ping {:?}", i);
+        }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
+        // TODO: close socket when we get close working properly in catnip.
+
+        Ok(())
+    }
+}
+
+// The Drop implementation for the TCP client.
+impl Drop for TcpClient {
+    fn drop(&mut self) {
+        close(&mut self.libos, self.sockqd);
+    }
 }
 
 //======================================================================================================================
@@ -392,13 +387,24 @@ pub fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {
+        // Create the LibOS.
+        let libos_name: LibOSName = match LibOSName::from_env() {
+            Ok(libos_name) => libos_name.into(),
+            Err(e) => anyhow::bail!("{:?}", e),
+        };
+        let libos: LibOS = match LibOS::new(libos_name) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
+        };
         let sockaddr: SocketAddrV4 = SocketAddrV4::from_str(&args[2])?;
+
+        // Invoke the appropriate peer.
         if args[1] == "--server" {
-            let ret: Result<()> = server(sockaddr);
-            return ret;
+            let mut server: TcpServer = TcpServer::new(libos)?;
+            return server.run(sockaddr, NROUNDS);
         } else if args[1] == "--client" {
-            let ret: Result<()> = client(sockaddr);
-            return ret;
+            let mut client: TcpClient = TcpClient::new(libos)?;
+            return client.run(sockaddr, NROUNDS);
         }
     }
 
