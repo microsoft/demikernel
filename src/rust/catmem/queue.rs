@@ -59,27 +59,17 @@ impl CatmemQueue {
 
     /// Removes an operation from the list of pending operations on this queue.
     pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
-        let (mut task_handle, _): (TaskHandle, YielderHandle) = self
-            .pending_ops
+        self.pending_ops
             .remove_entry(handle)
             .expect("operation should be registered");
-
-        // Remove the key so this doesn't cause the scheduler to drop the whole task.
-        // We need a better explicit mechanism to remove tasks from the scheduler.
-        // FIXME: https://github.com/demikernel/demikernel/issues/593
-        task_handle.take_task_id();
     }
 
     /// Cancels all pending operations on this queue.
     pub fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (mut handle, mut yielder_handle) in self.pending_ops.drain() {
+        for (handle, mut yielder_handle) in self.pending_ops.drain() {
             if !handle.has_completed() {
                 yielder_handle.wake_with(Err(cause.clone()));
             }
-            // Remove the key so this doesn't cause the scheduler to drop the whole task.
-            // We need a better explicit mechanism to remove tasks from the scheduler.
-            // FIXME: https://github.com/demikernel/demikernel/issues/593
-            handle.take_task_id();
         }
     }
 }

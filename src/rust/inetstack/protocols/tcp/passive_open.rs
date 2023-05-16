@@ -224,7 +224,10 @@ impl<const N: usize> PassiveSocket<N> {
                 local_window_scale, remote_window_scale
             );
 
-            self.inflight.remove(&remote);
+            if let Some(mut inflight) = self.inflight.remove(&remote) {
+                inflight.handle.deschedule();
+            }
+
             let cb = ControlBlock::new(
                 self.local,
                 remote,

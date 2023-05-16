@@ -84,14 +84,10 @@ impl CatnapQueue {
     /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
     /// yielded, wake the coroutine with an error.
     pub fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (mut handle, mut yielder_handle) in self.pending_ops.drain() {
+        for (handle, mut yielder_handle) in self.pending_ops.drain() {
             if !handle.has_completed() {
                 yielder_handle.wake_with(Err(cause.clone()));
             }
-            // Remove the key so this doesn't cause the scheduler to drop the whole task.
-            // We need a better explicit mechanism to remove tasks from the scheduler.
-            // FIXME: https://github.com/demikernel/demikernel/issues/593
-            handle.take_task_id();
         }
     }
 }
