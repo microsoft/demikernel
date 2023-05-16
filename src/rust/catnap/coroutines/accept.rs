@@ -18,17 +18,11 @@ use ::std::{
 
 /// This function polls accept on a listening socket until it receives a new accepted connection back.
 pub async fn accept_coroutine(fd: RawFd, yielder: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
-    let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
+    let mut saddr: libc::sockaddr = unsafe { mem::zeroed() };
     let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
 
     loop {
-        match unsafe {
-            libc::accept(
-                fd,
-                (&mut sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
-                &mut address_len,
-            )
-        } {
+        match unsafe { libc::accept(fd, &mut saddr as *mut libc::sockaddr, &mut address_len) } {
             // Operation completed.
             new_fd if new_fd >= 0 => {
                 trace!("connection accepted ({:?})", new_fd);
@@ -49,7 +43,7 @@ pub async fn accept_coroutine(fd: RawFd, yielder: Yielder) -> Result<(RawFd, Soc
                     }
                 }
 
-                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&sockaddr);
+                let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
                 return Ok((new_fd, addr));
             },
             _ => {

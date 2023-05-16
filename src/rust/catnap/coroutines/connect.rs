@@ -19,12 +19,12 @@ use ::std::{
 /// This function polls connect on a socket file descriptor until the connection is established (or returns an error).
 pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
     loop {
-        let sockaddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
+        let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
         match unsafe {
             libc::connect(
                 fd,
-                (&sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-                mem::size_of_val(&sockaddr) as u32,
+                &saddr as *const libc::sockaddr,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {
             // Operation completed.

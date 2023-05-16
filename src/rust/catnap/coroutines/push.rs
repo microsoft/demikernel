@@ -27,16 +27,17 @@ pub async fn push_coroutine(
     addr: Option<SocketAddrV4>,
     yielder: Yielder,
 ) -> Result<(), Fail> {
-    let dest_addr: Option<libc::sockaddr_in> = if let Some(addr_) = addr.as_ref() {
-        Some(linux::socketaddrv4_to_sockaddr_in(addr_))
+    let saddr: Option<libc::sockaddr> = if let Some(addr) = addr.as_ref() {
+        Some(linux::socketaddrv4_to_sockaddr(addr))
     } else {
         None
     };
 
-    let (sockaddr_ptr, sockaddr_len) = if let Some(sockaddr) = dest_addr.as_ref() {
+    // Note that we use references here, so as we don't end up constructing a dangling pointer.
+    let (saddr_ptr, sockaddr_len) = if let Some(saddr_ref) = saddr.as_ref() {
         (
-            (sockaddr as *const libc::sockaddr_in) as *const libc::sockaddr,
-            mem::size_of_val(sockaddr) as u32,
+            saddr_ref as *const libc::sockaddr,
+            mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
         )
     } else {
         (ptr::null(), 0)
@@ -48,7 +49,7 @@ pub async fn push_coroutine(
                 (buf.as_ptr() as *const u8) as *const libc::c_void,
                 buf.len(),
                 libc::MSG_DONTWAIT,
-                sockaddr_ptr,
+                saddr_ptr,
                 sockaddr_len,
             )
         } {

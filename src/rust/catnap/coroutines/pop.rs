@@ -32,7 +32,7 @@ pub async fn pop_coroutine(
 ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
     let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
     let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
-    let mut sockaddr: libc::sockaddr_in = unsafe { mem::zeroed() };
+    let mut saddr: libc::sockaddr = unsafe { mem::zeroed() };
     let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
 
     // Check that we allocated a DemiBuffer that is big enough.
@@ -46,7 +46,7 @@ pub async fn pop_coroutine(
                 (buf.as_mut_ptr() as *mut u8) as *mut libc::c_void,
                 size,
                 libc::MSG_DONTWAIT,
-                (&mut sockaddr as *mut libc::sockaddr_in) as *mut libc::sockaddr,
+                &mut saddr as *mut libc::sockaddr,
                 &mut addrlen as *mut u32,
             )
         } {
@@ -54,7 +54,7 @@ pub async fn pop_coroutine(
             nbytes if nbytes >= 0 => {
                 trace!("data received ({:?}/{:?} bytes)", nbytes, limits::RECVBUF_SIZE_MAX);
                 buf.trim(size - nbytes as usize)?;
-                let addr: SocketAddrV4 = linux::sockaddr_in_to_socketaddrv4(&sockaddr);
+                let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
                 return Ok((Some(addr), buf.clone()));
             },
 

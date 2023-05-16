@@ -31,10 +31,7 @@ pub fn pack_result(rt: Rc<LinuxRuntime>, result: OperationResult, qd: QDesc, qt:
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
-            let saddr: libc::sockaddr = {
-                let sin: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&addr);
-                unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(sin) }
-            };
+            let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
@@ -58,9 +55,8 @@ pub fn pack_result(rt: Rc<LinuxRuntime>, result: OperationResult, qd: QDesc, qt:
         },
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
-                if let Some(endpoint) = addr {
-                    let saddr: libc::sockaddr_in = linux::socketaddrv4_to_sockaddr_in(&endpoint);
-                    sga.sga_addr = unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(saddr) };
+                if let Some(addr) = addr {
+                    sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr)
                 }
                 let qr_value = demi_qr_value_t { sga };
                 demi_qresult_t {
