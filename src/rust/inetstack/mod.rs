@@ -612,7 +612,7 @@ impl<const N: usize> InetStack<N> {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: TaskHandle = match self.scheduler.from_task_id(qt.into()) {
+                let handle: TaskHandle = match self.scheduler.from_task_id(qt.into()) {
                     Some(handle) => handle,
                     None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
                 };
@@ -622,11 +622,6 @@ impl<const N: usize> InetStack<N> {
                     let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
                     return Ok((i, qd, r));
                 }
-
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_task_id();
             }
         }
     }
@@ -636,7 +631,11 @@ impl<const N: usize> InetStack<N> {
     ///
     /// This function will panic if the specified future had not completed or is _background_ future.
     pub fn take_operation(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
+        let task: OperationTask = if let Some(task) = self.scheduler.remove(&handle) {
+            OperationTask::from(task.as_any())
+        } else {
+            panic!("Removing task that does not exist (either was previously removed or never inserted)");
+        };
 
         task.get_result().expect("Coroutine not finished")
     }

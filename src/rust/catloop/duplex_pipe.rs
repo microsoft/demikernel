@@ -90,13 +90,9 @@ impl DuplexPipe {
 
     /// Polls a duplex pipe.
     pub fn poll(catmem: &Rc<RefCell<CatmemLibOS>>, qt: QToken) -> Result<Option<TaskHandle>, Fail> {
-        let mut handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
+        let handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
 
-        // Return this operation to the scheduling queue by removing the associated key
-        // (which would otherwise cause the operation to be freed).
-        // FIXME: https://github.com/demikernel/demikernel/issues/593
         if !handle.has_completed() {
-            handle.take_task_id();
             return Ok(None);
         }
 
@@ -106,8 +102,8 @@ impl DuplexPipe {
     /// Drops a pending operation on a duplex pipe.
     pub fn drop(catmem: &Rc<RefCell<CatmemLibOS>>, qt: QToken) -> Result<(), Fail> {
         // Retrieve a handle to the concerned co-routine and execute its destructor.
-        let handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
-        drop(handle);
+        let mut handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
+        handle.deschedule();
         Ok(())
     }
 }

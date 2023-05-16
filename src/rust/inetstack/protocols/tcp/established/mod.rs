@@ -39,7 +39,7 @@ pub struct EstablishedSocket<const N: usize> {
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: Rc<TaskHandle>,
+    background: TaskHandle,
 }
 
 impl<const N: usize> EstablishedSocket<N> {
@@ -50,8 +50,8 @@ impl<const N: usize> EstablishedSocket<N> {
             String::from("Inetstack::TCP::established::background"),
             Box::pin(background::background(cb.clone(), qd, dead_socket_tx)),
         );
-        let handle: Rc<TaskHandle> = match cb.scheduler.insert(task) {
-            Some(handle) => Rc::<TaskHandle>::new(handle),
+        let handle: TaskHandle = match cb.scheduler.insert(task) {
+            Some(handle) => handle,
             None => panic!("failed to insert task in the scheduler"),
         };
         Self {
@@ -90,5 +90,15 @@ impl<const N: usize> EstablishedSocket<N> {
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
         (self.cb.get_local(), self.cb.get_remote())
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl<const N: usize> Drop for EstablishedSocket<N> {
+    fn drop(&mut self) {
+        self.background.deschedule();
     }
 }

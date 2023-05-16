@@ -31,12 +31,12 @@ use ::std::{
 /// This is used to uniquely identify a Task in the scheduler. Used to check on the status of the coroutine.
 #[derive(Clone)]
 pub struct TaskHandle {
-    /// External identifying token.
-    task_id: Option<u64>,
-    /// Corresponding location in the scheduler's memory chunk.
-    index: Option<usize>,
-    /// Memory chunk in which the corresponding handle lives.
-    chunk: WakerPageRef,
+    /// External identifier for this task.
+    task_id: u64,
+    /// Index of this task's status bits in the waker pages.
+    index: usize,
+    /// Reference to this task's status bits.
+    page: WakerPageRef,
 }
 
 /// Yield Handle
@@ -52,33 +52,28 @@ pub struct YielderHandle {
 // Associate Functions
 //==============================================================================
 
-/// Associate Functions for Scheduler Handlers
+/// Associate Functions for Task Handlers
 impl TaskHandle {
-    /// Creates a new Scheduler Handle.
-    pub fn new(task_id: u64, index: usize, waker_page: WakerPageRef) -> Self {
-        Self {
-            index: Some(index),
-            task_id: Some(task_id),
-            chunk: waker_page,
-        }
+    /// Creates a new Task Handle.
+    pub fn new(task_id: u64, index: usize, page: WakerPageRef) -> Self {
+        Self { task_id, index, page }
     }
 
-    /// Takes out the key stored in the target [SchedulerHandle].
-    pub fn take_task_id(&mut self) -> Option<u64> {
-        self.index.take();
-        self.task_id.take()
-    }
-
-    /// Queries whether or not the future associated with the target [SchedulerHandle] has completed.
+    /// Queries whether or not the coroutine in the Task has completed.
     pub fn has_completed(&self) -> bool {
-        let subpage_ix: usize = self.index.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
-        self.chunk.has_completed(subpage_ix)
+        let subpage_ix: usize = self.index & (WAKER_BIT_LENGTH - 1);
+        self.page.has_completed(subpage_ix)
     }
 
-    /// Returns the raw key stored in the target [SchedulerHandle].
-    pub fn get_task_id(mut self) -> u64 {
-        self.index.take();
-        self.task_id.take().unwrap()
+    /// Returns the task_id stored in the target [SchedulerHandle].
+    pub fn get_task_id(&self) -> u64 {
+        self.task_id
+    }
+
+    /// Removes the task from the scheduler and keeps it from running again.
+    pub fn deschedule(&mut self) {
+        let subpage_ix: usize = self.index & (WAKER_BIT_LENGTH - 1);
+        self.page.mark_dropped(subpage_ix);
     }
 }
 
@@ -120,23 +115,9 @@ impl YielderHandle {
 // Trait Implementations
 //==============================================================================
 
-/// Drop Trait Implementation for Scheduler Handlers
-impl Drop for TaskHandle {
-    /// Decreases the reference count of the target [SchedulerHandle].
-    fn drop(&mut self) {
-        if let Some(key) = self.index.take() {
-            let subpage_ix: usize = key as usize & (WAKER_BIT_LENGTH - 1);
-            self.chunk.mark_dropped(subpage_ix);
-        }
-    }
-}
-
 impl Hash for TaskHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let key: u64 = self
-            .task_id
-            .expect("SchedulerHandle should have a key to insert into hashmap");
-        key.hash(state);
+        self.task_id.hash(state);
     }
 }
 

@@ -81,21 +81,20 @@ pub struct Scheduler {
 /// Associate Functions for Scheduler
 impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
-    pub fn remove(&self, mut handle: TaskHandle) -> Box<dyn Task> {
+    pub fn remove(&self, handle: &TaskHandle) -> Option<Box<dyn Task>> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
-        // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let index: usize = *self
-            .task_ids
-            .borrow()
-            .get(&handle.take_task_id().unwrap())
-            .expect("Token should be in the token table");
+        let index: usize = match self.task_ids.borrow().get(&handle.get_task_id()) {
+            Some(index) => *index,
+            None => return None,
+        };
+
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
-        assert!(!page.was_dropped(subpage_ix));
+        assert!(!page.was_dropped(subpage_ix), "Task was previously dropped");
         page.clear(subpage_ix);
-        self.tasks.borrow_mut().remove_unpin(index).unwrap()
+        self.tasks.borrow_mut().remove_unpin(index)
     }
 
     /// Given a task id return a handle to the task.
@@ -107,7 +106,7 @@ impl Scheduler {
         };
         self.tasks.borrow().get(index)?;
         let page: &WakerPageRef = {
-            let (pages_ix, _) = self.get_page_indices(index);
+            let (pages_ix, _) = self.get_page_indexes(index);
             &pages[pages_ix]
         };
         let handle: TaskHandle = TaskHandle::new(task_id, index, page.clone());
@@ -123,7 +122,7 @@ impl Scheduler {
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
         let task_id: u64 = loop {
-            let id: u64 = id_gen.next_u64();
+            let id: u64 = id_gen.next_u32() as u64;
             if self.task_ids.borrow_mut().insert(id, index).is_none() {
                 break id;
             }
@@ -140,19 +139,19 @@ impl Scheduler {
             pages.push(WakerPageRef::default());
         }
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
         let (page, _): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
         Some(TaskHandle::new(task_id, index, page.clone()))
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
-    fn get_page_indices(&self, index: usize) -> (usize, usize) {
+    fn get_page_indexes(&self, index: usize) -> (usize, usize) {
         (index >> WAKER_BIT_LENGTH_SHIFT, index & (WAKER_BIT_LENGTH - 1))
     }
 
@@ -201,11 +200,18 @@ impl Scheduler {
             if dropped != 0 {
                 // Handle dropped tasks only.
                 for subpage_ix in BitIter::from(dropped) {
-                    if subpage_ix != 0 {
-                        let ix: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
-                        tasks.remove(ix);
-                        pages[page_ix].clear(subpage_ix);
-                    }
+                    let index: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
+                    let len: usize = task_ids.len();
+                    // Remove the task id that points to this offset.
+                    // We could build a backmap, but we do not expect drop to happen very often.
+                    task_ids.retain(|_, v| *v != index);
+                    // If there is more than one task id pointing at the offset, something has gone very wrong.
+                    assert!(
+                        task_ids.len() == len - 1,
+                        "There should never been more than one task id pointing at an offset!"
+                    );
+                    tasks.remove(index);
+                    pages[page_ix].clear(subpage_ix);
                 }
             }
         }
