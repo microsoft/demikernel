@@ -83,10 +83,7 @@ impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
     pub fn remove(&self, handle: &TaskHandle) -> Option<Box<dyn Task>> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
-        let index: usize = match self.task_ids.borrow().get(&handle.get_task_id()) {
-            Some(index) => *index,
-            None => return None,
-        };
+        let index: usize = self.task_ids.borrow_mut().remove(&handle.get_task_id())?;
 
         let (page, subpage_ix): (&WakerPageRef, usize) = {
             let (pages_ix, subpage_ix) = self.get_page_indexes(index);
@@ -122,7 +119,7 @@ impl Scheduler {
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
         let task_id: u64 = loop {
-            let id: u64 = id_gen.next_u32() as u64;
+            let id: u64 = id_gen.next_u64() as u16 as u64;
             if self.task_ids.borrow_mut().insert(id, index).is_none() {
                 break id;
             }
@@ -198,6 +195,8 @@ impl Scheduler {
             }
             // There is some dropped task in this page, so iterate through it.
             if dropped != 0 {
+                let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
+
                 // Handle dropped tasks only.
                 for subpage_ix in BitIter::from(dropped) {
                     let index: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
@@ -405,6 +404,56 @@ mod tests {
 
         // Ensure that the second task has a unique id.
         crate::ensure_neq!(task_id2, task_id);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scheduler_drop() -> Result<()> {
+        let scheduler: Scheduler = Scheduler::default();
+
+        // Create and run a task.
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
+        let mut handle: TaskHandle = match scheduler.insert(task) {
+            Some(handle) => handle,
+            None => anyhow::bail!("insert() failed"),
+        };
+
+        // Drop the task.
+        handle.deschedule();
+
+        // Poll the scheduler to be sure the task is removed.
+        scheduler.poll();
+
+        // Ensure that the task has not completed.
+        crate::ensure_eq!(handle.has_completed(), false);
+
+        // Removing the task again should fail.
+        crate::ensure_eq!(scheduler.remove(&handle).is_none(), true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scheduler_remove() -> Result<()> {
+        let scheduler: Scheduler = Scheduler::default();
+
+        // Create and run a task.
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0)));
+        let handle: TaskHandle = match scheduler.insert(task) {
+            Some(handle) => handle,
+            None => anyhow::bail!("insert() failed"),
+        };
+        scheduler.poll();
+
+        // Ensure that the first task has completed.
+        crate::ensure_eq!(handle.has_completed(), true);
+
+        // Remove the task.
+        crate::ensure_eq!(scheduler.remove(&handle).is_some(), true);
+
+        // Removing the task again should fail.
+        crate::ensure_eq!(scheduler.remove(&handle).is_none(), true);
 
         Ok(())
     }
