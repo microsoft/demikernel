@@ -65,7 +65,7 @@ impl TaskHandle {
         self.page.has_completed(subpage_ix)
     }
 
-    /// Returns the task_id stored in the target [SchedulerHandle].
+    /// Returns the task_id stored in the target [TaskHandle].
     pub fn get_task_id(&self) -> u64 {
         self.task_id
     }

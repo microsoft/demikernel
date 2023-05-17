@@ -10,7 +10,7 @@
 //! but are also important in cases of non-normal operation (e.g., a socket is closed while an operation is pending on
 //! it).
 //!
-//! (1)  Scheduler (scheduler.rs)                SchedulerHandle (handle.rs): check whether the Task has finished.
+//! (1)  Scheduler (scheduler.rs)                TaskHandle (handle.rs): check whether the Task has finished.
 //!          | owns many
 //!          V
 //! (2)    Task (task.rs)
@@ -23,7 +23,7 @@
 //!                                           indicates error and that the coroutine should exit gracefully.
 //!
 //! The [Task] structure is the primary unit of work in Demikernel. The [Scheduler] is responsible for scheduling [Task]
-//! but it treats each [Task] simply as a unit that consumes CPU cycles until it completes.  The [SchedulerHandle] is
+//! but it treats each [Task] simply as a unit that consumes CPU cycles until it completes.  The [TaskHandle] is
 //! used to check whether a task is still running or complete and to take a task out of the scheduler once it stops. A
 //! Task holds a single coroutine and runs it until it produces a result, then stores the result for later. Each
 //! coroutine is an async function defined by a libOS, typically to perform either an I/O operation or a background
