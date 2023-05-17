@@ -203,6 +203,8 @@ pub struct TcpServer {
     libos: LibOS,
     /// Local socket queue descriptor.
     sockqd: QDesc,
+    /// Accepted socket queue descriptor.
+    accepted_qd: Option<QDesc>,
 }
 
 // Implementation of the TCP server.
@@ -214,7 +216,11 @@ impl TcpServer {
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        return Ok(Self { libos, sockqd });
+        return Ok(Self {
+            libos,
+            sockqd,
+            accepted_qd: None,
+        });
     }
 
     pub fn run(&mut self, local: SocketAddrV4, nrounds: usize) -> Result<()> {
@@ -230,8 +236,8 @@ impl TcpServer {
         };
 
         // Accept incoming connections.
-        let accepted_qd: QDesc = match accept_and_wait(&mut self.libos, self.sockqd) {
-            Ok(qd) => qd,
+        self.accepted_qd = match accept_and_wait(&mut self.libos, self.sockqd) {
+            Ok(qd) => Some(qd),
             Err(e) => anyhow::bail!("accept failed: {:?}", e),
         };
 
@@ -242,14 +248,16 @@ impl TcpServer {
             // Pop data, and sanity check it.
             {
                 let mut recvbuf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-                if let Err(e) = pop_and_wait(&mut self.libos, accepted_qd, &mut recvbuf) {
-                    close(&mut self.libos, accepted_qd);
+                if let Err(e) = pop_and_wait(
+                    &mut self.libos,
+                    self.accepted_qd.expect("should be a valid queue descriptor"),
+                    &mut recvbuf,
+                ) {
                     anyhow::bail!("pop and wait failed: {:?}", e);
                 }
 
                 for x in &recvbuf {
                     if *x != fill_char {
-                        close(&mut self.libos, accepted_qd);
                         anyhow::bail!("fill check failed: expected={:?} received={:?}", fill_char, *x);
                     }
                     fill_char = (fill_char % (u8::MAX - 1) + 1) as u8;
@@ -259,14 +267,16 @@ impl TcpServer {
             // Push data.
             {
                 let sga: demi_sgarray_t = mksga(&mut self.libos, BUFFER_SIZE, (i % (u8::MAX as usize - 1) + 1) as u8)?;
-                if let Err(e) = push_and_wait(&mut self.libos, accepted_qd, &sga) {
+                if let Err(e) = push_and_wait(
+                    &mut self.libos,
+                    self.accepted_qd.expect("should be a valid queue descriptor"),
+                    &sga,
+                ) {
                     freesga(&mut self.libos, sga);
-                    close(&mut self.libos, accepted_qd);
                     anyhow::bail!("push and wait failed: {:?}", e)
                 }
 
                 if let Err(e) = self.libos.sgafree(sga) {
-                    close(&mut self.libos, accepted_qd);
                     anyhow::bail!("failed to release scatter-gather array: {:?}", e)
                 }
             }
@@ -287,6 +297,9 @@ impl TcpServer {
 impl Drop for TcpServer {
     fn drop(&mut self) {
         close(&mut self.libos, self.sockqd);
+        if let Some(accepted_qd) = self.accepted_qd {
+            close(&mut self.libos, accepted_qd);
+        }
     }
 }
 
@@ -312,7 +325,6 @@ impl TcpClient {
 
     fn run(&mut self, remote: SocketAddrV4, nrounds: usize) -> Result<()> {
         if let Err(e) = connect_and_wait(&mut self.libos, self.sockqd, remote) {
-            close(&mut self.libos, self.sockqd);
             anyhow::bail!("connect and wait failed: {:?}", e);
         }
 
