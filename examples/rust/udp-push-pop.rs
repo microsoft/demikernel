@@ -20,6 +20,10 @@ use ::std::{
     slice,
     str::FromStr,
 };
+use log::{
+    error,
+    warn,
+};
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -42,6 +46,7 @@ use ::demikernel::perftools::profiler;
 
 const BUFFER_SIZE: usize = 64;
 const FILL_CHAR: u8 = 0x65;
+const NSENDS: usize = 1024;
 
 //======================================================================================================================
 // mksga()
@@ -83,8 +88,8 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
 /// Free scatter-gather array and warn on error.
 fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
     if let Err(e) = libos.sgafree(sga) {
-        println!("ERROR: sgafree() failed (error={:?})", e);
-        println!("WARN: leaking sga");
+        error!("sgafree() failed (error={:?})", e);
+        warn!("leaking sga");
     }
 }
 
@@ -95,173 +100,179 @@ fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
 /// Closes a socket and warns if not successful.
 fn close(libos: &mut LibOS, sockqd: QDesc) {
     if let Err(e) = libos.close(sockqd) {
-        println!("ERROR: close() failed (error={:?})", e);
-        println!("WARN: leaking sockqd={:?}", sockqd);
+        error!("close() failed (error={:?})", e);
+        warn!("leaking sockqd={:?}", sockqd);
     }
 }
 
-//======================================================================================================================
-// server()
-//======================================================================================================================
+// The UDP server.
+pub struct UdpServer {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Local socket queue descriptor.
+    sockqd: QDesc,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
+}
 
-fn server(local: SocketAddrV4) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-    let nsends: usize = 1024;
-    let nreceives: usize = (8 * nsends) / 128;
-
-    // Setup peer.
-    let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
-        Ok(sockqd) => sockqd,
-        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
-    };
-    match libos.bind(sockqd, local) {
-        Ok(()) => (),
-        Err(e) => {
-            // If error, close socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("bind failed: {:?}", e)
-        },
-    };
-
-    // Get at least nreceives.
-    for i in 0..nreceives {
-        // Receive data.
-        let qt: QToken = match libos.pop(sockqd, None) {
-            Ok(qt) => qt,
-            Err(e) => {
-                // If error, close socket.
-                close(&mut libos, sockqd);
-                anyhow::bail!("pop failed: {:?}", e)
-            },
+// Implementation of the UDP server.
+impl UdpServer {
+    pub fn new(mut libos: LibOS) -> Result<Self> {
+        // Create the local socket.
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            Ok(_) => {
-                // If error, close socket.
-                close(&mut libos, sockqd);
-                anyhow::bail!("unexpected result")
-            },
-            Err(e) => {
-                // If error, close socket.
-                close(&mut libos, sockqd);
-                anyhow::bail!("operation failed: {:?}", e)
-            },
+        return Ok(Self {
+            libos,
+            sockqd,
+            sga: None,
+        });
+    }
+
+    fn run(&mut self, local: SocketAddrV4, fill_char: u8, nsends: usize) -> Result<()> {
+        let nreceives: usize = (8 * nsends) / 128;
+
+        match self.libos.bind(self.sockqd, local) {
+            Ok(()) => (),
+            Err(e) => anyhow::bail!("bind failed: {:?}", e),
         };
 
-        // Sanity check received data.
-        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-        let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-        for x in slice {
-            if *x != FILL_CHAR {
-                // If not matching, close socket and free scatter-gather array.
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("fill check failed: expected={:?} received={:?}", FILL_CHAR, *x);
+        // Get at least nreceives.
+        for i in 0..nreceives {
+            // Receive data.
+            let qt: QToken = match self.libos.pop(self.sockqd, None) {
+                Ok(qt) => qt,
+                Err(e) => anyhow::bail!("pop failed: {:?}", e),
+            };
+            self.sga = match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
+                Ok(_) => anyhow::bail!("unexpected result"),
+                Err(e) => anyhow::bail!("operation failed: {:?}", e),
+            };
+
+            if let Some(sga) = self.sga {
+                // Sanity check received data.
+                let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+                let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+                let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+                for x in slice {
+                    demikernel::ensure_eq!(*x, fill_char);
+                }
+                // Free up the scatter-gather array.
+                match self.libos.sgafree(sga) {
+                    Ok(_) => self.sga = None,
+                    Err(e) => anyhow::bail!("failed to release scatter-gather array: {:?}", e),
+                }
+            } else {
+                anyhow::bail!("expected a valid sga");
             }
+
+            println!("pop ({:?})", i);
         }
 
-        if let Err(e) = libos.sgafree(sga) {
-            // If error, close socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-        }
-        println!("pop ({:?})", i);
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
+        // TODO: close socket when we get close working properly in catnip.
+        Ok(())
     }
-
-    #[cfg(feature = "profiler")]
-    profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
-    // TODO: close socket when we get close working properly in catnip.
-    Ok(())
 }
 
-//======================================================================================================================
-// client()
-//======================================================================================================================
-
-fn client(local: SocketAddrV4, remote: SocketAddrV4) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-    let nsends: usize = 1024;
-
-    // Setup peer.
-    let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
-        Ok(sockqd) => sockqd,
-        Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
-    };
-    match libos.bind(sockqd, local) {
-        Ok(()) => (),
-        Err(e) => {
-            // If error, close socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("bind failed: {:?}", e)
-        },
-    };
-
-    // Issue n sends.
-    for i in 0..nsends {
-        let sga: demi_sgarray_t = match mksga(&mut libos, BUFFER_SIZE, FILL_CHAR) {
-            Ok(sga) => sga,
-            Err(e) => {
-                // If error, close socket and free scatter-gather array.
-                close(&mut libos, sockqd);
-                anyhow::bail!("failed to allocate scatter-gather array: {:?}", e);
-            },
-        };
-
-        // Send data.
-        let qt: QToken = match libos.pushto(sockqd, &sga, remote) {
-            Ok(qt) => qt,
-            Err(e) => {
-                // If error, close socket and free scatter-gather array.
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("push failed: {:?}", e)
-            },
-        };
-        match libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-            Err(e) => {
-                // If error, close socket and free scatter-gather array.
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("operation failed: {:?}", e)
-            },
-            _ => {
-                // If error, close socket and free scatter-gather array.
-                freesga(&mut libos, sga);
-                close(&mut libos, sockqd);
-                anyhow::bail!("unexpected result")
-            },
-        };
-        if let Err(e) = libos.sgafree(sga) {
-            // If error, close socket.
-            close(&mut libos, sockqd);
-            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+// The Drop implementation for the UDP server.
+impl Drop for UdpServer {
+    fn drop(&mut self) {
+        close(&mut self.libos, self.sockqd);
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
         }
+    }
+}
 
-        println!("push ({:?})", i);
+// The UDP client.
+pub struct UdpClient {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Local socket queue descriptor.
+    sockqd: QDesc,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
+}
+
+// Implementation of the UDP client.
+impl UdpClient {
+    pub fn new(mut libos: LibOS) -> Result<Self> {
+        // Create the local socket.
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+
+        return Ok(Self {
+            libos,
+            sockqd,
+            sga: None,
+        });
     }
 
-    #[cfg(feature = "profiler")]
-    profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+    fn run(
+        &mut self,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        fill_char: u8,
+        buffer_size: usize,
+        nsends: usize,
+    ) -> Result<()> {
+        match self.libos.bind(self.sockqd, local) {
+            Ok(()) => (),
+            Err(e) => anyhow::bail!("bind failed: {:?}", e),
+        };
 
-    // TODO: close socket when we get close working properly in catnip.
-    Ok(())
+        // Issue n sends.
+        for i in 0..nsends {
+            self.sga = match mksga(&mut self.libos, buffer_size, fill_char) {
+                Ok(sga) => Some(sga),
+                Err(e) => anyhow::bail!("failed to allocate scatter-gather array: {:?}", e),
+            };
+
+            if let Some(sga) = self.sga {
+                // Send data.
+                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, remote) {
+                    Ok(qt) => qt,
+                    Err(e) => anyhow::bail!("push failed: {:?}", e),
+                };
+
+                match self.libos.wait(qt, None) {
+                    Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
+                    Err(e) => anyhow::bail!("operation failed: {:?}", e),
+                    _ => anyhow::bail!("unexpected result"),
+                };
+
+                match self.libos.sgafree(sga) {
+                    Ok(_) => self.sga = None,
+                    Err(e) => anyhow::bail!("failed to release scatter-gather array: {:?}", e),
+                }
+            }
+
+            println!("push ({:?})", i);
+        }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
+        // TODO: close socket when we get close working properly in catnip.
+        Ok(())
+    }
+}
+
+// The Drop implementation for the UDP client.
+impl Drop for UdpClient {
+    fn drop(&mut self) {
+        close(&mut self.libos, self.sockqd);
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
+        }
+    }
 }
 
 //======================================================================================================================
@@ -284,14 +295,23 @@ pub fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {
+        // Create the LibOS.
+        let libos_name: LibOSName = match LibOSName::from_env() {
+            Ok(libos_name) => libos_name.into(),
+            Err(e) => anyhow::bail!("{:?}", e),
+        };
+        let libos: LibOS = match LibOS::new(libos_name) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
+        };
         let local: SocketAddrV4 = SocketAddrV4::from_str(&args[2])?;
         if args[1] == "--server" {
-            let ret: Result<()> = server(local);
-            return ret;
+            let mut server: UdpServer = UdpServer::new(libos)?;
+            return server.run(local, FILL_CHAR, NSENDS);
         } else if args[1] == "--client" && args.len() == 4 {
             let remote: SocketAddrV4 = SocketAddrV4::from_str(&args[3])?;
-            let ret: Result<()> = client(local, remote);
-            return ret;
+            let mut client: UdpClient = UdpClient::new(libos)?;
+            return client.run(local, remote, FILL_CHAR, BUFFER_SIZE, NSENDS);
         }
     }
 
