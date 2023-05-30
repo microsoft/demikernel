@@ -21,6 +21,10 @@ use ::std::{
     str::FromStr,
     u8,
 };
+use log::{
+    error,
+    warn,
+};
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -90,8 +94,8 @@ fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
 /// Free scatter-gather array and warn on error.
 fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
     if let Err(e) = libos.sgafree(sga) {
-        println!("ERROR: sgafree() failed (error={:?})", e);
-        println!("WARN: leaking sga");
+        error!("sgafree() failed (error={:?})", e);
+        warn!("leaking sga");
     }
 }
 
@@ -192,8 +196,8 @@ fn pop_and_wait(libos: &mut LibOS, sockqd: QDesc, recvbuf: &mut [u8]) -> Result<
 /// Closes a socket and warns if not successful.
 fn close(libos: &mut LibOS, sockqd: QDesc) {
     if let Err(e) = libos.close(sockqd) {
-        println!("ERROR: close() failed (error={:?})", e);
-        println!("WARN: leaking sockqd={:?}", sockqd);
+        error!("close() failed (error={:?})", e);
+        warn!("leaking sockqd={:?}", sockqd);
     }
 }
 
@@ -205,6 +209,8 @@ pub struct TcpServer {
     sockqd: QDesc,
     /// Accepted socket queue descriptor.
     accepted_qd: Option<QDesc>,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
 }
 
 // Implementation of the TCP server.
@@ -220,19 +226,18 @@ impl TcpServer {
             libos,
             sockqd,
             accepted_qd: None,
+            sga: None,
         });
     }
 
     pub fn run(&mut self, local: SocketAddrV4, nrounds: usize) -> Result<()> {
-        match self.libos.bind(self.sockqd, local) {
-            Ok(()) => (),
-            Err(e) => anyhow::bail!("bind failed: {:?}", e),
+        if let Err(e) = self.libos.bind(self.sockqd, local) {
+            anyhow::bail!("bind failed: {:?}", e)
         };
 
         // Mark as a passive one.
-        match self.libos.listen(self.sockqd, 16) {
-            Ok(()) => (),
-            Err(e) => anyhow::bail!("listen failed: {:?}", e),
+        if let Err(e) = self.libos.listen(self.sockqd, 16) {
+            anyhow::bail!("listen failed: {:?}", e)
         };
 
         // Accept incoming connections.
@@ -266,17 +271,20 @@ impl TcpServer {
 
             // Push data.
             {
-                let sga: demi_sgarray_t = mksga(&mut self.libos, BUFFER_SIZE, (i % (u8::MAX as usize - 1) + 1) as u8)?;
+                self.sga = Some(mksga(
+                    &mut self.libos,
+                    BUFFER_SIZE,
+                    (i % (u8::MAX as usize - 1) + 1) as u8,
+                )?);
                 if let Err(e) = push_and_wait(
                     &mut self.libos,
                     self.accepted_qd.expect("should be a valid queue descriptor"),
-                    &sga,
+                    &self.sga.expect("should be a valid sgarray"),
                 ) {
-                    freesga(&mut self.libos, sga);
                     anyhow::bail!("push and wait failed: {:?}", e)
                 }
 
-                if let Err(e) = self.libos.sgafree(sga) {
+                if let Err(e) = self.libos.sgafree(self.sga.take().unwrap()) {
                     anyhow::bail!("failed to release scatter-gather array: {:?}", e)
                 }
             }
@@ -297,8 +305,13 @@ impl TcpServer {
 impl Drop for TcpServer {
     fn drop(&mut self) {
         close(&mut self.libos, self.sockqd);
+
         if let Some(accepted_qd) = self.accepted_qd {
             close(&mut self.libos, accepted_qd);
+        }
+
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
         }
     }
 }
@@ -309,6 +322,8 @@ pub struct TcpClient {
     libos: LibOS,
     /// Local socket queue descriptor.
     sockqd: QDesc,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
 }
 
 // Implementation of the TCP client.
@@ -320,7 +335,11 @@ impl TcpClient {
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        return Ok(Self { libos, sockqd });
+        return Ok(Self {
+            libos,
+            sockqd,
+            sga: None,
+        });
     }
 
     fn run(&mut self, remote: SocketAddrV4, nrounds: usize) -> Result<()> {
@@ -334,12 +353,15 @@ impl TcpClient {
 
             // Push data.
             {
-                let sga: demi_sgarray_t = mksga(&mut self.libos, BUFFER_SIZE, fill_char)?;
-                if let Err(e) = push_and_wait(&mut self.libos, self.sockqd, &sga) {
-                    freesga(&mut self.libos, sga);
+                self.sga = Some(mksga(&mut self.libos, BUFFER_SIZE, fill_char)?);
+                if let Err(e) = push_and_wait(
+                    &mut self.libos,
+                    self.sockqd,
+                    &self.sga.expect("should be a valid sgarray"),
+                ) {
                     anyhow::bail!("push and wait failed: {:?}", e);
                 }
-                if let Err(e) = self.libos.sgafree(sga) {
+                if let Err(e) = self.libos.sgafree(self.sga.take().unwrap()) {
                     anyhow::bail!("failed to release scatter-gather array: {:?}", e)
                 }
             }
@@ -376,6 +398,10 @@ impl TcpClient {
 impl Drop for TcpClient {
     fn drop(&mut self) {
         close(&mut self.libos, self.sockqd);
+
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
+        }
     }
 }
 
