@@ -370,7 +370,7 @@ impl CatloopLibOS {
                     if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
                         // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
                         let message: String = format!("too many pending operations in Catloop");
-                        warn!("accept(): {}", &message);
+                        warn!("connect(): {}", &message);
                     }
 
                     Ok(qt)
