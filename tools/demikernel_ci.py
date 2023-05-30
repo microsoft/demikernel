@@ -146,7 +146,7 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
     test_name = "unit-test"
     jobs: dict[str, subprocess.Popen[str]] = {}
     jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
-    jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    # Unit tests require a single endpoint, so do not run them on client.
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
