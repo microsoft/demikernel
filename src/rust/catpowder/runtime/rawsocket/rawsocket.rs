@@ -7,7 +7,10 @@
 
 use super::RawSocketAddr;
 use crate::{
-    pal::data_structures::SockAddr,
+    pal::data_structures::{
+        SockAddr,
+        SockAddrIn,
+    },
     runtime::fail::Fail,
 };
 use ::libc;
@@ -80,7 +83,7 @@ impl RawSocket {
     pub fn recvfrom(&self, buf: &[MaybeUninit<u8>]) -> Result<(usize, RawSocketAddr), Fail> {
         let buf_ptr: *mut libc::c_void = buf.as_ptr() as *mut libc::c_void;
         let buf_len: usize = buf.len();
-        let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+        let mut addrlen: libc::socklen_t = mem::size_of::<SockAddrIn>() as u32;
         let mut rawaddr: RawSocketAddr = RawSocketAddr::default();
         let addrlen_ptr: *mut libc::socklen_t = &mut addrlen as *mut libc::socklen_t;
         let (addr_ptr, _): (*mut SockAddr, libc::socklen_t) = rawaddr.as_sockaddr_mut_ptr();

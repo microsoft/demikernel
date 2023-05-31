@@ -7,7 +7,10 @@
 
 use crate::{
     pal::{
-        data_structures::SockAddr,
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+        },
         linux,
     },
     runtime::fail::Fail,
@@ -63,7 +66,7 @@ impl Future for AcceptFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut AcceptFuture = self.get_mut();
         match unsafe {
-            let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+            let mut address_len: libc::socklen_t = mem::size_of::<SockAddrIn>() as u32;
             libc::accept(self_.fd, &mut self_.saddr as *mut SockAddr, &mut address_len)
         } {
             // Operation completed.

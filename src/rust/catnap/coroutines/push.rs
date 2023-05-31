@@ -7,7 +7,10 @@
 
 use crate::{
     pal::{
-        data_structures::SockAddr,
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+        },
         linux,
     },
     runtime::{
@@ -40,7 +43,7 @@ pub async fn push_coroutine(
     let (saddr_ptr, sockaddr_len) = if let Some(saddr_ref) = saddr.as_ref() {
         (
             saddr_ref as *const SockAddr,
-            mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+            mem::size_of::<SockAddrIn>() as libc::socklen_t,
         )
     } else {
         (ptr::null(), 0)

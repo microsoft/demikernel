@@ -32,7 +32,10 @@ use self::{
 use crate::{
     demikernel::config::Config,
     pal::{
-        data_structures::SockAddr,
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+        },
         linux,
     },
     runtime::{
@@ -222,7 +225,7 @@ impl CatnapLibOS {
             libc::bind(
                 fd,
                 &saddr as *const SockAddr,
-                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                mem::size_of::<SockAddrIn>() as libc::socklen_t,
             )
         } {
             stats if stats == 0 => {

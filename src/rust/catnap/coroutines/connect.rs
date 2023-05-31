@@ -7,7 +7,10 @@
 
 use crate::{
     pal::{
-        data_structures::SockAddr,
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+        },
         linux,
     },
     runtime::fail::Fail,
@@ -27,7 +30,7 @@ pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) 
             libc::connect(
                 fd,
                 &saddr as *const SockAddr,
-                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                mem::size_of::<SockAddrIn>() as libc::socklen_t,
             )
         } {
             // Operation completed.
