@@ -12,13 +12,13 @@ mod queue;
 use self::{
     futures::{
         pop::PopFuture,
-        push::PushFuture,
         OperationResult,
     },
     pipe::Pipe,
     queue::CatmemQueue,
 };
 use crate::{
+    catmem::futures::push::push_coroutine,
     collections::shared_ring::SharedRingBuffer,
     runtime::{
         fail::Fail,
@@ -41,6 +41,8 @@ use crate::{
         Scheduler,
         TaskHandle,
         TaskWithResult,
+        Yielder,
+        YielderHandle,
     },
 };
 use ::std::{
@@ -208,7 +210,7 @@ impl CatmemLibOS {
                 }
 
                 // Issue push operation.
-                match self.qtable.borrow().get(&qd) {
+                match self.qtable.borrow_mut().get_mut(&qd) {
                     Some(queue) => {
                         let pipe: &Pipe = queue.get_pipe();
 
@@ -219,11 +221,14 @@ impl CatmemLibOS {
                             unreachable!("push() called on a closed pipe");
                         }
 
+                        // Create co-routine.
+                        let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                        let yielder: Yielder = Yielder::new();
+                        let yielder_handle: YielderHandle = yielder.get_handle();
                         let coroutine: Pin<Box<Operation>> = {
-                            let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
                             Box::pin(async move {
                                 // Wait for push to complete.
-                                let result: Result<(), Fail> = future.await;
+                                let result: Result<(), Fail> = push_coroutine(ring, buf, yielder).await;
                                 // Handle result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
@@ -241,6 +246,7 @@ impl CatmemLibOS {
                                 return Err(Fail::new(libc::EAGAIN, &cause));
                             },
                         };
+                        queue.add_pending_op(&handle, &yielder_handle);
                         let qt: QToken = handle.get_task_id().into();
                         trace!("push() qt={:?}", qt);
                         Ok(qt)

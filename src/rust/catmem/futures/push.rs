@@ -11,67 +11,32 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
+    scheduler::Yielder,
 };
-use ::std::{
-    future::Future,
-    pin::Pin,
-    rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
-};
+use ::std::rc::Rc;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-/// Push Operation Descriptor
-pub struct PushFuture {
-    /// Write index on the underlying shared ring buffer.
-    index: usize,
-    // Underlying shared ring buffer.
-    ring: Rc<SharedRingBuffer<u16>>,
-    /// Buffer to send.
-    buf: DemiBuffer,
-}
-
-//======================================================================================================================
-// Associate Functions
-//======================================================================================================================
-
-/// Associate Functions for Push Operation Descriptors
-impl PushFuture {
-    /// Creates a descriptor for a push operation.
-    pub fn new(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer) -> Self {
-        PushFuture { ring, index: 0, buf }
-    }
-}
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-/// Future Trait Implementation for Push Operation Descriptors
-impl Future for PushFuture {
-    type Output = Result<(), Fail>;
-
-    /// Polls the target [PushFuture].
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &mut PushFuture = self.get_mut();
-        let mut index: usize = self_.index;
-        for low in &self_.buf[index..] {
+/// Polls `try_enqueue()` on `ring` until all the data in the `buf` is sent.
+pub async fn push_coroutine(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    let mut index: usize = 0;
+    loop {
+        for low in &buf[index..] {
             let x: u16 = (low & 0xff) as u16;
-            match self_.ring.try_enqueue(x) {
+            match ring.try_enqueue(x) {
                 Ok(()) => index += 1,
                 Err(_) => {
-                    self_.index = index;
-                    ctx.waker().wake_by_ref();
-                    return Poll::Pending;
+                    // Operation not completed. Check if it was cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
                 },
             }
         }
-        trace!("data written ({:?}/{:?} bytes)", index, self_.buf.len());
-        Poll::Ready(Ok(()))
+        trace!("data written ({:?}/{:?} bytes)", index, buf.len());
+        return Ok(());
     }
 }
