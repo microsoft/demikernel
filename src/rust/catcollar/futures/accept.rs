@@ -10,6 +10,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -66,7 +67,7 @@ impl Future for AcceptFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut AcceptFuture = self.get_mut();
         match unsafe {
-            let mut address_len: libc::socklen_t = mem::size_of::<SockAddrIn>() as u32;
+            let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
             libc::accept(self_.fd, &mut self_.saddr as *mut SockAddr, &mut address_len)
         } {
             // Operation completed.

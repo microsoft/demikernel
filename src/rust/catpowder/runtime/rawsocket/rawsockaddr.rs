@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::pal::data_structures::SockAddr;
+use crate::pal::data_structures::{
+    SockAddr,
+    Socklen,
+};
 use ::libc;
 use ::std::{
     convert::TryInto,
@@ -45,19 +48,19 @@ impl RawSocketAddr {
     }
 
     /// Casts the target raw socket address as a constant raw pointer to a socket address.
-    pub fn as_sockaddr_ptr(&self) -> (*const SockAddr, libc::socklen_t) {
+    pub fn as_sockaddr_ptr(&self) -> (*const SockAddr, Socklen) {
         let sockaddr_ptr: *const SockAddr =
             unsafe { mem::transmute::<*const libc::sockaddr_ll, *const SockAddr>(&self.0) };
-        let sockaddr_len: libc::socklen_t = mem::size_of::<libc::sockaddr_ll>() as u32;
+        let sockaddr_len: Socklen = mem::size_of::<libc::sockaddr_ll>() as u32;
 
         (sockaddr_ptr, sockaddr_len)
     }
 
     /// Casts the target raw socket address as a mutable raw pointer to a socket address.
-    pub fn as_sockaddr_mut_ptr(&mut self) -> (*mut SockAddr, libc::socklen_t) {
+    pub fn as_sockaddr_mut_ptr(&mut self) -> (*mut SockAddr, Socklen) {
         let sockaddr_ptr: *mut SockAddr =
             unsafe { mem::transmute::<*mut libc::sockaddr_ll, *mut SockAddr>(&mut self.0) };
-        let sockaddr_len: libc::socklen_t = mem::size_of::<libc::sockaddr_ll>() as u32;
+        let sockaddr_len: Socklen = mem::size_of::<libc::sockaddr_ll>() as u32;
 
         (sockaddr_ptr, sockaddr_len)
     }

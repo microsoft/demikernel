@@ -10,6 +10,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -19,7 +20,6 @@ use crate::{
         memory::DemiBuffer,
     },
 };
-use ::libc::socklen_t;
 use ::std::{
     ffi::{
         c_void,
@@ -124,7 +124,7 @@ impl IoUring {
         let len: usize = buf.len();
         let data_ptr: *const u8 = buf.as_ptr();
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
-        let (saddr_ref, addrlen): (&SockAddr, socklen_t) = (&saddr, mem::size_of::<SockAddrIn>() as libc::socklen_t);
+        let (saddr_ref, addrlen): (&SockAddr, Socklen) = (&saddr, mem::size_of::<SockAddrIn>() as Socklen);
         let saddr_ptr: *const SockAddr = saddr_ref as *const SockAddr;
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 

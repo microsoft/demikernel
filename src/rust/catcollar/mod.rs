@@ -33,6 +33,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -192,13 +193,7 @@ impl CatcollarLibOS {
 
         // Bind underlying socket.
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
-        match unsafe {
-            libc::bind(
-                fd,
-                &saddr as *const SockAddr,
-                mem::size_of::<SockAddrIn>() as libc::socklen_t,
-            )
-        } {
+        match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 queue.set_addr(local);
                 Ok(())

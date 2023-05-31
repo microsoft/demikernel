@@ -10,6 +10,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -69,7 +70,7 @@ impl Future for ConnectFuture {
             libc::connect(
                 self_.fd,
                 &self_.saddr as *const SockAddr,
-                mem::size_of::<SockAddrIn>() as libc::socklen_t,
+                mem::size_of::<SockAddrIn>() as Socklen,
             )
         } {
             // Operation completed.

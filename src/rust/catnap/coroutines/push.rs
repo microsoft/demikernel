@@ -10,6 +10,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -41,10 +42,7 @@ pub async fn push_coroutine(
 
     // Note that we use references here, so as we don't end up constructing a dangling pointer.
     let (saddr_ptr, sockaddr_len) = if let Some(saddr_ref) = saddr.as_ref() {
-        (
-            saddr_ref as *const SockAddr,
-            mem::size_of::<SockAddrIn>() as libc::socklen_t,
-        )
+        (saddr_ref as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen)
     } else {
         (ptr::null(), 0)
     };

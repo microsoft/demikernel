@@ -10,6 +10,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -26,13 +27,7 @@ use ::std::{
 pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
     loop {
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
-        match unsafe {
-            libc::connect(
-                fd,
-                &saddr as *const SockAddr,
-                mem::size_of::<SockAddrIn>() as libc::socklen_t,
-            )
-        } {
+        match unsafe { libc::connect(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             // Operation completed.
             stats if stats == 0 => {
                 trace!("connection established ({:?})", addr);

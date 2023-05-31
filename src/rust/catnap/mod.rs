@@ -35,6 +35,7 @@ use crate::{
         data_structures::{
             SockAddr,
             SockAddrIn,
+            Socklen,
         },
         linux,
     },
@@ -221,13 +222,7 @@ impl CatnapLibOS {
 
         // Bind underlying socket.
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
-        match unsafe {
-            libc::bind(
-                fd,
-                &saddr as *const SockAddr,
-                mem::size_of::<SockAddrIn>() as libc::socklen_t,
-            )
-        } {
+        match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 // Update socket.
                 queue.set_socket(&bound_socket);
