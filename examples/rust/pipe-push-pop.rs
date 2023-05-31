@@ -87,8 +87,6 @@ fn push_and_wait(libos: &mut LibOS, pipeqd: QDesc, length: usize, value: u8) -> 
         },
     };
 
-    // If error, close pipe.
-    // FIXME: https://github.com/demikernel/demikernel/issues/647
     if let Err(e) = libos.wait(qt, None) {
         freesga(libos, sga);
         anyhow::bail!("failed to wait on push: {:?}", e);
@@ -100,130 +98,135 @@ fn push_and_wait(libos: &mut LibOS, pipeqd: QDesc, length: usize, value: u8) -> 
     Ok(())
 }
 
-//======================================================================================================================
-// close()
-//======================================================================================================================
-
-/// Closes a pipe and warns if not successful.
-fn close(libos: &mut LibOS, qd: QDesc) {
-    if let Err(e) = libos.close(qd) {
-        println!("ERROR: close() failed (error={:?})", e);
-        println!("WARN: leaking qd={:?}", qd);
-    }
+// The pipe server.
+pub struct PipeServer {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// The pipe qd.
+    pipeqd: QDesc,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
 }
 
-//======================================================================================================================
-// server()
-//======================================================================================================================
-
-fn server(name: &str) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
-    };
-
-    // Setup peer.
-    let pipeqd: QDesc = match libos.create_pipe(&name) {
-        Ok(qd) => qd,
-        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
-    };
-
-    // Receive bytes.
-    let mut round: u8 = 0;
-    let mut nbytes: usize = 0;
-    while nbytes < (NROUNDS as usize * BUFFER_SIZE) {
-        // Pop data.
-        let qt: QToken = match libos.pop(pipeqd, None) {
-            Ok(qt) => qt,
-            Err(e) => {
-                // If error, close pipe.
-                close(&mut libos, pipeqd);
-                anyhow::bail!("pop failed: {:?}", e.cause)
-            },
+// Implementation of the pipe server.
+impl PipeServer {
+    pub fn new(mut libos: LibOS, pipe_name: &str) -> Result<Self> {
+        // Create the pipe.
+        let pipeqd: QDesc = match libos.create_pipe(&pipe_name) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt, None) {
-            Ok(qr) => match qr.qr_opcode {
-                demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-                _ => {
-                    // If error, close pipe.
-                    close(&mut libos, pipeqd);
-                    anyhow::bail!("unexpected operation result")
+
+        return Ok(Self {
+            libos,
+            pipeqd,
+            sga: None,
+        });
+    }
+
+    fn run(&mut self, buffer_size: usize, nrounds: usize) -> Result<()> {
+        // Receive bytes.
+        let mut round: u8 = 0;
+        let mut nbytes: usize = 0;
+        while nbytes < (nrounds * buffer_size) {
+            // Pop data.
+            let qt: QToken = match self.libos.pop(self.pipeqd, None) {
+                Ok(qt) => qt,
+                Err(e) => anyhow::bail!("pop failed: {:?}", e.cause),
+            };
+            self.sga = match self.libos.wait(qt, None) {
+                Ok(qr) => match qr.qr_opcode {
+                    demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
+                    _ => anyhow::bail!("unexpected operation result"),
                 },
-            },
-            _ => {
-                // If error, close pipe.
-                close(&mut libos, pipeqd);
-                anyhow::bail!("server failed to wait()")
-            },
-        };
+                _ => anyhow::bail!("server failed to wait()"),
+            };
 
-        let recvbuf: &[u8] = unsafe {
-            slice::from_raw_parts(
-                sga.sga_segs[0].sgaseg_buf as *const u8,
-                sga.sga_segs[0].sgaseg_len as usize,
-            )
-        };
-
-        // Sanity received data.
-        for x in &recvbuf[..] {
-            assert_eq!(*x, round);
-            nbytes += 1;
-            if nbytes % BUFFER_SIZE == 0 {
-                round += 1;
+            if let Some(sga) = self.sga {
+                // Sanity received data.
+                let recvbuf: &[u8] = unsafe {
+                    slice::from_raw_parts(
+                        sga.sga_segs[0].sgaseg_buf as *const u8,
+                        sga.sga_segs[0].sgaseg_len as usize,
+                    )
+                };
+                for x in &recvbuf[..] {
+                    demikernel::ensure_eq!(*x, round);
+                    nbytes += 1;
+                    if nbytes % buffer_size == 0 {
+                        round += 1;
+                    }
+                }
+                // Free up the scatter-gather array.
+                match self.libos.sgafree(sga) {
+                    Ok(_) => self.sga = None,
+                    Err(_) => anyhow::bail!("failed to release scatter-gather array"),
+                };
+            } else {
+                anyhow::bail!("expected a valid sga");
             }
+
+            println!("pop {:?} bytes", nbytes);
         }
 
-        if libos.sgafree(sga).is_err() {
-            // If error, close pipes.
-            close(&mut libos, pipeqd);
-            anyhow::bail!("failed to release scatter-gather array");
-        };
-
-        println!("pop {:?}", round - 1);
+        Ok(())
     }
-
-    close(&mut libos, pipeqd);
-
-    Ok(())
 }
 
-//======================================================================================================================
-// client()
-//======================================================================================================================
-
-fn client(name: &str) -> Result<()> {
-    let libos_name: LibOSName = match LibOSName::from_env() {
-        Ok(libos_name) => libos_name.into(),
-        Err(e) => anyhow::bail!("{:?}", e),
-    };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
-    };
-
-    // Setup peer.
-    let pipeqd: QDesc = match libos.open_pipe(&name) {
-        Ok(qd) => qd,
-        Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
-    };
-
-    // Send and receive bytes in a locked step.
-    for i in 0..NROUNDS {
-        // If error, close pipe.
-        if let Err(e) = push_and_wait(&mut libos, pipeqd, BUFFER_SIZE, i) {
-            close(&mut libos, pipeqd);
-            anyhow::bail!("failed to push: {:?}", e)
+// Drop implementation for the pipe server.
+impl Drop for PipeServer {
+    fn drop(&mut self) {
+        if let Err(e) = self.libos.close(self.pipeqd) {
+            println!("ERROR: close() failed (error={:?})", e);
+            println!("WARN: leaking pipeqd={:?}", self.pipeqd);
         }
-        println!("push {:?}", i);
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
+        }
+    }
+}
+
+// The pipe client.
+pub struct PipeClient {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// The pipe qd.
+    pipeqd: QDesc,
+}
+
+// Implementation of the pipe client.
+impl PipeClient {
+    pub fn new(mut libos: LibOS, pipe_name: &str) -> Result<Self> {
+        // Open the pipe.
+        let pipeqd: QDesc = match libos.open_pipe(&pipe_name) {
+            Ok(qd) => qd,
+            Err(e) => anyhow::bail!("failed to open memory queue: {:?}", e.cause),
+        };
+
+        return Ok(Self { libos, pipeqd });
     }
 
-    close(&mut libos, pipeqd);
+    pub fn run(&mut self, buffer_size: usize, nrounds: u8) -> Result<()> {
+        // Send and receive bytes in a locked step.
+        for i in 0..nrounds {
+            if let Err(e) = push_and_wait(&mut self.libos, self.pipeqd, buffer_size, i) {
+                anyhow::bail!("failed to push: {:?}", e)
+            }
+            println!("push {:?}", i);
+        }
 
-    Ok(())
+        Ok(())
+    }
+}
+
+// Drop implementation for the pipe client.
+impl Drop for PipeClient {
+    fn drop(&mut self) {
+        if let Err(e) = self.libos.close(self.pipeqd) {
+            println!("ERROR: close() failed (error={:?})", e);
+            println!("WARN: leaking pipeqd={:?}", self.pipeqd);
+        }
+    }
 }
 
 //======================================================================================================================
@@ -246,12 +249,24 @@ pub fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {
+        // Create the libos instance.
+        let libos_name: LibOSName = match LibOSName::from_env() {
+            Ok(libos_name) => libos_name.into(),
+            Err(e) => anyhow::bail!("{:?}", e),
+        };
+        let libos: LibOS = match LibOS::new(libos_name) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
+        };
+        let pipe_name: &str = &args[2];
+
+        // Invoke the appropriate peer.
         if args[1] == "--server" {
-            let ret: Result<()> = server(&args[2]);
-            return ret;
+            let mut server: PipeServer = PipeServer::new(libos, pipe_name)?;
+            return server.run(BUFFER_SIZE, NROUNDS as usize);
         } else if args[1] == "--client" {
-            let ret: Result<()> = client(&args[2]);
-            return ret;
+            let mut client: PipeClient = PipeClient::new(libos, pipe_name)?;
+            return client.run(BUFFER_SIZE, NROUNDS);
         }
     }
 
