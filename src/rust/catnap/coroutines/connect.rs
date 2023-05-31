@@ -6,7 +6,10 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::fail::Fail,
     scheduler::Yielder,
 };
@@ -19,11 +22,11 @@ use ::std::{
 /// This function polls connect on a socket file descriptor until the connection is established (or returns an error).
 pub async fn connect_coroutine(fd: RawFd, addr: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
     loop {
-        let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
         match unsafe {
             libc::connect(
                 fd,
-                &saddr as *const libc::sockaddr,
+                &saddr as *const SockAddr,
                 mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {

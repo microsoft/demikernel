@@ -6,7 +6,10 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -27,7 +30,7 @@ pub async fn push_coroutine(
     addr: Option<SocketAddrV4>,
     yielder: Yielder,
 ) -> Result<(), Fail> {
-    let saddr: Option<libc::sockaddr> = if let Some(addr) = addr.as_ref() {
+    let saddr: Option<SockAddr> = if let Some(addr) = addr.as_ref() {
         Some(linux::socketaddrv4_to_sockaddr(addr))
     } else {
         None
@@ -36,7 +39,7 @@ pub async fn push_coroutine(
     // Note that we use references here, so as we don't end up constructing a dangling pointer.
     let (saddr_ptr, sockaddr_len) = if let Some(saddr_ref) = saddr.as_ref() {
         (
-            saddr_ref as *const libc::sockaddr,
+            saddr_ref as *const SockAddr,
             mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
         )
     } else {

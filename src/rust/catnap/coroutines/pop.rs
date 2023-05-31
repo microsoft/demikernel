@@ -6,7 +6,10 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -32,7 +35,7 @@ pub async fn pop_coroutine(
 ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
     let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
     let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
-    let mut saddr: libc::sockaddr = unsafe { mem::zeroed() };
+    let mut saddr: SockAddr = unsafe { mem::zeroed() };
     let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
 
     // Check that we allocated a DemiBuffer that is big enough.
@@ -46,7 +49,7 @@ pub async fn pop_coroutine(
                 (buf.as_mut_ptr() as *mut u8) as *mut libc::c_void,
                 size,
                 libc::MSG_DONTWAIT,
-                &mut saddr as *mut libc::sockaddr,
+                &mut saddr as *mut SockAddr,
                 &mut addrlen as *mut u32,
             )
         } {

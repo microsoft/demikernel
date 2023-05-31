@@ -6,7 +6,10 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::fail::Fail,
 };
 use ::std::{
@@ -30,7 +33,7 @@ pub struct ConnectFuture {
     // Underlying file descriptor.
     fd: RawFd,
     /// Connect address.
-    saddr: libc::sockaddr,
+    saddr: SockAddr,
 }
 
 //==============================================================================
@@ -62,7 +65,7 @@ impl Future for ConnectFuture {
         match unsafe {
             libc::connect(
                 self_.fd,
-                &self_.saddr as *const libc::sockaddr,
+                &self_.saddr as *const SockAddr,
                 mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
             )
         } {

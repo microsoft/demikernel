@@ -758,7 +758,7 @@ fn test_sockaddr_to_socketaddrv4() {
     // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
 
     // SocketAddrV4: 127.0.0.1:80
-    let saddr: libc::sockaddr = {
+    let saddr: crate::pal::data_structures::SockAddr = {
         sockaddr {
             sa_family: AF_INET_VALUE as u16,
             sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],

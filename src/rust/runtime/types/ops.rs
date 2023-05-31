@@ -7,9 +7,12 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::types::{
-    memory::demi_sgarray_t,
-    queue::demi_qtoken_t,
+use crate::{
+    pal::data_structures::SockAddr,
+    runtime::types::{
+        memory::demi_sgarray_t,
+        queue::demi_qtoken_t,
+    },
 };
 
 //======================================================================================================================
@@ -34,7 +37,7 @@ pub enum demi_opcode_t {
 #[derive(Copy, Clone)]
 pub struct demi_accept_result_t {
     pub qd: i32,
-    pub addr: libc::sockaddr,
+    pub addr: SockAddr,
 }
 
 #[repr(C)]

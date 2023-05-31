@@ -3,7 +3,10 @@
 
 use crate::{
     catpowder::LinuxRuntime,
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::{
         memory::MemoryRuntime,
         types::{
@@ -31,7 +34,7 @@ pub fn pack_result(rt: Rc<LinuxRuntime>, result: OperationResult, qd: QDesc, qt:
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
-            let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
+            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),

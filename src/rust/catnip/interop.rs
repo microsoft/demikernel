@@ -52,7 +52,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
-                    addr: unsafe { mem::transmute::<SockAddrIn, libc::sockaddr>(saddr) },
+                    addr: unsafe { mem::transmute::<SockAddrIn, SockAddr>(saddr) },
                 },
             };
             demi_qresult_t {
