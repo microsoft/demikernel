@@ -6,7 +6,14 @@
 //======================================================================================================================
 
 use super::RawSocketAddr;
-use crate::runtime::fail::Fail;
+use crate::{
+    pal::data_structures::{
+        SockAddr,
+        SockAddrIn,
+        Socklen,
+    },
+    runtime::fail::Fail,
+};
 use ::libc;
 use ::std::{
     mem,
@@ -44,7 +51,7 @@ impl RawSocket {
     // Binds a socket to a raw address.
     pub fn bind(&self, addr: &RawSocketAddr) -> Result<(), Fail> {
         let ret: i32 = unsafe {
-            let (sockaddr_ptr, address_len): (*const libc::sockaddr, libc::socklen_t) = addr.as_sockaddr_ptr();
+            let (sockaddr_ptr, address_len): (*const SockAddr, Socklen) = addr.as_sockaddr_ptr();
             libc::bind(self.0, sockaddr_ptr, address_len)
         };
 
@@ -60,7 +67,7 @@ impl RawSocket {
     pub fn sendto(&self, buf: &[u8], rawaddr: &RawSocketAddr) -> Result<usize, Fail> {
         let buf_len: usize = buf.len();
         let buf_ptr: *const libc::c_void = buf.as_ptr() as *const libc::c_void;
-        let (addr_ptr, addrlen): (*const libc::sockaddr, libc::socklen_t) = rawaddr.as_sockaddr_ptr();
+        let (addr_ptr, addrlen): (*const SockAddr, Socklen) = rawaddr.as_sockaddr_ptr();
 
         let nbytes: i32 =
             unsafe { libc::sendto(self.0, buf_ptr, buf_len, libc::MSG_DONTWAIT, addr_ptr, addrlen) as i32 };
@@ -77,10 +84,10 @@ impl RawSocket {
     pub fn recvfrom(&self, buf: &[MaybeUninit<u8>]) -> Result<(usize, RawSocketAddr), Fail> {
         let buf_ptr: *mut libc::c_void = buf.as_ptr() as *mut libc::c_void;
         let buf_len: usize = buf.len();
-        let mut addrlen: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+        let mut addrlen: Socklen = mem::size_of::<SockAddrIn>() as u32;
         let mut rawaddr: RawSocketAddr = RawSocketAddr::default();
-        let addrlen_ptr: *mut libc::socklen_t = &mut addrlen as *mut libc::socklen_t;
-        let (addr_ptr, _): (*mut libc::sockaddr, libc::socklen_t) = rawaddr.as_sockaddr_mut_ptr();
+        let addrlen_ptr: *mut Socklen = &mut addrlen as *mut Socklen;
+        let (addr_ptr, _): (*mut SockAddr, Socklen) = rawaddr.as_sockaddr_mut_ptr();
 
         let nbytes: i32 = unsafe {
             libc::recvfrom(

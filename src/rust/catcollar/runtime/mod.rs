@@ -9,7 +9,10 @@ mod network;
 
 use super::iouring::IoUring;
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::{
         fail::Fail,
         liburing,
@@ -118,7 +121,7 @@ impl IoUringRuntime {
                         let addr: Option<SocketAddrV4> = if msg.msg_name.is_null() {
                             None
                         } else {
-                            let saddr: *const libc::sockaddr = msg.msg_name as *const libc::sockaddr;
+                            let saddr: *const SockAddr = msg.msg_name as *const SockAddr;
                             Some(linux::sockaddr_to_socketaddrv4(unsafe { &*saddr }))
                         };
 

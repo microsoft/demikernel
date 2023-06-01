@@ -6,7 +6,14 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
+    },
     runtime::fail::Fail,
 };
 use ::std::{
@@ -30,7 +37,7 @@ pub struct AcceptFuture {
     /// Underlying file descriptor.
     fd: RawFd,
     /// Socket address of accept connection.
-    saddr: libc::sockaddr,
+    saddr: SockAddr,
 }
 
 //==============================================================================
@@ -60,8 +67,8 @@ impl Future for AcceptFuture {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut AcceptFuture = self.get_mut();
         match unsafe {
-            let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
-            libc::accept(self_.fd, &mut self_.saddr as *mut libc::sockaddr, &mut address_len)
+            let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
+            libc::accept(self_.fd, &mut self_.saddr as *mut SockAddr, &mut address_len)
         } {
             // Operation completed.
             new_fd if new_fd >= 0 => {

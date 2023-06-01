@@ -6,14 +6,20 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
+    },
     runtime::{
         fail::Fail,
         liburing,
         memory::DemiBuffer,
     },
 };
-use ::libc::socklen_t;
 use ::std::{
     ffi::{
         c_void,
@@ -117,10 +123,9 @@ impl IoUring {
     ) -> Result<*mut liburing::msghdr, Fail> {
         let len: usize = buf.len();
         let data_ptr: *const u8 = buf.as_ptr();
-        let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
-        let (saddr_ref, addrlen): (&libc::sockaddr, socklen_t) =
-            (&saddr, mem::size_of::<libc::sockaddr_in>() as libc::socklen_t);
-        let saddr_ptr: *const libc::sockaddr = saddr_ref as *const libc::sockaddr;
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
+        let (saddr_ref, addrlen): (&SockAddr, Socklen) = (&saddr, mem::size_of::<SockAddrIn>() as Socklen);
+        let saddr_ptr: *const SockAddr = saddr_ref as *const SockAddr;
         let io_uring: &mut liburing::io_uring = &mut self.io_uring;
 
         unsafe {

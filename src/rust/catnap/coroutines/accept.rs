@@ -6,7 +6,14 @@
 //==============================================================================
 
 use crate::{
-    pal::linux,
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
+    },
     runtime::fail::Fail,
     scheduler::Yielder,
 };
@@ -18,11 +25,11 @@ use ::std::{
 
 /// This function polls accept on a listening socket until it receives a new accepted connection back.
 pub async fn accept_coroutine(fd: RawFd, yielder: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
-    let mut saddr: libc::sockaddr = unsafe { mem::zeroed() };
-    let mut address_len: libc::socklen_t = mem::size_of::<libc::sockaddr_in>() as u32;
+    let mut saddr: SockAddr = unsafe { mem::zeroed() };
+    let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
 
     loop {
-        match unsafe { libc::accept(fd, &mut saddr as *mut libc::sockaddr, &mut address_len) } {
+        match unsafe { libc::accept(fd, &mut saddr as *mut SockAddr, &mut address_len) } {
             // Operation completed.
             new_fd if new_fd >= 0 => {
                 trace!("connection accepted ({:?})", new_fd);

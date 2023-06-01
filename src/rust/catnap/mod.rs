@@ -31,7 +31,14 @@ use self::{
 };
 use crate::{
     demikernel::config::Config,
-    pal::linux,
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -214,14 +221,8 @@ impl CatnapLibOS {
         };
 
         // Bind underlying socket.
-        let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&local);
-        match unsafe {
-            libc::bind(
-                fd,
-                &saddr as *const libc::sockaddr,
-                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-            )
-        } {
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
+        match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 // Update socket.
                 queue.set_socket(&bound_socket);
@@ -773,7 +774,7 @@ fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
-            let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
+            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),

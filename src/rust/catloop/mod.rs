@@ -25,7 +25,10 @@ use crate::{
     },
     catmem::CatmemLibOS,
     demi_sgarray_t,
-    pal::linux,
+    pal::{
+        data_structures::SockAddr,
+        linux,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -636,7 +639,7 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept(new_qd, addr) => {
-            let saddr: libc::sockaddr = linux::socketaddrv4_to_sockaddr(&addr);
+            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
