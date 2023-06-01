@@ -405,12 +405,14 @@ def run_pipeline(
                 # TCP Wait (optional)
                 if test_system == "all" or test_system == "tcp_wait":
                     if libos == "catnap":
-                        status["tcp_wait"] = test_tcp_wait(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, server_addr, delay, config_path,
-                                                           log_directory, nclients=32, scenario="push_async_close_wait")
-                        status["tcp_wait"] = test_tcp_wait(server, client, libos, is_debug, is_sudo,
-                                                           repository, server_addr, server_addr, delay, config_path,
-                                                           log_directory, nclients=32, scenario="pop_async_close_wait")
+                        for scenario in ["push_close_wait", "push_async_close_wait", "push_async_close_pending_wait"]:
+                            status["tcp_wait"] = test_tcp_wait(
+                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
+                                config_path, log_directory, nclients=32, scenario=scenario)
+                        for scenario in ["pop_close_wait", "pop_async_close_wait", "pop_async_close_pending_wait"]:
+                            status["tcp_wait"] = test_tcp_wait(
+                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
+                                config_path, log_directory, nclients=32, scenario=scenario)
             else:
                 if test_system == "all" or test_system == "pipe_open":
                     status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,

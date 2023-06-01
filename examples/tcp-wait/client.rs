@@ -108,9 +108,23 @@ impl TcpClient {
 
             // Wait for pop().
             match self.libos.wait(pop_qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
+                    self.libos.sgafree(sga)?;
+                    if sgaseg_len == 0 {
+                        // In this testing program, the server does not terminate the connection before the client does.
+                        // Therefore, pop() cannot successfully receive a zero-length scatter-gather array.
+                        anyhow::bail!("pop() should not sucessfully terminate");
+                    } else {
+                        // In this testing program, the server does not send any data before the client does.
+                        // Therefore, pop() cannot successfully receive any data.
+                        anyhow::bail!("pop() should not sucessfully receive any data");
+                    }
+                },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-                _ => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Ok(_) => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Err(_) => anyhow::bail!("wait() should not fail"),
             }
         }
 
@@ -157,9 +171,23 @@ impl TcpClient {
 
             // Wait for pop().
             match self.libos.wait(pop_qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
+                    self.libos.sgafree(sga)?;
+                    if sgaseg_len == 0 {
+                        // In this testing program, the server does not terminate the connection before the client does.
+                        // Therefore, pop() cannot successfully receive a zero-length scatter-gather array.
+                        anyhow::bail!("pop() should not sucessfully terminate");
+                    } else {
+                        // In this testing program, the server does not send any data before the client does.
+                        // Therefore, pop() cannot successfully receive any data.
+                        anyhow::bail!("pop() should not sucessfully receive any data");
+                    }
+                },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-                _ => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Ok(_) => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Err(_) => anyhow::bail!("wait() should not fail"),
             }
         }
 
@@ -202,9 +230,23 @@ impl TcpClient {
 
             // Wait for pop().
             match self.libos.wait(pop_qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+                    let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
+                    self.libos.sgafree(sga)?;
+                    if sgaseg_len == 0 {
+                        // In this testing program, the server does not terminate the connection before the client does.
+                        // Therefore, pop() cannot successfully receive a zero-length scatter-gather array.
+                        anyhow::bail!("pop() should not sucessfully terminate");
+                    } else {
+                        // In this testing program, the server does not send any data before the client does.
+                        // Therefore, pop() cannot successfully receive any data.
+                        anyhow::bail!("pop() should not sucessfully receive any data");
+                    }
+                },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-                _ => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Ok(_) => anyhow::bail!("wait() should not succeed with pop() after close()"),
+                Err(_) => anyhow::bail!("wait() should not fail"),
             }
 
             // Wait for async_close().
