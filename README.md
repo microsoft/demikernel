@@ -40,12 +40,6 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 - For documentation on the API, see documents in [man](./man).
 - For instructions on how to contribute to this project, see [CONTRIBUTING](./CONTRIBUTING.md).
 
-## Code of Conduct
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
-or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
 ## Usage Statement
 
 This project is a prototype. As such, we provide no guarantees that it will
@@ -58,3 +52,10 @@ maintainers of the project:
 
 > By sending feedback, you are consenting that it may be used  in the further
 > development of this project.
+
+## Trademark Notice
+
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks
+or logos is subject to and must follow Microsoft’s Trademark & Brand Guidelines. Use of Microsoft trademarks or logos in
+modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party
+trademarks or logos are subject to those third-party’s policies.
