@@ -210,26 +210,24 @@ impl Scheduler {
             if dropped != 0 {
                 // Handle dropped tasks only.
                 for subpage_ix in BitIter::from(dropped) {
-                    if subpage_ix != 0 {
-                        let index: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
-                        match tasks.remove(index) {
-                            Some(true) => {
-                                let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
-                                let len: usize = task_ids.len();
-                                task_ids.retain(|_, v| *v != index);
-                                // If there is more than one task id pointing at the offset, something has gone very wrong.
-                                assert_eq!(
-                                    task_ids.len(),
-                                    len - 1,
-                                    "There should never been more than one task id pointing at an offset!"
-                                );
-                                tasks.remove(index);
-                                pages[page_ix].clear(subpage_ix);
-                            },
-                            Some(false) => warn!("poll(): cannot remove a task that does not exist (index={})", index),
-                            None => warn!("poll(): failed to remove task (index={})", index),
-                        };
-                    }
+                    let index: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
+                    match tasks.remove(index) {
+                        Some(true) => {
+                            let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
+                            let len: usize = task_ids.len();
+                            task_ids.retain(|_, v| *v != index);
+                            // If there is more than one task id pointing at the offset, something has gone very wrong.
+                            assert_eq!(
+                                task_ids.len(),
+                                len - 1,
+                                "There should never been more than one task id pointing at an offset!"
+                            );
+                            tasks.remove(index);
+                            pages[page_ix].clear(subpage_ix);
+                        },
+                        Some(false) => warn!("poll(): cannot remove a task that does not exist (index={})", index),
+                        None => warn!("poll(): failed to remove task (index={})", index),
+                    };
                 }
             }
         }
