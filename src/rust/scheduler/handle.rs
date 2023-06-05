@@ -63,19 +63,19 @@ impl TaskHandle {
         }
     }
 
-    /// Takes out the key stored in the target [SchedulerHandle].
+    /// Takes out the key stored in the target [TaskHandle].
     pub fn take_task_id(&mut self) -> Option<u64> {
         self.index.take();
         self.task_id.take()
     }
 
-    /// Queries whether or not the future associated with the target [SchedulerHandle] has completed.
+    /// Queries whether or not the future associated with the target [TaskHandle] has completed.
     pub fn has_completed(&self) -> bool {
         let subpage_ix: usize = self.index.unwrap() as usize & (WAKER_BIT_LENGTH - 1);
         self.chunk.has_completed(subpage_ix)
     }
 
-    /// Returns the raw key stored in the target [SchedulerHandle].
+    /// Returns the raw key stored in the target [TaskHandle].
     pub fn get_task_id(mut self) -> u64 {
         self.index.take();
         self.task_id.take().unwrap()
@@ -122,7 +122,7 @@ impl YielderHandle {
 
 /// Drop Trait Implementation for Scheduler Handlers
 impl Drop for TaskHandle {
-    /// Decreases the reference count of the target [SchedulerHandle].
+    /// Decreases the reference count of the target [TaskHandle].
     fn drop(&mut self) {
         if let Some(key) = self.index.take() {
             let subpage_ix: usize = key as usize & (WAKER_BIT_LENGTH - 1);
@@ -135,7 +135,7 @@ impl Hash for TaskHandle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let key: u64 = self
             .task_id
-            .expect("SchedulerHandle should have a key to insert into hashmap");
+            .expect("TaskHandle should have a key to insert into hashmap");
         key.hash(state);
     }
 }

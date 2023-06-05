@@ -83,11 +83,13 @@ impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
     pub fn remove(&self, mut handle: TaskHandle) -> Box<dyn Task> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
+        // TODO: review why it is safe to unwrap() here and change the statement bellow to an expect().
+        let task_id: u64 = handle.take_task_id().unwrap();
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let index: usize = *self
+        let index: usize = self
             .task_ids
-            .borrow()
-            .get(&handle.take_task_id().unwrap())
+            .borrow_mut()
+            .remove(&task_id)
             .expect("Token should be in the token table");
         let (page, subpage_ix): (&WakerPageRef, usize) = {
             let (pages_ix, subpage_ix) = self.get_page_indices(index);
@@ -95,7 +97,15 @@ impl Scheduler {
         };
         assert!(!page.was_dropped(subpage_ix));
         page.clear(subpage_ix);
-        self.tasks.borrow_mut().remove_unpin(index).unwrap()
+        // TODO: review why it is safe to unwrap() here and change the statement bellow to an expect().
+        let task: Box<dyn Task> = self.tasks.borrow_mut().remove_unpin(index).unwrap();
+        trace!(
+            "remove(): name={:?}, id={:?}, index={:?}",
+            task.get_name(),
+            task_id,
+            index
+        );
+        task
     }
 
     /// Given a task id return a handle to the task.
@@ -118,22 +128,21 @@ impl Scheduler {
     pub fn insert<F: Task>(&self, future: F) -> Option<TaskHandle> {
         let mut pages: RefMut<Vec<WakerPageRef>> = self.pages.borrow_mut();
         let mut id_gen: RefMut<SmallRng> = self.id_gen.borrow_mut();
+        let task_name: String = future.get_name();
         // Allocate an offset into the slab and a token for identifying the task.
         let index: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
+        let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
         let task_id: u64 = loop {
-            let id: u64 = id_gen.next_u64();
-            if self.task_ids.borrow_mut().insert(id, index).is_none() {
+            let id: u64 = id_gen.next_u64() as u16 as u64;
+            if !task_ids.contains_key(&id) {
+                task_ids.insert(id, index);
                 break id;
             }
         };
 
-        trace!(
-            "scheduler::insert() inserting task with id={:?} and offset={:?}",
-            task_id,
-            index
-        );
+        trace!("insert(): name={:?}, id={:?}, index={:?}", task_name, task_id, index);
 
         // Add a new page to hold this future's status if the current page is filled.
         while index >= pages.len() << WAKER_BIT_LENGTH_SHIFT {
@@ -201,11 +210,24 @@ impl Scheduler {
             if dropped != 0 {
                 // Handle dropped tasks only.
                 for subpage_ix in BitIter::from(dropped) {
-                    if subpage_ix != 0 {
-                        let ix: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
-                        tasks.remove(ix);
-                        pages[page_ix].clear(subpage_ix);
-                    }
+                    let index: usize = (page_ix << WAKER_BIT_LENGTH_SHIFT) + subpage_ix;
+                    match tasks.remove(index) {
+                        Some(true) => {
+                            let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
+                            let len: usize = task_ids.len();
+                            task_ids.retain(|_, v| *v != index);
+                            // If there is more than one task id pointing at the offset, something has gone very wrong.
+                            assert_eq!(
+                                task_ids.len(),
+                                len - 1,
+                                "There should never been more than one task id pointing at an offset!"
+                            );
+                            tasks.remove(index);
+                            pages[page_ix].clear(subpage_ix);
+                        },
+                        Some(false) => warn!("poll(): cannot remove a task that does not exist (index={})", index),
+                        None => warn!("poll(): failed to remove task (index={})", index),
+                    };
                 }
             }
         }
