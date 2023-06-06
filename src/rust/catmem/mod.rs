@@ -130,8 +130,9 @@ impl CatmemLibOS {
     pub fn shutdown(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("shutdown() qd={:?}", qd);
         let mut qtable = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
-            Some(_) => {
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
                 qtable.free(&qd);
             },
             None => {
@@ -171,24 +172,26 @@ impl CatmemLibOS {
         let mut qtable: RefMut<IoQueueTable<CatmemQueue>> = self.qtable.borrow_mut();
 
         // Check if queue descriptor is valid.
-        if qtable.get(&qd).is_none() {
-            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-            error!("close(): {}", cause);
-            return Err(Fail::new(libc::EBADF, &cause));
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                // Attempt to push EoF.
+                let result: Result<(), Fail> = {
+                    // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
+                    Self::push_eof(queue.get_pipe().buffer())
+                };
+                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+
+                // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
+                // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
+                qtable.free(&qd);
+                result
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         }
-
-        // Attempt to push EoF.
-        let result: Result<(), Fail> = {
-            // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
-            let queue: &CatmemQueue = qtable.get(&qd).expect("queue descriptor should be valid");
-            Self::push_eof(queue.get_pipe().buffer())
-        };
-
-        // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
-        // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
-        qtable.free(&qd);
-
-        result
     }
 
     /// Pushes a scatter-gather array to a socket.
