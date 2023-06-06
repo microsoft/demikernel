@@ -10,15 +10,15 @@ mod queue;
 //======================================================================================================================
 
 use self::{
-    futures::{
-        pop::PopFuture,
-        OperationResult,
-    },
+    futures::OperationResult,
     pipe::Pipe,
     queue::CatmemQueue,
 };
 use crate::{
-    catmem::futures::push::push_coroutine,
+    catmem::futures::{
+        pop::pop_coroutine,
+        push::push_coroutine,
+    },
     collections::shared_ring::SharedRingBuffer,
     runtime::{
         fail::Fail,
@@ -271,9 +271,12 @@ impl CatmemLibOS {
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         // Issue pop operation.
-        match self.qtable.borrow().get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => {
                 let pipe: &Pipe = queue.get_pipe();
+                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                let yielder: Yielder = Yielder::new();
+                let yielder_handle: YielderHandle = yielder.get_handle();
                 let coroutine: Pin<Box<Operation>> = if pipe.eof() {
                     // Handle end of file.
                     Box::pin(async move {
@@ -282,11 +285,10 @@ impl CatmemLibOS {
                         (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
                     })
                 } else {
-                    let future: PopFuture = PopFuture::new(pipe.buffer(), size);
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
                     Box::pin(async move {
                         // Wait for pop to complete.
-                        let result: Result<(DemiBuffer, bool), Fail> = future.await;
+                        let result: Result<(DemiBuffer, bool), Fail> = pop_coroutine(ring, size, yielder).await;
                         // Process the result.
                         match result {
                             Ok((buf, eof)) => {
@@ -320,6 +322,7 @@ impl CatmemLibOS {
                         return Err(Fail::new(libc::EAGAIN, &cause));
                     },
                 };
+                queue.add_pending_op(&handle, &yielder_handle);
                 let qt: QToken = handle.get_task_id().into();
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
