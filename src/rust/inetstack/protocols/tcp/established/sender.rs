@@ -225,6 +225,8 @@ impl<const N: usize> Sender<N> {
                         // Set FIN and adjust sequence number consumption accordingly.
                         header.fin = true;
                         buf_len = 1;
+                    } else {
+                        header.psh = true;
                     }
                     trace!("Send immediate");
                     cb.emit(header, Some(buf.clone()), remote_link_addr);
@@ -360,10 +362,11 @@ impl<const N: usize> Sender<N> {
         Some(cloned_buf)
     }
 
-    pub fn pop_unsent(&self, max_bytes: usize) -> Option<DemiBuffer> {
+    pub fn pop_unsent(&self, max_bytes: usize) -> Option<(DemiBuffer, bool)> {
         // TODO: Use a scatter/gather array to coalesce multiple buffers into a single segment.
         let mut unsent_queue = self.unsent_queue.borrow_mut();
         let mut buf: DemiBuffer = unsent_queue.pop_front()?;
+        let mut do_push: bool = true;
         let buf_len: usize = buf.len();
 
         if buf_len > max_bytes {
@@ -377,8 +380,11 @@ impl<const N: usize> Sender<N> {
 
             unsent_queue.push_front(buf);
             buf = cloned_buf;
+
+            // Suppress PSH flag for partial buffers.
+            do_push = false;
         }
-        Some(buf)
+        Some((buf, do_push))
     }
 
     pub fn top_size_unsent(&self) -> Option<usize> {
