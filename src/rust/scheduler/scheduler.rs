@@ -153,10 +153,6 @@ impl Scheduler {
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
-        let (page, _): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
-            (&pages[pages_ix], subpage_ix)
-        };
         Some(TaskHandle::new(task_id, index, page.clone()))
     }
 
