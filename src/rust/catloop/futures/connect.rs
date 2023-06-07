@@ -127,7 +127,28 @@ impl Future for ConnectFuture {
                 remote,
                 duplex_pipe,
             } => {
-                if let Some(_) = DuplexPipe::poll(&self_.catmem, *qt_tx)? {
+                if let Some(handle) = DuplexPipe::poll(&self_.catmem, *qt_tx)? {
+                    // Retrieve operation result and check if it is what we expect.
+                    let qr: demi_qresult_t = self_.catmem.borrow_mut().pack_result(handle, *qt_tx)?;
+                    match qr.qr_opcode {
+                        // We expect a successful completion for previous push().
+                        demi_opcode_t::DEMI_OPC_PUSH => {},
+                        // We may get some error.
+                        demi_opcode_t::DEMI_OPC_FAILED => {
+                            let cause: String = format!(
+                                "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                                qr.qr_qd, *qt_tx, qr.qr_ret
+                            );
+                            error!("poll(): {:?}", &cause);
+                            return Poll::Ready(Err(Fail::new(qr.qr_ret as i32, &cause)));
+                        },
+                        // We do not expect anything else.
+                        _ => {
+                            // The following statement is unreachable because we have issued a pop operation.
+                            // If we successfully complete a different operation, something really bad happen in the scheduler.
+                            unreachable!("unexpected operation on control duplex pipe")
+                        },
+                    }
                     return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
                 }
 
@@ -165,7 +186,29 @@ fn connect_request_sent(
     qt_tx: QToken,
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if connection request was sent.
-    if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
+    if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
+        // Retrieve operation result and check if it is what we expect.
+        let qr: demi_qresult_t = self_.catmem.borrow_mut().pack_result(handle, qt_tx)?;
+        match qr.qr_opcode {
+            // We expect a successful completion for previous push().
+            demi_opcode_t::DEMI_OPC_PUSH => {},
+            // We may get some error.
+            demi_opcode_t::DEMI_OPC_FAILED => {
+                let cause: String = format!(
+                    "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                    qr.qr_qd, qt_tx, qr.qr_ret
+                );
+                error!("connect_request_sent(): {:?}", &cause);
+                return Poll::Ready(Err(Fail::new(qr.qr_ret as i32, &cause)));
+            },
+            // We do not expect anything else.
+            _ => {
+                // The following statement is unreachable because we have issued a pop operation.
+                // If we successfully complete a different operation, something really bad happen in the scheduler.
+                unreachable!("unexpected operation on control duplex pipe")
+            },
+        }
+
         // Issue receive operation to wait for connect request ack.
         let size: usize = mem::size_of::<u16>();
         let qt_rx: QToken = self_.control_duplex_pipe.pop(Some(size))?;
@@ -187,12 +230,30 @@ fn connect_ack_received(
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if we received a connect request ack.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_rx)? {
+        // Retrieve operation result and check if it is what we expect.
         let qr: demi_qresult_t = self_.catmem.borrow_mut().pack_result(handle, qt_rx)?;
+        match qr.qr_opcode {
+            // We expect a successful completion for previous pop().
+            demi_opcode_t::DEMI_OPC_POP => {},
+            // We may get some error.
+            demi_opcode_t::DEMI_OPC_FAILED => {
+                let cause: String = format!(
+                    "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                    qr.qr_qd, qt_rx, qr.qr_ret
+                );
+                error!("connect_ack_received(): {:?}", &cause);
+                return Poll::Ready(Err(Fail::new(qr.qr_ret as i32, &cause)));
+            },
+            // We do not expect anything else.
+            _ => {
+                // The following statement is unreachable because we have issued a pop operation.
+                // If we successfully complete a different operation, something really bad happen in the scheduler.
+                unreachable!("unexpected operation on control duplex pipe")
+            },
+        }
 
-        let sga: demi_sgarray_t = match qr.qr_opcode {
-            demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            _ => panic!("unexpected operation on control duplex pipe"),
-        };
+        // Extract scatter-gather array from operation result.
+        let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
 
         // Extract port number.
         let port: u16 = {

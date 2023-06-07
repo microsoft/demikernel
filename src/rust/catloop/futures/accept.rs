@@ -125,9 +125,13 @@ impl Future for AcceptFuture {
                 duplex_pipe,
             } => {
                 if let Some(handle) = DuplexPipe::poll(&self_.catmem, *qt_close)? {
-                    check_connect_request(&self_.catmem, handle, *qt_close).expect("magic connect");
-                    debug!("connection accepted!");
-                    return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
+                    match check_connect_request(&self_.catmem, handle, *qt_close) {
+                        Ok(_) => {
+                            debug!("connection accepted!");
+                            return Poll::Ready(Ok((*remote, duplex_pipe.clone())));
+                        },
+                        Err(e) => return Poll::Ready(Err(e)),
+                    }
                 }
                 ctx.waker().wake_by_ref();
                 return Poll::Pending;
@@ -144,26 +148,40 @@ impl Future for AcceptFuture {
 //   - The completed I/O queue operation associated to the queue token qt
 //   concerns a pop() operation that has completed.
 //   - The payload received from that pop() operation is a valid and legit MAGIC_CONNECT message.
-fn check_connect_request(catmem: &Rc<RefCell<CatmemLibOS>>, handle: TaskHandle, qt: QToken) -> Result<(), Fail> {
-    // Parse and check request.
-    let passed: bool = {
-        let qr: demi_qresult_t = catmem.borrow_mut().pack_result(handle, qt)?;
-        let sga: demi_sgarray_t = match qr.qr_opcode {
-            demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
-            _ => panic!("unxpected operation on control duplex pipe"),
-        };
-        let passed: bool = CatloopLibOS::is_magic_connect(&sga);
-        catmem.borrow_mut().free_sgarray(sga)?;
-        passed
-    };
-
-    if !passed {
-        let e: Fail = Fail::new(libc::EPROTO, "invalid request");
-        error!("failed to establish connection ({:?})", e);
-        Err(e)
-    } else {
-        Ok(())
+fn check_connect_request(catmem: &Rc<RefCell<CatmemLibOS>>, handle: TaskHandle, qt: QToken) -> Result<bool, Fail> {
+    // Retrieve operation result and check if it is what we expect.
+    let qr: demi_qresult_t = catmem.borrow_mut().pack_result(handle, qt)?;
+    match qr.qr_opcode {
+        // We expect a successful completion for previous pop().
+        demi_opcode_t::DEMI_OPC_POP => {},
+        // We may get some error.
+        demi_opcode_t::DEMI_OPC_FAILED => {
+            let cause: String = format!(
+                "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                qr.qr_qd, qt, qr.qr_ret
+            );
+            error!("poll(): {:?}", &cause);
+            return Err(Fail::new(qr.qr_ret as i32, &cause));
+        },
+        // We do not expect anything else.
+        _ => {
+            // The following statement is unreachable because we have issued a pop operation.
+            // If we successfully complete a different operation, something really bad happen in the scheduler.
+            unreachable!("unexpected operation on control duplex pipe")
+        },
     }
+
+    // Extract scatter-gather array from operation result.
+    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+
+    // Parse and check request.
+    let passed: bool = CatloopLibOS::is_magic_connect(&sga);
+    catmem.borrow_mut().free_sgarray(sga)?;
+    if !passed {
+        warn!("failed to establish connection (invalid request)");
+    }
+
+    Ok(passed)
 }
 
 // Sends the port number to the peer process.
@@ -191,31 +209,40 @@ fn listen_and_accept(
     // Check if a connection request arrived.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_rx)? {
         // Check if this is a valid connection request.
-        if !check_connect_request(&self_.catmem, handle, qt_rx).is_err() {
-            // Create underlying pipes before sending the port number through the
-            // control duplex pipe. This prevents us from running into a race
-            // condition were the remote makes progress faster than us and attempts
-            // to open the duplex pipe before it is created.
-            let duplex_pipe: Rc<DuplexPipe> = Rc::new(DuplexPipe::create_duplex_pipe(
-                self_.catmem.clone(),
-                &self_.ipv4,
-                self_.new_port,
-            )?);
+        match check_connect_request(&self_.catmem, handle, qt_rx) {
+            // Valid request.
+            Ok(true) => {
+                // Create underlying pipes before sending the port number through the
+                // control duplex pipe. This prevents us from running into a race
+                // condition were the remote makes progress faster than us and attempts
+                // to open the duplex pipe before it is created.
+                let duplex_pipe: Rc<DuplexPipe> = Rc::new(DuplexPipe::create_duplex_pipe(
+                    self_.catmem.clone(),
+                    &self_.ipv4,
+                    self_.new_port,
+                )?);
 
-            // Send port number.
-            let qt_tx: QToken = send_port_number(&self_.catmem, self_.control_duplex_pipe.clone(), self_.new_port)?;
+                // Send port number.
+                let qt_tx: QToken = send_port_number(&self_.catmem, self_.control_duplex_pipe.clone(), self_.new_port)?;
 
-            // Advance to next state in the connection establishment protocol.
-            self_.state = ServerState::Connect {
-                qt_tx,
-                duplex_pipe: duplex_pipe.clone(),
-            };
-        } else {
-            // Re-issue accept pop. Note that we intentionally issue an unbound
-            // pop() because the connection establishment protocol requires that
-            // only one connection request is accepted at a time.
-            let qt_rx: QToken = self_.control_duplex_pipe.pop(None)?;
-            self_.state = ServerState::ListenAndAccept { qt_rx };
+                // Advance to next state in the connection establishment protocol.
+                self_.state = ServerState::Connect {
+                    qt_tx,
+                    duplex_pipe: duplex_pipe.clone(),
+                };
+            },
+            // Invalid request.
+            Ok(false) => {
+                // Re-issue accept pop. Note that we intentionally issue an unbound
+                // pop() because the connection establishment protocol requires that
+                // only one connection request is accepted at a time.
+                let qt_rx: QToken = self_.control_duplex_pipe.pop(None)?;
+                self_.state = ServerState::ListenAndAccept { qt_rx };
+            },
+            // Some error.
+            Err(e) => {
+                return Poll::Ready(Err(e));
+            },
         }
     }
 
@@ -231,7 +258,29 @@ fn connect(
     qt_tx: QToken,
     duplex_pipe: Rc<DuplexPipe>,
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
-    if let Some(_) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
+    if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
+        // Retrieve operation result and check if it is what we expect.
+        let qr: demi_qresult_t = self_.catmem.borrow_mut().pack_result(handle, qt_tx)?;
+        match qr.qr_opcode {
+            // We expect a successful completion for previous push().
+            demi_opcode_t::DEMI_OPC_PUSH => {},
+            // We may get some error.
+            demi_opcode_t::DEMI_OPC_FAILED => {
+                let cause: String = format!(
+                    "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                    qr.qr_qd, qt_tx, qr.qr_ret
+                );
+                error!("connect(): {:?}", &cause);
+                return Poll::Ready(Err(Fail::new(qr.qr_ret as i32, &cause)));
+            },
+            // We do not expect anything else.
+            _ => {
+                // The following statement is unreachable because we have issued a pop operation.
+                // If we successfully complete a different operation, something really bad happen in the scheduler.
+                unreachable!("unexpected operation on control duplex pipe")
+            },
+        }
+
         let remote: SocketAddrV4 = SocketAddrV4::new(self_.ipv4, self_.new_port);
         let size: usize = mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT);
         let qt_close: QToken = duplex_pipe.pop(Some(size))?;
