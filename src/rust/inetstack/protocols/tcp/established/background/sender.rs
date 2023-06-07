@@ -127,7 +127,7 @@ pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> 
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let segment_data: DemiBuffer = cb
+        let (segment_data, do_push): (DemiBuffer, bool) = cb
             .pop_unsent_segment(max_size)
             .expect("No unsent data with sequence number gap?");
         let mut segment_data_len: u32 = segment_data.len() as u32;
@@ -144,6 +144,8 @@ pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> 
             // Set FIN and adjust sequence number consumption accordingly.
             header.fin = true;
             segment_data_len = 1;
+        } else if do_push {
+            header.psh = true;
         }
         cb.emit(header, Some(segment_data.clone()), remote_link_addr);
 
