@@ -102,12 +102,4 @@ impl DuplexPipe {
 
         Ok(Some(handle))
     }
-
-    /// Drops a pending operation on a duplex pipe.
-    pub fn drop(catmem: &Rc<RefCell<CatmemLibOS>>, qt: QToken) -> Result<(), Fail> {
-        // Retrieve a handle to the concerned co-routine and execute its destructor.
-        let handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
-        drop(handle);
-        Ok(())
-    }
 }
