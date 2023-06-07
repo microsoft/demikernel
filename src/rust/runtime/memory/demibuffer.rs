@@ -878,7 +878,7 @@ impl Drop for DemiBuffer {
                 while let Some(mut entry) = next_entry {
                     // Safety: This is safe, as `entry` is aligned, dereferenceable, and the MetaData struct it points
                     // to is initialized.
-                    let mut metadata: &mut MetaData = unsafe { entry.as_mut() };
+                    let metadata: &mut MetaData = unsafe { entry.as_mut() };
 
                     // Remember the next entry in the chain (if any) before we potentially free the current one.
                     next_entry = metadata.next;
