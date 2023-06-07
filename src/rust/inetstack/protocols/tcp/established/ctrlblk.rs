@@ -401,7 +401,7 @@ impl<const N: usize> ControlBlock<N> {
 
     // This is the main TCP receive routine.
     //
-    pub fn receive(&self, mut header: &mut TcpHeader, mut data: DemiBuffer) {
+    pub fn receive(&self, header: &mut TcpHeader, mut data: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.state.get(),
