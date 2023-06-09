@@ -57,7 +57,7 @@ impl DuplexPipe {
 
     /// Opens a duplex pipe.
     pub fn open_duplex_pipe(catmem: Rc<RefCell<CatmemLibOS>>, ipv4: &Ipv4Addr, port: u16) -> Result<Self, Fail> {
-        // Note: the rx and tx are intentionally flipped in the formatting string bellow.
+        // Note: the rx and tx are intentionally flipped in the formatting string below.
         let rx: QDesc = catmem.borrow_mut().open_pipe(&format!("{}:{}:tx", ipv4, port))?;
         let tx: QDesc = catmem.borrow_mut().open_pipe(&format!("{}:{}:rx", ipv4, port))?;
         Ok(Self { catmem, rx, tx })

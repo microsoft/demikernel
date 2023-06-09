@@ -83,7 +83,7 @@ impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
     pub fn remove(&self, mut handle: TaskHandle) -> Box<dyn Task> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
-        // TODO: review why it is safe to unwrap() here and change the statement bellow to an expect().
+        // TODO: review why it is safe to unwrap() here and change the statement below to an expect().
         let task_id: u64 = handle.take_task_id().unwrap();
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
         let index: usize = self
@@ -97,7 +97,7 @@ impl Scheduler {
         };
         assert!(!page.was_dropped(subpage_ix));
         page.clear(subpage_ix);
-        // TODO: review why it is safe to unwrap() here and change the statement bellow to an expect().
+        // TODO: review why it is safe to unwrap() here and change the statement below to an expect().
         let task: Box<dyn Task> = self.tasks.borrow_mut().remove_unpin(index).unwrap();
         trace!(
             "remove(): name={:?}, id={:?}, index={:?}",

@@ -84,7 +84,7 @@ impl Future for AcceptFuture {
                     Ok(_) => {},
                     Err(_) => warn!("cannot set NONBLOCK option"),
                 };
-                // It is ok to have the expect() statement bellow because if
+                // It is ok to have the expect() statement below because if
                 // this is not a SocketAddrV4 something really bad happen.
                 let addr: SocketAddrV4 = saddr.as_socket_ipv4().expect("not a SocketAddrV4");
                 Poll::Ready(Ok((new_socket, addr)))
