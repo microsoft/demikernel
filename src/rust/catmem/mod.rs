@@ -10,15 +10,15 @@ mod queue;
 //======================================================================================================================
 
 use self::{
-    futures::{
-        pop::PopFuture,
-        push::PushFuture,
-        OperationResult,
-    },
+    futures::OperationResult,
     pipe::Pipe,
     queue::CatmemQueue,
 };
 use crate::{
+    catmem::futures::{
+        pop::pop_coroutine,
+        push::push_coroutine,
+    },
     collections::shared_ring::SharedRingBuffer,
     runtime::{
         fail::Fail,
@@ -41,6 +41,8 @@ use crate::{
         Scheduler,
         TaskHandle,
         TaskWithResult,
+        Yielder,
+        YielderHandle,
     },
 };
 use ::std::{
@@ -130,8 +132,9 @@ impl CatmemLibOS {
     pub fn shutdown(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("shutdown() qd={:?}", qd);
         let mut qtable = self.qtable.borrow_mut();
-        match qtable.get(&qd) {
-            Some(_) => {
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
                 qtable.free(&qd);
             },
             None => {
@@ -171,24 +174,26 @@ impl CatmemLibOS {
         let mut qtable: RefMut<IoQueueTable<CatmemQueue>> = self.qtable.borrow_mut();
 
         // Check if queue descriptor is valid.
-        if qtable.get(&qd).is_none() {
-            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-            error!("close(): {}", cause);
-            return Err(Fail::new(libc::EBADF, &cause));
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                // Attempt to push EoF.
+                let result: Result<(), Fail> = {
+                    // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
+                    Self::push_eof(queue.get_pipe().buffer())
+                };
+                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+
+                // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
+                // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
+                qtable.free(&qd);
+                result
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         }
-
-        // Attempt to push EoF.
-        let result: Result<(), Fail> = {
-            // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
-            let queue: &CatmemQueue = qtable.get(&qd).expect("queue descriptor should be valid");
-            Self::push_eof(queue.get_pipe().buffer())
-        };
-
-        // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
-        // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
-        qtable.free(&qd);
-
-        result
     }
 
     /// Pushes a scatter-gather array to a socket.
@@ -205,7 +210,7 @@ impl CatmemLibOS {
                 }
 
                 // Issue push operation.
-                match self.qtable.borrow().get(&qd) {
+                match self.qtable.borrow_mut().get_mut(&qd) {
                     Some(queue) => {
                         let pipe: &Pipe = queue.get_pipe();
 
@@ -216,11 +221,14 @@ impl CatmemLibOS {
                             unreachable!("push() called on a closed pipe");
                         }
 
+                        // Create co-routine.
+                        let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                        let yielder: Yielder = Yielder::new();
+                        let yielder_handle: YielderHandle = yielder.get_handle();
                         let coroutine: Pin<Box<Operation>> = {
-                            let future: PushFuture = PushFuture::new(pipe.buffer(), buf);
                             Box::pin(async move {
                                 // Wait for push to complete.
-                                let result: Result<(), Fail> = future.await;
+                                let result: Result<(), Fail> = push_coroutine(ring, buf, yielder).await;
                                 // Handle result.
                                 match result {
                                     Ok(()) => (qd, OperationResult::Push),
@@ -238,6 +246,7 @@ impl CatmemLibOS {
                                 return Err(Fail::new(libc::EAGAIN, &cause));
                             },
                         };
+                        queue.add_pending_op(&handle, &yielder_handle);
                         let qt: QToken = handle.get_task_id().into();
                         trace!("push() qt={:?}", qt);
                         Ok(qt)
@@ -262,9 +271,12 @@ impl CatmemLibOS {
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         // Issue pop operation.
-        match self.qtable.borrow().get(&qd) {
+        match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => {
                 let pipe: &Pipe = queue.get_pipe();
+                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                let yielder: Yielder = Yielder::new();
+                let yielder_handle: YielderHandle = yielder.get_handle();
                 let coroutine: Pin<Box<Operation>> = if pipe.eof() {
                     // Handle end of file.
                     Box::pin(async move {
@@ -273,11 +285,10 @@ impl CatmemLibOS {
                         (qd, OperationResult::Failed(Fail::new(libc::ECONNRESET, &cause)))
                     })
                 } else {
-                    let future: PopFuture = PopFuture::new(pipe.buffer(), size);
                     let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
                     Box::pin(async move {
                         // Wait for pop to complete.
-                        let result: Result<(DemiBuffer, bool), Fail> = future.await;
+                        let result: Result<(DemiBuffer, bool), Fail> = pop_coroutine(ring, size, yielder).await;
                         // Process the result.
                         match result {
                             Ok((buf, eof)) => {
@@ -311,6 +322,7 @@ impl CatmemLibOS {
                         return Err(Fail::new(libc::EAGAIN, &cause));
                     },
                 };
+                queue.add_pending_op(&handle, &yielder_handle);
                 let qt: QToken = handle.get_task_id().into();
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
@@ -335,8 +347,23 @@ impl CatmemLibOS {
 
     /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        // FIXME: remove this once we support explicit task de-schedule.
+        let mut task_handle: TaskHandle = handle.clone();
+
         let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
-        task.get_result().expect("The coroutine has not finished")
+        let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
+
+        match self.qtable.borrow_mut().get_mut(&qd) {
+            Some(queue) => queue.remove_pending_op(&task_handle),
+            None => debug!("take_result(): this queue was closed (qd={:?})", qd),
+        }
+
+        // Remove the key so this doesn't cause the scheduler to drop the whole task.
+        // We need a better explicit mechanism to remove tasks from the scheduler.
+        // FIXME: https://github.com/demikernel/demikernel/issues/593
+        task_handle.take_task_id();
+
+        (qd, result)
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {

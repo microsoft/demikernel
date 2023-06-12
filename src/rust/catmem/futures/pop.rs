@@ -12,90 +12,60 @@ use crate::{
         limits,
         memory::DemiBuffer,
     },
+    scheduler::yielder::Yielder,
 };
-use ::std::{
-    future::Future,
-    pin::Pin,
-    rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
-};
+use ::std::rc::Rc;
 
 //======================================================================================================================
-// Structures
+// Standalone Functions
 //======================================================================================================================
 
-/// Pop Operation Descriptor
-pub struct PopFuture {
-    /// Underlying shared ring buffer.
+/// Polls `try_dequeue()` on `ring` until some data is received and placed in `buf`.
+pub async fn pop_coroutine(
     ring: Rc<SharedRingBuffer<u16>>,
-    /// Number of bytes to pop.
     size: Option<usize>,
-}
+    yielder: Yielder,
+) -> Result<(DemiBuffer, bool), Fail> {
+    let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
+    let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
+    let mut eof: bool = false;
+    let mut index: usize = 0;
+    loop {
+        match ring.try_dequeue() {
+            Some(x) => {
+                let (high, low): (u8, u8) = (((x >> 8) & 0xff) as u8, (x & 0xff) as u8);
+                if high != 0 {
+                    buf.trim(size - index)
+                        .expect("cannot trim more bytes than the buffer has");
+                    eof = true;
+                    break;
+                } else {
+                    buf[index] = low;
+                    index += 1;
 
-//======================================================================================================================
-// Associate Functions
-//======================================================================================================================
-
-/// Associate Functions for Pop Operation Descriptors
-impl PopFuture {
-    /// Creates a descriptor for a pop operation.
-    pub fn new(ring: Rc<SharedRingBuffer<u16>>, size: Option<usize>) -> Self {
-        PopFuture { ring, size }
-    }
-}
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-/// Future Trait Implementation for Pop Operation Descriptors
-impl Future for PopFuture {
-    type Output = Result<(DemiBuffer, bool), Fail>;
-
-    /// Polls the target [PopFuture].
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &mut PopFuture = self.get_mut();
-        let size: usize = self_.size.unwrap_or(limits::RECVBUF_SIZE_MAX);
-        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
-        let mut eof: bool = false;
-        let mut index: usize = 0;
-        loop {
-            match self_.ring.try_dequeue() {
-                Some(x) => {
-                    let (high, low): (u8, u8) = (((x >> 8) & 0xff) as u8, (x & 0xff) as u8);
-                    if high != 0 {
-                        buf.trim(size - index)
-                            .expect("cannot trim more bytes than the buffer has");
-                        eof = true;
-                        break;
-                    } else {
-                        buf[index] = low;
-                        index += 1;
-
-                        // Check if we read enough bytes.
-                        if index >= size {
-                            buf.trim(size - index)
-                                .expect("cannot trim more bytes than the buffer has");
-                            break;
-                        }
-                    }
-                },
-                None => {
-                    if index > 0 {
+                    // Check if we read enough bytes.
+                    if index >= size {
                         buf.trim(size - index)
                             .expect("cannot trim more bytes than the buffer has");
                         break;
-                    } else {
-                        ctx.waker().wake_by_ref();
-                        return Poll::Pending;
                     }
-                },
-            }
+                }
+            },
+            None => {
+                if index > 0 {
+                    buf.trim(size - index)
+                        .expect("cannot trim more bytes than the buffer has");
+                    break;
+                } else {
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
+                }
+            },
         }
-        trace!("data read ({:?}/{:?} bytes, eof={:?})", buf.len(), size, eof);
-        Poll::Ready(Ok((buf, eof)))
     }
+    trace!("data read ({:?}/{:?} bytes, eof={:?})", buf.len(), size, eof);
+    Ok((buf, eof))
 }
