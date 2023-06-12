@@ -66,7 +66,7 @@ impl LinuxRuntime {
             Some(false),
         );
 
-        // TODO: Make this constructor return a Result and drop expect() calls bellow.
+        // TODO: Make this constructor return a Result and drop expect() calls below.
         let mac_addr: [u8; 6] = [0; 6];
         let ifindex: i32 = Self::get_ifindex(ifname).expect("could not parse ifindex");
         let socket: RawSocket = RawSocket::new().expect("could not create raw socket");

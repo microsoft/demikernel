@@ -3,7 +3,7 @@ Contributing
 
 Everyone is welcome to contribute to this project.
 
-Bellow, you find some guidelines to help you on this.
+Here are some guidelines to help you.
 
 Special Branches
 -----------------

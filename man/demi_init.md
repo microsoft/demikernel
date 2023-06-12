@@ -24,7 +24,7 @@ The array of argument strings provides Demikernel with various information that 
 instance, these arguments shall state which LibOSes should be initialized, and whether or not runtime features shall be
 turned on.
 
-All arguments supported by Demikernel are listed in the table bellow. Arguments that are not listed therein are ignored.
+All arguments supported by Demikernel are listed in the table below. Arguments that are not listed therein are ignored.
 
 | ID      | Argument      | Description                       | Supported OS |
 | ------- | ------------- | --------------------------------- | ------------ |
