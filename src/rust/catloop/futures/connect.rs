@@ -24,6 +24,7 @@ use crate::{
 use ::std::{
     cell::RefCell,
     future::Future,
+    mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -36,7 +37,14 @@ use ::std::{
         Poll,
     },
 };
-use std::mem;
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+/// Maximum number of connection attempts.
+/// This was chosen arbitrarily.
+const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
 
 //======================================================================================================================
 // Enumerations
@@ -52,6 +60,7 @@ enum ClientState {
         qt_rx: Option<QToken>,
     },
     ConnectAckReceived {
+        attempt: usize,
         qt_rx: QToken,
     },
     Connected {
@@ -124,7 +133,7 @@ impl Future for ConnectFuture {
         match &self_.state {
             ClientState::InitiateConnectRequest { qt_rx } => setup(self_, ctx, *qt_rx),
             ClientState::ConnectRequestSent { qt_tx, qt_rx } => connect_request_sent(self_, ctx, *qt_tx, *qt_rx),
-            ClientState::ConnectAckReceived { qt_rx } => connect_ack_received(self_, ctx, *qt_rx),
+            ClientState::ConnectAckReceived { qt_rx, attempt } => connect_ack_received(self_, ctx, *qt_rx, *attempt),
             ClientState::Connected {
                 qt_tx,
                 remote,
@@ -227,7 +236,7 @@ fn connect_request_sent(
         };
 
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::ConnectAckReceived { qt_rx };
+        self_.state = ClientState::ConnectAckReceived { qt_rx, attempt: 0 };
     }
 
     // Re-schedule co-routine for later execution.
@@ -240,6 +249,7 @@ fn connect_ack_received(
     self_: &mut ConnectFuture,
     ctx: &mut Context<'_>,
     qt_rx: QToken,
+    attempt: usize,
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if we received a connect request ack.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_rx)? {
@@ -292,8 +302,19 @@ fn connect_ack_received(
             duplex_pipe,
         };
     } else {
-        // Connection timeout, retry.
-        self_.state = ClientState::InitiateConnectRequest { qt_rx: Some(qt_rx) };
+        if attempt > MAX_ACK_RECEIVED_ATTEMPTS {
+            // Connection timeout, retry.
+            debug!(
+                "connect_ack_received(): connection timeout, retrying (qt_rx={:?})",
+                qt_rx
+            );
+            self_.state = ClientState::InitiateConnectRequest { qt_rx: Some(qt_rx) };
+        } else {
+            self_.state = ClientState::ConnectAckReceived {
+                qt_rx,
+                attempt: attempt + 1,
+            };
+        }
     }
 
     // Re-schedule co-routine for later execution.
