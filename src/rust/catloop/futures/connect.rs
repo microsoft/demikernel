@@ -24,6 +24,7 @@ use crate::{
 use ::std::{
     cell::RefCell,
     future::Future,
+    mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -36,7 +37,14 @@ use ::std::{
         Poll,
     },
 };
-use std::mem;
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+/// Maximum number of connection attempts.
+/// This was chosen arbitrarily.
+const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
 
 //======================================================================================================================
 // Enumerations
@@ -44,11 +52,15 @@ use std::mem;
 
 /// Client-side states in the connection establishment protocol.
 enum ClientState {
-    InitiateConnectRequest,
+    InitiateConnectRequest {
+        qt_rx: Option<QToken>,
+    },
     ConnectRequestSent {
         qt_tx: QToken,
+        qt_rx: Option<QToken>,
     },
     ConnectAckReceived {
+        attempt: usize,
         qt_rx: QToken,
     },
     Connected {
@@ -90,7 +102,7 @@ impl ConnectFuture {
             catmem,
             ipv4: ipv4.clone(),
             control_duplex_pipe,
-            state: ClientState::InitiateConnectRequest,
+            state: ClientState::InitiateConnectRequest { qt_rx: None },
         })
     }
 }
@@ -119,9 +131,9 @@ impl Future for ConnectFuture {
         //    Connected
         //
         match &self_.state {
-            ClientState::InitiateConnectRequest => setup(self_, ctx),
-            ClientState::ConnectRequestSent { qt_tx } => connect_request_sent(self_, ctx, *qt_tx),
-            ClientState::ConnectAckReceived { qt_rx } => connect_ack_received(self_, ctx, *qt_rx),
+            ClientState::InitiateConnectRequest { qt_rx } => setup(self_, ctx, *qt_rx),
+            ClientState::ConnectRequestSent { qt_tx, qt_rx } => connect_request_sent(self_, ctx, *qt_tx, *qt_rx),
+            ClientState::ConnectAckReceived { qt_rx, attempt } => connect_ack_received(self_, ctx, *qt_rx, *attempt),
             ClientState::Connected {
                 qt_tx,
                 remote,
@@ -165,14 +177,18 @@ impl Future for ConnectFuture {
 //======================================================================================================================
 
 /// Runs the "Initiate Connect Request" state in the connection establishment protocol.
-fn setup(self_: &mut ConnectFuture, ctx: &mut Context<'_>) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
+fn setup(
+    self_: &mut ConnectFuture,
+    ctx: &mut Context<'_>,
+    qt_rx: Option<QToken>,
+) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Send connection request.
     let sga: demi_sgarray_t = CatloopLibOS::cook_magic_connect(&self_.catmem)?;
     let qt_tx: QToken = self_.control_duplex_pipe.push(&sga)?;
     self_.catmem.borrow_mut().free_sgarray(sga)?;
 
     // Transition to the next state in the connection establishment protocol.
-    self_.state = ClientState::ConnectRequestSent { qt_tx };
+    self_.state = ClientState::ConnectRequestSent { qt_tx, qt_rx };
 
     // Re-schedule co-routine for later execution.
     ctx.waker().wake_by_ref();
@@ -184,6 +200,7 @@ fn connect_request_sent(
     self_: &mut ConnectFuture,
     ctx: &mut Context<'_>,
     qt_tx: QToken,
+    qt_rx: Option<QToken>,
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if connection request was sent.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_tx)? {
@@ -211,10 +228,15 @@ fn connect_request_sent(
 
         // Issue receive operation to wait for connect request ack.
         let size: usize = mem::size_of::<u16>();
-        let qt_rx: QToken = self_.control_duplex_pipe.pop(Some(size))?;
+        let qt_rx: QToken = if let Some(qt_rx) = qt_rx {
+            qt_rx
+        } else {
+            warn!("connect_request_sent(): qt_rx is None, allocating new qtoken");
+            self_.control_duplex_pipe.pop(Some(size))?
+        };
 
         // Transition to the next state in the connection establishment protocol.
-        self_.state = ClientState::ConnectAckReceived { qt_rx };
+        self_.state = ClientState::ConnectAckReceived { qt_rx, attempt: 0 };
     }
 
     // Re-schedule co-routine for later execution.
@@ -227,6 +249,7 @@ fn connect_ack_received(
     self_: &mut ConnectFuture,
     ctx: &mut Context<'_>,
     qt_rx: QToken,
+    attempt: usize,
 ) -> Poll<Result<(SocketAddrV4, Rc<DuplexPipe>), Fail>> {
     // Check if we received a connect request ack.
     if let Some(handle) = DuplexPipe::poll(&self_.catmem, qt_rx)? {
@@ -279,9 +302,19 @@ fn connect_ack_received(
             duplex_pipe,
         };
     } else {
-        // Connection timeout, retry.
-        DuplexPipe::drop(&self_.catmem, qt_rx)?;
-        self_.state = ClientState::InitiateConnectRequest;
+        if attempt > MAX_ACK_RECEIVED_ATTEMPTS {
+            // Connection timeout, retry.
+            debug!(
+                "connect_ack_received(): connection timeout, retrying (qt_rx={:?})",
+                qt_rx
+            );
+            self_.state = ClientState::InitiateConnectRequest { qt_rx: Some(qt_rx) };
+        } else {
+            self_.state = ClientState::ConnectAckReceived {
+                qt_rx,
+                attempt: attempt + 1,
+            };
+        }
     }
 
     // Re-schedule co-routine for later execution.
