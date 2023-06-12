@@ -62,6 +62,8 @@ pub struct TcpServer {
     clients_closed: usize,
     /// Governs if the sockets are closed using async_close() or close().
     should_async_close: bool,
+    /// Test passed flag to allow cleanup in drop() only if the test fails.
+    has_test_passed: bool,
 }
 
 //======================================================================================================================
@@ -88,6 +90,7 @@ impl TcpServer {
             clients_accepted: 0,
             clients_closed: 0,
             should_async_close,
+            has_test_passed: false,
         });
     }
 
@@ -172,7 +175,12 @@ impl TcpServer {
             }
         }
 
+        // If close() fails, this test will fail. That is the desired behavior, because we want to test the close() 
+        // functionality. So this test differs from other tests. Other tests allocate resources in new() and release 
+        // them in the drop() function only.
         self.issue_close(self.sockqd)?;
+
+        self.has_test_passed = true;
 
         Ok(())
     }
@@ -332,6 +340,10 @@ impl TcpServer {
 impl Drop for TcpServer {
     // Releases all resources allocated to a pipe client.
     fn drop(&mut self) {
+        // If test has passed, all the resources would have already been cleaned up, there's nothing left to do here.
+        if self.has_test_passed {
+            return;
+        }
         for qd in self.clients.clone().drain() {
             if let Err(e) = self.issue_close(qd) {
                 println!("ERROR: close() failed (error={:?}", e);
