@@ -290,7 +290,7 @@ impl LibOS {
         trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
 
         // Retrieve associated schedule handle.
-        let mut handle: TaskHandle = self.schedule(qt)?;
+        let handle: TaskHandle = self.schedule(qt)?;
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -302,10 +302,6 @@ impl LibOS {
             }
 
             if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_task_id();
                 return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
             }
         }
@@ -326,17 +322,12 @@ impl LibOS {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let mut handle: TaskHandle = self.schedule(qt)?;
+                let handle: TaskHandle = self.schedule(qt)?;
 
                 // Found one, so extract the result and return.
                 if handle.has_completed() {
                     return Ok((i, self.pack_result(handle, qt)?));
                 }
-
-                // Return this operation to the scheduling queue by removing the associated key
-                // (which would otherwise cause the operation to be freed).
-                // FIXME: https://github.com/demikernel/demikernel/issues/593
-                handle.take_task_id();
             }
 
             // If we have a timeout, check for expiration.

@@ -345,23 +345,19 @@ impl CatmemLibOS {
         MemoryRuntime::free_sgarray(self, sga)
     }
 
-    /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
+    /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        // FIXME: remove this once we support explicit task de-schedule.
-        let mut task_handle: TaskHandle = handle.clone();
-
-        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
+        let task: OperationTask = if let Some(task) = self.scheduler.remove(&handle) {
+            OperationTask::from(task.as_any())
+        } else {
+            panic!("Removing task that does not exist (either was previously removed or never inserted)");
+        };
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
         match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => queue.remove_pending_op(&task_handle),
+            Some(queue) => queue.remove_pending_op(&handle),
             None => debug!("take_result(): this queue was closed (qd={:?})", qd),
         }
-
-        // Remove the key so this doesn't cause the scheduler to drop the whole task.
-        // We need a better explicit mechanism to remove tasks from the scheduler.
-        // FIXME: https://github.com/demikernel/demikernel/issues/593
-        task_handle.take_task_id();
 
         (qd, result)
     }

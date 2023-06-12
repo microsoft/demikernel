@@ -571,9 +571,13 @@ impl CatloopLibOS {
         self.scheduler.poll()
     }
 
-    /// Takes out the [OperationResult] associated with the target [SchedulerHandle].
+    /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.scheduler.remove(handle).as_any());
+        let task: OperationTask = if let Some(task) = self.scheduler.remove(&handle) {
+            OperationTask::from(task.as_any())
+        } else {
+            panic!("Removing task that does not exist (either was previously removed or never inserted)");
+        };
         task.get_result().expect("The coroutine has not finished")
     }
 

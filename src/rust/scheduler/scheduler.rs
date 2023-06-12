@@ -81,31 +81,33 @@ pub struct Scheduler {
 /// Associate Functions for Scheduler
 impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
-    pub fn remove(&self, mut handle: TaskHandle) -> Box<dyn Task> {
+    pub fn remove(&self, handle: &TaskHandle) -> Option<Box<dyn Task>> {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
-        // TODO: review why it is safe to unwrap() here and change the statement below to an expect().
-        let task_id: u64 = handle.take_task_id().unwrap();
+        let task_id: u64 = handle.get_task_id();
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let index: usize = self
+        let index: usize = *self
             .task_ids
-            .borrow_mut()
-            .remove(&task_id)
+            .borrow()
+            .get(&task_id)
             .expect("Token should be in the token table");
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
-        assert!(!page.was_dropped(subpage_ix));
+        assert!(!page.was_dropped(subpage_ix), "Task was previously dropped");
         page.clear(subpage_ix);
-        // TODO: review why it is safe to unwrap() here and change the statement below to an expect().
-        let task: Box<dyn Task> = self.tasks.borrow_mut().remove_unpin(index).unwrap();
-        trace!(
-            "remove(): name={:?}, id={:?}, index={:?}",
-            task.get_name(),
-            task_id,
-            index
-        );
-        task
+        if let Some(task) = self.tasks.borrow_mut().remove_unpin(index) {
+            trace!(
+                "remove(): name={:?}, id={:?}, index={:?}",
+                task.get_name(),
+                task_id,
+                index
+            );
+            Some(task)
+        } else {
+            warn!("Unable to unpin and remove: id={:?}, index={:?}", task_id, index);
+            None
+        }
     }
 
     /// Given a task id return a handle to the task.
@@ -117,7 +119,7 @@ impl Scheduler {
         };
         self.tasks.borrow().get(index)?;
         let page: &WakerPageRef = {
-            let (pages_ix, _) = self.get_page_indices(index);
+            let (pages_ix, _) = self.get_page_indexes(index);
             &pages[pages_ix]
         };
         let handle: TaskHandle = TaskHandle::new(task_id, index, page.clone());
@@ -149,7 +151,7 @@ impl Scheduler {
             pages.push(WakerPageRef::default());
         }
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indices(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
@@ -157,7 +159,7 @@ impl Scheduler {
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
-    fn get_page_indices(&self, index: usize) -> (usize, usize) {
+    fn get_page_indexes(&self, index: usize) -> (usize, usize) {
         (index >> WAKER_BIT_LENGTH_SHIFT, index & (WAKER_BIT_LENGTH - 1))
     }
 

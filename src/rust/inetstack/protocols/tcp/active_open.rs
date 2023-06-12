@@ -323,3 +323,13 @@ impl<const N: usize> ActiveOpenSocket<N> {
         (self.local, self.remote)
     }
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl<const N: usize> Drop for ActiveOpenSocket<N> {
+    fn drop(&mut self) {
+        self.handle.deschedule();
+    }
+}

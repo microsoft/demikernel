@@ -723,9 +723,14 @@ impl CatnapLibOS {
         self.runtime.free_sgarray(sga)
     }
 
-    /// Takes out the result from the [OperationTask] associated with the target [SchedulerHandle].
+    /// Takes out the result from the [OperationTask] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = OperationTask::from(self.runtime.scheduler.remove(handle.clone()).as_any());
+        let task: OperationTask = if let Some(task) = self.runtime.scheduler.remove(&handle) {
+            OperationTask::from(task.as_any())
+        } else {
+            panic!("Removing task that does not exist (either was previously removed or never inserted)");
+        };
+
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
         match result {
             OperationResult::Close => {},
@@ -736,6 +741,7 @@ impl CatnapLibOS {
                 };
             },
         }
+
         (qd, result)
     }
 }
