@@ -23,7 +23,7 @@ license-file = "LICENSE.txt"
 [dependencies]
 
 # Third Party
-arrayvec = "0.7.2"
+arrayvec = "0.7.3"
 async-trait = "0.1.68"
 anyhow = "1.0.71"
 bit-iter = "1.1.1"
