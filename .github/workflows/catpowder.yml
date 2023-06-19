@@ -12,7 +12,7 @@ on:
       - workaround-*
       - dev
       - unstable
-      - master
+      - main
 
 env:
   LIBOS: catpowder
