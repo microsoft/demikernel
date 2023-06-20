@@ -40,8 +40,6 @@ pub fn run(libos: &mut LibOS) -> Vec<(String, String, Result<(), anyhow::Error>)
 
 /// Attempts to create a TCP socket using an unsupported domain.
 fn create_socket_using_unsupported_domain(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(create_socket_using_unsupported_domain));
-
     // Unsupported domains in Linux.
     #[cfg(target_os = "linux")]
     let domains: Vec<libc::c_int> = vec![
@@ -120,8 +118,6 @@ fn create_socket_using_unsupported_domain(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to create a TCP socket using an unsupported socket type.
 fn create_socket_using_unsupported_type(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(create_socket_using_unsupported_type));
-
     // Invalid socket types in Linux.
     #[cfg(target_os = "linux")]
     let socket_types: Vec<libc::c_int> = vec![

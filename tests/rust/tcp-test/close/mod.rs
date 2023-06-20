@@ -53,8 +53,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
 
 /// Attempts to close an invalid queue descriptor.
 fn close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(close_invalid_queue_descriptor));
-
     // Fail to close socket.
     match libos.close(QDesc::from(0)) {
         Err(e) if e.errno == libc::EBADF => Ok(()),
@@ -65,8 +63,6 @@ fn close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to close a TCP socket multiple times.
 fn close_socket_twice(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(close_socket_twice));
-
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -83,8 +79,6 @@ fn close_socket_twice(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to close a TCP socket that is not bound.
 fn close_unbound_socket(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(close_unbound_socket));
-
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -96,8 +90,6 @@ fn close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to close a TCP socket that is bound.
 fn close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(close_bound_socket));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, *local)?;
@@ -110,8 +102,6 @@ fn close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
 
 /// Attempts to close a TCP socket that is listening.
 fn close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(close_listening_socket));
-
     // Create a listening socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, *local)?;

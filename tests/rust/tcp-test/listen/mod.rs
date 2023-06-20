@@ -60,8 +60,6 @@ pub fn run(
 
 /// Attempts to listen for connections on an invalid queue descriptor.
 fn listen_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(listen_invalid_queue_descriptor));
-
     // Fail to listen().
     match libos.listen(QDesc::from(0), 8) {
         Err(e) if e.errno == libc::EBADF => Ok(()),
@@ -72,8 +70,6 @@ fn listen_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to listen for connections on a TCP socket that is not bound.
 fn listen_unbound_socket(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(listen_unbound_socket));
-
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -92,8 +88,6 @@ fn listen_unbound_socket(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to listen for connections on a TCP socket that is bound.
 fn listen_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_bound_socket));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -109,8 +103,6 @@ fn listen_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
 
 /// Attempts to listen for connections on a TCP socket with a zero backlog length.
 fn listen_invalid_zero_backlog_length(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_invalid_zero_backlog_length));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -129,8 +121,6 @@ fn listen_invalid_zero_backlog_length(libos: &mut LibOS, local: &SocketAddrV4) -
 
 /// Attempts to listen for connections on a TCP socket with a large backlog length.
 fn listen_large_backlog_length(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_invalid_backlog_length));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -149,8 +139,6 @@ fn listen_large_backlog_length(libos: &mut LibOS, local: &SocketAddrV4) -> Resul
 
 /// Attempts to listen for connections on a TCP socket that is already listening for connections.
 fn listen_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_listening_socket));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -173,8 +161,6 @@ fn listen_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 
 /// Attempts to listen for connections on a TCP socket that is connecting.
 fn listen_connecting_socket(libos: &mut LibOS, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_connecting_socket));
-
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -273,8 +259,6 @@ fn listen_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 
 /// Attempts to listen for connections on a TCP socket that is closed.
 fn listen_closed_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(listen_closed_socket));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
