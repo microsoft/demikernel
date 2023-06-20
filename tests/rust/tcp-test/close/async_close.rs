@@ -42,7 +42,9 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(async_close_invalid_queue_descriptor(libos)));
-    crate::collect!(result, crate::test!(async_close_socket_twice(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_1(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_2(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_3(libos)));
     crate::collect!(result, crate::test!(async_close_unbound_socket(libos)));
     crate::collect!(result, crate::test!(async_close_bound_socket(libos, addr)));
     crate::collect!(result, crate::test!(async_close_listening_socket(libos, addr)));
@@ -63,7 +65,7 @@ fn async_close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to close a TCP socket multiple times.
-fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
+fn async_close_and_wait_twice_1(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(async_close_socket_twice));
 
     // Create an unbound socket.
@@ -87,11 +89,8 @@ fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
     }
 }
 
-// Enable this test after the related issue is fixed.
-// FIXME: https://github.com/demikernel/demikernel/issues/625
 /// Attempt to asynchronously close and wait on a TCP socket multiple times.
-#[allow(dead_code)]
-fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
+fn async_close_and_wait_twice_2(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(async_close_socket_and_wait_twice));
 
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
@@ -119,11 +118,8 @@ fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
     Ok(())
 }
 
-// Enable this test after the related issue is fixed.
-// FIXME: https://github.com/demikernel/demikernel/issues/625
 /// Attempt to asynchronously close and wait on a TCP socket multiple times in reverse order.
-#[allow(dead_code)]
-fn async_close_socket_and_wait_in_rev_order(libos: &mut LibOS) -> Result<()> {
+fn async_close_and_wait_twice_3(libos: &mut LibOS) -> Result<()> {
     println!("{}", stringify!(async_close_socket_and_wait_in_rev_order));
 
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
