@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod async_close;
 mod wait;
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -45,7 +45,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
     crate::collect!(result, crate::test!(close_listening_socket(libos, addr)));
 
     // Run asynchronous close tests.
-    crate::collect!(result, async_close::run(libos, addr));
     crate::collect!(result, wait::run(libos, addr));
 
     result

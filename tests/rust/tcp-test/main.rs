@@ -10,6 +10,7 @@
 
 mod accept;
 mod args;
+mod async_close;
 mod bind;
 mod close;
 mod connect;
@@ -90,6 +91,7 @@ fn main() -> Result<()> {
     crate::collect!(result, accept::run(&mut libos, &args.local()));
     crate::collect!(result, connect::run(&mut libos, &args.local(), &args.remote()));
     crate::collect!(result, close::run(&mut libos, &args.local()));
+    crate::collect!(result, async_close::run(&mut libos, &args.local()));
 
     // Dump results.
     for (test_name, test_status, test_result) in result {
