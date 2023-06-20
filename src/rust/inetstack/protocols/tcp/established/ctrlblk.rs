@@ -391,7 +391,7 @@ impl<const N: usize> ControlBlock<N> {
         self.sender.top_size_unsent()
     }
 
-    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<DemiBuffer> {
+    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<(DemiBuffer, bool)> {
         self.sender.pop_unsent(max_bytes)
     }
 
