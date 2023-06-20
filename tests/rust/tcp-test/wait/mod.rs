@@ -5,14 +5,14 @@
 // Imports
 //======================================================================================================================
 
-use anyhow::Result;
-use demikernel::{
+use ::anyhow::Result;
+use ::demikernel::{
     runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
 };
-use std::{
+use ::std::{
     net::SocketAddrV4,
     time::Duration,
 };

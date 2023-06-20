@@ -16,6 +16,7 @@ mod close;
 mod connect;
 mod listen;
 mod socket;
+mod wait;
 
 //======================================================================================================================
 // Imports
@@ -91,6 +92,7 @@ fn main() -> Result<()> {
     crate::collect!(result, accept::run(&mut libos, &args.local()));
     crate::collect!(result, connect::run(&mut libos, &args.local(), &args.remote()));
     crate::collect!(result, close::run(&mut libos, &args.local()));
+    crate::collect!(result, wait::run(&mut libos, &args.local()));
     crate::collect!(result, async_close::run(&mut libos, &args.local()));
 
     // Dump results.

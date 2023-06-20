@@ -1,18 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod wait;
-
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use anyhow::Result;
-use demikernel::{
+use ::anyhow::Result;
+use ::demikernel::{
     LibOS,
     QDesc,
 };
-use std::net::SocketAddrV4;
+use ::std::net::SocketAddrV4;
 
 //======================================================================================================================
 // Constants
@@ -43,9 +41,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
     crate::collect!(result, crate::test!(close_unbound_socket(libos)));
     crate::collect!(result, crate::test!(close_bound_socket(libos, addr)));
     crate::collect!(result, crate::test!(close_listening_socket(libos, addr)));
-
-    // Run asynchronous close tests.
-    crate::collect!(result, wait::run(libos, addr));
 
     result
 }
