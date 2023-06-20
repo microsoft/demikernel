@@ -56,6 +56,8 @@ use ::std::{
 /// This value was chosen arbitrarily.
 #[cfg(debug_assertions)]
 const SCHEDULER_SEED: u64 = 42;
+const MAX_NUM_TASKS: usize = 16000;
+const MAX_RETRIES_TASK_ID_ALLOC: usize = 500;
 
 //======================================================================================================================
 // Structures
@@ -85,10 +87,10 @@ impl Scheduler {
         let pages: Ref<Vec<WakerPageRef>> = self.pages.borrow();
         let task_id: u64 = handle.get_task_id();
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let index: usize = *self
+        let index: usize = self
             .task_ids
-            .borrow()
-            .get(&task_id)
+            .borrow_mut()
+            .remove(&task_id)
             .expect("Token should be in the token table");
         let (page, subpage_ix): (&WakerPageRef, usize) = {
             let (pages_ix, subpage_ix) = self.get_page_indexes(index);
@@ -136,12 +138,20 @@ impl Scheduler {
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
         let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
-        let task_id: u64 = loop {
-            let id: u64 = id_gen.next_u64() as u16 as u64;
-            if !task_ids.contains_key(&id) {
-                task_ids.insert(id, index);
-                break id;
+        // If the address space for task ids is close to half full, it will become increasingly difficult to avoid
+        // collisions, so we cap the number of tasks at 16,000.
+        if task_ids.len() > MAX_NUM_TASKS {
+            panic!("Too many concurrent tasks");
+        }
+        let task_id: u64 = 'get_id: {
+            for _ in 0..MAX_RETRIES_TASK_ID_ALLOC {
+                let id: u64 = id_gen.next_u64() as u16 as u64;
+                if !task_ids.contains_key(&id) {
+                    task_ids.insert(id, index);
+                    break 'get_id id;
+                }
             }
+            panic!("Could not find a valid task id");
         };
 
         trace!("insert(): name={:?}, id={:?}, index={:?}", task_name, task_id, index);
