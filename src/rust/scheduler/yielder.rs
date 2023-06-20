@@ -73,6 +73,11 @@ impl Yielder {
         Yield::new(Some(1), self.yielder_handle.clone()).await
     }
 
+    /// Create a Yield future that yields for n quanta.
+    pub async fn yield_times(&self, n: usize) -> Result<(), Fail> {
+        Yield::new(Some(n), self.yielder_handle.clone()).await
+    }
+
     /// Create a Yield Future that yields until woken with a signal.
     pub async fn yield_until_wake(&self) -> Result<(), Fail> {
         Yield::new(None, self.yielder_handle.clone()).await
