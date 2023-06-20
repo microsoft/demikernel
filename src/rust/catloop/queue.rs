@@ -9,12 +9,22 @@ use super::{
     duplex_pipe::DuplexPipe,
     Socket,
 };
-use crate::runtime::{
-    queue::IoQueue,
-    QType,
+use crate::{
+    runtime::{
+        fail::Fail,
+        queue::IoQueue,
+        QType,
+    },
+    scheduler::{
+        TaskHandle,
+        YielderHandle,
+    },
 };
-use ::std::rc::Rc;
 
+use ::std::{
+    collections::HashMap,
+    rc::Rc,
+};
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -24,6 +34,7 @@ pub struct CatloopQueue {
     qtype: QType,
     socket: Socket,
     pipe: Option<Rc<DuplexPipe>>,
+    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 //======================================================================================================================
@@ -36,6 +47,7 @@ impl CatloopQueue {
             qtype: qtype,
             socket: Socket::Active(None),
             pipe: None,
+            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }
     }
 
@@ -60,6 +72,27 @@ impl CatloopQueue {
     /// Set underlying bi-directional pipe.
     pub fn set_pipe(&mut self, pipe: Rc<DuplexPipe>) {
         self.pipe = Some(pipe.clone());
+    }
+
+    /// Adds a new operation to the list of pending operations on this queue.
+    pub fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
+        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
+    }
+
+    /// Removes an operation from the list of pending operations on this queue.
+    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
+        self.pending_ops
+            .remove_entry(handle)
+            .expect("operation should be registered");
+    }
+
+    /// Cancels all pending operations on this queue.
+    pub fn cancel_pending_ops(&mut self, cause: Fail) {
+        for (handle, mut yielder_handle) in self.pending_ops.drain() {
+            if !handle.has_completed() {
+                yielder_handle.wake_with(Err(cause.clone()));
+            }
+        }
     }
 }
 
