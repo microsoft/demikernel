@@ -72,7 +72,8 @@ fn build_ipv4_header(
 
     // Header checksum.
     if checksum.is_none() {
-        checksum = Some(Ipv4Header::compute_checksum(&buf[..20]));
+        let header_size: usize = (ihl as usize) << 2;
+        checksum = Some(Ipv4Header::compute_checksum(&buf[..header_size]));
     }
     buf[10..12].copy_from_slice(&checksum.unwrap().to_be_bytes());
 }
@@ -91,7 +92,7 @@ fn test_ipv4_header_parse_good() -> Result<()> {
     let data: [u8; PAYLOAD_SIZE] = [1, 2, 3, 4, 5, 6, 7, 8];
     let data_bytes: DemiBuffer = DemiBuffer::from_slice(&data).expect("'data' should fit in a DemiBuffer");
 
-    for ihl in 5..15 {
+    for ihl in 5..16 {
         let header_size: usize = (ihl as usize) << 2;
         let datagram_size: usize = header_size + PAYLOAD_SIZE;
         build_ipv4_header(

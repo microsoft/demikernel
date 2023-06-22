@@ -308,6 +308,14 @@ impl Ipv4Header {
     /// Computes the checksum of the target IPv4 header.
     pub fn compute_checksum(buf: &[u8]) -> u16 {
         let mut state: u32 = 0xffff;
+
+        // Do not compute checksum if buffer is too small.
+        if buf.len() < IPV4_HEADER_MIN_SIZE as usize {
+            // This should not happen by construction. If it does, log it.
+            warn!("compute_checksum: buffer is too small (len={})", buf.len());
+            return 0;
+        }
+
         for i in 0..5 {
             state += u16::from_be_bytes([buf[2 * i], buf[2 * i + 1]]) as u32;
         }
