@@ -7,8 +7,9 @@
 #include <demi/libos.h>
 #include <sys/epoll.h>
 
-#define EPOLL_MAX_FDS 16
-#define MAX_EVENTS 16
+#define EPOLL_MAX_FDS 1024
+#define EPOLL_MAX_FDS 1024
+#define MAX_EVENTS 512
 
 struct demi_event
 {

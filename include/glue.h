@@ -96,9 +96,6 @@ extern struct demi_event *queue_man_get_accept_result(int qd);
 extern int queue_man_set_pop_result(int qd, struct demi_event *ev);
 extern struct demi_event *queue_man_get_pop_result(int qd);
 
-#define EPOLL_MAX_FDS 1024
-#define EPOLL_MAX_FDS 1024
-#define MAX_EVENTS 16
 
 extern void epoll_table_init(void);
 extern int epoll_table_alloc(void);
