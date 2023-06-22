@@ -47,8 +47,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
 
                 if (queue_man_is_listen_fd(fd))
                 {
-                    int ret = demi_accept(&qt, fd);
-                    assert(ret == 0);
+                    assert(demi_accept(&qt, fd) == 0);
                 }
                 else
                 {
