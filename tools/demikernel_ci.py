@@ -166,6 +166,23 @@ def job_test_integration_tcp_rust(
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
+def job_test_integration_pipe_rust(
+        repo: str, libos: str, is_debug: bool, run_mode: str, server: str, client: str, server_addr: str,
+        is_sudo: bool, config_path: str, log_directory: str) -> bool:
+    server_args: str = "--peer server --pipe-name {}:12345 --run-mode {}".format(server_addr, run_mode)
+    client_args: str = "--peer client --pipe-name {}:23456 --run-mode {}".format(server_addr, run_mode)
+    server_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
+        libos, server_args)
+    client_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
+        libos, client_args)
+    test_name = "integration-test" + "-" + run_mode
+    jobs: dict[str, subprocess.Popen[str]] = {}
+    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    if run_mode != "standalone":
+        jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    return wait_and_report(test_name, log_directory, jobs, True)
+
+
 def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool, log_directory: str) -> bool:
     test_name = "cleanup"
     jobs: dict[str, subprocess.Popen[str]] = {}
@@ -347,6 +364,10 @@ def run_pipeline(
             if libos == "catnap":
                 status["integration_tests"] = job_test_integration_tcp_rust(
                     repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
+            elif libos == "catmem":
+                status["integration_tests"] = job_test_integration_pipe_rust(
+                    repository, libos, is_debug, "standalone", server, client, server_addr, is_sudo,
+                    config_path, log_directory)
 
     # STEP 4: Run system tests.
     if test_system:

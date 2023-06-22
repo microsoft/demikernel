@@ -5,6 +5,7 @@
 // Exports
 //======================================================================================================================
 
+pub mod close;
 pub mod pop;
 pub mod push;
 
@@ -22,5 +23,6 @@ use crate::runtime::{
 pub enum OperationResult {
     Push,
     Pop(DemiBuffer),
+    Close,
     Failed(Fail),
 }

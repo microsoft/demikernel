@@ -67,6 +67,16 @@ impl MemoryLibOS {
         }
     }
 
+    /// Asynchronously closes a memory queue.
+    #[allow(unreachable_patterns, unused_variables)]
+    pub fn async_close(&mut self, memqd: QDesc) -> Result<QToken, Fail> {
+        match self {
+            #[cfg(feature = "catmem-libos")]
+            MemoryLibOS::Catmem(libos) => libos.async_close(memqd),
+            _ => unreachable!("unknown memory libos"),
+        }
+    }
+
     /// Pushes a scatter-gather array to a memory queue.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn push(&mut self, memqd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {

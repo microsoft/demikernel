@@ -16,6 +16,10 @@ use self::{
 };
 use crate::{
     catmem::futures::{
+        close::{
+            close_coroutine,
+            push_eof,
+        },
         pop::pop_coroutine,
         push::push_coroutine,
     },
@@ -95,9 +99,6 @@ impl MemoryRuntime for CatmemLibOS {}
 
 /// Associated functions for Catmem LibOS.
 impl CatmemLibOS {
-    /// End-of-file (EoF) signal.
-    const EOF: u16 = ((1 & 0xff) << 8);
-
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
         CatmemLibOS {
@@ -146,28 +147,6 @@ impl CatmemLibOS {
         Ok(())
     }
 
-    /// Pushes the EoF signal to a shared ring buffer.
-    fn push_eof(ring: Rc<SharedRingBuffer<u16>>) -> Result<(), Fail> {
-        // Maximum number of retries. This is set to an arbitrary small value.
-        let mut retries: u32 = 16;
-
-        loop {
-            match ring.try_enqueue(Self::EOF) {
-                Ok(()) => break,
-                Err(_) => {
-                    retries -= 1;
-                    if retries == 0 {
-                        let cause: String = format!("failed to push EoF");
-                        error!("push_eof(): {}", cause);
-                        return Err(Fail::new(libc::EIO, &cause));
-                    }
-                },
-            }
-        }
-
-        Ok(())
-    }
-
     /// Closes a memory queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
@@ -177,10 +156,7 @@ impl CatmemLibOS {
         match qtable.get_mut(&qd) {
             Some(queue) => {
                 // Attempt to push EoF.
-                let result: Result<(), Fail> = {
-                    // It is safe to call expect() here because the queue descriptor is guaranteed to be valid.
-                    Self::push_eof(queue.get_pipe().buffer())
-                };
+                let result: Result<(), Fail> = { push_eof(queue.get_pipe().buffer()) };
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
 
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
@@ -192,6 +168,72 @@ impl CatmemLibOS {
                 let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
                 error!("close(): {}", cause);
                 return Err(Fail::new(libc::EBADF, &cause));
+            },
+        }
+    }
+
+    /// Asynchronously close a socket.
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        trace!("async_close() qd={:?}", qd);
+        let mut qtable: RefMut<IoQueueTable<CatmemQueue>> = self.qtable.borrow_mut();
+
+        // Check if queue descriptor is valid.
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                let ring: Rc<SharedRingBuffer<u16>> = queue.get_pipe().buffer();
+                let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
+                let yielder: Yielder = Yielder::new();
+                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                    // Wait for close operation to complete.
+                    let result: Result<(), Fail> = close_coroutine(ring, yielder).await;
+
+                    // Handle result.
+                    match result {
+                        // Operation completed successfully, thus free resources.
+                        Ok(()) => {
+                            let mut qtable_: RefMut<IoQueueTable<CatmemQueue>> = qtable_ptr.borrow_mut();
+                            match qtable_.get_mut(&qd) {
+                                Some(queue) => {
+                                    // Cancel all pending operations.
+                                    queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+                                },
+                                None => {
+                                    let cause: &String = &format!("invalid queue descriptor: {:?}", qd);
+                                    error!("{}", &cause);
+                                    return (qd, OperationResult::Failed(Fail::new(libc::EBADF, cause)));
+                                },
+                            }
+
+                            // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
+                            // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
+                            qtable_.free(&qd);
+                            (qd, OperationResult::Close)
+                        },
+                        // Operation failed, thus warn and return an error.
+                        Err(e) => {
+                            warn!("async_close(): {:?}", &e);
+                            (qd, OperationResult::Failed(e))
+                        },
+                    }
+                });
+
+                // Schedule coroutine.
+                let task_name: String = format!("catmem::async_close for qd={:?}", qd);
+                let task: OperationTask = OperationTask::new(task_name, coroutine);
+                let handle: TaskHandle = match self.scheduler.insert(task) {
+                    Some(handle) => handle,
+                    None => {
+                        let cause: String = format!("cannot schedule coroutine (qd={:?})", qd);
+                        error!("async_close(): {}", &cause);
+                        return Err(Fail::new(libc::EAGAIN, &cause));
+                    },
+                };
+                Ok(handle.get_task_id().into())
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("async_close(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
             },
         }
     }
@@ -404,6 +446,13 @@ impl CatmemLibOS {
                         qr_value: unsafe { mem::zeroed() },
                     }
                 },
+            },
+            OperationResult::Close => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+                qr_qd: qd.into(),
+                qr_qt: qt.into(),
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
             },
             OperationResult::Failed(e) => {
                 warn!("Operation Failed: {:?}", e);

@@ -217,7 +217,7 @@ impl LibOS {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.async_close(qd),
-            _ => unimplemented!("No async close for memory libOSes"),
+            LibOS::MemoryLibOS(libos) => libos.async_close(qd),
         };
 
         self.poll();
