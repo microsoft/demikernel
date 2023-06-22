@@ -5,14 +5,14 @@
 // Imports
 //======================================================================================================================
 
-use anyhow::Result;
-use demikernel::{
+use ::anyhow::Result;
+use ::demikernel::{
     runtime::types::demi_opcode_t,
     LibOS,
     QDesc,
     QToken,
 };
-use std::{
+use ::std::{
     net::SocketAddrV4,
     time::Duration,
 };
@@ -42,7 +42,9 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(async_close_invalid_queue_descriptor(libos)));
-    crate::collect!(result, crate::test!(async_close_socket_twice(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_1(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_2(libos)));
+    crate::collect!(result, crate::test!(async_close_and_wait_twice_3(libos)));
     crate::collect!(result, crate::test!(async_close_unbound_socket(libos)));
     crate::collect!(result, crate::test!(async_close_bound_socket(libos, addr)));
     crate::collect!(result, crate::test!(async_close_listening_socket(libos, addr)));
@@ -52,8 +54,6 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
 
 /// Attempts to close an invalid queue descriptor.
 fn async_close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(async_close_invalid_queue_descriptor));
-
     // Fail to close socket.
     match libos.async_close(QDesc::from(0)) {
         Err(e) if e.errno == libc::EBADF => Ok(()),
@@ -63,9 +63,7 @@ fn async_close_invalid_queue_descriptor(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to close a TCP socket multiple times.
-fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(async_close_socket_twice));
-
+fn async_close_and_wait_twice_1(libos: &mut LibOS) -> Result<()> {
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -87,16 +85,15 @@ fn async_close_socket_twice(libos: &mut LibOS) -> Result<()> {
     }
 }
 
-// Enable this test after the related issue is fixed.
-// FIXME: https://github.com/demikernel/demikernel/issues/625
 /// Attempt to asynchronously close and wait on a TCP socket multiple times.
-#[allow(dead_code)]
-fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(async_close_socket_and_wait_twice));
-
+fn async_close_and_wait_twice_2(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt1: QToken = libos.async_close(sockqd)?;
-    let qt2: QToken = libos.async_close(sockqd)?;
+    let qt2: Option<QToken> = match libos.async_close(sockqd) {
+        Ok(qt) => Some(qt),
+        Err(e) if e.errno == libc::EBADF => None,
+        Err(e) => anyhow::bail!("async_close() should not fail with {:?}", &e),
+    };
 
     // wait() for the first close() qt.
     match libos.wait(qt1, Some(Duration::from_micros(0))) {
@@ -105,29 +102,32 @@ fn async_close_socket_and_wait_twice(libos: &mut LibOS) -> Result<()> {
     }
 
     // wait() for the second close() qt.
-    match libos.wait(qt2, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
-        _ => anyhow::bail!("wait() should fail with async_close()"),
+    if let Some(qt2) = qt2 {
+        match libos.wait(qt2, Some(Duration::from_micros(0))) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+            _ => anyhow::bail!("wait() should fail with async_close()"),
+        }
     }
 
     Ok(())
 }
 
-// Enable this test after the related issue is fixed.
-// FIXME: https://github.com/demikernel/demikernel/issues/625
 /// Attempt to asynchronously close and wait on a TCP socket multiple times in reverse order.
-#[allow(dead_code)]
-fn async_close_socket_and_wait_in_rev_order(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(async_close_socket_and_wait_in_rev_order));
-
+fn async_close_and_wait_twice_3(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt1: QToken = libos.async_close(sockqd)?;
-    let qt2: QToken = libos.async_close(sockqd)?;
+    let qt2: Option<QToken> = match libos.async_close(sockqd) {
+        Ok(qt) => Some(qt),
+        Err(e) if e.errno == libc::EBADF => None,
+        Err(e) => anyhow::bail!("async_close() should not fail with {:?}", &e),
+    };
 
     // wait() for the second close() qt.
-    match libos.wait(qt2, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
-        _ => anyhow::bail!("wait() should fail with async_close()"),
+    if let Some(qt2) = qt2 {
+        match libos.wait(qt2, Some(Duration::from_micros(0))) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+            _ => anyhow::bail!("wait() should fail with async_close()"),
+        }
     }
 
     // wait() for the first close() qt.
@@ -141,8 +141,6 @@ fn async_close_socket_and_wait_in_rev_order(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to close a TCP socket that is not bound.
 fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(async_close_unbound_socket));
-
     // Create an unbound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -159,8 +157,6 @@ fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to close a TCP socket that is bound.
 fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(async_close_bound_socket));
-
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, *local)?;
@@ -178,8 +174,6 @@ fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<(
 
 /// Attempts to close a TCP socket that is listening.
 fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
-    println!("{}", stringify!(async_close_listening_socket));
-
     // Create a listening socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, *local)?;

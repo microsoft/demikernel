@@ -60,8 +60,6 @@ pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Vec<(Strin
 
 /// Attempts to bind an address to an invalid queue_descriptor.
 fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_addr_to_invalid_queue_descriptor));
-
     // Bind address.
     let addr: SocketAddrV4 = {
         let http_port: u16 = 6379;
@@ -80,8 +78,6 @@ fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) ->
 
 /// Attempts to bind multiple addresses to the same socket.
 fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_multiple_addresses_to_same_socket));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -115,8 +111,6 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -
 
 /// Attempts to bind the same address to two sockets.
 fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_same_address_to_two_sockets));
-
     // Create two TCP sockets.
     let sockqd1: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let sockqd2: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
@@ -145,8 +139,6 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Resu
 
 /// Attempts to bind to all private ports.
 fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_to_private_ports));
-
     // Traverse all ports in the private range.
     for port in 49152..65535 {
         // Create a TCP socket.
@@ -169,8 +161,6 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
 
 /// Attempts to bind to the wildcard port.
 fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_to_wildcard_port));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -193,8 +183,6 @@ fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
 
 /// Attempts to bind to the wildcard address.
 fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(bind_to_wildcard_address));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -220,8 +208,6 @@ fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to bind to the wildcard address and port.
 fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
-    println!("{}", stringify!(bind_to_wildcard_address_and_port));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -245,8 +231,6 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
 
 /// Attempts to bind to a non-local address.
 fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_to_non_local_address));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -271,8 +255,6 @@ fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()>
 
 /// Attempts to bind to a closed socket.
 fn bind_to_closed_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
-    println!("{}", stringify!(bind_to_closed_socket));
-
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
