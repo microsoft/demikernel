@@ -6,6 +6,7 @@
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 
 /**
  * @brief Sets socket options.
@@ -41,9 +42,33 @@ int __demi_setsockopt(int sockfd, int level, int optname, const void *optval, so
         // Ignore.
         INFO("setting %s", "SO_REUSEADDR");
     }
+    else if (level == IPPROTO_TCP && optname == TCP_NODELAY)
+    {
+        // Ignore.
+        INFO("setting %s", "TCP_NODELAY");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPIDLE)
+    {
+        // Ignore.
+        INFO("setting %s", "TCP_KEEPIDLE");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPINTVL){
+        // Ignore.
+        INFO("setting %s", "TCP_KEEPINTLVL");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPCNT){
+        // Ignore.
+        INFO("setting %s", "TCP_KEEPCNT");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_ULP)
+    {
+        // Ignore.
+        INFO("setting %s", "TCP_ULP");
+    }
     else
     {
         // Option not supported.
+        ERROR("option not supported");
         errno = ENOTSUP;
         return -1;
     }
