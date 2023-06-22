@@ -552,9 +552,10 @@ impl CatloopLibOS {
             // The queue token came from the Catmem LibOS, thus forward operation.
             let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
 
-            // We temper queue descriptor that was was stored in the operation result returned by Catmem LibOS,
-            // because we only distribute to the user queue descriptors that are managed by Catloop LibLOS.
+            // We temper queue descriptor and queue token that were stored in the queue result returned by Catmem LibOS,
+            // because we only distribute to the application identifiers that are managed by Catloop LibLOS.
             qr.qr_qd = catloop_qd.to_owned().into();
+            qr.qr_qt = Self::shift_qtoken(qt).into();
 
             return Ok(qr);
         }
