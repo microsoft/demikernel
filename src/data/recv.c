@@ -47,6 +47,9 @@ ssize_t __demi_read(int sockfd, void *buf, size_t count)
             assert(ev->qt == (demi_qtoken_t)-1);
             assert(ev->qr.qr_value.sga.sga_numsegs == 1);
 
+            // TODO: We should support buffering.
+            assert(count >= ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
+
             // Round down the number of bytes to read accordingly.
             count = MIN(count, ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
 
