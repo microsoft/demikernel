@@ -72,7 +72,8 @@ fn build_ipv4_header(
 
     // Header checksum.
     if checksum.is_none() {
-        checksum = Some(Ipv4Header::compute_checksum(&buf[..20]));
+        let header_size: usize = (ihl as usize) << 2;
+        checksum = Some(Ipv4Header::compute_checksum(&buf[..header_size]));
     }
     buf[10..12].copy_from_slice(&checksum.unwrap().to_be_bytes());
 }
