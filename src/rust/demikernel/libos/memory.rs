@@ -122,7 +122,7 @@ impl MemoryLibOS {
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.schedule(qt),
+            MemoryLibOS::Catmem(libos) => libos.from_task_id(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }

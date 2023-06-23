@@ -520,7 +520,7 @@ impl CatloopLibOS {
             }
 
             // The queue token came from the Catmem LibOS, thus forward operation.
-            return self.catmem.borrow_mut().schedule(qt);
+            return self.catmem.borrow().from_task_id(qt);
         }
 
         // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
