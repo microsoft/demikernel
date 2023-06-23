@@ -98,6 +98,18 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
 pub extern "C" fn demi_create_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
     trace!("demi_create_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
 
+    // Check for invalid storage location.
+    if memqd_out.is_null() {
+        warn!("demi_create_pipe() memqd_out is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Check for invalid name pointer.
+    if name.is_null() {
+        warn!("demi_create_pipe() name is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Convert C string to a Rust one.
     let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
         Ok(s) => s,
@@ -130,6 +142,18 @@ pub extern "C" fn demi_create_pipe(memqd_out: *mut c_int, name: *const libc::c_c
 pub extern "C" fn demi_open_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
     trace!("demi_open_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
 
+    // Check for invalid storage location.
+    if memqd_out.is_null() {
+        warn!("demi_open_pipe() memqd_out is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Check for invalid name pointer.
+    if name.is_null() {
+        warn!("demi_open_pipe() name is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Convert C string to a Rust one.
     let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
         Ok(s) => s,
@@ -161,6 +185,12 @@ pub extern "C" fn demi_open_pipe(memqd_out: *mut c_int, name: *const libc::c_cha
 #[no_mangle]
 pub extern "C" fn demi_socket(qd_out: *mut c_int, domain: c_int, socket_type: c_int, protocol: c_int) -> c_int {
     trace!("demi_socket()");
+
+    // Check for invalid storage location.
+    if qd_out.is_null() {
+        warn!("demi_socket() qd_out is a null pointer");
+        return libc::EINVAL;
+    }
 
     // Issue socket operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.socket(domain, socket_type, protocol) {
@@ -258,6 +288,12 @@ pub extern "C" fn demi_listen(sockqd: c_int, backlog: c_int) -> c_int {
 pub extern "C" fn demi_accept(qtok_out: *mut demi_qtoken_t, sockqd: c_int) -> c_int {
     trace!("demi_accept()");
 
+    // Check for invalid storage location.
+    if qtok_out.is_null() {
+        warn!("demi_accept() qtok_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Issue accept operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| {
         unsafe {
@@ -290,6 +326,12 @@ pub extern "C" fn demi_connect(
     size: Socklen,
 ) -> c_int {
     trace!("demi_connect()");
+
+    // Check for invalid storage location.
+    if qtok_out.is_null() {
+        warn!("demi_connect() qtok_out is a null pointer");
+        return libc::EINVAL;
+    }
 
     // Check if socket address is invalid.
     if saddr.is_null() {
@@ -365,6 +407,12 @@ pub extern "C" fn demi_pushto(
 ) -> c_int {
     trace!("demi_pushto()");
 
+    // Check for invalid storage location.
+    if qtok_out.is_null() {
+        warn!("demi_pushto() qtok_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Check if scatter-gather array is invalid.
     if sga.is_null() {
         return libc::EINVAL;
@@ -416,6 +464,12 @@ pub extern "C" fn demi_pushto(
 pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const demi_sgarray_t) -> c_int {
     trace!("demi_push()");
 
+    // Check for invalid storage location.
+    if qtok_out.is_null() {
+        warn!("demi_push() qtok_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Check if scatter-gather array is invalid.
     if sga.is_null() {
         return libc::EINVAL;
@@ -449,6 +503,12 @@ pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const
 pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
     trace!("demi_pop()");
 
+    // Check for invalid storage location.
+    if qtok_out.is_null() {
+        warn!("demi_pop() qtok_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Issue pop operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pop(qd.into(), None) {
         Ok(qt) => {
@@ -479,6 +539,12 @@ pub extern "C" fn demi_timedwait(
 ) -> c_int {
     trace!("demi_timedwait() {:?} {:?} {:?}", qr_out, qt, abstime);
 
+    // Check for invalid storage location.
+    if qr_out.is_null() {
+        warn!("qr_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Check for invalid timeout.
     if abstime.is_null() {
         warn!("abstime is a null pointer");
@@ -498,10 +564,8 @@ pub extern "C" fn demi_timedwait(
 
     // Issue operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.timedwait(qt.into(), abstime) {
-        Ok(r) => {
-            if !qr_out.is_null() {
-                unsafe { *qr_out = r };
-            }
+        Ok(qr) => {
+            unsafe { *qr_out = qr };
             0
         },
         Err(e) => {
@@ -524,6 +588,12 @@ pub extern "C" fn demi_timedwait(
 pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t, timeout: *const libc::timespec) -> c_int {
     trace!("demi_wait() {:?} {:?} {:?}", qr_out, qt, timeout);
 
+    // Check for invalid storage location for queue result.
+    if qr_out.is_null() {
+        warn!("qr_out is a null pointer");
+        return libc::EINVAL;
+    }
+
     // Convert timespec to Duration.
     let duration: Option<Duration> = if timeout.is_null() {
         None
@@ -535,9 +605,7 @@ pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t, time
     // Issue wait operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait(qt.into(), duration) {
         Ok(r) => {
-            if !qr_out.is_null() {
-                unsafe { *qr_out = r };
-            }
+            unsafe { *qr_out = r };
             0
         },
         Err(e) => {
@@ -572,6 +640,12 @@ pub extern "C" fn demi_wait_any(
         num_qts,
         timeout
     );
+
+    // Check for invalid storage location for queue result.
+    if qr_out.is_null() {
+        warn!("qr_out is a null pointer");
+        return libc::EINVAL;
+    }
 
     // Check arguments.
     if num_qts < 0 {
