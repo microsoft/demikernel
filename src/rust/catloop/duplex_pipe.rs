@@ -5,7 +5,6 @@ use crate::{
     catmem::CatmemLibOS,
     demi_sgarray_t,
     runtime::fail::Fail,
-    scheduler::TaskHandle,
     QDesc,
     QToken,
 };
@@ -86,16 +85,5 @@ impl DuplexPipe {
     /// Pops a scatter-gather array from a duplex pipe.
     pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
         self.catmem.borrow_mut().pop(self.rx, size)
-    }
-
-    /// Polls a duplex pipe.
-    pub fn poll(catmem: &Rc<RefCell<CatmemLibOS>>, qt: QToken) -> Result<Option<TaskHandle>, Fail> {
-        let handle: TaskHandle = catmem.borrow_mut().schedule(qt)?;
-
-        if !handle.has_completed() {
-            return Ok(None);
-        }
-
-        Ok(Some(handle))
     }
 }
