@@ -84,6 +84,9 @@ use ::std::{
     rc::Rc,
 };
 
+#[cfg(feature = "profiler")]
+use crate::timer;
+
 //======================================================================================================================
 // Types
 //======================================================================================================================
@@ -108,6 +111,8 @@ pub struct CatnapLibOS {
 impl CatnapLibOS {
     /// Instantiates a Catnap LibOS.
     pub fn new(_config: &Config) -> Self {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::new");
         let qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>> = Rc::new(RefCell::new(IoQueueTable::<CatnapQueue>::new()));
         let runtime: PosixRuntime = PosixRuntime::new();
         Self { qtable, runtime }
@@ -115,6 +120,8 @@ impl CatnapLibOS {
 
     /// Creates a socket.
     pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
@@ -167,6 +174,8 @@ impl CatnapLibOS {
 
     /// Binds a socket to a local endpoint.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
 
@@ -238,6 +247,8 @@ impl CatnapLibOS {
 
     /// Sets a socket as a passive one.
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::listen");
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
@@ -271,6 +282,8 @@ impl CatnapLibOS {
 
     /// Accepts connections on a socket.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
         let fd: RawFd = match qtable.get_mut(&qd) {
@@ -373,6 +386,8 @@ impl CatnapLibOS {
 
     /// Establishes a connection to a remote endpoint.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
         // Issue connect operation.
         match self.qtable.borrow_mut().get_mut(&qd) {
@@ -453,6 +468,8 @@ impl CatnapLibOS {
 
     /// Closes a socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::close");
         trace!("close() qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
         match qtable.get_mut(&qd) {
@@ -490,6 +507,8 @@ impl CatnapLibOS {
 
     /// Asynchronous close
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::async_close");
         trace!("async_close() qd={:?}", qd);
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
 
@@ -560,6 +579,8 @@ impl CatnapLibOS {
 
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::push");
         trace!("push() qd={:?}", qd);
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {
@@ -607,6 +628,8 @@ impl CatnapLibOS {
 
     /// Pushes a scatter-gather array to a socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
 
         match self.runtime.clone_sgarray(sga) {
@@ -654,6 +677,8 @@ impl CatnapLibOS {
 
     /// Pops data from a socket.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
@@ -696,10 +721,14 @@ impl CatnapLibOS {
     }
 
     pub fn poll(&self) {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::poll");
         self.runtime.scheduler.poll()
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::schedule");
         match self.runtime.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
@@ -707,24 +736,32 @@ impl CatnapLibOS {
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::pack_result");
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
         Ok(pack_result(&self.runtime, r, qd, qt.into()))
     }
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catnap::sgaalloc");
         trace!("sgalloc() size={:?}", size);
         self.runtime.alloc_sgarray(size)
     }
 
     /// Frees a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        #[cfg(feature = "sgafree")]
+        timer!("catnap::sgafree");
         trace!("sgafree()");
         self.runtime.free_sgarray(sga)
     }
 
     /// Takes out the result from the [OperationTask] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        #[cfg(feature = "take_result")]
+        timer!("catnap::take_result");
         let task: OperationTask = if let Some(task) = self.runtime.scheduler.remove(&handle) {
             OperationTask::from(task.as_any())
         } else {
