@@ -69,12 +69,12 @@ impl<T: Copy> Deref for SharedRingBuffer<T> {
 mod test {
     use super::SharedRingBuffer;
     use ::anyhow::Result;
-    use std::{
+    use ::std::{
+        sync::Barrier,
         thread::{
             self,
             ScopedJoinHandle,
         },
-        time::Duration,
     };
 
     const RING_BUFFER_CAPACITY: usize = 4096;
@@ -116,6 +116,7 @@ mod test {
     fn ring_buffer_on_shm_concurrent() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-concurrent".to_string();
         let mut result: Result<()> = Ok(());
+        let barrier: Barrier = Barrier::new(2);
 
         thread::scope(|s| {
             let writer: ScopedJoinHandle<Result<()>> = s.spawn(|| {
@@ -123,6 +124,8 @@ mod test {
                     Ok(ring) => ring,
                     Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
                 };
+
+                barrier.wait();
 
                 for i in 0..ring.capacity() {
                     ring.enqueue((i & 255) as u8);
@@ -133,7 +136,7 @@ mod test {
             });
 
             let reader: ScopedJoinHandle<Result<()>> = s.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
+                barrier.wait();
 
                 let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::open(&shm_name, RING_BUFFER_CAPACITY) {
                     Ok(ring) => ring,
