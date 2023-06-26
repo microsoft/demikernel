@@ -77,6 +77,8 @@ mod test {
         },
     };
 
+    /// Number of rounds to run the tests.
+    const ROUNDS: usize = 128;
     const RING_BUFFER_CAPACITY: usize = 4096;
 
     /// Tests if we succeed to perform sequential accesses to a shared ring buffer.
@@ -127,8 +129,10 @@ mod test {
 
                 barrier.wait();
 
-                for i in 0..ring.capacity() {
-                    ring.enqueue((i & 255) as u8);
+                for _ in 0..ROUNDS {
+                    for i in 0..ring.capacity() {
+                        ring.enqueue((i & 255) as u8);
+                    }
                 }
 
                 while !ring.is_empty() {}
@@ -142,9 +146,11 @@ mod test {
                     Ok(ring) => ring,
                     Err(_) => anyhow::bail!("openining a shared ring buffer should be possible"),
                 };
-                for i in 0..ring.capacity() {
-                    let item: u8 = ring.dequeue();
-                    crate::ensure_eq!(item, (i & 255) as u8);
+                for _ in 0..ROUNDS {
+                    for i in 0..ring.capacity() {
+                        let item: u8 = ring.dequeue();
+                        crate::ensure_eq!(item, (i & 255) as u8);
+                    }
                 }
                 Ok(())
             });
