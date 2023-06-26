@@ -2,9 +2,15 @@
 // Licensed under the MIT license.
 
 use super::protocol::Icmpv4Type2;
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
+use crate::{
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+    },
+    inetstack::protocols::{
+        fold16,
+        compute_generic_checksum,
+    }
 };
 use ::libc::EBADMSG;
 use ::std::convert::TryInto;
@@ -42,8 +48,7 @@ impl Icmpv4Header {
 
         let type_byte: u8 = hdr_buf[0];
         let code: u8 = hdr_buf[1];
-        let checksum: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
-        if checksum != Self::checksum(hdr_buf, &buf[ICMPV4_HEADER_SIZE..]) {
+        if Self::compute_checksum(hdr_buf, &buf[ICMPV4_HEADER_SIZE..]) != 0 {
             return Err(Fail::new(EBADMSG, "ICMPv4 checksum mismatch"));
         }
         let rest_of_header: &[u8; 4] = hdr_buf[4..8].try_into().unwrap();
@@ -65,31 +70,19 @@ impl Icmpv4Header {
         buf[0] = type_byte;
         buf[1] = self.code;
         // Skip the checksum for now.
+        buf[2] = 0;
+        buf[3] = 0;
         buf[4..8].copy_from_slice(&rest_of_header[..]);
-        let checksum: u16 = Self::checksum(buf, data);
+        let checksum: u16 = Self::compute_checksum(buf, data);
         buf[2..4].copy_from_slice(&checksum.to_be_bytes());
     }
 
-    fn checksum(buf: &[u8; ICMPV4_HEADER_SIZE], body: &[u8]) -> u16 {
-        let mut state: u32 = 0xffff;
-        state += u16::from_be_bytes([buf[0], buf[1]]) as u32;
-        // Skip the checksum.
-        state += 0;
-        state += u16::from_be_bytes([buf[4], buf[5]]) as u32;
-        state += u16::from_be_bytes([buf[6], buf[7]]) as u32;
+    /// Computes the checksum of the target ICMPv4 header.
+    fn compute_checksum(buf: &[u8; ICMPV4_HEADER_SIZE], body: &[u8]) -> u16 {
+        let mut state: u32 = compute_generic_checksum(buf, None);
+        state = compute_generic_checksum(body, Some(state));
 
-        let mut chunks_iter = body.chunks_exact(2);
-        while let Some(chunk) = chunks_iter.next() {
-            state += u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
-        }
-        if let Some(&b) = chunks_iter.remainder().get(0) {
-            state += u16::from_be_bytes([b, 0]) as u32;
-        }
-
-        while state > 0xFFFF {
-            state -= 0xFFFF;
-        }
-        !state as u16
+        fold16(state)
     }
 
     pub fn get_protocol(&self) -> Icmpv4Type2 {
