@@ -404,12 +404,12 @@ impl CatmemLibOS {
         (qd, result)
     }
 
-    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn from_task_id(&self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self.scheduler.from_task_id(qt.into()) {
             Some(handle) => Ok(handle),
             None => {
                 let cause: String = format!("invalid queue token (qt={:?})", qt);
-                error!("schedule(): {}", cause);
+                error!("fromt_task_id(): {}", cause);
                 Err(Fail::new(libc::EINVAL, &cause))
             },
         }

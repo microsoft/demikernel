@@ -81,14 +81,15 @@ async fn send_connection_request(
 ) -> Result<(), Fail> {
     // Create a message containing the magic number.
     let sga: demi_sgarray_t = CatloopLibOS::cook_magic_connect(&catmem)?;
+
     // Send to server.
     let qt: QToken = control_duplex_pipe.push(&sga)?;
     trace!("Send connection request qtoken={:?}", qt);
-    // Get scheduler handle from the task id.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
-    let handle: TaskHandle = catmem_.schedule(qt)?;
-    // Drop the mutable reference because we might yield.
-    drop(catmem_);
+    let handle: TaskHandle = {
+        // Get scheduler handle from the task id.
+        catmem.borrow().from_task_id(qt)?
+        // Drop the mutable reference because we might yield.
+    };
 
     // Yield until push completes.
     while !handle.has_completed() {
@@ -97,7 +98,7 @@ async fn send_connection_request(
         }
     }
     // Re-acquire reference to catmem libos.
-    catmem_ = catmem.borrow_mut();
+    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the message buffer.
     catmem_.free_sgarray(sga)?;
     // Get the result of the push.
@@ -133,10 +134,11 @@ async fn get_port(
     let qt: QToken = control_duplex_pipe.pop(Some(size))?;
     trace!("Read port qtoken={:?}", qt);
 
-    // Get scheduler handle from the task id.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
-    let handle: TaskHandle = catmem_.schedule(qt)?;
-    drop(catmem_);
+    let handle: TaskHandle = {
+        // Get scheduler handle from the task id.
+        catmem.borrow().from_task_id(qt)?
+        // Drop mutable reference because we might yield.
+    };
 
     loop {
         // Send the connection request to the server.
@@ -150,7 +152,7 @@ async fn get_port(
         // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
         if handle.has_completed() {
             // Re-acquire reference to catmem libos.
-            catmem_ = catmem.borrow_mut();
+            let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
             // Get the result of the pop.
             let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
             match qr.qr_opcode {
@@ -190,11 +192,10 @@ async fn send_ack(catmem: Rc<RefCell<CatmemLibOS>>, new_pipe: Rc<DuplexPipe>, yi
     // Send to server through new pipe.
     let qt: QToken = new_pipe.push(&sga)?;
     trace!("Send ack qtoken={:?}", qt);
-    // Get scheduler handle from the task id.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
-    let handle: TaskHandle = catmem_.schedule(qt)?;
-    // Drop the mutable reference because we might yield.
-    drop(catmem_);
+    let handle: TaskHandle = {
+        // Get scheduler handle from the task id.
+        catmem.borrow().from_task_id(qt)?
+    };
 
     // Yield until push completes.
     while !handle.has_completed() {
@@ -203,7 +204,7 @@ async fn send_ack(catmem: Rc<RefCell<CatmemLibOS>>, new_pipe: Rc<DuplexPipe>, yi
         }
     }
     // Re-acquire reference to catmem libos.
-    catmem_ = catmem.borrow_mut();
+    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the message buffer.
     catmem_.free_sgarray(sga)?;
     // Retrieve operation result and check if it is what we expect.

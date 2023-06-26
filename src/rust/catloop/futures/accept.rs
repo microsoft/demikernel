@@ -110,11 +110,10 @@ async fn pop_magic_number(
     // pop() because the connection establishment protocol requires that
     // only one connection request is accepted at a time.
     let qt: QToken = duplex_pipe.pop(bound)?;
-    // Get scheduler handle from the task id.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
-    let handle: TaskHandle = catmem_.schedule(qt)?;
-    // Drop the mutable reference because we might yield.
-    drop(catmem_);
+    let handle: TaskHandle = {
+        // Get scheduler handle from the task id.
+        catmem.borrow().from_task_id(qt)?
+    };
     // Yield until pop completes.
     while !handle.has_completed() {
         if let Err(e) = yielder.yield_once().await {
@@ -122,7 +121,7 @@ async fn pop_magic_number(
         }
     }
     // Re-acquire mutable reference.
-    catmem_ = catmem.borrow_mut();
+    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Retrieve operation result and check if it is what we expect.
     let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
     match qr.qr_opcode {
@@ -180,11 +179,10 @@ async fn create_pipe(
 
     // Push the port number.
     let qt: QToken = control_duplex_pipe.push(&sga)?;
-    // Get the task handle from the task id.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
-    let handle: TaskHandle = catmem_.schedule(qt)?;
-    // Drop the mutable reference because we might yield.
-    drop(catmem_);
+    let handle: TaskHandle = {
+        // Get the task handle from the task id.
+        catmem.borrow().from_task_id(qt)?
+    };
 
     // Wait for push to complete.
     while !handle.has_completed() {
@@ -193,7 +191,7 @@ async fn create_pipe(
         }
     }
     // Re-acquire mutable reference.
-    catmem_ = catmem.borrow_mut();
+    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the scatter-gather array.
     catmem_.free_sgarray(sga)?;
 
