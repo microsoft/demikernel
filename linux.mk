@@ -199,11 +199,11 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: $(BINDIR)/syscalls.elf
+test-unit-c: test-clean $(BINDIR)/syscalls.elf
 	$(BINDIR)/syscalls.elf
 
 # Rust unit tests.
-test-unit-rust:
+test-unit-rust: test-clean
 	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	$(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	$(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
@@ -215,5 +215,9 @@ test-unit-rust:
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
 
 # Runs Rust integration tests.
-test-integration-rust:
+test-integration-rust: test-clean
 	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
+
+# Cleans dangling test resources.
+test-clean:
+	rm -f /dev/shm/demikernel-*
