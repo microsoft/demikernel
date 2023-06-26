@@ -409,7 +409,7 @@ impl CatmemLibOS {
             Some(handle) => Ok(handle),
             None => {
                 let cause: String = format!("invalid queue token (qt={:?})", qt);
-                error!("fromt_task_id(): {}", cause);
+                error!("from_task_id(): {}", cause);
                 Err(Fail::new(libc::EINVAL, &cause))
             },
         }

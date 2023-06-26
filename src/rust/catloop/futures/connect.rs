@@ -88,7 +88,6 @@ async fn send_connection_request(
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
         catmem.borrow().from_task_id(qt)?
-        // Drop the mutable reference because we might yield.
     };
 
     // Yield until push completes.
@@ -137,7 +136,6 @@ async fn get_port(
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
         catmem.borrow().from_task_id(qt)?
-        // Drop mutable reference because we might yield.
     };
 
     loop {
