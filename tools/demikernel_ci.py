@@ -170,7 +170,7 @@ def job_test_integration_pipe_rust(
         repo: str, libos: str, is_debug: bool, run_mode: str, server: str, client: str, server_addr: str,
         is_sudo: bool, config_path: str, log_directory: str) -> bool:
     server_args: str = "--peer server --pipe-name {}:12345 --run-mode {}".format(server_addr, run_mode)
-    client_args: str = "--peer client --pipe-name {}:23456 --run-mode {}".format(server_addr, run_mode)
+    client_args: str = "--peer client --pipe-name {}:12345 --run-mode {}".format(server_addr, run_mode)
     server_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
         libos, server_args)
     client_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
@@ -367,6 +367,18 @@ def run_pipeline(
             elif libos == "catmem":
                 status["integration_tests"] = job_test_integration_pipe_rust(
                     repository, libos, is_debug, "standalone", server, client, server_addr, is_sudo,
+                    config_path, log_directory)
+                status["integration_tests"] = job_test_integration_pipe_rust(
+                    repository, libos, is_debug, "push-wait", server, client, server_addr, is_sudo,
+                    config_path, log_directory)
+                status["integration_tests"] = job_test_integration_pipe_rust(
+                    repository, libos, is_debug, "pop-wait", server, client, server_addr, is_sudo,
+                    config_path, log_directory)
+                status["integration_tests"] = job_test_integration_pipe_rust(
+                    repository, libos, is_debug, "push-wait-async", server, client, server_addr, is_sudo,
+                    config_path, log_directory)
+                status["integration_tests"] = job_test_integration_pipe_rust(
+                    repository, libos, is_debug, "pop-wait-async", server, client, server_addr, is_sudo,
                     config_path, log_directory)
 
     # STEP 4: Run system tests.
