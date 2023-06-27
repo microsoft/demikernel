@@ -21,12 +21,11 @@ use ::std::rc::Rc;
 
 /// Polls `try_enqueue()` on `ring` until all the data in the `buf` is sent.
 pub async fn push_coroutine(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
-    let mut index: usize = 0;
-    loop {
-        for low in &buf[index..] {
-            let x: u16 = (low & 0xff) as u16;
+    for low in &buf[..] {
+        let x: u16 = (low & 0xff) as u16;
+        loop {
             match ring.try_enqueue(x) {
-                Ok(()) => index += 1,
+                Ok(()) => break,
                 Err(_) => {
                     // Operation not completed. Check if it was cancelled.
                     match yielder.yield_once().await {
@@ -36,7 +35,7 @@ pub async fn push_coroutine(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer, yi
                 },
             }
         }
-        trace!("data written ({:?}/{:?} bytes)", index, buf.len());
-        return Ok(());
     }
+    trace!("data written ({:?}/{:?} bytes)", buf.len(), buf.len());
+    return Ok(());
 }
