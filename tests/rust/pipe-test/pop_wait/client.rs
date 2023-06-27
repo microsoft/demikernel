@@ -13,6 +13,10 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
+use ::log::{
+    error,
+    warn,
+};
 use ::std::slice;
 use std::time::Duration;
 
@@ -77,8 +81,8 @@ impl PipeClient {
 
         // Succeed to release scatter-gather-array.
         if let Err(e) = self.libos.sgafree(sga) {
-            println!("WARN: leaking sga");
-            println!("ERROR: sgafree() failed (error={:?})", e);
+            warn!("leaking sga");
+            error!("sgafree() failed (error={:?})", e);
         }
 
         qt
@@ -114,8 +118,8 @@ impl Drop for PipeClient {
     fn drop(&mut self) {
         // Ignore error.
         if let Err(e) = self.libos.close(self.pipeqd) {
-            println!("WARN: leaking pipeqd={:?}", self.pipeqd);
-            println!("ERROR: close() failed (error={:?})", e);
+            warn!("leaking pipeqd={:?}", self.pipeqd);
+            error!("close() failed (error={:?})", e);
         }
     }
 }
