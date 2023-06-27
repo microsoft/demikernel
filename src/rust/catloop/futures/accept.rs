@@ -60,7 +60,7 @@ pub async fn accept_coroutine(
         )
         .await
         {
-            // Recieved a valid magic number so create the new connection. This involves create the new duplex pipe
+            // Received a valid magic number so create the new connection. This involves create the new duplex pipe
             // and sending the port number to the remote.
             Ok(true) => create_pipe(&catmem, control_duplex_pipe.clone(), ipv4, new_port, &yielder).await?,
             // Invalid request.

@@ -25,6 +25,7 @@ use crate::{
     },
     catmem::CatmemLibOS,
     demi_sgarray_t,
+    inetstack::protocols::ip::EphemeralPorts,
     pal::{
         data_structures::SockAddr,
         linux,
@@ -50,6 +51,10 @@ use crate::{
         YielderHandle,
     },
     QType,
+};
+use ::rand::{
+    prelude::SmallRng,
+    SeedableRng,
 };
 use ::std::{
     cell::{
@@ -88,8 +93,8 @@ pub enum Socket {
 
 /// A LibOS that exposes exposes sockets semantics on a memory queue.
 pub struct CatloopLibOS {
-    /// Next ephemeral port available. TODO: we want to change this to the ephemeral port allocator.
-    next_port: u16,
+    /// Ephemeral port allocator.
+    ephemeral_ports: Rc<RefCell<EphemeralPorts>>,
     /// Table of queue descriptors. This table has one entry for each existing queue descriptor in Catloop LibOS.
     qtable: Rc<RefCell<IoQueueTable<CatloopQueue>>>,
     /// Underlying scheduler.
@@ -121,8 +126,9 @@ impl CatloopLibOS {
 
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
+        let mut rng: SmallRng = SmallRng::from_entropy();
         Self {
-            next_port: 0,
+            ephemeral_ports: Rc::new(RefCell::new(EphemeralPorts::new(&mut rng))),
             qtable: Rc::new(RefCell::new(IoQueueTable::<CatloopQueue>::new())),
             scheduler: Scheduler::default(),
             catmem_qts: HashMap::default(),
@@ -280,16 +286,21 @@ impl CatloopLibOS {
         };
 
         let new_qd: QDesc = qtable.alloc(CatloopQueue::new(QType::TcpSocket));
+        let mut ephemeral_ports: RefMut<EphemeralPorts> = self.ephemeral_ports.borrow_mut();
+        let new_port: u16 = match ephemeral_ports.alloc_any() {
+            Ok(new_port) => new_port,
+            Err(e) => return Err(e),
+        };
         let qtable_ptr: Rc<RefCell<IoQueueTable<CatloopQueue>>> = self.qtable.clone();
+        let ephemeral_ptr: Rc<RefCell<EphemeralPorts>> = self.ephemeral_ports.clone();
         let yielder: Yielder = Yielder::new();
         // Will use this later on close.
         let yielder_handle: YielderHandle = yielder.get_handle();
         let catmem: Rc<RefCell<CatmemLibOS>> = self.catmem.clone();
-        let next_port: u16 = self.next_port;
         let coroutine: Pin<Box<Operation>> = Box::pin(async move {
             // Wait for the accept to complete.
             let result: Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> =
-                accept_coroutine(local.ip(), catmem, control_duplex_pipe.clone(), next_port, yielder).await;
+                accept_coroutine(local.ip(), catmem, control_duplex_pipe.clone(), new_port, yielder).await;
             // Handle result: if successful, borrow the queue table to set the socket and pipe metadata.
             match result {
                 Ok((remote, duplex_pipe)) => {
@@ -302,17 +313,20 @@ impl CatloopLibOS {
                     (qd, OperationResult::Accept(new_qd, remote))
                 },
                 Err(e) => {
+                    // Rollback the port allocation
+                    ephemeral_ptr.borrow_mut().free(new_port);
                     qtable_ptr.borrow_mut().free(&new_qd);
                     (qd, OperationResult::Failed(e))
                 },
             }
         });
-        self.next_port += 1;
         let task_id: String = format!("Catloop::accept for qd={:?}", qd);
         let task: OperationTask = OperationTask::new(task_id, coroutine);
         let handle: TaskHandle = match self.scheduler.insert(task) {
             Some(handle) => handle,
             None => {
+                // Rollback the port allocation
+                ephemeral_ports.free(new_port);
                 qtable.free(&new_qd);
                 let cause: String = format!("cannot schedule co-routine");
                 error!("accept(): {}", &cause);
@@ -413,6 +427,10 @@ impl CatloopLibOS {
             Some(queue) => {
                 if let Some(duplex_pipe) = queue.get_pipe() {
                     duplex_pipe.close()?;
+                }
+                if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
+                    // Rollback the port allocation
+                    self.ephemeral_ports.borrow_mut().free(addr.port());
                 }
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
             },
@@ -542,8 +560,6 @@ impl CatloopLibOS {
 
             // Construct operation result.
             let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-
-            // FIXME: https://github.com/demikernel/demikernel/issues/621
 
             return Ok(pack_result(r, qd, qt.into()));
         }
