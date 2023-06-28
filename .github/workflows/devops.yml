@@ -1,0 +1,41 @@
+name: DevOps
+
+on:
+  push:
+    branches:
+      - bugfix-*
+      - enhancement-*
+      - feature-*
+      - workaround-*
+      - dev
+      - unstable
+      - main
+
+jobs:
+  check_commit_messages:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Check Commit Messages
+        run: |
+          max_len=50
+          commit_pattern="\[[[:alnum:]-]+\] (Workaround|Enhancement|Feature|Bug Fix): "
+          commit_range="origin/dev..HEAD"
+
+          git fetch origin
+
+          # Check commit message length.
+          if [ $(git log --format=%s $commit_range | wc -c) -gt $max_len ]; then
+            echo "Commit messages are too long. Please keep them under $max_len characters."
+            exit 1
+          fi
+
+          # Check commit message pattern.
+          git log --format=%s $commit_range | grep -q -E "$commit_pattern"
+          if [[ $? -ne 0 ]]; then
+            echo "Invalid commit messages found. Please follow the commit message pattern: \"$commit_pattern\"."
+            exit 1
+          fi
