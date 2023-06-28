@@ -15,13 +15,16 @@ use self::{
     queue::CatmemQueue,
 };
 use crate::{
-    catmem::futures::{
-        close::{
-            close_coroutine,
-            push_eof,
+    catmem::{
+        futures::{
+            close::{
+                close_coroutine,
+                push_eof,
+            },
+            pop::pop_coroutine,
+            push::push_coroutine,
         },
-        pop::pop_coroutine,
-        push::push_coroutine,
+        pipe::PipeState,
     },
     collections::shared_ring::SharedRingBuffer,
     runtime::{
@@ -135,7 +138,16 @@ impl CatmemLibOS {
         let mut qtable = self.qtable.borrow_mut();
         match qtable.get_mut(&qd) {
             Some(queue) => {
+                // Set pipe as closing.
+                let pipe: &mut Pipe = queue.get_mut_pipe();
+                pipe.set_state(PipeState::Closing);
+
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+
+                // Set pipe as closed.
+                let pipe: &mut Pipe = queue.get_mut_pipe();
+                pipe.set_state(PipeState::Closed);
+
                 qtable.free(&qd);
             },
             None => {
@@ -155,9 +167,18 @@ impl CatmemLibOS {
         // Check if queue descriptor is valid.
         match qtable.get_mut(&qd) {
             Some(queue) => {
+                let pipe: &mut Pipe = queue.get_mut_pipe();
+
+                // Set pipe as closing.
+                pipe.set_state(PipeState::Closing);
+
+                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+
                 // Attempt to push EoF.
-                let result: Result<(), Fail> = { push_eof(queue.get_pipe().buffer()) };
+                let result: Result<(), Fail> = { push_eof(ring) };
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+
+                // TODO: Set pipe as closed.
 
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
                 // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
@@ -180,7 +201,12 @@ impl CatmemLibOS {
         // Check if queue descriptor is valid.
         match qtable.get_mut(&qd) {
             Some(queue) => {
-                let ring: Rc<SharedRingBuffer<u16>> = queue.get_pipe().buffer();
+                let pipe: &mut Pipe = queue.get_mut_pipe();
+
+                // Set pipe as closing.
+                pipe.set_state(PipeState::Closing);
+
+                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
                 let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
                 let yielder: Yielder = Yielder::new();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
@@ -203,6 +229,8 @@ impl CatmemLibOS {
                                     return (qd, OperationResult::Failed(Fail::new(libc::EBADF, cause)));
                                 },
                             }
+
+                            // TODO: Set pipe as closed.
 
                             // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
                             // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
