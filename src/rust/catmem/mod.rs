@@ -282,7 +282,18 @@ impl CatmemLibOS {
                 // Issue push operation.
                 match self.qtable.borrow_mut().get_mut(&qd) {
                     Some(queue) => {
-                        let pipe: &Pipe = queue.get_pipe();
+                        let pipe: &mut Pipe = queue.get_mut_pipe();
+
+                        // Check if the pipe is closing or closed.
+                        if pipe.state() == PipeState::Closing {
+                            let cause: String = format!("pipe is closing (qd={:?})", qd);
+                            error!("push(): {}", cause);
+                            return Err(Fail::new(libc::EBADF, &cause));
+                        } else if pipe.state() == PipeState::Closed {
+                            let cause: String = format!("pipe is closed (qd={:?})", qd);
+                            error!("push(): {}", cause);
+                            return Err(Fail::new(libc::EBADF, &cause));
+                        }
 
                         // TODO: review the following code once that condition is enforced by the pipe abstraction.
                         // We do not check for EoF because pipes are unidirectional,
@@ -343,7 +354,19 @@ impl CatmemLibOS {
         // Issue pop operation.
         match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => {
-                let pipe: &Pipe = queue.get_pipe();
+                let pipe: &mut Pipe = queue.get_mut_pipe();
+
+                // Check if the pipe is closing or closed.
+                if pipe.state() == PipeState::Closing {
+                    let cause: String = format!("pipe is closing (qd={:?})", qd);
+                    error!("push(): {}", cause);
+                    return Err(Fail::new(libc::EBADF, &cause));
+                } else if pipe.state() == PipeState::Closed {
+                    let cause: String = format!("pipe is closed (qd={:?})", qd);
+                    error!("push(): {}", cause);
+                    return Err(Fail::new(libc::EBADF, &cause));
+                }
+
                 let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
                 let yielder: Yielder = Yielder::new();
                 let yielder_handle: YielderHandle = yielder.get_handle();
