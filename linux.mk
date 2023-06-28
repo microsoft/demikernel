@@ -70,7 +70,10 @@ CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
 
-all: all-libs all-tests all-examples
+all: init | all-libs all-tests all-examples
+
+init:
+	git config --local core.hooksPath .githooks
 
 # Builds documentation.
 doc:
