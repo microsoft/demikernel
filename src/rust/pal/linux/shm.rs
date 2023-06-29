@@ -43,12 +43,12 @@ pub struct SharedMemory {
 
 /// Associated functions.
 impl SharedMemory {
+    /// Prefix for shared memory region names.
+    const SHM_NAME_PREFIX: &'static str = "demikernel-";
+
     /// Opens an existing named shared memory region.
     pub fn open(name: &str, len: usize) -> Result<SharedMemory, Fail> {
-        let name: ffi::CString = match ffi::CString::new(name.to_string()) {
-            Ok(name) => name,
-            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse name of shared memory region")),
-        };
+        let name: ffi::CString = Self::build_name(name)?;
         let fd: libc::c_int = unsafe {
             // Forward request to underlying POSIX OS.
             let ret: libc::c_int = libc::shm_open(name.as_ptr(), libc::O_RDWR, libc::S_IRUSR | libc::S_IWUSR);
@@ -82,10 +82,7 @@ impl SharedMemory {
 
     /// Creates a named shared memory region.
     pub fn create(name: &str, size: usize) -> Result<SharedMemory, Fail> {
-        let name: ffi::CString = match ffi::CString::new(name.to_string()) {
-            Ok(name) => name,
-            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse name of shared memory region")),
-        };
+        let name: ffi::CString = Self::build_name(name)?;
         // Forward request to underlying POSIX OS.
         let fd: libc::c_int = unsafe {
             let ret: libc::c_int = libc::shm_open(
@@ -211,6 +208,19 @@ impl SharedMemory {
         }
 
         Ok(())
+    }
+
+    /// Constructs the name of shared memory region.
+    fn build_name(name: &str) -> Result<ffi::CString, Fail> {
+        // Check if provided name is valid.
+        if name.is_empty() {
+            return Err(Fail::new(libc::EINVAL, "name of shared memory region cannot be empty"));
+        }
+        let prefix: String = String::from(Self::SHM_NAME_PREFIX);
+        match ffi::CString::new((prefix + name).to_string()) {
+            Ok(name) => Ok(name),
+            Err(_) => Err(Fail::new(libc::EINVAL, "could not parse name of shared memory region")),
+        }
     }
 
     /// Returns the size of the target shared memory region.
