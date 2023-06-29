@@ -69,18 +69,20 @@ impl<T: Copy> Deref for SharedRingBuffer<T> {
 mod test {
     use super::SharedRingBuffer;
     use ::anyhow::Result;
-    use std::{
+    use ::std::{
+        sync::Barrier,
         thread::{
             self,
             ScopedJoinHandle,
         },
-        time::Duration,
     };
 
+    /// Number of rounds to run the tests.
+    const ROUNDS: usize = 128;
+    /// Capacity of ring buffers used in tests.
     const RING_BUFFER_CAPACITY: usize = 4096;
 
     /// Tests if we succeed to perform sequential accesses to a shared ring buffer.
-    #[ignore]
     #[test]
     fn ring_buffer_on_shm_sequential() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-serial".to_string();
@@ -111,11 +113,11 @@ mod test {
     }
 
     /// Tests if we succeed to perform concurrent accesses to a shared ring buffer..
-    #[ignore]
     #[test]
     fn ring_buffer_on_shm_concurrent() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-concurrent".to_string();
         let mut result: Result<()> = Ok(());
+        let barrier: Barrier = Barrier::new(2);
 
         thread::scope(|s| {
             let writer: ScopedJoinHandle<Result<()>> = s.spawn(|| {
@@ -124,8 +126,12 @@ mod test {
                     Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
                 };
 
-                for i in 0..ring.capacity() {
-                    ring.enqueue((i & 255) as u8);
+                barrier.wait();
+
+                for _ in 0..ROUNDS {
+                    for i in 0..ring.capacity() {
+                        ring.enqueue((i & 255) as u8);
+                    }
                 }
 
                 while !ring.is_empty() {}
@@ -133,15 +139,17 @@ mod test {
             });
 
             let reader: ScopedJoinHandle<Result<()>> = s.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
+                barrier.wait();
 
                 let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::open(&shm_name, RING_BUFFER_CAPACITY) {
                     Ok(ring) => ring,
                     Err(_) => anyhow::bail!("openining a shared ring buffer should be possible"),
                 };
-                for i in 0..ring.capacity() {
-                    let item: u8 = ring.dequeue();
-                    crate::ensure_eq!(item, (i & 255) as u8);
+                for _ in 0..ROUNDS {
+                    for i in 0..ring.capacity() {
+                        let item: u8 = ring.dequeue();
+                        crate::ensure_eq!(item, (i & 255) as u8);
+                    }
                 }
                 Ok(())
             });
