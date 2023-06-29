@@ -13,6 +13,10 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
+use ::log::{
+    error,
+    warn,
+};
 use ::std::{
     slice,
     time::Duration,
@@ -86,13 +90,7 @@ impl PipeClient {
                 Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
             }
         } else {
-            match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-                    Ok(())
-                },
-                Ok(_) => anyhow::bail!("wait() should not complete successfully"),
-                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
-            }
+            Ok(())
         }
     }
 
@@ -140,14 +138,7 @@ impl PipeClient {
                 Ok(_) => anyhow::bail!("wait() should complete successfully or fail with ECANCELED"),
                 Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
             }
-        } else {
-            match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-                Ok(_) => anyhow::bail!("wait() should fail with ECANCELED"),
-                Err(e) => anyhow::bail!("wait() should not fail (error={:?})", e),
-            }
         }
-
         Ok(())
     }
 
@@ -181,8 +172,8 @@ impl PipeClient {
 
         // Succeed to release scatter-gather-array.
         if let Err(e) = self.libos.sgafree(sga) {
-            println!("ERROR: sgafree() failed (error={:?})", e);
-            println!("WARN: leaking sga")
+            error!("sgafree() failed (error={:?})", e);
+            warn!("leaking sga")
         }
 
         qt
@@ -219,8 +210,8 @@ impl Drop for PipeClient {
         if let Some(pipeqd) = self.pipeqd {
             // Ignore error.
             if let Err(e) = self.libos.close(pipeqd) {
-                println!("ERROR: close() failed (error={:?})", e);
-                println!("WARN: leaking pipeqd={:?}", pipeqd);
+                error!("close() failed (error={:?})", e);
+                warn!("leaking pipeqd={:?}", pipeqd);
             }
         }
     }

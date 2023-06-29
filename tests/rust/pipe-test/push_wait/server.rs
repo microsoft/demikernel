@@ -16,6 +16,10 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
+use ::log::{
+    error,
+    warn,
+};
 
 //======================================================================================================================
 // Structures
@@ -68,8 +72,8 @@ impl PipeServer {
         n += sga.sga_segs[0].sgaseg_len as usize;
 
         if let Err(e) = self.libos.sgafree(sga) {
-            println!("ERROR: sgafree() failed (error={:?})", e);
-            println!("WARN: leaking sga");
+            error!("sgafree() failed (error={:?})", e);
+            warn!("leaking sga");
         }
 
         Ok(n)
@@ -105,8 +109,8 @@ impl Drop for PipeServer {
         if let Some(pipeqd) = self.pipeqd {
             // Ignore error.
             if let Err(e) = self.libos.close(pipeqd) {
-                println!("ERROR: close() failed (error={:?})", e);
-                println!("WARN: leaking pipeqd={:?}", pipeqd);
+                error!("close() failed (error={:?})", e);
+                warn!("leaking pipeqd={:?}", pipeqd);
             }
         }
     }

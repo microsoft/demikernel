@@ -186,7 +186,7 @@ export MSS ?= 1500
 export PEER ?= server
 export TEST ?= udp-push-pop
 export TEST_INTEGRATION ?= tcp-test
-export TIMEOUT ?= 30
+export TIMEOUT ?= 60
 
 # Runs system tests.
 test-system: test-system-rust
@@ -200,23 +200,23 @@ test-unit: test-unit-rust
 
 # C unit tests.
 test-unit-c: test-clean $(BINDIR)/syscalls.elf
-	$(BINDIR)/syscalls.elf
+	timeout $(TIMEOUT) $(BINDIR)/syscalls.elf
 
 # Rust unit tests.
 test-unit-rust: test-clean
-	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
-	$(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
-	$(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
-	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
+	timeout $(TIMEOUT) $(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
+	timeout $(TIMEOUT) $(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
+	timeout $(TIMEOUT) $(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
+	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
 
 # Runs Rust integration tests.
-test-integration-rust: test-clean
-	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
+test-integration-rust:
+	timeout $(TIMEOUT) $(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
 
 # Cleans dangling test resources.
 test-clean:

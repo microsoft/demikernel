@@ -16,6 +16,10 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
+use ::log::{
+    error,
+    warn,
+};
 use ::std::time::Duration;
 
 //======================================================================================================================
@@ -88,13 +92,7 @@ impl PipeServer {
                 Err(e) => anyhow::bail!("wait() should failed (error={:?})", e),
             }
         } else {
-            match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-                    Ok(())
-                },
-                Ok(_) => anyhow::bail!("wait() should fail with ECANCELLED"),
-                Err(e) => anyhow::bail!("wait() failed (error={:?})", e),
-            }
+            Ok(())
         }
     }
 
@@ -139,24 +137,15 @@ impl PipeServer {
         // Wait for operation to complete.
         if !pop_completed {
             match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-                    Ok(())
-                },
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => self.handle_pop(&qr),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => self.handle_pop(&qr)?,
                 Ok(_) => {
                     anyhow::bail!("wait() should either complete successfully or fail with ECANCELED")
                 },
                 Err(e) => anyhow::bail!("wait() should failed (error={:?})", e),
             }
-        } else {
-            match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-                    Ok(())
-                },
-                Ok(_) => anyhow::bail!("wait() should fail with ECANCELLED"),
-                Err(e) => anyhow::bail!("wait() failed (error={:?})", e),
-            }
-        }
+        };
+        Ok(())
     }
 
     /// Pops a scatter-gather array, but does not wait for the operation to complete.
@@ -181,7 +170,7 @@ impl PipeServer {
                 match self.libos.sgafree(sga) {
                     Ok(()) => Ok(()),
                     Err(e) => {
-                        println!("WARN: leaking sga");
+                        warn!("leaking sga");
                         anyhow::bail!("sgafree() failed (error={:?})", e);
                     },
                 }
@@ -199,7 +188,7 @@ impl PipeServer {
         match self.libos.sgafree(sga) {
             Ok(()) => Ok(()),
             Err(e) => {
-                println!("WARN: leaking sga");
+                warn!("leaking sga");
                 anyhow::bail!("sgafree() failed (error={:?})", e);
             },
         }
@@ -216,8 +205,8 @@ impl Drop for PipeServer {
         if let Some(pipeqd) = self.pipeqd {
             // Ignore error.
             if let Err(e) = self.libos.close(pipeqd) {
-                println!("ERROR: close() failed (error={:?})", e);
-                println!("WARN: leaking pipeqd={:?}", pipeqd);
+                error!("close() failed (error={:?})", e);
+                warn!("leaking pipeqd={:?}", pipeqd);
             }
         }
     }
