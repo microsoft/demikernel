@@ -215,7 +215,7 @@ test-unit-rust: test-clean
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
 
 # Runs Rust integration tests.
-test-integration-rust: test-clean
+test-integration-rust:
 	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
 
 # Cleans dangling test resources.
