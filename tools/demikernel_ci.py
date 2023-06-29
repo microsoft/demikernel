@@ -522,8 +522,8 @@ def main():
     # Extract test options.
     test_unit: bool = args.test_unit
     test_system: str = args.test_system
-    server_addr: str = args.server_addr if test_system else ""
-    client_addr: str = args.client_addr if test_system else ""
+    server_addr: str = args.server_addr
+    client_addr: str = args.client_addr
 
     # Output directory.
     output_dir: str = args.output_dir
