@@ -178,8 +178,6 @@ impl CatmemLibOS {
                 let result: Result<(), Fail> = { push_eof(ring) };
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
 
-                // TODO: Set pipe as closed.
-
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
                 // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
                 qtable.free(&qd);
@@ -229,8 +227,6 @@ impl CatmemLibOS {
                                     return (qd, OperationResult::Failed(Fail::new(libc::EBADF, cause)));
                                 },
                             }
-
-                            // TODO: Set pipe as closed.
 
                             // Release the queue descriptor, even if pushing EoF failed. This will prevent any further operations on the
                             // queue, as well as it will ensure that the underlying shared ring buffer will be eventually released.
