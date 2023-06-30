@@ -519,3 +519,19 @@ impl CatmemLibOS {
         self.scheduler.poll()
     }
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for CatmemLibOS {
+    // Releases all sockets allocated by Catnap.
+    fn drop(&mut self) {
+        for (_, queue) in self.qtable.borrow().get_values() {
+            if let Err(e) = push_eof(queue.get_pipe().buffer()) {
+                error!("push_eof() failed: {:?}", e);
+                warn!("leaking shared memory region");
+            }
+        }
+    }
+}
