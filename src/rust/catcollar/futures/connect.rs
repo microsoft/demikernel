@@ -75,7 +75,7 @@ impl Future for ConnectFuture {
         } {
             // Operation completed.
             stats if stats == 0 => {
-                trace!("connection established ({:?})", self_.saddr);
+                trace!("connection established (fd={:?})", self_.fd);
                 Poll::Ready(Ok(()))
             },
 
