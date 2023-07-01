@@ -458,6 +458,32 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn from_task_id_returns_none_for_non_existing_task_id() -> Result<()> {
+         let scheduler: Scheduler = Scheduler::default();
+        match scheduler.from_task_id(0) {
+            Some(_) => anyhow::bail!("from_task_id() must return None"),
+            None => {},
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn from_task_id_returns_correct_task_handle() -> Result<()> {
+        let scheduler: Scheduler = Scheduler::default();
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(42)));
+         let handle: TaskHandle = match scheduler.insert(task) {
+             Some(handle) => handle,
+             None => anyhow::bail!("insert() failed"),
+         };
+        let task_id: u64 = handle.get_task_id();
+        match scheduler.from_task_id(task_id) {
+            Some(retreived_task_handle) => crate::ensure_eq!(task_id, retreived_task_handle.get_task_id()),
+            None => anyhow::bail!("from_task_id() must not return None"),
+        }
+        Ok(())
+    }
+
     #[bench]
     fn benchmark_insert(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
