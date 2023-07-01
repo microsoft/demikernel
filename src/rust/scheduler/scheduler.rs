@@ -319,18 +319,6 @@ mod tests {
 
     type DummyTask = TaskWithResult<()>;
 
-    #[bench]
-    fn bench_scheduler_insert(b: &mut Bencher) {
-        let scheduler: Scheduler = Scheduler::default();
-
-        b.iter(|| {
-            let task: DummyTask =
-                DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
-            let handle: TaskHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
-            black_box(handle);
-        });
-    }
-
     /// Tests if when inserting multiple tasks into the scheduler at once each, of them gets a unique identifier.
     #[test]
     fn test_scheduler_insert() -> Result<()> {
@@ -431,6 +419,18 @@ mod tests {
         crate::ensure_neq!(task_id2, task_id);
 
         Ok(())
+    }
+
+    #[bench]
+    fn bench_scheduler_insert(b: &mut Bencher) {
+        let scheduler: Scheduler = Scheduler::default();
+
+        b.iter(|| {
+            let task: DummyTask =
+                DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
+            let handle: TaskHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
+            black_box(handle);
+        });
     }
 
     #[bench]
