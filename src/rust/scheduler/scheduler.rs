@@ -436,11 +436,10 @@ mod tests {
     #[bench]
     fn bench_scheduler_poll(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
-        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(1024);
+        const NUM_TASKS: usize = 1024;
+        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(NUM_TASKS);
 
-        // Insert 1024 futures in the scheduler.
-        // Half of them will be ready.
-        for val in 0..1024 {
+        for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
             let handle: TaskHandle = match scheduler.insert(task) {
                 Some(handle) => handle,
