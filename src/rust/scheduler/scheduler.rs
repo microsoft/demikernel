@@ -421,6 +421,43 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn remove_removes_task_id_as_well() -> Result<()> {
+        let scheduler: Scheduler = Scheduler::default();
+        // Arbitrarily large number.
+        const NUM_TASKS: usize = 8192;
+        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(NUM_TASKS);
+
+        crate::ensure_eq!(true, scheduler.task_ids.borrow().is_empty());
+
+        for val in 0..NUM_TASKS {
+            let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
+            let handle: TaskHandle = match scheduler.insert(task) {
+                Some(handle) => handle,
+                None => panic!("insert() failed"),
+            };
+            handles.push(handle);
+        }
+
+        // This poll is required to give the opportunity for all the tasks to complete.
+        scheduler.poll();
+
+        // Remove tasks one by one and check if remove is only removing the task requested to be removed.
+        let mut curr_num_tasks: usize = NUM_TASKS;
+        for i in 0..NUM_TASKS {
+            let task_id: u64 = handles[i].get_task_id();
+            crate::ensure_eq!(true, scheduler.task_ids.borrow().contains_key(&task_id));
+            scheduler.remove(&handles[i]);
+            curr_num_tasks = curr_num_tasks - 1;
+            crate::ensure_eq!(scheduler.task_ids.borrow().len(), curr_num_tasks);
+            crate::ensure_eq!(false, scheduler.task_ids.borrow().contains_key(&task_id));
+        }
+
+        crate::ensure_eq!(scheduler.task_ids.borrow().is_empty(), true);
+
+        Ok(())
+    }
+
     #[bench]
     fn bench_scheduler_insert(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
