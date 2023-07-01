@@ -321,7 +321,7 @@ mod tests {
 
     /// Tests if when inserting multiple tasks into the scheduler at once each, of them gets a unique identifier.
     #[test]
-    fn test_scheduler_insert() -> Result<()> {
+    fn insert_creates_unique_tasks_ids() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a task and make sure the task id is not a simple counter.
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_poll_once() -> Result<()> {
+    fn poll_once_with_one_small_task_completes_it() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_poll_twice() -> Result<()> {
+    fn poll_twice_with_one_long_task_completes_it() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete
@@ -392,7 +392,7 @@ mod tests {
 
     /// Tests if consecutive tasks are not assigned the same task id.
     #[test]
-    fn test_scheduler_task_ids() -> Result<()> {
+    fn insert_consecutive_creates_unique_task_ids() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Create and run a task.
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_removes_task_id_as_well() -> Result<()> {
+    fn remove_removes_task_id() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
         // Arbitrarily large number.
         const NUM_TASKS: usize = 8192;
@@ -459,7 +459,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_scheduler_insert(b: &mut Bencher) {
+    fn benchmark_insert(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
 
         b.iter(|| {
@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_scheduler_poll(b: &mut Bencher) {
+    fn benchmark_poll(b: &mut Bencher) {
         let scheduler: Scheduler = Scheduler::default();
         const NUM_TASKS: usize = 1024;
         let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(NUM_TASKS);
