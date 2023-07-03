@@ -251,7 +251,9 @@ impl<const N: usize> UdpPeer<N> {
             Err(e) => {
                 // Rollback ephemeral port allocation.
                 if EphemeralPorts::is_private(addr.port()) {
-                    self.ephemeral_ports.free(addr.port());
+                    if self.ephemeral_ports.free(addr.port()).is_err() {
+                        warn!("do_bind(): leaking ephemeral port (port={})", addr.port());
+                    }
                 }
                 Err(e)
             },

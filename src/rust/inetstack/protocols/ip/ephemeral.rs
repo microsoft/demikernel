@@ -64,8 +64,25 @@ impl EphemeralPorts {
         Ok(())
     }
 
-    pub fn free(&mut self, port: u16) {
+    /// Releases a ephemeral port.
+    pub fn free(&mut self, port: u16) -> Result<(), Fail> {
+        // Check if port is in the valid range.
+        if !Self::is_private(port) {
+            let cause: String = format!("port {} is not in the ephemeral port range", port);
+            error!("free(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // Check if port is already in the pool.
+        if self.ports.contains(&port) {
+            let cause: String = format!("port {} is already in the pool", port);
+            error!("free(): {}", &cause);
+            return Err(Fail::new(libc::EFAULT, &cause));
+        }
+
         self.ports.push(port);
+
+        Ok(())
     }
 }
 
@@ -93,7 +110,9 @@ mod test {
         };
 
         // Free the port.
-        ports.free(port);
+        if let Err(e) = ports.free(port) {
+            anyhow::bail!("failed to free ephemeral port (error={:?})", &e);
+        }
 
         Ok(())
     }
@@ -110,7 +129,9 @@ mod test {
         }
 
         // Free the port.
-        ports.free(FIRST_PRIVATE_PORT);
+        if let Err(e) = ports.free(FIRST_PRIVATE_PORT) {
+            anyhow::bail!("failed to free ephemeral port (error={:?})", &e);
+        }
 
         Ok(())
     }
@@ -135,7 +156,9 @@ mod test {
 
         // Free all ports.
         for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            ports.free(port);
+            if let Err(e) = ports.free(port) {
+                anyhow::bail!("failed to free ephemeral port (error={:?})", &e);
+            }
         }
 
         Ok(())
@@ -161,7 +184,9 @@ mod test {
 
         // Free all ports.
         for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            ports.free(port);
+            if let Err(e) = ports.free(port) {
+                anyhow::bail!("failed to free ephemeral port (port={:?}, error={:?})", port, &e);
+            }
         }
 
         Ok(())
@@ -174,7 +199,9 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
 
         // Attempt to free a port that is not in the pool.
-        ports.free(FIRST_PRIVATE_PORT);
+        if ports.free(FIRST_PRIVATE_PORT).is_ok() {
+            anyhow::bail!("freeing a port that is not managed by the ephemeral port allocator should fail");
+        }
 
         Ok(())
     }
@@ -186,7 +213,9 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
 
         // Attempt to free a port that is not in the pool.
-        ports.free(FIRST_PRIVATE_PORT);
+        if ports.free(FIRST_PRIVATE_PORT).is_ok() {
+            anyhow::bail!("freeing a port that is not allocated should fail");
+        }
 
         Ok(())
     }
