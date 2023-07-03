@@ -27,6 +27,7 @@ pub struct EphemeralPorts {
 //==============================================================================
 
 impl EphemeralPorts {
+    /// Creates a new ephemeral port allocator.
     pub fn new(rng: &mut SmallRng) -> Self {
         let mut ports: Vec<u16> = Vec::<u16>::new();
         for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
@@ -36,10 +37,12 @@ impl EphemeralPorts {
         Self { ports }
     }
 
+    /// Asserts wether a port is in the ephemeral port range.
     pub fn is_private(port: u16) -> bool {
         port >= FIRST_PRIVATE_PORT
     }
 
+    /// Allocates any ephemeral port from the pool.
     pub fn alloc_any(&mut self) -> Result<u16, Fail> {
         self.ports.pop().ok_or(Fail::new(
             libc::EADDRINUSE,
@@ -132,7 +135,7 @@ mod test {
         Ok(())
     }
 
-    /// Attempts to allocate all ephemeral ports and then release them.
+    /// Attempts to allocate all ephemeral ports using [`EphemeralPorts::alloc_any`] and then release them.
     #[test]
     fn test_alloc_any_all() -> Result<()> {
         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
@@ -160,7 +163,7 @@ mod test {
         Ok(())
     }
 
-    /// Attempts to allocate all ephemeral ports and then release them.
+    /// Attempts to allocate all ephemeral ports using [`EphemeralPorts::alloc_port`] and then release them.
     #[test]
     fn test_alloc_port_all() -> Result<()> {
         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
