@@ -114,7 +114,7 @@ clean-libs-demikernel:
 all-tests: all-tests-rust all-tests-c
 
 # Builds all Rust tests.
-all-tests-rust: all-libs
+all-tests-rust:
 	@echo "$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
 
@@ -137,7 +137,7 @@ clean-tests-c:
 all-examples: all-examples-c all-examples-rust
 
 # Builds all C examples.
-all-examples-c:
+all-examples-c: all-libs
 	$(MAKE) -C examples/c all
 
 # Builds all Rust examples.
@@ -199,11 +199,11 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: test-clean $(BINDIR)/syscalls.elf
+test-unit-c: all-tests $(BINDIR)/syscalls.elf
 	timeout $(TIMEOUT) $(BINDIR)/syscalls.elf
 
 # Rust unit tests.
-test-unit-rust: test-clean
+test-unit-rust: all-tests-rust
 	timeout $(TIMEOUT) $(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	timeout $(TIMEOUT) $(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	timeout $(TIMEOUT) $(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
