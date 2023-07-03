@@ -319,21 +319,9 @@ mod tests {
 
     type DummyTask = TaskWithResult<()>;
 
-    #[bench]
-    fn bench_scheduler_insert(b: &mut Bencher) {
-        let scheduler: Scheduler = Scheduler::default();
-
-        b.iter(|| {
-            let task: DummyTask =
-                DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
-            let handle: TaskHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
-            black_box(handle);
-        });
-    }
-
     /// Tests if when inserting multiple tasks into the scheduler at once each, of them gets a unique identifier.
     #[test]
-    fn test_scheduler_insert() -> Result<()> {
+    fn insert_creates_unique_tasks_ids() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a task and make sure the task id is not a simple counter.
@@ -357,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_poll_once() -> Result<()> {
+    fn poll_once_with_one_small_task_completes_it() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
@@ -377,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduler_poll_twice() -> Result<()> {
+    fn poll_twice_with_one_long_task_completes_it() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Insert a single future in the scheduler. This future shall complete
@@ -404,7 +392,7 @@ mod tests {
 
     /// Tests if consecutive tasks are not assigned the same task id.
     #[test]
-    fn test_scheduler_task_ids() -> Result<()> {
+    fn insert_consecutive_creates_unique_task_ids() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
 
         // Create and run a task.
@@ -433,14 +421,88 @@ mod tests {
         Ok(())
     }
 
-    #[bench]
-    fn bench_scheduler_poll(b: &mut Bencher) {
+    #[test]
+    fn remove_removes_task_id() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
-        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(1024);
+        // Arbitrarily large number.
+        const NUM_TASKS: usize = 8192;
+        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(NUM_TASKS);
 
-        // Insert 1024 futures in the scheduler.
-        // Half of them will be ready.
-        for val in 0..1024 {
+        crate::ensure_eq!(true, scheduler.task_ids.borrow().is_empty());
+
+        for val in 0..NUM_TASKS {
+            let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
+            let handle: TaskHandle = match scheduler.insert(task) {
+                Some(handle) => handle,
+                None => panic!("insert() failed"),
+            };
+            handles.push(handle);
+        }
+
+        // This poll is required to give the opportunity for all the tasks to complete.
+        scheduler.poll();
+
+        // Remove tasks one by one and check if remove is only removing the task requested to be removed.
+        let mut curr_num_tasks: usize = NUM_TASKS;
+        for i in 0..NUM_TASKS {
+            let task_id: u64 = handles[i].get_task_id();
+            crate::ensure_eq!(true, scheduler.task_ids.borrow().contains_key(&task_id));
+            scheduler.remove(&handles[i]);
+            curr_num_tasks = curr_num_tasks - 1;
+            crate::ensure_eq!(scheduler.task_ids.borrow().len(), curr_num_tasks);
+            crate::ensure_eq!(false, scheduler.task_ids.borrow().contains_key(&task_id));
+        }
+
+        crate::ensure_eq!(scheduler.task_ids.borrow().is_empty(), true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn from_task_id_returns_none_for_non_existing_task_id() -> Result<()> {
+         let scheduler: Scheduler = Scheduler::default();
+        match scheduler.from_task_id(0) {
+            Some(_) => anyhow::bail!("from_task_id() must return None"),
+            None => {},
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn from_task_id_returns_correct_task_handle() -> Result<()> {
+        let scheduler: Scheduler = Scheduler::default();
+        let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(42)));
+         let handle: TaskHandle = match scheduler.insert(task) {
+             Some(handle) => handle,
+             None => anyhow::bail!("insert() failed"),
+         };
+        let task_id: u64 = handle.get_task_id();
+        match scheduler.from_task_id(task_id) {
+            Some(retreived_task_handle) => crate::ensure_eq!(task_id, retreived_task_handle.get_task_id()),
+            None => anyhow::bail!("from_task_id() must not return None"),
+        }
+        Ok(())
+    }
+
+    #[bench]
+    fn benchmark_insert(b: &mut Bencher) {
+        let scheduler: Scheduler = Scheduler::default();
+
+        b.iter(|| {
+            let task: DummyTask =
+                DummyTask::new(String::from("testing"), Box::pin(black_box(DummyCoroutine::default())));
+            let handle: TaskHandle = scheduler.insert(task).expect("couldn't insert future in scheduler");
+            black_box(handle);
+        });
+    }
+
+    #[bench]
+    fn benchmark_poll(b: &mut Bencher) {
+        let scheduler: Scheduler = Scheduler::default();
+        const NUM_TASKS: usize = 1024;
+        let mut handles: Vec<TaskHandle> = Vec::<TaskHandle>::with_capacity(NUM_TASKS);
+
+        for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val)));
             let handle: TaskHandle = match scheduler.insert(task) {
                 Some(handle) => handle,
