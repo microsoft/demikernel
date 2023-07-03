@@ -36,10 +36,6 @@ impl EphemeralPorts {
         Self { ports }
     }
 
-    pub fn first_private_port() -> u16 {
-        FIRST_PRIVATE_PORT
-    }
-
     pub fn is_private(port: u16) -> bool {
         port >= FIRST_PRIVATE_PORT
     }
