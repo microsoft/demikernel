@@ -606,7 +606,7 @@ impl CatloopLibOS {
 
         // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
         let cause: String = format!("unregistered queue token (qt={:?})", qt);
-        error!("schedule(): {:?}", &cause);
+        error!("pack_result(): {:?}", &cause);
         Err(Fail::new(libc::EINVAL, &cause))
     }
 
