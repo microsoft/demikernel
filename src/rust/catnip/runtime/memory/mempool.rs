@@ -67,7 +67,7 @@ impl MemoryPool {
         warn!("allocating mbuf from DPDK pool");
 
         // Allocate mbuf.
-        let mut mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.pool) };
+        let mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.pool) };
         if mbuf_ptr.is_null() {
             return Err(Fail::new(libc::ENOMEM, "cannot allocate more mbufs"));
         }
