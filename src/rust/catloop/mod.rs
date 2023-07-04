@@ -461,6 +461,54 @@ impl CatloopLibOS {
         }
     }
 
+    /// Asynchronously closes a socket.
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        trace!("async_close() qd={:?}", qd);
+
+        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
+        // Remove socket from sockets table.
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                if let Some(duplex_pipe) = queue.get_pipe() {
+                    let qt: QToken = duplex_pipe.async_close()?;
+                    self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CLOSE, qd));
+                    Ok(Self::shift_qtoken(qt))
+                } else {
+                    let yielder: Yielder = Yielder::new();
+                    let yielder_handle: YielderHandle = yielder.get_handle();
+                    let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Close) });
+                    let task_id: String = format!("Catloop::close for qd={:?}", qd);
+                    let task: OperationTask = OperationTask::new(task_id, coroutine);
+                    let handle: TaskHandle = match self.scheduler.insert(task) {
+                        Some(handle) => handle,
+                        None => {
+                            let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
+                            error!("connect(): {}", &cause);
+                            return Err(Fail::new(libc::EAGAIN, &cause));
+                        },
+                    };
+                    queue.add_pending_op(&handle, &yielder_handle);
+                    let qt: QToken = handle.get_task_id().into();
+                    self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
+
+                    // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
+                    if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
+                        // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
+                        let message: String = format!("too many pending operations in Catloop");
+                        warn!("async_close(): {}", &message);
+                    }
+
+                    Ok(qt)
+                }
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        }
+    }
+
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
@@ -564,37 +612,87 @@ impl CatloopLibOS {
         Err(Fail::new(libc::EINVAL, &cause))
     }
 
+    /// Harvests resources on close.
+    fn harvest_resources_on_close(&mut self, qd: QDesc) -> Result<(), Fail> {
+        // If this was an async_close(), harvest resources.
+        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
+        match qtable.get_mut(&qd) {
+            Some(queue) => {
+                // Rollback the port allocation.
+                if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
+                    if EphemeralPorts::is_private(addr.port()) {
+                        if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
+                            // We fail if and only if we attempted to free a port that was not allocated.
+                            // This is unexpected, but if it happens, issue a warning and keep going,
+                            // otherwise we would leave the queue in a dangling state.
+                            warn!(
+                                "pack_result(): attempting to free an ephemeral port that was not allocated (port={})",
+                                addr.port()
+                            );
+                            warn!("pack_result(): leaking ephemeral port (port={})", addr.port());
+                        }
+                    }
+                }
+                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+                qtable.free(&qd);
+                Ok(())
+            },
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("close(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
+        }
+    }
+
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         // Check if the queue token came from the Catloop LibOS.
-        if let Some((ref opcode, _)) = self.catloop_qts.remove(&qt) {
+        if let Some((opcode, catloop_qd)) = self.catloop_qts.remove(&qt) {
             // Check if the queue token concerns an expected operation.
-            if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
-                let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                error!("pack_result(): {:?}", &cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
+            match opcode {
+                demi_opcode_t::DEMI_OPC_ACCEPT | demi_opcode_t::DEMI_OPC_CONNECT | demi_opcode_t::DEMI_OPC_CLOSE => {},
+                _ => {
+                    let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                    error!("pack_result(): {:?}", &cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
+                },
+            }
+
+            // If this was an async_close(), harvest resources.
+            if opcode == demi_opcode_t::DEMI_OPC_CLOSE {
+                self.harvest_resources_on_close(catloop_qd)?;
             }
 
             // Construct operation result.
             let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
+            let qr: demi_qresult_t = pack_result(r, qd, qt.into());
 
-            return Ok(pack_result(r, qd, qt.into()));
+            return Ok(qr);
         }
 
         // This is not a queue token from the Catloop LibOS, un-shift it and try Catmem LibOs.
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((ref opcode, ref catloop_qd)) = self.catmem_qts.remove(&qt) {
+        if let Some((opcode, catloop_qd)) = self.catmem_qts.remove(&qt) {
             // Check if the queue token concerns an expected operation.
-            if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
-                let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                error!("pack_result(): {:?}", &cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
+            match opcode {
+                demi_opcode_t::DEMI_OPC_PUSH | demi_opcode_t::DEMI_OPC_POP | demi_opcode_t::DEMI_OPC_CLOSE => {},
+                _ => {
+                    let cause: String = format!("unexpected queue token (qt={:?})", qt);
+                    error!("pack_result(): {:?}", &cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
+                },
             }
 
             // The queue token came from the Catmem LibOS, thus forward operation.
             let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
+
+            // If this was an async_close(), harvest resources.
+            if opcode == demi_opcode_t::DEMI_OPC_CLOSE {
+                self.harvest_resources_on_close(catloop_qd)?;
+            }
 
             // We temper queue descriptor and queue token that were stored in the queue result returned by Catmem LibOS,
             // because we only distribute to the application identifiers that are managed by Catloop LibLOS.
@@ -734,6 +832,13 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
                 qr_ret: 0,
                 qr_value,
             }
+        },
+        OperationResult::Close => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+            qr_qd: qd.into(),
+            qr_qt: qt.into(),
+            qr_ret: 0,
+            qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Failed(e) => {
             warn!("Operation Failed: {:?}", e);
