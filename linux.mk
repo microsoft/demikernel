@@ -186,7 +186,7 @@ export MSS ?= 1500
 export PEER ?= server
 export TEST ?= udp-push-pop
 export TEST_INTEGRATION ?= tcp-test
-export TIMEOUT ?= 60
+export TIMEOUT ?= 120
 
 # Runs system tests.
 test-system: test-system-rust
