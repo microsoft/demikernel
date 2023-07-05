@@ -425,7 +425,7 @@ def run_pipeline(
 
                 # TCP Echo (optional)
                 if test_system == "all" or test_system == "tcp_echo":
-                    if libos != "catnip" and libos != "catpowder" and libos != "catloop" and libos != "catcollar":
+                    if libos != "catnip" and libos != "catpowder" and libos != "catcollar":
                         for run_mode in ["sequential", "concurrent"]:
                             status["tcp_echo"] = test_tcp_echo(
                                 server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
