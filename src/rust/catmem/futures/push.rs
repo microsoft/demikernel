@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::SharedRingBuffer,
+    catmem::CatmemRingBuffer,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -20,7 +20,7 @@ use ::std::rc::Rc;
 //======================================================================================================================
 
 /// Polls `try_enqueue()` on `ring` until all the data in the `buf` is sent.
-pub async fn push_coroutine(ring: Rc<SharedRingBuffer<u16>>, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+pub async fn push_coroutine(ring: Rc<CatmemRingBuffer>, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
     for low in &buf[..] {
         let x: u16 = (low & 0xff) as u16;
         loop {

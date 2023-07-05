@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::SharedRingBuffer,
+    catmem::CatmemRingBuffer,
     runtime::{
         fail::Fail,
         limits,
@@ -22,7 +22,7 @@ use ::std::rc::Rc;
 
 /// Polls `try_dequeue()` on `ring` until some data is received and placed in `buf`.
 pub async fn pop_coroutine(
-    ring: Rc<SharedRingBuffer<u16>>,
+    ring: Rc<CatmemRingBuffer>,
     size: Option<usize>,
     yielder: Yielder,
 ) -> Result<(DemiBuffer, bool), Fail> {

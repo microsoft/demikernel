@@ -5,9 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use super::pipe::Pipe;
+use super::{
+    pipe::Pipe,
+    CatmemRingBuffer,
+};
 use crate::{
-    collections::shared_ring::SharedRingBuffer,
     runtime::{
         fail::Fail,
         queue::IoQueue,
@@ -35,7 +37,7 @@ pub struct CatmemQueue {
 //======================================================================================================================
 
 impl CatmemQueue {
-    pub fn new(ring: SharedRingBuffer<u16>) -> Self {
+    pub fn new(ring: CatmemRingBuffer) -> Self {
         Self {
             pipe: Pipe::new(ring),
             pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),

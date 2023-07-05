@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::collections::shared_ring::SharedRingBuffer;
+use crate::{
+    catmem::CatmemRingBuffer,
+    collections::shared_ring::SharedRingBuffer,
+};
 use ::std::rc::Rc;
 
 //======================================================================================================================
@@ -30,7 +33,7 @@ pub struct Pipe {
     /// Indicates end of file.
     eof: bool,
     /// Underlying buffer.
-    buffer: Rc<SharedRingBuffer<u16>>,
+    buffer: Rc<CatmemRingBuffer>,
 }
 
 //======================================================================================================================

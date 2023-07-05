@@ -79,6 +79,7 @@ const RING_BUFFER_CAPACITY: usize = 65536;
 // TODO: Remove this once we unify return types.
 type Operation = dyn Future<Output = (QDesc, OperationResult)>;
 type OperationTask = TaskWithResult<(QDesc, OperationResult)>;
+type CatmemRingBuffer = SharedRingBuffer<u16>;
 
 //======================================================================================================================
 // Structures
@@ -114,7 +115,7 @@ impl CatmemLibOS {
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         trace!("create_pipe() name={:?}", name);
 
-        let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::create(name, RING_BUFFER_CAPACITY)?;
+        let ring: CatmemRingBuffer = CatmemRingBuffer::create(name, RING_BUFFER_CAPACITY)?;
         let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::new(ring));
 
         Ok(qd)
@@ -124,7 +125,7 @@ impl CatmemLibOS {
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         trace!("open_pipe() name={:?}", name);
 
-        let ring: SharedRingBuffer<u16> = SharedRingBuffer::<u16>::open(name, RING_BUFFER_CAPACITY)?;
+        let ring: CatmemRingBuffer = CatmemRingBuffer::open(name, RING_BUFFER_CAPACITY)?;
         let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::new(ring));
 
         Ok(qd)
@@ -172,7 +173,7 @@ impl CatmemLibOS {
                 // Set pipe as closing.
                 pipe.set_state(PipeState::Closing);
 
-                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                let ring: Rc<CatmemRingBuffer> = pipe.buffer();
 
                 // Attempt to push EoF.
                 let result: Result<(), Fail> = { push_eof(ring) };
@@ -204,7 +205,7 @@ impl CatmemLibOS {
                 // Set pipe as closing.
                 pipe.set_state(PipeState::Closing);
 
-                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                let ring: Rc<CatmemRingBuffer> = pipe.buffer();
                 let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
                 let yielder: Yielder = Yielder::new();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
@@ -299,7 +300,7 @@ impl CatmemLibOS {
                         }
 
                         // Create co-routine.
-                        let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                        let ring: Rc<CatmemRingBuffer> = pipe.buffer();
                         let yielder: Yielder = Yielder::new();
                         let yielder_handle: YielderHandle = yielder.get_handle();
                         let coroutine: Pin<Box<Operation>> = {
@@ -363,7 +364,7 @@ impl CatmemLibOS {
                     return Err(Fail::new(libc::EBADF, &cause));
                 }
 
-                let ring: Rc<SharedRingBuffer<u16>> = pipe.buffer();
+                let ring: Rc<CatmemRingBuffer> = pipe.buffer();
                 let yielder: Yielder = Yielder::new();
                 let yielder_handle: YielderHandle = yielder.get_handle();
                 let coroutine: Pin<Box<Operation>> = if pipe.eof() {

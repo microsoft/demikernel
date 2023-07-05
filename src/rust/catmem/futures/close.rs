@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use crate::{
-    collections::shared_ring::SharedRingBuffer,
+    catmem::CatmemRingBuffer,
     runtime::fail::Fail,
     scheduler::Yielder,
 };
@@ -29,7 +29,7 @@ const MAX_RETRIES_PUSH_EOF: u32 = 16;
 
 /// This function calls close on a file descriptor until it is closed successfully.
 /// TODO merge this with push_eof(), when async_close() and close() are merged.
-pub async fn close_coroutine(ring: Rc<SharedRingBuffer<u16>>, yielder: Yielder) -> Result<(), Fail> {
+pub async fn close_coroutine(ring: Rc<CatmemRingBuffer>, yielder: Yielder) -> Result<(), Fail> {
     // Maximum number of retries. This is set to an arbitrary small value.
     let mut retries: u32 = MAX_RETRIES_PUSH_EOF;
 
@@ -62,7 +62,7 @@ pub async fn close_coroutine(ring: Rc<SharedRingBuffer<u16>>, yielder: Yielder) 
 
 /// Pushes the EoF signal to a shared ring buffer.
 /// TODO merge this with close_coroutine(), when async_close() and close() are merged.
-pub fn push_eof(ring: Rc<SharedRingBuffer<u16>>) -> Result<(), Fail> {
+pub fn push_eof(ring: Rc<CatmemRingBuffer>) -> Result<(), Fail> {
     // Maximum number of retries. This is set to an arbitrary small value.
     let mut retries: u32 = MAX_RETRIES_PUSH_EOF;
     const EOF: u16 = (1 & 0xff) << 8;
