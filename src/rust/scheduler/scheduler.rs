@@ -130,6 +130,13 @@ impl Scheduler {
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
     pub fn insert<F: Task>(&self, future: F) -> Option<TaskHandle> {
+        let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
+        // If the address space for task ids is close to half full, it will become increasingly difficult to avoid
+        // collisions, so we cap the number of tasks.
+        if task_ids.len() > MAX_NUM_TASKS {
+            panic!("Too many concurrent tasks");
+        }
+
         let mut pages: RefMut<Vec<WakerPageRef>> = self.pages.borrow_mut();
         let mut id_gen: RefMut<SmallRng> = self.id_gen.borrow_mut();
         let task_name: String = future.get_name();
@@ -137,12 +144,6 @@ impl Scheduler {
         let index: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
-        let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
-        // If the address space for task ids is close to half full, it will become increasingly difficult to avoid
-        // collisions, so we cap the number of tasks at 16,000.
-        if task_ids.len() > MAX_NUM_TASKS {
-            panic!("Too many concurrent tasks");
-        }
         let task_id: u64 = 'get_id: {
             for _ in 0..MAX_RETRIES_TASK_ID_ALLOC {
                 let id: u64 = id_gen.next_u64() as u16 as u64;
