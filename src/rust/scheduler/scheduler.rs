@@ -339,7 +339,7 @@ mod tests {
             None => anyhow::bail!("insert() failed"),
         };
         let task_id2: u64 = handle2.get_task_id();
-        crate::ensure_neq!(task_id2, task_id + 1);
+        crate::ensure_neq!(task_id2, task_id);
 
         Ok(())
     }
