@@ -79,7 +79,7 @@ const RING_BUFFER_CAPACITY: usize = 65536;
 // TODO: Remove this once we unify return types.
 type Operation = dyn Future<Output = (QDesc, OperationResult)>;
 type OperationTask = TaskWithResult<(QDesc, OperationResult)>;
-type CatmemRingBuffer = SharedRingBuffer<u16>;
+type CatmemRingBuffer = SharedRingBuffer<u8>;
 
 //======================================================================================================================
 // Structures

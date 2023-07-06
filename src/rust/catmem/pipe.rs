@@ -5,10 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    catmem::CatmemRingBuffer,
-    collections::shared_ring::SharedRingBuffer,
-};
+use super::CatmemRingBuffer;
 use ::std::rc::Rc;
 
 //======================================================================================================================
@@ -42,7 +39,7 @@ pub struct Pipe {
 
 impl Pipe {
     /// Creates a new pipe.
-    pub fn new(buffer: SharedRingBuffer<u16>) -> Self {
+    pub fn new(buffer: CatmemRingBuffer) -> Self {
         Self {
             state: PipeState::Opened,
             eof: false,
@@ -71,7 +68,7 @@ impl Pipe {
     }
 
     /// Gets a reference to the underlying buffer of the target pipe.
-    pub fn buffer(&self) -> Rc<SharedRingBuffer<u16>> {
+    pub fn buffer(&self) -> Rc<CatmemRingBuffer> {
         self.buffer.clone()
     }
 }
