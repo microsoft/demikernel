@@ -93,7 +93,7 @@ impl Scheduler {
             .remove(&task_id)
             .expect("Token should be in the token table");
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
+            let (pages_ix, subpage_ix) = self.get_page_and_offset_indexes(index);
             (&pages[pages_ix], subpage_ix)
         };
         assert!(!page.was_dropped(subpage_ix), "Task was previously dropped");
@@ -121,7 +121,7 @@ impl Scheduler {
         };
         self.tasks.borrow().get(index)?;
         let page: &WakerPageRef = {
-            let (pages_ix, _) = self.get_page_indexes(index);
+            let (pages_ix, _) = self.get_page_and_offset_indexes(index);
             &pages[pages_ix]
         };
         let handle: TaskHandle = TaskHandle::new(task_id, index, page.clone());
@@ -164,16 +164,17 @@ impl Scheduler {
             pages.push(WakerPageRef::default());
         }
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indexes(pin_slab_index);
+            let (pages_ix, subpage_ix) = self.get_page_and_offset_indexes(pin_slab_index);
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
         Some(TaskHandle::new(task_id, pin_slab_index, page.clone()))
     }
 
-    /// Computes the page and page offset of a given task based on its total offset.
-    fn get_page_indexes(&self, index: usize) -> (usize, usize) {
-        (index >> WAKER_BIT_LENGTH_SHIFT, index & (WAKER_BIT_LENGTH - 1))
+    fn get_page_and_offset_indexes(&self, pin_slab_index: usize) -> (usize, usize) {
+        let page_index: usize= pin_slab_index >> WAKER_BIT_LENGTH_SHIFT;
+        let offset_index: usize= pin_slab_index & (WAKER_BIT_LENGTH - 1);
+        (page_index, offset_index)
     }
 
     /// Poll all futures which are ready to run again. Tasks in our scheduler are notified when
