@@ -140,33 +140,35 @@ impl Scheduler {
         let mut pages: RefMut<Vec<WakerPageRef>> = self.pages.borrow_mut();
         let mut id_gen: RefMut<SmallRng> = self.id_gen.borrow_mut();
         let task_name: String = future.get_name();
-        // Allocate an offset into the slab and a token for identifying the task.
-        let index: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
+
+        // The pin slab index is the total index which can be reverse-computed in a page index and an offset within the
+        // page.
+        let pin_slab_index: usize = self.tasks.borrow_mut().insert(Box::new(future))?;
 
         // Generate a new id. If the id is currently in use, keep generating until we find an unused id.
         let task_id: u64 = 'get_id: {
             for _ in 0..MAX_RETRIES_TASK_ID_ALLOC {
                 let id: u64 = id_gen.next_u64() as u16 as u64;
                 if !task_ids.contains_key(&id) {
-                    task_ids.insert(id, index);
+                    task_ids.insert(id, pin_slab_index);
                     break 'get_id id;
                 }
             }
             panic!("Could not find a valid task id");
         };
 
-        trace!("insert(): name={:?}, id={:?}, index={:?}", task_name, task_id, index);
+        trace!("insert(): name={:?}, id={:?}, index={:?}", task_name, task_id, pin_slab_index);
 
         // Add a new page to hold this future's status if the current page is filled.
-        while index >= pages.len() << WAKER_BIT_LENGTH_SHIFT {
+        while pin_slab_index >= pages.len() << WAKER_BIT_LENGTH_SHIFT {
             pages.push(WakerPageRef::default());
         }
         let (page, subpage_ix): (&WakerPageRef, usize) = {
-            let (pages_ix, subpage_ix) = self.get_page_indexes(index);
+            let (pages_ix, subpage_ix) = self.get_page_indexes(pin_slab_index);
             (&pages[pages_ix], subpage_ix)
         };
         page.initialize(subpage_ix);
-        Some(TaskHandle::new(task_id, index, page.clone()))
+        Some(TaskHandle::new(task_id, pin_slab_index, page.clone()))
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
