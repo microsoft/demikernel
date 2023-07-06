@@ -137,7 +137,6 @@ impl Scheduler {
             panic!("Too many concurrent tasks");
         }
 
-        let mut page_refs: RefMut<Vec<WakerPageRef>> = self.page_refs.borrow_mut();
         let mut rng: RefMut<SmallRng> = self.rng.borrow_mut();
         let task_name: String = future.get_name();
 
@@ -159,10 +158,9 @@ impl Scheduler {
 
         trace!("insert(): name={:?}, id={:?}, pin_slab_index={:?}", task_name, new_task_id, pin_slab_index);
 
-        // Add a new page to hold this future's status if the current page is filled.
-        while pin_slab_index >= page_refs.len() << WAKER_BIT_LENGTH_SHIFT {
-            page_refs.push(WakerPageRef::default());
-        }
+        self.add_new_pages_to_accommodate_index_gap(pin_slab_index);
+
+        let page_refs: RefMut<Vec<WakerPageRef>> = self.page_refs.borrow_mut();
         let (page_ref, page_offset): (&WakerPageRef, usize) = {
             let (page_index, page_offset) = self.get_page_index_and_offset(pin_slab_index);
             (&page_refs[page_index], page_offset)
@@ -175,6 +173,15 @@ impl Scheduler {
         let page_index: usize = pin_slab_index >> WAKER_BIT_LENGTH_SHIFT;
         let page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
         (page_index, page_offset)
+    }
+
+    // Add new page(s) to hold this future's status if the current page is filled. This may result in addition of
+    // multiple pages because of the gap between the pin slab index and the current page index.
+    fn add_new_pages_to_accommodate_index_gap(&self, pin_slab_index: usize) {
+        let mut page_ref: RefMut<Vec<WakerPageRef>> = self.page_refs.borrow_mut();
+        while pin_slab_index >= page_ref.len() << WAKER_BIT_LENGTH_SHIFT {
+            page_ref.push(WakerPageRef::default());
+        }
     }
 
     /// Poll all futures which are ready to run again. Tasks in our scheduler are notified when
