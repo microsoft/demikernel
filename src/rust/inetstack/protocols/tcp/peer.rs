@@ -223,7 +223,9 @@ impl<const N: usize> TcpPeer<N> {
             Err(e) => {
                 // Rollback ephemeral port allocation.
                 if EphemeralPorts::is_private(addr.port()) {
-                    inner.ephemeral_ports.free(addr.port());
+                    if inner.ephemeral_ports.free(addr.port()).is_err() {
+                        warn!("bind(): leaking ephemeral port (port={})", addr.port());
+                    }
                 }
                 Err(e)
             },

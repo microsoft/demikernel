@@ -319,8 +319,10 @@ impl CatloopLibOS {
                     (qd, OperationResult::Accept(new_qd, remote))
                 },
                 Err(e) => {
-                    // Rollback the port allocation
-                    ephemeral_ptr.borrow_mut().free(new_port);
+                    // Rollback the port allocation.
+                    if ephemeral_ptr.borrow_mut().free(new_port).is_err() {
+                        warn!("accept(): leaking ephemeral port (port={})", new_port);
+                    }
                     qtable_ptr.borrow_mut().free(&new_qd);
                     (qd, OperationResult::Failed(e))
                 },
@@ -332,7 +334,9 @@ impl CatloopLibOS {
             Some(handle) => handle,
             None => {
                 // Rollback the port allocation
-                ephemeral_ports.free(new_port);
+                if ephemeral_ports.free(new_port).is_err() {
+                    warn!("accept(): leaking ephemeral port (port={})", new_port);
+                }
                 qtable.free(&new_qd);
                 let cause: String = format!("cannot schedule co-routine");
                 error!("accept(): {}", &cause);
@@ -434,20 +438,27 @@ impl CatloopLibOS {
                 if let Some(duplex_pipe) = queue.get_pipe() {
                     duplex_pipe.close()?;
                 }
+                // Rollback the port allocation.
                 if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
-                    // Rollback the port allocation
-                    self.ephemeral_ports.borrow_mut().free(addr.port());
+                    if EphemeralPorts::is_private(addr.port()) {
+                        if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
+                            // We fail if and only if we attempted to free a port that was not allocated.
+                            // This is unexpected, but if it happens, issue a warning and keep going,
+                            // otherwise we would leave the queue in a dangling state.
+                            warn!("close(): leaking ephemeral port (port={})", addr.port());
+                        }
+                    }
                 }
                 queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+                qtable.free(&qd);
+                Ok(())
             },
             None => {
                 let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
                 error!("close(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
+                Err(Fail::new(libc::EBADF, &cause))
             },
-        };
-        qtable.free(&qd);
-        Ok(())
+        }
     }
 
     /// Pushes a scatter-gather array to a socket.
