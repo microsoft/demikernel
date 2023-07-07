@@ -196,6 +196,12 @@ impl CatloopLibOS {
             }
         }
 
+        // Check if this is an ephemeral port.
+        if EphemeralPorts::is_private(local.port()) {
+            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+            self.ephemeral_ports.borrow_mut().alloc_port(local.port())?
+        }
+
         // Get a mutable reference to the queue table here, once we are sure that it is valid.
         let queue: &mut CatloopQueue = qtable.get_mut(&qd).expect("queue descriptor should be in queue table");
 
