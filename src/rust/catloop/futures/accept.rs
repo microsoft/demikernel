@@ -52,32 +52,19 @@ pub async fn accept_coroutine(
 ) -> Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> {
     loop {
         // Grab next request from the control duplex pipe.
-        let new_duplex_pipe: Rc<DuplexPipe> = match pop_magic_number(
-            &catmem,
-            control_duplex_pipe.clone(),
-            Some(mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT)),
-            &yielder,
-        )
-        .await
-        {
-            // Received a valid magic number so create the new connection. This involves create the new duplex pipe
-            // and sending the port number to the remote.
-            Ok(true) => create_pipe(&catmem, control_duplex_pipe.clone(), ipv4, new_port, &yielder).await?,
-            // Invalid request.
-            Ok(false) => continue,
-            // Some error.
-            Err(e) => return Err(e),
-        };
+        let new_duplex_pipe: Rc<DuplexPipe> =
+            match pop_magic_number(&catmem, control_duplex_pipe.clone(), &yielder).await {
+                // Received a valid magic number so create the new connection. This involves create the new duplex pipe
+                // and sending the port number to the remote.
+                Ok(true) => create_pipe(&catmem, control_duplex_pipe.clone(), ipv4, new_port, &yielder).await?,
+                // Invalid request.
+                Ok(false) => continue,
+                // Some error.
+                Err(e) => return Err(e),
+            };
 
         // Check that the remote has retrieved the port number and responded with a magic number.
-        match pop_magic_number(
-            &catmem,
-            new_duplex_pipe.clone(),
-            Some(mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT)),
-            &yielder,
-        )
-        .await
-        {
+        match pop_magic_number(&catmem, new_duplex_pipe.clone(), &yielder).await {
             // Valid response. Connection successfully established, so return new port and pipe to application.
             Ok(true) => return Ok((SocketAddrV4::new(ipv4.clone(), new_port), new_duplex_pipe.clone())),
             // Invalid reponse.
@@ -103,13 +90,10 @@ pub async fn accept_coroutine(
 async fn pop_magic_number(
     catmem: &Rc<RefCell<CatmemLibOS>>,
     duplex_pipe: Rc<DuplexPipe>,
-    bound: Option<usize>,
     yielder: &Yielder,
 ) -> Result<bool, Fail> {
-    // Issue pop. Note that we intentionally issue an unbounded size
-    // pop() because the connection establishment protocol requires that
-    // only one connection request is accepted at a time.
-    let qt: QToken = duplex_pipe.pop(bound)?;
+    // Issue pop. Each magic connect represents a separate connection request, so we always bound the pop.
+    let qt: QToken = duplex_pipe.pop(Some(mem::size_of_val(&CatloopLibOS::MAGIC_CONNECT)))?;
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
         catmem.borrow().from_task_id(qt)?
