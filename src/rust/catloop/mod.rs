@@ -682,6 +682,30 @@ impl CatloopLibOS {
 }
 
 //======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Drop for CatloopLibOS {
+    // Releases all sockets allocated by Catnap.
+    fn drop(&mut self) {
+        for (_, queue) in self.qtable.borrow().get_values() {
+            if let Some(duplex_pipe) = queue.get_pipe() {
+                if duplex_pipe.close().is_err() {
+                    warn!("drop(): failed to close duplex pipe");
+                }
+            }
+            if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
+                if EphemeralPorts::is_private(addr.port()) {
+                    if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
+                        warn!("close(): leaking ephemeral port (port={})", addr.port());
+                    }
+                }
+            }
+        }
+    }
+}
+
+//======================================================================================================================
 // Standalone Functions
 //======================================================================================================================
 
