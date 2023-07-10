@@ -250,7 +250,6 @@ impl Scheduler {
                                 len - 1,
                                 "There should never been more than one task id pointing at an offset!"
                             );
-                            tasks.remove(pin_slab_index);
                             waker_page_refs[page_index].clear(page_offset);
                         },
                         Some(false) => warn!("poll(): cannot remove a task that does not exist (pin_slab_index={})", pin_slab_index),
