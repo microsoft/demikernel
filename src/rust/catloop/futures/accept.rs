@@ -70,7 +70,7 @@ pub async fn accept_coroutine(
             // Invalid reponse.
             Ok(false) => {
                 // Clean up newly allocated duplex pipe.
-                // FIXME: https://github.com/microsoft/demikernel/issues/778
+                new_duplex_pipe.close();
                 continue;
             },
             // Some error.
