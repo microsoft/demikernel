@@ -71,6 +71,7 @@ impl TaskHandle {
     }
 
     /// Removes the task from the scheduler and keeps it from running again.
+    #[deprecated]
     pub fn deschedule(&mut self) {
         let subpage_ix: usize = self.index & (WAKER_BIT_LENGTH - 1);
         self.page.mark_dropped(subpage_ix);
