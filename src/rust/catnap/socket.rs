@@ -33,6 +33,18 @@ enum SocketState {
     Closed,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum SocketOp {
+    Bind,
+    Listen,
+    Accept,
+    Accepted,
+    Connect,
+    Connected,
+    Close,
+    Closed,
+}
+
 /// A socket.
 #[derive(Copy, Clone, Debug)]
 pub struct Socket {
@@ -60,259 +72,97 @@ impl Socket {
 
     /// Constructs from [self] a socket that is bound to the `local` address.
     pub fn bind(&self, local: SocketAddrV4) -> Result<Self, Fail> {
-        const FN_NAME: &str = "bind";
-        match self.state {
-            SocketState::NotBound => Ok(Self {
-                state: SocketState::Bound,
+        match self.get_transition(SocketOp::Bind) {
+            Ok(state) => Ok(Self {
+                state,
                 local: Some(local),
                 remote: None,
             }),
-            SocketState::Bound => Err(fail(
-                FN_NAME,
-                &(format!("socket is bound to address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Listening => Err(fail(
-                FN_NAME,
-                &(format!("socket is listening on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Accepting => Err(fail(
-                FN_NAME,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Connecting => Err(fail(
-                FN_NAME,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EINVAL,
-            )),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is able to accept incoming connections.
     pub fn listen(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "listen";
-        match self.state {
-            SocketState::NotBound => {
-                let cause: String = format!("socket is not bound");
-                Err(fail(FN_NAME, &cause, libc::EDESTADDRREQ))
-            },
-            SocketState::Bound => Ok(Self {
-                state: SocketState::Listening,
+        match self.get_transition(SocketOp::Listen) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: None,
             }),
-            SocketState::Listening => Err(fail(
-                FN_NAME,
-                &(format!("socket is already listening on address: {:?}", self.local)),
-                libc::EADDRINUSE,
-            )),
-            SocketState::Accepting => Err(fail(
-                FN_NAME,
-                &(format!("socket is already accepting connections on address: {:?}", self.local)),
-                libc::EADDRINUSE,
-            )),
-            SocketState::Connecting => Err(fail(
-                FN_NAME,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EADDRINUSE,
-            )),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is accepting incoming connections.
     pub fn accept(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "accept";
-        match self.state {
-            SocketState::NotBound => Err(fail(FN_NAME, &(format!("socket is not bound")), libc::EINVAL)),
-            SocketState::Bound => Err(fail(
-                FN_NAME,
-                &(format!("socket is bound to address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Listening => Ok(Self {
-                state: SocketState::Accepting,
+        match self.get_transition(SocketOp::Accept) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: None,
             }),
-            SocketState::Accepting => Err(fail(
-                FN_NAME,
-                &(format!("socket is already accepting connections on address: {:?}", self.local)),
-                libc::EINPROGRESS,
-            )),
-            SocketState::Connecting => Err(fail(
-                FN_NAME,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EINVAL,
-            )),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that has accepted an incoming connection.
     pub fn accepted(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "accepted";
-        match self.state {
-            SocketState::NotBound => Err(fail(FN_NAME, &(format!("socket is not bound")), libc::EINVAL)),
-            SocketState::Bound => Err(fail(
-                FN_NAME,
-                &(format!("socket is bound to address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Listening => Err(fail(
-                FN_NAME,
-                &(format!("socket is listening on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Accepting => Ok(Self {
-                state: SocketState::Listening,
+        match self.get_transition(SocketOp::Accepted) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
-                remote: self.remote,
+                remote: None,
             }),
-            SocketState::Connecting => Err(fail(
-                FN_NAME,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EINVAL,
-            )),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is already connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is attempting to connect to a remote address.
     pub fn connect(&self, remote: SocketAddrV4) -> Result<Self, Fail> {
-        const FN_NAME: &str = "connect";
-        match self.state {
-            SocketState::NotBound | SocketState::Bound => Ok(Self {
-                state: SocketState::Connecting,
+        match self.get_transition(SocketOp::Connect) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: Some(remote),
             }),
-            SocketState::Listening => Err(fail(
-                FN_NAME,
-                &(format!("socket is listening on address: {:?}", self.local)),
-                libc::EOPNOTSUPP,
-            )),
-            SocketState::Accepting => Err(fail(
-                FN_NAME,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EOPNOTSUPP,
-            )),
-            SocketState::Connecting => Err(fail(
-                FN_NAME,
-                &(format!("socket is already connecting to address: {:?}", self.remote)),
-                libc::EINPROGRESS,
-            )),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is already connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is connected to the `remote` address.
     pub fn connected(&self, remote: SocketAddrV4) -> Result<Self, Fail> {
-        const FN_NAME: &str = "connected";
-        match self.state {
-            SocketState::NotBound => Ok(Self {
-                state: SocketState::Connected,
+        match self.get_transition(SocketOp::Connected) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: Some(remote),
             }),
-            SocketState::Bound => Err(fail(
-                FN_NAME,
-                &(format!("socket is bound to address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Listening => Err(fail(
-                FN_NAME,
-                &(format!("socket is listening on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketState::Accepting => Err(fail(
-                FN_NAME,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EBUSY,
-            )),
-            SocketState::Connecting => Ok(Self {
-                state: SocketState::Connected,
-                local: self.local,
-                remote: Some(remote),
-            }),
-            SocketState::Connected => Err(fail(
-                FN_NAME,
-                &(format!("socket is already connected to address: {:?}", self.remote)),
-                libc::EISCONN,
-            )),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is closing.
     pub fn close(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "close";
-        match self.state {
-            SocketState::NotBound
-            | SocketState::Bound
-            | SocketState::Listening
-            | SocketState::Accepting
-            | SocketState::Connecting
-            | SocketState::Connected => Ok(Self {
-                state: SocketState::Closing,
+        match self.get_transition(SocketOp::Close) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: self.remote,
             }),
-            SocketState::Closing => Err(fail(FN_NAME, &(format!("socket is closing")), libc::EBADF)),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
     /// Constructs from [self] a socket that is closed.
     pub fn closed(&self) -> Result<Self, Fail> {
-        const FN_NAME: &str = "closed";
-        match self.state {
-            SocketState::NotBound
-            | SocketState::Bound
-            | SocketState::Listening
-            | SocketState::Accepting
-            | SocketState::Connecting
-            | SocketState::Connected => Err(fail(FN_NAME, &(format!("socket is busy")), libc::EBUSY)),
-            SocketState::Closing => Ok(Self {
-                state: SocketState::Closed,
+        match self.get_transition(SocketOp::Closed) {
+            Ok(state) => Ok(Self {
+                state,
                 local: self.local,
                 remote: self.remote,
             }),
-            SocketState::Closed => Err(fail(FN_NAME, &(format!("socket is closed")), libc::EBADF)),
+            Err(e) => Err(e),
         }
     }
 
@@ -331,6 +181,227 @@ impl Socket {
     pub fn is_connecting(&self) -> bool {
         self.state == SocketState::Connecting
     }
+
+    /// Given the current state and the operation being executed, this function returns the next state on success and
+    fn get_transition(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        debug!("state: {:?} transition: {:?}", self.state, op);
+        match self.state {
+            SocketState::NotBound => self.not_bound_state(op),
+            SocketState::Bound => self.bound_state(op),
+            SocketState::Listening => self.listening_state(op),
+            SocketState::Accepting => self.accepting_state(op),
+            SocketState::Connecting => self.connecting_state(op),
+            SocketState::Connected => self.connected_state(op),
+            SocketState::Closing => self.closing_state(op),
+            SocketState::Closed => self.closed_state(op),
+        }
+    }
+
+    fn not_bound_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Ok(SocketState::Bound),
+            SocketOp::Listen => Err(fail(op, &format!("socket is not bound"), libc::EDESTADDRREQ)),
+            SocketOp::Accept => Err(fail(op, &(format!("socket is not bound")), libc::EINVAL)),
+            SocketOp::Accepted => Err(fail(op, &(format!("socket is not bound")), libc::EINVAL)),
+            SocketOp::Connect => Ok(SocketState::Connecting),
+            // Should this be possible without going through the Connecting state?
+            SocketOp::Connected => Ok(SocketState::Connected),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn bound_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(
+                op,
+                &(format!("socket is already bound to address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Listen => Ok(SocketState::Listening),
+            SocketOp::Accept => Err(fail(
+                op,
+                &(format!("socket is bound to address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Accepted => Err(fail(
+                op,
+                &(format!("socket is bound to address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Connect => Ok(SocketState::Connecting),
+            // Should this be possible without going through the Connecting state?
+            SocketOp::Connected => Err(fail(
+                op,
+                &(format!("socket is bound to address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn listening_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(
+                op,
+                &(format!("socket is already listening on address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Listen => Err(fail(
+                op,
+                &(format!("socket is already listening on address: {:?}", self.local)),
+                libc::EADDRINUSE,
+            )),
+            SocketOp::Accept => Ok(SocketState::Accepting),
+            SocketOp::Accepted => Err(fail(
+                op,
+                &(format!("socket is already listening on address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Connect => Err(fail(
+                op,
+                &(format!("socket is already listening on address: {:?}", self.local)),
+                libc::EOPNOTSUPP,
+            )),
+            // Should this be possible without going through the Connecting state?
+            SocketOp::Connected => Err(fail(
+                op,
+                &(format!("socket is already listening on address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn accepting_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(
+                op,
+                &(format!("socket is accepting connections on address: {:?}", self.local)),
+                libc::EINVAL,
+            )),
+            SocketOp::Listen => Err(fail(
+                op,
+                &(format!("socket is accepting connections on address: {:?}", self.local)),
+                libc::EADDRINUSE,
+            )),
+            SocketOp::Accept => Err(fail(
+                op,
+                &(format!("socket is accepting connections on address: {:?}", self.local)),
+                libc::EINPROGRESS,
+            )),
+            SocketOp::Accepted => Ok(SocketState::Listening),
+            SocketOp::Connect => Err(fail(
+                op,
+                &(format!("socket is accepting connections on address: {:?}", self.local)),
+                libc::ENOTSUP,
+            )),
+            // Should this be possible without going through the Connecting state?
+            SocketOp::Connected => Err(fail(
+                op,
+                &(format!("socket is accepting connections on address: {:?}", self.local)),
+                libc::EBUSY,
+            )),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn connecting_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(
+                op,
+                &(format!("socket is connecting to address: {:?}", self.remote)),
+                libc::EINVAL,
+            )),
+            SocketOp::Listen => Err(fail(
+                op,
+                &(format!("socket is connecting to address: {:?}", self.remote)),
+                libc::EADDRINUSE,
+            )),
+            SocketOp::Accept => Err(fail(
+                op,
+                &(format!("socket is connecting to address: {:?}", self.remote)),
+                libc::EINVAL,
+            )),
+            SocketOp::Accepted => Err(fail(
+                op,
+                &(format!("socket is connecting to address: {:?}", self.remote)),
+                libc::EINVAL,
+            )),
+            SocketOp::Connect => Err(fail(
+                op,
+                &(format!("socket already is connecting to address: {:?}", self.remote)),
+                libc::EINPROGRESS,
+            )),
+            SocketOp::Connected => Ok(SocketState::Connected),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn connected_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            // Does this make sense if we didn't go through the Connecting state?
+            SocketOp::Bind => Ok(SocketState::Connected),
+            SocketOp::Listen => Err(fail(
+                op,
+                &(format!("socket is already connected to address: {:?}", self.remote)),
+                libc::EISCONN,
+            )),
+            SocketOp::Accept => Err(fail(
+                op,
+                &(format!("socket is already connected to address: {:?}", self.remote)),
+                libc::EISCONN,
+            )),
+            SocketOp::Accepted => Err(fail(
+                op,
+                &(format!("socket is already connected to address: {:?}", self.remote)),
+                libc::EISCONN,
+            )),
+            SocketOp::Connect => Err(fail(
+                op,
+                &(format!("socket is connected to address: {:?}", self.remote)),
+                libc::EISCONN,
+            )),
+            // Should this be possible without going through the Connecting state?
+            SocketOp::Connected => Err(fail(
+                op,
+                &(format!("socket is connected to address: {:?}", self.remote)),
+                libc::EISCONN,
+            )),
+            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+        }
+    }
+
+    fn closing_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Listen => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Accept => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Accepted => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Connect => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Connected => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Close => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Closed => Ok(SocketState::Closed),
+        }
+    }
+
+    fn closed_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::Bind => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Listen => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Accept => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Accepted => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Connect => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Connected => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+            SocketOp::Close => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+            SocketOp::Closed => Err(fail(op, &(format!("socket is closed")), libc::EBADF)),
+        }
+    }
 }
 
 //======================================================================================================================
@@ -338,7 +409,7 @@ impl Socket {
 //======================================================================================================================
 
 /// Constructs a [Fail] object from the given `fn_name`, `cause`, and `errno`.
-fn fail(fn_name: &str, cause: &str, errno: i32) -> Fail {
-    error!("{}(): {}", fn_name, cause);
+fn fail(op: SocketOp, cause: &str, errno: i32) -> Fail {
+    error!("{:?}(): {}", op, cause);
     Fail::new(errno, cause)
 }
