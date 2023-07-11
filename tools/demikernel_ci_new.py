@@ -10,6 +10,10 @@ from shutil import move, rmtree
 from os.path import isdir
 from typing import List
 
+from ci.src.base_test import BaseTest
+from ci.src.ci_map import CIMap
+from ci.src.test_instantiator import TestInstantiator
+
 # ======================================================================================================================
 # Utilities
 # ======================================================================================================================
@@ -193,139 +197,6 @@ def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable
     return wait_and_report(test_name, log_directory, jobs)
 
 
-# ======================================================================================================================
-# System Test Jobs
-# ======================================================================================================================
-
-def test_udp_ping_pong(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
-    test_alias: str = "udp-ping-pong"
-    test_name: str = "udp-ping-pong"
-    server_args: str = "--server {}:12345 {}:23456".format(server_addr, client_addr)
-    client_args: str = "--client {}:23456 {}:12345".format(client_addr, server_addr)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, False,
-        delay, config_path, log_directory)
-
-
-def test_udp_push_pop(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
-    test_alias: str = "udp-push-pop"
-    test_name: str = "udp-push-pop"
-    server_args: str = "--server {}:12345 {}:23456".format(server_addr, client_addr)
-    client_args: str = "--client {}:23456 {}:12345".format(client_addr, server_addr)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_ping_pong(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
-    test_alias: str = "tcp-ping-pong"
-    test_name: str = "tcp-ping-pong"
-    server_args: str = "--server {}:12345".format(server_addr)
-    client_args: str = "--client {}:12345".format(server_addr)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_push_pop(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-        server_addr: str, delay: float, config_path: str, log_directory: str) -> bool:
-    test_alias: str = "tcp-push-pop"
-    test_name: str = "tcp-push-pop"
-    server_args: str = "--server {}:12345".format(server_addr)
-    client_args: str = "--client {}:12345".format(server_addr)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_close(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str, server_addr: str,
-        client_addr: str, delay: float, config_path: str, log_directory: str, nclients: int, run_mode: str,
-        who_closes: str) -> bool:
-    test_alias: str = "tcp-close-{}-{}-closes-sockets".format(run_mode, who_closes)
-    test_name: str = "tcp-close"
-    server_args: str = "--peer server --address {}:12345 --nclients {} --run-mode {} --whocloses {}".format(
-        server_addr, nclients, run_mode, who_closes)
-    client_args: str = "--peer client --address {}:12345 --nclients {} --run-mode {} --whocloses {}".format(
-        client_addr, nclients, run_mode, who_closes)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_echo(server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str,
-                  server_addr: str, client_addr: str, delay: float, config_path: str, log_directory: str,
-                  nclients: int, nrequests: int, bufsize: int, run_mode: str) -> bool:
-    test_alias: str = "tcp-echo-{}-{}".format(run_mode, bufsize)
-    test_name: str = "tcp-echo"
-    server_args: str = "--peer server --address {}:12345".format(server_addr)
-    client_args: str = "--peer client --address {}:12345 --nclients {} --nrequests {} --bufsize {} --run-mode {}".format(
-        client_addr, nclients, nrequests, bufsize, run_mode)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_tcp_wait(
-        server: str, client: str, libos: str, is_debug: bool, is_sudo: bool, repository: str, server_addr: str,
-        client_addr: str, delay: float, config_path: str, log_directory: str, nclients: int,
-        scenario: str) -> bool:
-    test_alias: str = "tcp-wait-scenario-{}".format(scenario)
-    test_name: str = "tcp-wait"
-    server_args: str = "--peer server --address {}:12345 --nclients {} --scenario {}".format(
-        server_addr, nclients, scenario)
-    client_args: str = "--peer client --address {}:12345 --nclients {} --scenario {}".format(
-        client_addr, nclients, scenario)
-    return job_test_system_rust(
-        test_alias, test_name, repository, libos, is_debug, server, client, server_args, client_args, is_sudo, True,
-        delay, config_path, log_directory)
-
-
-def test_pipe_open(
-        server: str, client: str, is_debug: bool, repository: str, delay: float,
-        config_path: str, log_directory: str) -> bool:
-    test_alias: str = "pipe-open"
-    test_name: str = "pipe-open"
-    pipe_name: str = "demikernel-test-pipe-open"
-    niterations: int = 128
-    server_args: str = "--peer server --pipe-name {} --niterations {}".format(pipe_name, niterations)
-    client_args: str = "--peer client --pipe-name {} --niterations {}".format(pipe_name, niterations)
-    return job_test_system_rust(
-        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
-        delay, config_path, log_directory)
-
-
-def test_pipe_ping_pong(
-        server: str, client: str, is_debug: bool, repository: str, delay: float,
-        config_path: str, log_directory: str) -> bool:
-    test_alias: str = "pipe-ping-pong"
-    test_name: str = "pipe-ping-pong"
-    pipe_name: str = "demikernel-test-pipe-ping-pong"
-    server_args: str = "--server demikernel-test-pipe-ping-pong".format(pipe_name)
-    client_args: str = "--client demikernel-test-pipe-ping-pong".format(pipe_name)
-    return job_test_system_rust(
-        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
-        delay, config_path, log_directory)
-
-
-def test_pipe_push_pop(server: str, client: str, is_debug: bool, repository: str, delay: float,
-                       config_path: str, log_directory: str) -> bool:
-    test_alias: str = "pipe-push-pop"
-    test_name: str = "pipe-push-pop"
-    pipe_name: str = "demikernel-test-pipe-push-pop"
-    server_args: str = "--server demikernel-test-pipe-push-pop".format(pipe_name)
-    client_args: str = "--client demikernel-test-pipe-push-pop".format(pipe_name)
-    return job_test_system_rust(
-        test_alias, test_name, repository, "catmem", is_debug, server, client, server_args, client_args, False, True,
-        delay, config_path, log_directory)
-
 # =====================================================================================================================
 
 
@@ -385,83 +256,56 @@ def run_pipeline(
     # STEP 4: Run system tests.
     if test_system:
         if status["checkout"] and status["compile"]:
-            if libos != "catmem":
-                if libos != "catloop":
-                    if test_system == "all" or test_system == "udp_ping_pong":
-                        status["udp_ping_pong"] = test_udp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                                                     repository, server_addr, client_addr, delay,
-                                                                     config_path, log_directory)
-                    if test_system == "all" or test_system == "udp_push_pop":
-                        status["udp_push_pop"] = test_udp_push_pop(
-                            server, client, libos, is_debug, is_sudo, repository, server_addr, client_addr, delay,
-                            config_path, log_directory)
-                if test_system == "all" or test_system == "tcp_ping_pong":
-                    status["tcp_ping_pong"] = test_tcp_ping_pong(server, client, libos, is_debug, is_sudo,
-                                                                 repository, server_addr, delay, config_path,
-                                                                 log_directory)
-                if libos != "catpowder" and (test_system == "all" or test_system == "tcp_push_pop"):
-                    status["tcp_push_pop"] = test_tcp_push_pop(server, client, libos, is_debug, is_sudo,
-                                                               repository, server_addr, delay, config_path,
-                                                               log_directory)
-                # TCP Close (optional)
-                if test_system == "all" or test_system == "tcp_close":
-                    if libos != "catnip" and libos != "catpowder":
-                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
-                                                             repository, server_addr, server_addr, delay, config_path,
-                                                             log_directory, nclients=32, run_mode="sequential",
-                                                             who_closes="client")
-                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
-                                                             repository, server_addr, server_addr, delay, config_path,
-                                                             log_directory, nclients=32, run_mode="sequential",
-                                                             who_closes="server")
-                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
-                                                             repository, server_addr,  server_addr, delay, config_path,
-                                                             log_directory, nclients=32, run_mode="concurrent",
-                                                             who_closes="client")
-                        status["tcp_close"] = test_tcp_close(server, client, libos, is_debug, is_sudo,
-                                                             repository, server_addr,  server_addr, delay, config_path,
-                                                             log_directory, nclients=32, run_mode="concurrent",
-                                                             who_closes="server")
-
-                # TCP Echo (optional)
-                if test_system == "all" or test_system == "tcp_echo":
-                    if libos != "catnip" and libos != "catpowder" and libos != "catcollar":
-                        for run_mode in ["sequential", "concurrent"]:
-                            status["tcp_echo"] = test_tcp_echo(
-                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
-                                config_path, log_directory, nclients=32, nrequests="100", bufsize="64",
-                                run_mode=run_mode)
-                            status["tcp_echo"] = test_tcp_echo(
-                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
-                                config_path, log_directory, nclients=32, nrequests="100", bufsize="1024",
-                                run_mode=run_mode)
-
-                # TCP Wait (optional)
-                if test_system == "all" or test_system == "tcp_wait":
-                    if libos == "catnap":
-                        for scenario in ["push_close_wait", "push_async_close_wait", "push_async_close_pending_wait"]:
-                            status["tcp_wait"] = test_tcp_wait(
-                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
-                                config_path, log_directory, nclients=32, scenario=scenario)
-                        for scenario in ["pop_close_wait", "pop_async_close_wait", "pop_async_close_pending_wait"]:
-                            status["tcp_wait"] = test_tcp_wait(
-                                server, client, libos, is_debug, is_sudo, repository, server_addr, server_addr, delay,
-                                config_path, log_directory, nclients=32, scenario=scenario)
-            else:
-                if test_system == "all" or test_system == "pipe_open":
-                    status["pipe_open"] = test_pipe_open(server, server, is_debug, repository, delay,
-                                                         config_path, log_directory)
-                if test_system == "all" or test_system == "pipe_ping_pong":
-                    status["pipe_ping_pong"] = test_pipe_ping_pong(server, server, is_debug, repository, delay,
-                                                                   config_path, log_directory)
-                if test_system == "all" or test_system == "pipe_push_pop":
-                    status["pipe_push_pop"] = test_pipe_push_pop(client, client, is_debug, repository, delay,
-                                                                 config_path, log_directory)
+            scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
+                                                   repository, delay, config_path, log_directory)
+            ci_map: CIMap = get_ci_map()
+            test_names: List = get_tests_to_run(scaffolding, ci_map) if test_system == "all" else [test_system]
+            for test_name in test_names:
+                t: BaseTest = create_test_instance(scaffolding, ci_map, test_name)
+                status[test_name] = t.execute()
 
     # Setp 5: Clean up.
     status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
 
     return status
+
+
+def create_scaffolding(libos: str, server_name: str, server_addr: str, client_name: str, client_addr: str,
+                       is_debug: bool, is_sudo: bool, repository: str, delay: float, config_path: str,
+                       log_directory: str) -> dict:
+    return {
+        "libos": libos,
+        "server_name": server_name,
+        "server_ip": server_addr,
+        "client_name": client_name,
+        "client_ip": client_addr,
+        "is_debug": is_debug,
+        "is_sudo": is_sudo,
+        "repository": repository,
+        "delay": delay,
+        "config_path": config_path,
+        "log_directory": log_directory
+    }
+
+
+def get_ci_map() -> CIMap:
+    path = "tools/ci/config/ci_map.yaml"
+    yaml_str = ""
+    with open(path, "r") as f:
+        yaml_str = f.read()
+    return CIMap(yaml_str)
+
+
+def get_tests_to_run(scaffolding: dict, ci_map: CIMap) -> List:
+    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name="all")
+    return td.keys()
+
+
+def create_test_instance(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
+    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
+    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
+    t: BaseTest = ti.get_test_instance(job_test_system_rust)
+    return t
 
 
 # Reads and parses command line arguments.
