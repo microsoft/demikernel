@@ -198,65 +198,81 @@ impl Scheduler {
     /// relevant data or events happen. The relevant event have callback function (the waker) which
     /// they can invoke to notify the scheduler that future should be polled again.
     pub fn poll(&self) {
-        let mut waker_page_refs: RefMut<Vec<WakerPageRef>> = self.waker_page_refs.borrow_mut();
-        let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
+        let num_pages = self.get_num_waker_pages();
+        for page_index in 0..num_pages {
+            let (notified_offsets, dropped_offsets) = self.get_offsets_for_ready_tasks(page_index);
+            self.poll_notified_tasks(notified_offsets, page_index);
+            self.remove_dropped_tasks(dropped_offsets, page_index);
+        }
+    }
 
-        // Iterate through pages.
-        for page_index in 0..waker_page_refs.len() {
-            let (notified_offsets, dropped_offsets): (u64, u64) = {
-                let waker_page_ref: &mut WakerPageRef = &mut waker_page_refs[page_index];
-                (waker_page_ref.take_notified(), waker_page_ref.take_dropped())
+    fn get_num_waker_pages(&self) -> usize {
+        let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
+        waker_page_refs.len()
+    }
+
+    fn get_offsets_for_ready_tasks(&self, page_index: usize) -> (u64, u64) {
+        let (notified_offsets, dropped_offsets): (u64, u64) = {
+            let mut waker_page_refs: RefMut<Vec<WakerPageRef>> = self.waker_page_refs.borrow_mut();
+            let waker_page_ref: &mut WakerPageRef = &mut waker_page_refs[page_index];
+            (waker_page_ref.take_notified(), waker_page_ref.take_dropped())
+        };
+        (notified_offsets, dropped_offsets)
+    }
+
+    fn poll_notified_tasks(&self, notified_offsets: u64, page_index: usize) {
+        for page_offset in BitIter::from(notified_offsets) {
+            // Get future using page index and poll it!
+            let pin_slab_index: usize = (page_index << WAKER_BIT_LENGTH_SHIFT) + page_offset;
+
+            // Get the pinned ref.
+            let pinned_ptr = {
+                let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
+                let pinned_ref: Pin<&mut Box<dyn Task>> = tasks.get_pin_mut(pin_slab_index).unwrap();
+                let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
+                pinned_ptr
             };
-            // There is some notified task in this page, so iterate through it.
-            if notified_offsets != 0 {
-                for page_offset in BitIter::from(notified_offsets) {
-                    // Get future using page indices and poll it!
-                    let pin_slab_index: usize = (page_index << WAKER_BIT_LENGTH_SHIFT) + page_offset;
-                    let waker: Waker = unsafe {
-                        let raw_waker: NonNull<u8> = waker_page_refs[page_index].into_raw_waker_ref(page_offset);
-                        Waker::from_raw(WakerRef::new(raw_waker).into())
-                    };
-                    let mut sub_ctx: Context = Context::from_waker(&waker);
+            let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
 
-                    let pinned_ref: Pin<&mut Box<dyn Task>> = tasks.get_pin_mut(pin_slab_index).unwrap();
-                    let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
+            // Get the waker context.
+            let waker: Waker = unsafe {
+                let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
+                let raw_waker: NonNull<u8> = waker_page_refs[page_index].into_raw_waker_ref(page_offset);
+                Waker::from_raw(WakerRef::new(raw_waker).into())
+            };
+            let mut waker_context: Context = Context::from_waker(&waker);
 
-                    // Poll future.
-                    drop(waker_page_refs);
-                    drop(tasks);
-                    let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
-                    let poll_result: Poll<()> = Future::poll(pinned_ref, &mut sub_ctx);
-                    waker_page_refs = self.waker_page_refs.borrow_mut();
-                    tasks = self.tasks.borrow_mut();
-                    match poll_result {
-                        Poll::Ready(()) => waker_page_refs[page_index].mark_completed(page_offset),
-                        Poll::Pending => (),
-                    }
-                }
+            // Poll future.
+            let poll_result: Poll<()> = Future::poll(pinned_ref, &mut waker_context);
+            if let Poll::Ready(()) = poll_result {
+                let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
+                waker_page_refs[page_index].mark_completed(page_offset)
             }
-            // There is some dropped task in this page, so iterate through it.
-            if dropped_offsets != 0 {
-                // Handle dropped tasks only.
-                for page_offset in BitIter::from(dropped_offsets) {
-                    let pin_slab_index: usize = (page_index << WAKER_BIT_LENGTH_SHIFT) + page_offset;
-                    match tasks.remove(pin_slab_index) {
-                        Some(true) => {
-                            let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
-                            let len: usize = task_ids.len();
-                            task_ids.retain(|_, v| *v != pin_slab_index);
-                            // If there is more than one task id pointing at the offset, something has gone very wrong.
-                            assert_eq!(
-                                task_ids.len(),
-                                len - 1,
-                                "There should never been more than one task id pointing at an offset!"
-                            );
-                            waker_page_refs[page_index].clear(page_offset);
-                        },
-                        Some(false) => warn!("poll(): cannot remove a task that does not exist (pin_slab_index={})", pin_slab_index),
-                        None => warn!("poll(): failed to remove task (pin_slab_index={})", pin_slab_index),
-                    };
-                }
-            }
+        }
+    }
+
+    #[deprecated]
+    fn remove_dropped_tasks(&self, dropped_offsets: u64, page_index: usize) {
+        for page_offset in BitIter::from(dropped_offsets) {
+            let pin_slab_index: usize = (page_index << WAKER_BIT_LENGTH_SHIFT) + page_offset;
+            let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
+            match tasks.remove(pin_slab_index) {
+                Some(true) => {
+                    let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
+                    let len_before_removing: usize = task_ids.len();
+                    task_ids.retain(|_, v| *v != pin_slab_index);
+                    // If there is more than one task id pointing at the offset, something has gone very wrong.
+                    assert_eq!(
+                        task_ids.len(),
+                        len_before_removing - 1,
+                        "There should never been more than one task id pointing at an offset!"
+                    );
+                    let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
+                    waker_page_refs[page_index].clear(page_offset);
+                },
+                Some(false) => warn!("poll(): cannot remove a task that does not exist (pin_slab_index={})", pin_slab_index),
+                None => warn!("poll(): failed to remove task (pin_slab_index={})", pin_slab_index),
+            };
         }
     }
 }
