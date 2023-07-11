@@ -30,3 +30,10 @@ tags.*
 
 # rust
 Cargo.lock
+
+# python
+*.pyc
+
+# code coverage
+.coverage
+coverage.xml
