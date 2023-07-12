@@ -27,5 +27,6 @@ use ::std::net::SocketAddrV4;
 pub enum OperationResult {
     Accept(QDesc, SocketAddrV4),
     Connect,
+    Close,
     Failed(Fail),
 }

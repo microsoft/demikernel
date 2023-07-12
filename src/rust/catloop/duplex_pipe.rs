@@ -69,6 +69,12 @@ impl DuplexPipe {
         Ok(())
     }
 
+    /// Asynchronously closes a duplex pipe.
+    pub fn async_close(&self) -> Result<QToken, Fail> {
+        self.catmem.borrow_mut().shutdown(self.rx)?;
+        self.catmem.borrow_mut().async_close(self.tx)
+    }
+
     /// Disallows further operations on a duplex pipe. The underlying queue
     /// descriptors are released, but EoF is not pushed to the remote end.
     pub fn shutdown(&self) -> Result<(), Fail> {
