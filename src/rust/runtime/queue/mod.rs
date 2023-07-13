@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod qdesc;
 mod operation_result;
+mod qdesc;
 mod qtoken;
 mod qtype;
 
@@ -22,8 +22,8 @@ use ::std::future::Future;
 //======================================================================================================================
 
 pub use self::{
-    qdesc::QDesc,
     operation_result::OperationResult,
+    qdesc::QDesc,
     qtoken::QToken,
     qtype::QType,
 };
@@ -105,6 +105,10 @@ impl<T: IoQueue> IoQueueTable<T> {
     /// Gets an iterator over all registered queues.
     pub fn get_values(&self) -> Iter<'_, T> {
         self.table.iter()
+    }
+
+    pub fn drain(&mut self) -> slab::Drain<'_, T> {
+        self.table.drain()
     }
 
     /// Gets the index in the I/O queue descriptors table to which a given I/O queue descriptor refers to.
