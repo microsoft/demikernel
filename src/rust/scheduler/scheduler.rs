@@ -124,7 +124,8 @@ impl Scheduler {
             let (waker_page_index, _) = self.get_waker_page_index_and_offset(pin_slab_index);
             &waker_page_refs[waker_page_index]
         };
-        let handle: TaskHandle = TaskHandle::new(task_id, pin_slab_index, waker_page_ref.clone());
+        let waker_page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
+        let handle: TaskHandle = TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone());
         Some(handle)
     }
 
@@ -149,7 +150,8 @@ impl Scheduler {
         let task_id = self.get_new_task_id(pin_slab_index);
 
         trace!("insert(): name={:?}, id={:?}, pin_slab_index={:?}", task_name, task_id, pin_slab_index);
-        Some(TaskHandle::new(task_id, pin_slab_index, waker_page_ref.clone()))
+        let waker_page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
+        Some(TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone()))
     }
 
     /// Generate a new id. If the id is currently in use, keep generating until we find an unused id.

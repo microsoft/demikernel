@@ -33,9 +33,9 @@ use ::std::{
 pub struct TaskHandle {
     /// External identifier for this task.
     task_id: u64,
-    /// Index of this task's status bits in the waker pages.
-    pin_slab_index: usize,
-    /// Reference to this task's status bits.
+    /// The page offset for this task within the WakerPage.
+    waker_page_offset: usize,
+    /// Waker page reference for this task.
     waker_page_ref: WakerPageRef,
 }
 
@@ -55,14 +55,13 @@ pub struct YielderHandle {
 /// Associate Functions for Task Handlers
 impl TaskHandle {
     /// Creates a new Task Handle.
-    pub fn new(task_id: u64, pin_slab_index: usize, waker_page_ref: WakerPageRef) -> Self {
-        Self { task_id, pin_slab_index, waker_page_ref }
+    pub fn new(task_id: u64, waker_page_offset: usize, waker_page_ref: WakerPageRef) -> Self {
+        Self { task_id, waker_page_offset, waker_page_ref }
     }
 
     /// Queries whether or not the coroutine in the Task has completed.
     pub fn has_completed(&self) -> bool {
-        let waker_page_offset: usize = self.pin_slab_index & (WAKER_BIT_LENGTH - 1);
-        self.waker_page_ref.has_completed(waker_page_offset)
+        self.waker_page_ref.has_completed(self.waker_page_offset)
     }
 
     /// Returns the task_id stored in the target [SchedulerHandle].
@@ -73,8 +72,7 @@ impl TaskHandle {
     /// Removes the task from the scheduler and keeps it from running again.
     #[deprecated]
     pub fn deschedule(&mut self) {
-        let waker_page_offset: usize = self.pin_slab_index & (WAKER_BIT_LENGTH - 1);
-        self.waker_page_ref.mark_dropped(waker_page_offset);
+        self.waker_page_ref.mark_dropped(self.waker_page_offset);
     }
 }
 
