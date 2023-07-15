@@ -190,7 +190,7 @@ impl Scheduler {
     /// multiple pages because of the gap between the pin slab index and the current page index.
     fn add_new_pages_up_to_pin_slab_index(&self, pin_slab_index: usize) {
         let mut waker_page_ref: RefMut<Vec<WakerPageRef>> = self.waker_page_refs.borrow_mut();
-        while pin_slab_index >= waker_page_ref.len() << WAKER_BIT_LENGTH_SHIFT {
+        while pin_slab_index >= (waker_page_ref.len() << WAKER_BIT_LENGTH_SHIFT) {
             waker_page_ref.push(WakerPageRef::default());
         }
     }
