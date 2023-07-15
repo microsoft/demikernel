@@ -30,10 +30,10 @@ use ::std::{
 pub struct TaskHandle {
     /// External identifier for this task.
     task_id: u64,
-    /// The page offset for this task within the WakerPage.
-    waker_page_offset: usize,
     /// Waker page reference for this task.
     waker_page_ref: WakerPageRef,
+    /// The page offset for this task within the WakerPage.
+    waker_page_offset: usize,
 }
 
 /// Yield Handle
@@ -52,8 +52,8 @@ pub struct YielderHandle {
 /// Associate Functions for Task Handlers
 impl TaskHandle {
     /// Creates a new Task Handle.
-    pub fn new(task_id: u64, waker_page_offset: usize, waker_page_ref: WakerPageRef) -> Self {
-        Self { task_id, waker_page_offset, waker_page_ref }
+    pub fn new(task_id: u64, waker_page_ref: WakerPageRef, waker_page_offset: usize) -> Self {
+        Self { task_id, waker_page_ref, waker_page_offset }
     }
 
     /// Queries whether or not the coroutine in the Task has completed.

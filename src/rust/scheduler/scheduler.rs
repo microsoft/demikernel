@@ -125,7 +125,7 @@ impl Scheduler {
             &waker_page_refs[waker_page_index]
         };
         let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
-        Some(TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone()))
+        Some(TaskHandle::new(task_id, waker_page_ref.clone(), waker_page_offset))
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
@@ -150,7 +150,7 @@ impl Scheduler {
 
         trace!("insert(): name={:?}, id={:?}, pin_slab_index={:?}", task_name, task_id, pin_slab_index);
         let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
-        Some(TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone()))
+        Some(TaskHandle::new(task_id, waker_page_ref.clone(), waker_page_offset))
     }
 
     /// Generate a new id. If the id is currently in use, keep generating until we find an unused id.
@@ -202,8 +202,8 @@ impl Scheduler {
         let num_waker_pages = self.get_num_waker_pages();
         for waker_page_index in 0..num_waker_pages {
             let (notified_offsets, dropped_offsets) = self.get_offsets_for_ready_tasks(waker_page_index);
-            self.poll_notified_tasks(notified_offsets, waker_page_index);
-            self.remove_dropped_tasks(dropped_offsets, waker_page_index);
+            self.poll_notified_tasks(waker_page_index, notified_offsets);
+            self.remove_dropped_tasks(waker_page_index, dropped_offsets);
         }
     }
 
@@ -221,7 +221,7 @@ impl Scheduler {
         (notified_offsets, dropped_offsets)
     }
 
-    fn poll_notified_tasks(&self, notified_offsets: u64, waker_page_index: usize) {
+    fn poll_notified_tasks(&self, waker_page_index: usize, notified_offsets: u64) {
         for waker_page_offset in BitIter::from(notified_offsets) {
             // Get the pinned ref.
             let pinned_ptr = {
@@ -251,7 +251,7 @@ impl Scheduler {
     }
 
     #[deprecated]
-    fn remove_dropped_tasks(&self, dropped_offsets: u64, waker_page_index: usize) {
+    fn remove_dropped_tasks(&self, waker_page_index: usize, dropped_offsets: u64) {
         for waker_page_offset in BitIter::from(dropped_offsets) {
             let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
             let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
