@@ -7,10 +7,7 @@
 
 use crate::{
     runtime::fail::Fail,
-    scheduler::{
-        page::WakerPageRef,
-        waker64::WAKER_BIT_LENGTH,
-    },
+    scheduler::page::WakerPageRef,
 };
 use ::std::{
     cell::RefCell,

@@ -124,9 +124,8 @@ impl Scheduler {
             let (waker_page_index, _) = self.get_waker_page_index_and_offset(pin_slab_index);
             &waker_page_refs[waker_page_index]
         };
-        let waker_page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
-        let handle: TaskHandle = TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone());
-        Some(handle)
+        let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
+        Some(TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone()))
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
@@ -150,7 +149,7 @@ impl Scheduler {
         let task_id = self.get_new_task_id(pin_slab_index);
 
         trace!("insert(): name={:?}, id={:?}, pin_slab_index={:?}", task_name, task_id, pin_slab_index);
-        let waker_page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
+        let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
         Some(TaskHandle::new(task_id, waker_page_offset, waker_page_ref.clone()))
     }
 
@@ -183,7 +182,7 @@ impl Scheduler {
     /// Computes the page and page offset of a given task based on its total offset.
     fn get_waker_page_index_and_offset(&self, pin_slab_index: usize) -> (usize, usize) {
         let waker_page_index: usize = pin_slab_index >> WAKER_BIT_LENGTH_SHIFT;
-        let waker_page_offset: usize = pin_slab_index & (WAKER_BIT_LENGTH - 1);
+        let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
         (waker_page_index, waker_page_offset)
     }
 
@@ -224,12 +223,10 @@ impl Scheduler {
 
     fn poll_notified_tasks(&self, notified_offsets: u64, waker_page_index: usize) {
         for waker_page_offset in BitIter::from(notified_offsets) {
-            // Get future using page index and poll it!
-            let pin_slab_index: usize = (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset;
-
             // Get the pinned ref.
             let pinned_ptr = {
                 let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
+                let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
                 let pinned_ref: Pin<&mut Box<dyn Task>> = tasks.get_pin_mut(pin_slab_index).unwrap();
                 let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
                 pinned_ptr
@@ -256,7 +253,7 @@ impl Scheduler {
     #[deprecated]
     fn remove_dropped_tasks(&self, dropped_offsets: u64, waker_page_index: usize) {
         for waker_page_offset in BitIter::from(dropped_offsets) {
-            let pin_slab_index: usize = (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset;
+            let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
             let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
             match tasks.remove(pin_slab_index) {
                 Some(true) => {
@@ -276,6 +273,14 @@ impl Scheduler {
                 None => warn!("poll(): failed to remove task (pin_slab_index={})", pin_slab_index),
             };
         }
+    }
+
+    fn get_waker_page_offset(pin_slab_index: usize) -> usize {
+        pin_slab_index & (WAKER_BIT_LENGTH - 1)
+    }
+
+    fn get_pin_slab_index(waker_page_index: usize, waker_page_offset: usize) -> usize {
+        (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
     }
 }
 
