@@ -27,6 +27,7 @@ use crate::{
     demi_sgarray_t,
     inetstack::protocols::ip::EphemeralPorts,
     pal::{
+        constants::SOMAXCONN,
         data_structures::SockAddr,
         linux,
     },
@@ -234,7 +235,7 @@ impl CatloopLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
-        debug_assert!((backlog > 0) && (backlog <= libc::SOMAXCONN as usize));
+        debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Check if the queue descriptor is registered in the sockets table.
         match self.qtable.borrow_mut().get_mut(&qd) {
