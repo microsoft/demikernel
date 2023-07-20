@@ -61,7 +61,7 @@ impl TaskHandle {
         self.waker_page_ref.has_completed(self.waker_page_offset)
     }
 
-    /// Returns the task_id stored in the target [SchedulerHandle].
+    /// Returns the task_id stored in the target [TaskHandle].
     pub fn get_task_id(&self) -> u64 {
         self.task_id
     }
