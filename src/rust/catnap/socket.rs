@@ -287,7 +287,7 @@ impl Socket {
                 // Operation not completed, thus parse errno to find out what happened.
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
                 // Operation failed.
-                let message: String = format!("connect(): operation failed (errno={:?})", errno);
+                let message: String = format!("close(): operation failed (errno={:?})", errno);
                 if errno != libc::EINTR {
                     error!("{}", message);
                 }
@@ -324,7 +324,7 @@ impl Socket {
         } {
             // Operation completed.
             nbytes if nbytes >= 0 => {
-                trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
+                trace!("data pushed ({:?}/{:?} bytes) to {:?}", nbytes, buf.len(), addr);
                 buf.adjust(nbytes as usize)?;
 
                 Ok(())
@@ -335,7 +335,7 @@ impl Socket {
                 // Operation not completed, thus parse errno to find out what happened.
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
                 // Operation failed.
-                let message: String = format!("connect(): operation failed (errno={:?})", errno);
+                let message: String = format!("push(): operation failed (errno={:?})", errno);
                 error!("{}", message);
                 Err(Fail::new(errno, &message))
             },
