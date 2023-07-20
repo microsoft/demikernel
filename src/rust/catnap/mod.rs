@@ -32,6 +32,7 @@ use self::{
 use crate::{
     demikernel::config::Config,
     pal::{
+        constants::SOMAXCONN,
         data_structures::{
             SockAddr,
             SockAddrIn,
@@ -252,7 +253,7 @@ impl CatnapLibOS {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
-        debug_assert!((backlog > 0) && (backlog <= libc::SOMAXCONN as usize));
+        debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Issue listen operation.
         match self.qtable.borrow_mut().get_mut(&qd) {
