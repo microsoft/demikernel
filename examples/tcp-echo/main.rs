@@ -3,8 +3,8 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 #![deny(clippy::all)]
-#![feature(drain_filter)]
-#![feature(hash_drain_filter)]
+#![feature(extract_if)]
+#![feature(hash_extract_if)]
 
 //======================================================================================================================
 // Imports
