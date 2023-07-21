@@ -176,8 +176,8 @@ impl TcpServer {
     }
 
     fn cancel_pending_operations(&mut self, qd: QDesc) -> Vec<QToken> {
-        let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.drain_filter(|_k, v| *v == qd).collect();
-        let qts_dropped: Vec<QToken> = self.qts.drain_filter(|x| qts_drained.contains_key(x)).collect();
+        let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.extract_if(|_k, v| *v == qd).collect();
+        let qts_dropped: Vec<QToken> = self.qts.extract_if(|x| qts_drained.contains_key(x)).collect();
         qts_dropped
     }
 

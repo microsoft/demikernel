@@ -175,8 +175,8 @@ impl TcpServer {
             }
         }
 
-        // If close() fails, this test will fail. That is the desired behavior, because we want to test the close() 
-        // functionality. So this test differs from other tests. Other tests allocate resources in new() and release 
+        // If close() fails, this test will fail. That is the desired behavior, because we want to test the close()
+        // functionality. So this test differs from other tests. Other tests allocate resources in new() and release
         // them in the drop() function only.
         self.issue_close(self.sockqd)?;
 
@@ -249,8 +249,8 @@ impl TcpServer {
 
     /// Cancels all pending operations of a given connection.
     fn cancel_pending_operations(&mut self, qd: QDesc) -> Vec<QToken> {
-        let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.drain_filter(|_k, v| *v == qd).collect();
-        let qts_dropped: Vec<QToken> = self.qts.drain_filter(|x| qts_drained.contains_key(x)).collect();
+        let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.extract_if(|_k, v| *v == qd).collect();
+        let qts_dropped: Vec<QToken> = self.qts.extract_if(|x| qts_drained.contains_key(x)).collect();
         qts_dropped
     }
 
