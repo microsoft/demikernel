@@ -7,10 +7,7 @@
 
 use crate::{
     runtime::fail::Fail,
-    scheduler::{
-        page::WakerPageRef,
-        waker64::WAKER_BIT_LENGTH,
-    },
+    scheduler::page::WakerPageRef,
 };
 use ::std::{
     cell::RefCell,
@@ -33,10 +30,10 @@ use ::std::{
 pub struct TaskHandle {
     /// External identifier for this task.
     task_id: u64,
-    /// Index of this task's status bits in the waker pages.
-    index: usize,
-    /// Reference to this task's status bits.
-    page: WakerPageRef,
+    /// Waker page reference for this task.
+    waker_page_ref: WakerPageRef,
+    /// The page offset for this task within the WakerPage.
+    waker_page_offset: usize,
 }
 
 /// Yield Handle
@@ -55,17 +52,16 @@ pub struct YielderHandle {
 /// Associate Functions for Task Handlers
 impl TaskHandle {
     /// Creates a new Task Handle.
-    pub fn new(task_id: u64, index: usize, page: WakerPageRef) -> Self {
-        Self { task_id, index, page }
+    pub fn new(task_id: u64, waker_page_ref: WakerPageRef, waker_page_offset: usize) -> Self {
+        Self { task_id, waker_page_ref, waker_page_offset }
     }
 
     /// Queries whether or not the coroutine in the Task has completed.
     pub fn has_completed(&self) -> bool {
-        let subpage_ix: usize = self.index & (WAKER_BIT_LENGTH - 1);
-        self.page.has_completed(subpage_ix)
+        self.waker_page_ref.has_completed(self.waker_page_offset)
     }
 
-    /// Returns the task_id stored in the target [SchedulerHandle].
+    /// Returns the task_id stored in the target [TaskHandle].
     pub fn get_task_id(&self) -> u64 {
         self.task_id
     }
@@ -73,8 +69,7 @@ impl TaskHandle {
     /// Removes the task from the scheduler and keeps it from running again.
     #[deprecated]
     pub fn deschedule(&mut self) {
-        let subpage_ix: usize = self.index & (WAKER_BIT_LENGTH - 1);
-        self.page.mark_dropped(subpage_ix);
+        self.waker_page_ref.mark_dropped(self.waker_page_offset);
     }
 }
 
