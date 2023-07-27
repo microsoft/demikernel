@@ -5,51 +5,42 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::fail::Fail;
-use ::std::net::SocketAddrV4;
+use crate::{
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
+    },
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+        network::socket::{
+            operation::SocketOp,
+            state::SocketStateMachine,
+        },
+    },
+};
+use ::std::{
+    mem,
+    net::SocketAddrV4,
+    os::unix::prelude::RawFd,
+    ptr,
+};
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-/// Encodes the state of a socket.
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum SocketState {
-    /// A socket that is not bound.
-    NotBound,
-    /// A socket that is bound to a local address.
-    Bound,
-    /// A socket that is bound to a local address and is able to accept incoming connections.
-    Listening,
-    /// A socket that is bound to a local address and is accepting incoming connections.
-    Accepting,
-    /// A socket that is attempting to connect to a remote address.
-    Connecting,
-    /// A socket that is connected to a remote address.
-    Connected,
-    /// A socket that is closing.
-    Closing,
-    /// A socket that is closed.
-    Closed,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum SocketOp {
-    Bind,
-    Listen,
-    Accept,
-    Accepted,
-    Connect,
-    Connected,
-    Close,
-    Closed,
-}
-
 /// A socket.
 #[derive(Copy, Clone, Debug)]
 pub struct Socket {
     /// The state of the socket.
-    state: SocketState,
+    state: SocketStateMachine,
+    /// Underlying file descriptor.
+    fd: RawFd,
     /// The local address to which the socket is bound.
     local: Option<SocketAddrV4>,
     /// The remote address to which the socket is connected.
@@ -62,107 +53,297 @@ pub struct Socket {
 
 impl Socket {
     /// Creates a new socket that is not bound to an address.
-    pub fn new() -> Self {
-        Self {
-            state: SocketState::NotBound,
-            local: None,
-            remote: None,
+    pub fn new(domain: libc::c_int, typ: libc::c_int) -> Result<Self, Fail> {
+        // These were previously checked in the LibOS layer.
+        debug_assert!(domain == libc::AF_INET);
+        debug_assert!(typ == libc::SOCK_STREAM || typ == libc::SOCK_DGRAM);
+
+        // Create socket.
+        match unsafe { libc::socket(domain, typ, 0) } {
+            fd if fd >= 0 => {
+                // Set socket options.
+                unsafe {
+                    if typ == libc::SOCK_STREAM {
+                        if linux::set_tcp_nodelay(fd) != 0 {
+                            let errno: libc::c_int = *libc::__errno_location();
+                            warn!("cannot set TCP_NONDELAY option (errno={:?})", errno);
+                        }
+                    }
+                    if linux::set_nonblock(fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set O_NONBLOCK option (errno={:?})", errno);
+                    }
+                    if linux::set_so_reuseport(fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set SO_REUSEPORT option (errno={:?})", errno);
+                    }
+                }
+
+                Ok(Self {
+                    state: SocketStateMachine::new_unbound(),
+                    fd,
+                    local: None,
+                    remote: None,
+                })
+            },
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                Err(Fail::new(errno, "failed to create socket"))
+            },
         }
     }
 
-    /// Constructs from [self] a socket that is bound to the `local` address.
-    pub fn bind(&self, local: SocketAddrV4) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Bind) {
-            Ok(state) => Ok(Self {
-                state,
-                local: Some(local),
-                remote: None,
-            }),
-            Err(e) => Err(e),
+    /// Begins the bind operation.
+    pub fn prepare_bind(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Bind)
+    }
+
+    /// Binds the target socket to `local` address.
+    pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
+        // Bind underlying socket.
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
+        match unsafe {
+            libc::bind(
+                self.fd,
+                &saddr as *const SockAddr,
+                mem::size_of::<SockAddrIn>() as Socklen,
+            )
+        } {
+            stats if stats == 0 => {
+                // Update socket.
+                self.local = Some(local);
+                Ok(())
+            },
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                error!("failed to bind socket (errno={:?})", errno);
+                Err(Fail::new(errno, "operation failed"))
+            },
         }
     }
 
-    /// Constructs from [self] a socket that is able to accept incoming connections.
-    pub fn listen(&self) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Listen) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: None,
-            }),
-            Err(e) => Err(e),
+    /// Begins the listen operation.
+    pub fn prepare_listen(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Listen)
+    }
+
+    /// Enables this socket to accept incoming connections.
+    pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
+        // Set underlying OS socket to listen.
+        if unsafe { libc::listen(self.fd, backlog as i32) } != 0 {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            error!("failed to listen ({:?})", errno);
+            return Err(Fail::new(errno, "operation failed"));
+        }
+
+        // If successful, update the state.
+        Ok(())
+    }
+
+    /// Begins the accept operation.
+    pub fn prepare_accept(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Accept)
+    }
+
+    /// Begins the accepted operation.
+    pub fn prepare_accepted(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Accepted)
+    }
+
+    /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
+    pub fn try_accept(&mut self) -> Result<Self, Fail> {
+        // Done with checks, do actual accept.
+        let mut saddr: SockAddr = unsafe { mem::zeroed() };
+        let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
+
+        match unsafe { libc::accept(self.fd, &mut saddr as *mut SockAddr, &mut address_len) } {
+            // Operation completed.
+            new_fd if new_fd >= 0 => {
+                trace!("connection accepted ({:?})", new_fd);
+                // Set socket options.
+                unsafe {
+                    if linux::set_tcp_nodelay(new_fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set TCP_NONDELAY option (errno={:?})", errno);
+                    }
+                    if linux::set_nonblock(new_fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set O_NONBLOCK option (errno={:?})", errno);
+                    }
+                    if linux::set_so_reuseport(new_fd) != 0 {
+                        let errno: libc::c_int = *libc::__errno_location();
+                        warn!("cannot set SO_REUSEPORT option (errno={:?})", errno);
+                    }
+                }
+
+                let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
+                Ok(Self {
+                    state: SocketStateMachine::new_connected(),
+                    fd: new_fd,
+                    local: None,
+                    remote: Some(addr),
+                })
+            },
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                let message: String = format!("try_accept(): operation failed (errno={:?})", errno);
+                if !retry_errno(errno) {
+                    error!("{}", message);
+                }
+                Err(Fail::new(errno, &message))
+            },
         }
     }
 
-    /// Constructs from [self] a socket that is accepting incoming connections.
-    pub fn accept(&self) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Accept) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: None,
-            }),
-            Err(e) => Err(e),
-        }
+    /// Begins the connect operation.
+    pub fn prepare_connect(&mut self) -> Result<(), Fail> {
+        // Set socket state to accepting.
+        self.state.prepare(SocketOp::Connect)
     }
 
-    /// Constructs from [self] a socket that has accepted an incoming connection.
-    pub fn accepted(&self) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Accepted) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: None,
-            }),
-            Err(e) => Err(e),
-        }
+    /// Begins he connected operation.
+    pub fn prepare_connected(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Connected)
     }
 
     /// Constructs from [self] a socket that is attempting to connect to a remote address.
-    pub fn connect(&self, remote: SocketAddrV4) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Connect) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: Some(remote),
-            }),
-            Err(e) => Err(e),
+    pub fn try_connect(&mut self, remote: SocketAddrV4) -> Result<(), Fail> {
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&remote);
+        match unsafe {
+            libc::connect(
+                self.fd,
+                &saddr as *const SockAddr,
+                mem::size_of::<SockAddrIn>() as Socklen,
+            )
+        } {
+            // Operation completed.
+            stats if stats == 0 => {
+                trace!("connection established ({:?})", remote);
+                self.remote = Some(remote);
+                Ok(())
+            },
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                let message: String = format!("try_connect(): operation failed (errno={:?})", errno);
+                if !retry_errno(errno) {
+                    error!("{}", message);
+                }
+                Err(Fail::new(errno, &message))
+            },
         }
     }
 
-    /// Constructs from [self] a socket that is connected to the `remote` address.
-    pub fn connected(&self, remote: SocketAddrV4) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Connected) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: Some(remote),
-            }),
-            Err(e) => Err(e),
-        }
+    /// Begins the close operation.
+    pub fn prepare_close(&mut self) -> Result<(), Fail> {
+        // Set socket state to accepting.
+        self.state.prepare(SocketOp::Close)
+    }
+
+    /// Begins the closed operation.
+    pub fn prepare_closed(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Closed)
     }
 
     /// Constructs from [self] a socket that is closing.
-    pub fn close(&self) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Close) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: self.remote,
-            }),
-            Err(e) => Err(e),
+    pub fn try_close(&mut self) -> Result<(), Fail> {
+        match unsafe { libc::close(self.fd) } {
+            // Operation completed.
+            stats if stats == 0 => {
+                trace!("socket closed fd={:?}", self.fd);
+                return Ok(());
+            },
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                let message: String = format!("try_close(): operation failed (errno={:?})", errno);
+                if errno != libc::EINTR {
+                    error!("{}", message);
+                }
+                Err(Fail::new(errno, &message))
+            },
         }
     }
 
-    /// Constructs from [self] a socket that is closed.
-    pub fn closed(&self) -> Result<Self, Fail> {
-        match self.get_next_state(SocketOp::Closed) {
-            Ok(state) => Ok(Self {
-                state,
-                local: self.local,
-                remote: self.remote,
-            }),
-            Err(e) => Err(e),
+    /// This function tries to write a DemiBuffer to a socket. It returns a DemiBuffer with the remaining bytes that
+    /// it did not succeeded in writing without blocking.
+    pub fn try_push(&self, buf: &mut DemiBuffer, addr: Option<SocketAddrV4>) -> Result<(), Fail> {
+        let saddr: Option<SockAddr> = if let Some(addr) = addr.as_ref() {
+            Some(linux::socketaddrv4_to_sockaddr(addr))
+        } else {
+            None
+        };
+
+        // Note that we use references here, so as we don't end up constructing a dangling pointer.
+        let (saddr_ptr, sockaddr_len) = if let Some(saddr_ref) = saddr.as_ref() {
+            (saddr_ref as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen)
+        } else {
+            (ptr::null(), 0)
+        };
+
+        match unsafe {
+            libc::sendto(
+                self.fd,
+                (buf.as_ptr() as *const u8) as *const libc::c_void,
+                buf.len(),
+                libc::MSG_DONTWAIT,
+                saddr_ptr,
+                sockaddr_len,
+            )
+        } {
+            // Operation completed.
+            nbytes if nbytes >= 0 => {
+                trace!("data pushed ({:?}/{:?} bytes) to {:?}", nbytes, buf.len(), addr);
+                buf.adjust(nbytes as usize)?;
+
+                Ok(())
+            },
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                let message: String = format!("try_push(): operation failed (errno={:?})", errno);
+                if !retry_errno(errno) {
+                    error!("{}", message);
+                }
+                Err(Fail::new(errno, &message))
+            },
+        }
+    }
+
+    /// Attempts to read data from the socket into the given buffer.
+    pub fn try_pop(&self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
+        let mut saddr: SockAddr = unsafe { mem::zeroed() };
+        let mut addrlen: Socklen = mem::size_of::<SockAddrIn>() as u32;
+
+        match unsafe {
+            libc::recvfrom(
+                self.fd,
+                (buf.as_mut_ptr() as *mut u8) as *mut libc::c_void,
+                size,
+                libc::MSG_DONTWAIT,
+                &mut saddr as *mut SockAddr,
+                &mut addrlen as *mut u32,
+            )
+        } {
+            // Operation completed.
+            nbytes if nbytes >= 0 => {
+                trace!("data received ({:?}/{:?} bytes)", nbytes, size);
+                buf.trim(size - nbytes as usize)?;
+                let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
+                return Ok(Some(addr));
+            },
+
+            // Operation not completed, thus parse errno to find out what happened.
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                let message: String = format!("try_pop(): operation failed (errno={:?})", errno);
+                if !retry_errno(errno) {
+                    error!("{}", message);
+                }
+                Err(Fail::new(errno, &message))
+            },
         }
     }
 
@@ -171,165 +352,24 @@ impl Socket {
         self.local
     }
 
-    #[allow(dead_code)]
     /// Returns the `remote` address tot which [self] is connected.
     pub fn remote(&self) -> Option<SocketAddrV4> {
         self.remote
     }
 
-    /// Asserts if [self] is `Connecting`.
-    pub fn is_connecting(&self) -> bool {
-        self.state == SocketState::Connecting
+    /// Commits to moving into the prepared state
+    pub fn commit(&mut self) {
+        self.state.commit()
     }
 
-    /// Given the current state and the operation being executed, this function returns the next state on success and
-    fn get_next_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        debug!("state: {:?} transition: {:?}", self.state, op);
-        match self.state {
-            SocketState::NotBound => self.not_bound_state(op),
-            SocketState::Bound => self.bound_state(op),
-            SocketState::Listening => self.listening_state(op),
-            SocketState::Accepting => self.accepting_state(op),
-            SocketState::Connecting => self.connecting_state(op),
-            SocketState::Connected => self.connected_state(op),
-            SocketState::Closing => self.closing_state(op),
-            SocketState::Closed => self.closed_state(op),
-        }
+    /// Discards the prepared state.
+    pub fn abort(&mut self) {
+        self.state.abort()
     }
 
-    fn not_bound_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            SocketOp::Bind => Ok(SocketState::Bound),
-            SocketOp::Listen => Err(fail(op, &format!("socket is not bound"), libc::EDESTADDRREQ)),
-            SocketOp::Accept | SocketOp::Accepted => Err(fail(op, &(format!("socket is not bound")), libc::EINVAL)),
-            SocketOp::Connect => Ok(SocketState::Connecting),
-            // Should this be possible without going through the Connecting state?
-            SocketOp::Connected => Ok(SocketState::Connected),
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn bound_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            SocketOp::Bind | SocketOp::Accept | SocketOp::Accepted | SocketOp::Connected => Err(fail(
-                op,
-                &(format!("socket is already bound to address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketOp::Listen => Ok(SocketState::Listening),
-            SocketOp::Connect => Ok(SocketState::Connecting),
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn listening_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            SocketOp::Bind | SocketOp::Accepted | SocketOp::Connected => Err(fail(
-                op,
-                &(format!("socket is already listening on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketOp::Listen => Err(fail(
-                op,
-                &(format!("socket is already listening on address: {:?}", self.local)),
-                libc::EADDRINUSE,
-            )),
-            SocketOp::Accept => Ok(SocketState::Accepting),
-            SocketOp::Connect => Err(fail(
-                op,
-                &(format!("socket is already listening on address: {:?}", self.local)),
-                libc::EOPNOTSUPP,
-            )),
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn accepting_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            SocketOp::Bind => Err(fail(
-                op,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EINVAL,
-            )),
-            SocketOp::Listen => Err(fail(
-                op,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EADDRINUSE,
-            )),
-            SocketOp::Accept => Err(fail(
-                op,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EINPROGRESS,
-            )),
-            SocketOp::Accepted => Ok(SocketState::Listening),
-            SocketOp::Connect => Err(fail(
-                op,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::ENOTSUP,
-            )),
-            // Should this be possible without going through the Connecting state?
-            SocketOp::Connected => Err(fail(
-                op,
-                &(format!("socket is accepting connections on address: {:?}", self.local)),
-                libc::EBUSY,
-            )),
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn connecting_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            SocketOp::Bind | SocketOp::Accept | SocketOp::Accepted => Err(fail(
-                op,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EINVAL,
-            )),
-            SocketOp::Listen => Err(fail(
-                op,
-                &(format!("socket is connecting to address: {:?}", self.remote)),
-                libc::EADDRINUSE,
-            )),
-            SocketOp::Connect => Err(fail(
-                op,
-                &(format!("socket already is connecting to address: {:?}", self.remote)),
-                libc::EINPROGRESS,
-            )),
-            SocketOp::Connected => Ok(SocketState::Connected),
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn connected_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        match op {
-            // Does this make sense if we didn't go through the Connecting state?
-            SocketOp::Bind => Ok(SocketState::Connected),
-            SocketOp::Listen | SocketOp::Accept | SocketOp::Accepted | SocketOp::Connect | SocketOp::Connected => {
-                Err(fail(
-                    op,
-                    &(format!("socket is already connected to address: {:?}", self.remote)),
-                    libc::EISCONN,
-                ))
-            },
-            SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
-        }
-    }
-
-    fn closing_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        if op == SocketOp::Closed {
-            Ok(SocketState::Closed)
-        } else {
-            Err(fail(op, &(format!("socket is closing")), libc::EBADF))
-        }
-    }
-
-    fn closed_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        Err(fail(op, &(format!("socket is closed")), libc::EBADF))
+    /// Rollbacks to the previous state.
+    pub fn rollback(&mut self) {
+        self.state.rollback()
     }
 }
 
@@ -337,8 +377,7 @@ impl Socket {
 // Standalone Functions
 //======================================================================================================================
 
-/// Constructs a [Fail] object from the given `fn_name`, `cause`, and `errno`.
-fn fail(op: SocketOp, cause: &str, errno: i32) -> Fail {
-    error!("{:?}(): {}", op, cause);
-    Fail::new(errno, cause)
+/// Check whether `errno` indicates that we should retry.
+pub fn retry_errno(errno: i32) -> bool {
+    errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
 }
