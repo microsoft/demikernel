@@ -20,6 +20,8 @@ use crate::{
 
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::CatmemLibOS;
+#[cfg(feature = "catmem-libos")]
+use crate::catmem::QMode;
 
 //======================================================================================================================
 // Structures
@@ -37,22 +39,42 @@ pub enum MemoryLibOS {
 
 /// Associated functions for memory LibOSes
 impl MemoryLibOS {
-    /// Creates a memory queue.
+    /// Creates a memory queue and connects to the consumer/pop-only end.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.create_pipe(name),
+            MemoryLibOS::Catmem(libos) => libos.create_pipe(name, QMode::Pop),
             _ => unreachable!("unknown memory libos"),
         }
     }
 
-    /// Opens an existing memory queue.
+    /// Creates a memory queue and connects to the producer/push-only end.
+    #[allow(unreachable_patterns, unused_variables)]
+    pub fn create_pipe_for_push(&mut self, name: &str) -> Result<QDesc, Fail> {
+        match self {
+            #[cfg(feature = "catmem-libos")]
+            MemoryLibOS::Catmem(libos) => libos.create_pipe(name, QMode::Push),
+            _ => unreachable!("unknown memory libos"),
+        }
+    }
+
+    /// Opens an existing memory queue and connects to the producer/push-only end.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.open_pipe(name),
+            MemoryLibOS::Catmem(libos) => libos.open_pipe(name, QMode::Push),
+            _ => unreachable!("unknown memory libos"),
+        }
+    }
+
+    /// Opens an existing memory queue and connects to the consumer/pop-only end.
+    #[allow(unreachable_patterns, unused_variables)]
+    pub fn open_pipe_for_pop(&mut self, name: &str) -> Result<QDesc, Fail> {
+        match self {
+            #[cfg(feature = "catmem-libos")]
+            MemoryLibOS::Catmem(libos) => libos.open_pipe(name, QMode::Pop),
             _ => unreachable!("unknown memory libos"),
         }
     }

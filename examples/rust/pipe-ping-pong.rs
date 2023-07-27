@@ -176,7 +176,7 @@ impl PipeServer {
         };
 
         // Create the Tx pipe.
-        let pipeqd_tx = match libos.create_pipe(&format!("{}:tx", pipe_name)) {
+        let pipeqd_tx = match libos.create_pipe_for_push(&format!("{}:tx", pipe_name)) {
             Ok(qd) => qd,
             Err(e) => {
                 if let Err(e) = libos.close(pipeqd_rx) {
@@ -249,7 +249,7 @@ impl PipeClient {
 
         // Open the Rx pipe. This is inverted from the server's perspsective, because the server writes from it's
         // pipeqd_tx, but the clients reads from it.
-        let pipeqd_rx = match libos.open_pipe(&format!("{}:tx", pipe_name)) {
+        let pipeqd_rx = match libos.open_pipe_for_pop(&format!("{}:tx", pipe_name)) {
             Ok(qd) => qd,
             Err(e) => {
                 if let Err(e) = libos.close(pipeqd_tx) {

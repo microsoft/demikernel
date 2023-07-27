@@ -111,7 +111,7 @@ impl LibOS {
         Ok(libos)
     }
 
-    /// Creates a new memory queue.
+    /// Creates a new memory queue and connect to consumer end.
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = match self {
             LibOS::NetworkLibOS(_) => Err(Fail::new(
@@ -126,7 +126,23 @@ impl LibOS {
         result
     }
 
-    /// Opens an existing memory queue.
+    /// Creates a new memory queue and connects to producer end.
+    #[deprecated]
+    pub fn create_pipe_for_push(&mut self, name: &str) -> Result<QDesc, Fail> {
+        let result: Result<QDesc, Fail> = match self {
+            LibOS::NetworkLibOS(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "create_pipe() is not supported on network liboses",
+            )),
+            LibOS::MemoryLibOS(libos) => libos.create_pipe_for_push(name),
+        };
+
+        self.poll();
+
+        result
+    }
+
+    /// Opens an existing memory queue and connects to producer end.
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             LibOS::NetworkLibOS(_) => Err(Fail::new(
@@ -134,6 +150,18 @@ impl LibOS {
                 "open_pipe() is not supported on network liboses",
             )),
             LibOS::MemoryLibOS(libos) => libos.open_pipe(name),
+        }
+    }
+
+    /// Opens an existing memory queue and connects to consumer end.
+    #[deprecated]
+    pub fn open_pipe_for_pop(&mut self, name: &str) -> Result<QDesc, Fail> {
+        match self {
+            LibOS::NetworkLibOS(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "open_pipe() is not supported on network liboses",
+            )),
+            LibOS::MemoryLibOS(libos) => libos.open_pipe_for_pop(name),
         }
     }
 

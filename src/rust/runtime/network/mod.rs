@@ -14,6 +14,7 @@ use ::arrayvec::ArrayVec;
 
 pub mod config;
 pub mod consts;
+pub mod ring;
 pub mod socket;
 pub mod types;
 
