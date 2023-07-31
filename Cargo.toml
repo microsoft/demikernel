@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.3.3"
+version = "1.3.4"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -29,10 +29,10 @@ anyhow = "1.0.72"
 bit-iter = "1.1.1"
 cfg-if = "1.0.0"
 crc = "3.0.1"
-clap = "4.3.17"
+clap = "4.3.19"
 crossbeam-channel = "0.5.8"
 eui48 = "1.1.0"
-flexi_logger = "0.25.5"
+flexi_logger = "0.25.6"
 futures = "0.3.28"
 libc = "0.2.147"
 log = "0.4.19"
@@ -42,14 +42,17 @@ yaml-rust = "0.4.5"
 x86 = "0.52.0"
 
 # Demikernel Organization
-liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true}
+liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true }
 dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "5a339766b6f64c2b09c2e4089c62013bfb48297e", optional = true }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
 # libc implementation in Rust is quite different for Windows and Linux. This library provides the relevant networking
 # constants and datastructures for Windows.
-windows = { version = "0.44.0", features = ["Win32_Foundation", "Win32_Networking_WinSock"] }
+windows = { version = "0.44.0", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+] }
 # Provides the Rust socket API for Windows.
 socket2 = "0.4.7"
 
@@ -136,18 +139,18 @@ path = "examples/rust/tcp-ping-pong.rs"
 #=======================================================================================================================
 
 [features]
-default = [ "catnap-libos", "catnapw-libos" ]
-catnap-libos = [ ]
-catnapw-libos = [ ]
-catpowder-libos = [ ]
-catcollar-libos = [ "liburing" ]
-catmem-libos = [ ]
-catnip-libos = [ "libdpdk" ]
-catloop-libos = [ "catmem-libos" ]
-libdpdk = [ "dpdk-rs" ]
-mlx4 = [ "dpdk-rs/mlx4" ]
-mlx5 = [ "dpdk-rs/mlx5" ]
-profiler = [  ]
+default = ["catnap-libos", "catnapw-libos"]
+catnap-libos = []
+catnapw-libos = []
+catpowder-libos = []
+catcollar-libos = ["liburing"]
+catmem-libos = []
+catnip-libos = ["libdpdk"]
+catloop-libos = ["catmem-libos"]
+libdpdk = ["dpdk-rs"]
+mlx4 = ["dpdk-rs/mlx4"]
+mlx5 = ["dpdk-rs/mlx5"]
+profiler = []
 
 #=======================================================================================================================
 # Profile
@@ -155,24 +158,24 @@ profiler = [  ]
 
 # Build profile used for releases.
 [profile.release]
-opt-level = 3             # Enable all compiler optimizations.
-debug = false             # Do not include any debug info in the binary.
-debug-assertions = false  # Do not include any debug assertions in the binary.
-overflow-checks = false   # Do not check for overflows at runtime.
-lto = "fat"               # Perform link time optimizations across all dependencies (overridden).
-panic = "abort"           # Terminate the process upon panic (overridden).
-incremental = false       # Disable incremental compilation.
-codegen-units = 1         # Produce a single code generation unit (overridden).
-rpath = false             # Disable runtime search path.
+opt-level = 3            # Enable all compiler optimizations.
+debug = false            # Do not include any debug info in the binary.
+debug-assertions = false # Do not include any debug assertions in the binary.
+overflow-checks = false  # Do not check for overflows at runtime.
+lto = "fat"              # Perform link time optimizations across all dependencies (overridden).
+panic = "abort"          # Terminate the process upon panic (overridden).
+incremental = false      # Disable incremental compilation.
+codegen-units = 1        # Produce a single code generation unit (overridden).
+rpath = false            # Disable runtime search path.
 
 # Build profile used for development and debugging.
 [profile.dev]
-opt-level = 0             # Disable all compiler optimizations.
-debug = true              # Output full debug info in the binary.
-debug-assertions = true   # Include debug assertions in the binary.
-overflow-checks = true    # Check for overflows at runtime.
-lto = "off"               # Disable link time optimization (overridden).
-panic = 'unwind'          # Unwind the stack upon panic.
-incremental = true        # Incremental build.
-codegen-units = 256       # Produce multiple code generation units.
-rpath = false             # Disable runtime search path.
+opt-level = 0           # Disable all compiler optimizations.
+debug = true            # Output full debug info in the binary.
+debug-assertions = true # Include debug assertions in the binary.
+overflow-checks = true  # Check for overflows at runtime.
+lto = "off"             # Disable link time optimization (overridden).
+panic = 'unwind'        # Unwind the stack upon panic.
+incremental = true      # Incremental build.
+codegen-units = 256     # Produce multiple code generation units.
+rpath = false           # Disable runtime search path.
