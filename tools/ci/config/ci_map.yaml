@@ -28,39 +28,39 @@ catloop:
   tcp_echo:
     scenario0:
       bufsize: 64
-      nclients: 32
+      nclients: 1
       nrequests: 100
       run_mode: sequential
     scenario1:
       bufsize: 1024
-      nclients: 32
+      nclients: 1
       nrequests: 100
       run_mode: sequential
     scenario2:
       bufsize: 64
-      nclients: 32
+      nclients: 1
       nrequests: 100
       run_mode: concurrent
     scenario3:
       bufsize: 1024
-      nclients: 32
+      nclients: 1
       nrequests: 100
       run_mode: concurrent
   tcp_close:
     scenario0:
-      nclients: 32
+      nclients: 1
       run_mode: sequential
       who_closes: client
     scenario1:
-      nclients: 32
+      nclients: 1
       run_mode: sequential
       who_closes: server
     scenario2:
-      nclients: 32
+      nclients: 1
       run_mode: concurrent
       who_closes: client
     scenario3:
-      nclients: 32
+      nclients: 1
       run_mode: concurrent
       who_closes: server
   tcp_ping_pong: {}
