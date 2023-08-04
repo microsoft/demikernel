@@ -139,9 +139,8 @@ path = "examples/rust/tcp-ping-pong.rs"
 #=======================================================================================================================
 
 [features]
-default = ["catnap-libos", "catnapw-libos"]
+default = ["catnap-libos"]
 catnap-libos = []
-catnapw-libos = []
 catpowder-libos = []
 catcollar-libos = ["liburing"]
 catmem-libos = []

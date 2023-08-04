@@ -7,7 +7,6 @@
 [![Catpowder LibOS](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catpowder.yml)
 [![Catcollar LibOS](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catcollar.yml)
 [![Catloop LibOS](https://github.com/demikernel/demikernel/actions/workflows/catloop.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catloop.yml)
-[![Catnapw LibOS](https://github.com/demikernel/demikernel/actions/workflows/catnapw.yml/badge.svg)](https://github.com/demikernel/demikernel/actions/workflows/catnapw.yml)
 
 _Demikernel_ is a library operating system (LibOS) architecture designed for use
 with kernel-bypass I/O devices. This architecture offers a uniform system call
@@ -29,7 +28,6 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 - `catnap` -- Linux Sockets LibOS
 - `catnip` -- DPDK LibOS
 - `catpowder` -- Linux Raw Sockets
-- `catnapw` -- Windows Sockets LibOS
 
 ## Documentation
 

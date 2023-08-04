@@ -70,7 +70,7 @@ RECURSIVE_COPY_FORCE_NO_PROMPT = xcopy /S /E /Y /I
 #=======================================================================================================================
 
 !ifndef LIBOS
-LIBOS = catnapw
+LIBOS = catnap
 !endif
 CARGO_FEATURES = $(CARGO_FEATURES) --features=$(LIBOS)-libos
 

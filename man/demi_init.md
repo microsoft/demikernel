@@ -34,7 +34,6 @@ All arguments supported by Demikernel are listed in the table below. Arguments t
 | `ARG-4` | `--catnap`    | Enables Linux Sockets LibOS       | Linux        |
 | `ARG-5` | `--catnip`    | Enables DPDK LibOS                | Linux        |
 | `ARG-6` | `--catpowder` | Enables Linux Raw Sockets LibOS   | Linux        |
-| `ARG-7` | `--catnapw`   | Enables Windows Sockets LibOS     | Windows      |
 
 These arguments are mutually exclusive. Demikernel currently does not support multiple LibOSes to co-exist.
 [Issue #158](https://github.com/demikernel/demikernel/issues/158) tracks progress of this feature.
