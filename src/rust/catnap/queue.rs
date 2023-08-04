@@ -18,6 +18,7 @@ use crate::{
             IoQueue,
             QType,
         },
+        QToken,
     },
     scheduler::{
         TaskHandle,
@@ -40,7 +41,8 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// Per-queue metadata: Catnap control block
+/// CatnapQueue represents a single Catnap queue. It contains all of the Catnap-specific functionality that operates on
+/// a single queue. It is stateless, all state is kept in the Socket data structure.
 #[derive(Clone)]
 pub struct CatnapQueue {
     qtype: QType,
@@ -81,47 +83,65 @@ impl CatnapQueue {
         self.socket.borrow().remote()
     }
 
-    /// Begins `bind()` operation.
-    pub fn prepare_bind(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_bind()
-    }
-
     /// Binds the target queue to `local` address.
-    pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
-        self.socket.borrow_mut().bind(local)
-    }
-
-    /// Begins `listen()` operation.
-    pub fn prepare_listen(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_listen()
+    pub fn bind(&self, local: SocketAddrV4) -> Result<(), Fail> {
+        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
+        socket.prepare_bind()?;
+        match socket.bind(local) {
+            Ok(_) => {
+                socket.commit();
+                Ok(())
+            },
+            Err(e) => {
+                socket.abort();
+                Err(e)
+            },
+        }
     }
 
     /// Sets the target queue to listen for incoming connections.
-    pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
-        self.socket.borrow_mut().listen(backlog)
+    pub fn listen(&self, backlog: usize) -> Result<(), Fail> {
+        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
+        socket.prepare_listen()?;
+        match socket.listen(backlog) {
+            Ok(_) => {
+                socket.commit();
+                Ok(())
+            },
+            Err(e) => {
+                socket.abort();
+                Err(e)
+            },
+        }
     }
 
-    /// Prepare to begin accepting connections.
-    pub fn prepare_accept(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_accept()
+    /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
+    /// synchronous functionality necessary to start an accept.
+    pub fn accept<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.socket.borrow_mut().prepare_accept()?;
+        self.do_generic_sync_control_path_call(insert_coroutine, true)
     }
 
-    /// Begins the accepted operation.
-    pub fn prepare_accepted(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_accepted()
-    }
+    /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
+    pub async fn do_accept(&self, yielder: Yielder) -> Result<Self, Fail> {
+        // Check whether we are accepting on this queue.
+        self.socket.borrow_mut().prepare_accepted()?;
 
-    /// Accepts a new connection.
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<Self, Fail> {
         loop {
             let mut socket: RefMut<Socket> = self.socket.borrow_mut();
+            // Try to call underlying platform accept.
             match socket.try_accept() {
                 Ok(new_accepted_socket) => {
+                    socket.commit();
                     break Ok(Self {
                         qtype: self.qtype,
                         socket: Rc::new(RefCell::new(new_accepted_socket)),
                         pending_ops: Rc::new(RefCell::new(HashMap::<TaskHandle, YielderHandle>::new())),
-                    })
+                    });
                 },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
@@ -129,83 +149,128 @@ impl CatnapQueue {
                     // succeeds.
                     drop(socket);
                     if let Err(e) = yielder.yield_once().await {
+                        self.socket.borrow_mut().rollback();
                         break Err(e);
                     }
                 },
-                Err(e) => break Err(e),
+                Err(e) => {
+                    socket.rollback();
+                    break Err(e);
+                },
             }
         }
     }
 
-    /// Prepare to begin connecting.
-    pub fn prepare_connect(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_connect()
+    /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
+    /// connect completes.
+    pub fn connect<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.socket.borrow_mut().prepare_connect()?;
+        self.do_generic_sync_control_path_call(insert_coroutine, true)
     }
 
-    /// Begins the connect operation.
-    pub fn prepare_connected(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_connected()
-    }
+    /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
+    /// asynchronous code necessary to run a connect and any single-queue functionality after the connect completes.
+    pub async fn do_connect(&self, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
+        self.socket.borrow_mut().prepare_connected()?;
 
-    /// Connects the target queue to a remote address.
-    pub async fn connect(&mut self, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
         loop {
             let mut socket: RefMut<Socket> = self.socket.borrow_mut();
             match socket.try_connect(remote) {
-                Ok(r) => break Ok(r),
+                Ok(r) => {
+                    socket.commit();
+                    break Ok(r);
+                },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
                     // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
                     // succeeds.
                     drop(socket);
                     if let Err(e) = yielder.yield_once().await {
+                        self.socket.borrow_mut().rollback();
                         break Err(e);
                     }
                 },
-                Err(e) => break Err(e),
+                Err(e) => {
+                    socket.rollback();
+                    break Err(e);
+                },
             }
         }
     }
 
-    /// Prepare to begin closing the connection.
-    pub fn prepare_close(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_close()
-    }
-
-    /// Begins closed operation.
-    pub fn prepare_closed(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_closed()
-    }
-
-    /// Begins close process.
-    pub fn close(&mut self) -> Result<(), Fail> {
+    /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
+    pub fn close(&self) -> Result<(), Fail> {
         let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.try_close()
+        socket.prepare_close()?;
+        socket.commit();
+        match socket.try_close() {
+            Ok(_) => {
+                socket.prepare_closed()?;
+                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+                socket.commit();
+                Ok(())
+            },
+            Err(e) => {
+                socket.abort();
+                Err(e)
+            },
+        }
     }
 
-    /// Closes the target queue.
-    pub async fn async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+    /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
+    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.socket.borrow_mut().prepare_close()?;
+        self.do_generic_sync_control_path_call(insert_coroutine, false)
+    }
+
+    /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
+    /// to close a queue and any single-queue functionality after the close completes.
+    pub async fn do_close(&self, yielder: Yielder) -> Result<(), Fail> {
+        self.socket.borrow_mut().prepare_closed()?;
         loop {
             let mut socket: RefMut<Socket> = self.socket.borrow_mut();
             match socket.try_close() {
-                Ok(()) => break Ok(()),
+                Ok(()) => {
+                    self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+                    socket.commit();
+                    return Ok(());
+                },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
                     // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
                     // succeeds.
                     drop(socket);
                     if let Err(e) = yielder.yield_once().await {
-                        break Err(e);
+                        self.socket.borrow_mut().rollback();
+                        return Err(e);
                     }
                 },
-                Err(e) => break Err(e),
+                Err(e) => {
+                    socket.rollback();
+                    return Err(e);
+                },
             }
         }
     }
 
-    /// Pushes data to the target queue.
-    pub async fn push(
-        &mut self,
+    /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
+    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
+        self.do_generic_sync_data_path_call(insert_coroutine)
+    }
+
+    /// Asynchronously push data to the queue. This function contains all of the single-queue, asynchronous code
+    /// necessary to push to the queue and any single-queue functionality after the push completes.
+    pub async fn do_push(
+        &self,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddrV4>,
         yielder: Yielder,
@@ -215,24 +280,30 @@ impl CatnapQueue {
             match socket.try_push(buf, addr) {
                 Ok(()) => {
                     if buf.len() == 0 {
-                        break Ok(());
+                        return Ok(());
                     }
                     // Operation in progress. Check if cancelled.
                     // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
                     // succeeds.
                     drop(socket);
-                    if let Err(e) = yielder.yield_once().await {
-                        break Err(e);
-                    }
+                    yielder.yield_once().await?;
                 },
-                Err(e) => break Err(e),
+                Err(e) => return Err(e),
             }
         }
     }
 
-    /// Pops data from the target queue.
-    pub async fn pop(
-        &mut self,
+    /// Schedules a coroutine to pop from this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to pop a buffer from this queue and any single-queue functionality after the pop
+    /// completes.
+    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
+        self.do_generic_sync_data_path_call(insert_coroutine)
+    }
+
+    /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
+    /// necessary to pop from a queue and any single-queue functionality after the pop completes.
+    pub async fn do_pop(
+        &self,
         size: Option<usize>,
         yielder: Yielder,
     ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
@@ -240,43 +311,69 @@ impl CatnapQueue {
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
         // Check that we allocated a DemiBuffer that is big enough.
-        assert!(buf.len() == size);
+        debug_assert!(buf.len() == size);
 
         loop {
             let socket: Ref<Socket> = self.socket.borrow();
             match socket.try_pop(&mut buf, size) {
-                Ok(addr) => break Ok((addr, buf.clone())),
+                Ok(addr) => return Ok((addr, buf.clone())),
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
                     // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
                     // succeeds.
                     drop(socket);
-                    if let Err(e) = yielder.yield_once().await {
-                        break Err(e);
-                    }
+                    yielder.yield_once().await?;
                 },
-                Err(e) => break Err(e),
+                Err(e) => return Err(e),
             }
         }
     }
 
-    /// Commit to the prepared operation.
-    pub fn commit(&self) {
-        self.socket.borrow_mut().commit()
+    /// Generic function for spawning a control-path coroutine on [self].
+    fn do_generic_sync_control_path_call<F>(&self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        // Spawn coroutine.
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let task_handle: TaskHandle = match coroutine(yielder) {
+            // We successfully spawned the coroutine.
+            Ok(handle) => {
+                // Commit the operation on the socket.
+                self.socket.borrow_mut().commit();
+                handle
+            },
+            // We failed to spawn the coroutine.
+            Err(e) => {
+                // Abort the operation on the socket.
+                self.socket.borrow_mut().abort();
+                return Err(e);
+            },
+        };
+
+        // If requested, add this operation to the list of pending operations on this queue.
+        if add_as_pending_op {
+            self.add_pending_op(&task_handle, &yielder_handle);
+        }
+
+        Ok(task_handle.get_task_id().into())
     }
 
-    /// Discards the prepared operation.
-    pub fn abort(&self) {
-        self.socket.borrow_mut().abort()
-    }
-
-    /// Rollbacks to the previous state.
-    pub fn rollback(&self) {
-        self.socket.borrow_mut().rollback()
+    /// Generic function for spawning a data-path coroutine on [self].
+    fn do_generic_sync_data_path_call<F>(&self, coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let task_handle: TaskHandle = coroutine(yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Adds a new operation to the list of pending operations on this queue.
-    pub fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
+    fn add_pending_op(&self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
         self.pending_ops
             .borrow_mut()
             .insert(handle.clone(), yielder_handle.clone());
@@ -284,13 +381,15 @@ impl CatnapQueue {
 
     /// Removes an operation from the list of pending operations on this queue. This function should only be called if
     /// add_pending_op() was previously called.
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
+    /// TODO: Remove this when we clean up take_result().
+    #[deprecated]
+    pub fn remove_pending_op(&self, handle: &TaskHandle) {
         self.pending_ops.borrow_mut().remove(handle);
     }
 
     /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
     /// yielded, wake the coroutine with an error.
-    pub fn cancel_pending_ops(&mut self, cause: Fail) {
+    fn cancel_pending_ops(&self, cause: Fail) {
         for (handle, mut yielder_handle) in self.pending_ops.borrow_mut().drain() {
             if !handle.has_completed() {
                 yielder_handle.wake_with(Err(cause.clone()));
