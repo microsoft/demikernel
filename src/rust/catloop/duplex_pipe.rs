@@ -2,7 +2,10 @@
 // Licensed under the MIT license.
 
 use crate::{
-    catmem::CatmemLibOS,
+    catmem::{
+        CatmemLibOS,
+        QMode,
+    },
     demi_sgarray_t,
     runtime::fail::Fail,
     QDesc,
@@ -49,16 +52,24 @@ impl DuplexPipe {
 
     /// Creates a duplex pipe.
     pub fn create_duplex_pipe(catmem: Rc<RefCell<CatmemLibOS>>, ipv4: &Ipv4Addr, port: u16) -> Result<Self, Fail> {
-        let rx: QDesc = catmem.borrow_mut().create_pipe(&format!("{}:{}:rx", ipv4, port))?;
-        let tx: QDesc = catmem.borrow_mut().create_pipe(&format!("{}:{}:tx", ipv4, port))?;
+        let rx: QDesc = catmem
+            .borrow_mut()
+            .create_pipe(&format!("{}:{}:rx", ipv4, port), QMode::Pop)?;
+        let tx: QDesc = catmem
+            .borrow_mut()
+            .create_pipe(&format!("{}:{}:tx", ipv4, port), QMode::Push)?;
         Ok(Self { catmem, rx, tx })
     }
 
     /// Opens a duplex pipe.
     pub fn open_duplex_pipe(catmem: Rc<RefCell<CatmemLibOS>>, ipv4: &Ipv4Addr, port: u16) -> Result<Self, Fail> {
         // Note: the rx and tx are intentionally flipped in the formatting string below.
-        let rx: QDesc = catmem.borrow_mut().open_pipe(&format!("{}:{}:tx", ipv4, port))?;
-        let tx: QDesc = catmem.borrow_mut().open_pipe(&format!("{}:{}:rx", ipv4, port))?;
+        let rx: QDesc = catmem
+            .borrow_mut()
+            .open_pipe(&format!("{}:{}:tx", ipv4, port), QMode::Pop)?;
+        let tx: QDesc = catmem
+            .borrow_mut()
+            .open_pipe(&format!("{}:{}:rx", ipv4, port), QMode::Push)?;
         Ok(Self { catmem, rx, tx })
     }
 
