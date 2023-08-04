@@ -185,15 +185,15 @@ impl CatnapLibOS {
         timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
 
-        Ok(self
-            .get_queue(qd)?
-            .accept(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-                // Asynchronous accept code.
-                let coroutine: Pin<Box<Operation>> = self.accept_coroutine(qd, yielder)?;
-                // Insert async coroutine into the scheduler.
-                let task_id: String = format!("Catnap::accept for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
-            })?)
+        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            // Asynchronous accept code.
+            let coroutine: Pin<Box<Operation>> = self.accept_coroutine(qd, yielder)?;
+            // Insert async coroutine into the scheduler.
+            let task_id: String = format!("Catnap::accept for qd={:?}", qd);
+            self.insert_coroutine(task_id, coroutine)
+        };
+
+        Ok(self.get_queue(qd)?.accept(coroutine)?)
     }
 
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
@@ -231,13 +231,14 @@ impl CatnapLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        Ok(self
-            .get_queue(qd)?
-            .connect(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-                let coroutine: Pin<Box<Operation>> = self.connect_coroutine(qd, remote, yielder)?;
-                let task_id: String = format!("Catnap::connect for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
-            })?)
+
+        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = self.connect_coroutine(qd, remote, yielder)?;
+            let task_id: String = format!("Catnap::connect for qd={:?}", qd);
+            self.insert_coroutine(task_id, coroutine)
+        };
+
+        Ok(self.get_queue(qd)?.connect(coroutine)?)
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
@@ -281,14 +282,14 @@ impl CatnapLibOS {
         timer!("catnap::async_close");
         trace!("async_close() qd={:?}", qd);
 
-        Ok(self
-            .get_queue(qd)?
-            .async_close(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-                // Async code to close this queue.
-                let coroutine: Pin<Box<Operation>> = self.close_coroutine(qd, yielder)?;
-                let task_id: String = format!("Catnap::close for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
-            })?)
+        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            // Async code to close this queue.
+            let coroutine: Pin<Box<Operation>> = self.close_coroutine(qd, yielder)?;
+            let task_id: String = format!("Catnap::close for qd={:?}", qd);
+            self.insert_coroutine(task_id, coroutine)
+        };
+
+        Ok(self.get_queue(qd)?.async_close(coroutine)?)
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
