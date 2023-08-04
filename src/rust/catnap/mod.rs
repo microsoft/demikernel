@@ -178,7 +178,7 @@ impl CatnapLibOS {
     }
 
     /// Synchronous cross-queue code to start accepting a connection. This function schedules the asynchronous
-    /// co-routine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
+    /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the accept.
     pub fn accept(&self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
@@ -197,7 +197,7 @@ impl CatnapLibOS {
     }
 
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
-    /// asynchronously to accept a connection and performs any necessary mult-queue operations at the libOS-level after
+    /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
     fn accept_coroutine(&self, qd: QDesc, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
         let qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
@@ -225,7 +225,7 @@ impl CatnapLibOS {
     }
 
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
-    /// co-routine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
+    /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
     pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
@@ -242,7 +242,7 @@ impl CatnapLibOS {
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
-    /// asynchronously to connect a queue and performs any necessary mult-queue operations at the libOS-level after
+    /// asynchronously to connect a queue and performs any necessary multi-queue operations at the libOS-level after
     /// the connect succeeds or fails.
     fn connect_coroutine(
         &self,
@@ -293,7 +293,7 @@ impl CatnapLibOS {
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
-    /// and the underlying POSIX socket and performs any necessary mult-queue operations at the libOS-level after
+    /// and the underlying POSIX socket and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     fn close_coroutine(&self, qd: QDesc, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
         let qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>> = self.qtable.clone();
@@ -315,7 +315,7 @@ impl CatnapLibOS {
         }))
     }
 
-    /// Synchronous code to pushto [buf] to a CatnapQueue and its underlying POSIX socket. This function schedules the
+    /// Synchronous code to push [buf] to a CatnapQueue and its underlying POSIX socket. This function schedules the
     /// coroutine that asynchronously runs the push and any synchronous multi-queue functionality before the push
     /// begins.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
@@ -339,7 +339,7 @@ impl CatnapLibOS {
 
     /// Asynchronous code to push [buf] to a CatnapQueue and its underlying POSIX socket. This function returns a
     /// coroutine that runs asynchronously to push a queue and its underlying POSIX socket and performs any necessary
-    /// mult-queue operations at the libOS-level after the push succeeds or fails.
+    /// multi-queue operations at the libOS-level after the push succeeds or fails.
     fn push_coroutine(&self, qd: QDesc, mut buf: DemiBuffer, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
         let queue: CatnapQueue = self.get_queue(qd)?;
         Ok(Box::pin(async move {
@@ -378,7 +378,7 @@ impl CatnapLibOS {
 
     /// Asynchronous code to pushto [buf] to [remote] on a CatnapQueue and its underlying POSIX socket. This function
     /// returns a coroutine that runs asynchronously to pushto a queue and its underlying POSIX socket and performs any
-    /// necessary mult-queue operations at the libOS-level after the pushto succeeds or fails.
+    /// necessary multi-queue operations at the libOS-level after the pushto succeeds or fails.
     fn pushto_coroutine(
         &self,
         qd: QDesc,
@@ -388,7 +388,6 @@ impl CatnapLibOS {
     ) -> Result<Pin<Box<Operation>>, Fail> {
         let queue: CatnapQueue = self.get_queue(qd)?;
         Ok(Box::pin(async move {
-            // Parse result.
             // Wait for push to complete.
             match queue.do_push(&mut buf, Some(remote), yielder).await {
                 Ok(()) => (qd, OperationResult::Push),
@@ -401,7 +400,7 @@ impl CatnapLibOS {
     }
 
     /// Synchronous code to pop data from a CatnapQueue and its underlying POSIX socket of optional [size]. This
-    /// function schedules the asynchronous co-routine and performs any necessary synchronous, multi-queue operations
+    /// function schedules the asynchronous coroutine and performs any necessary synchronous, multi-queue operations
     /// at the libOS-level before beginning the pop.
     pub fn pop(&self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
@@ -421,7 +420,7 @@ impl CatnapLibOS {
     }
 
     /// Asynchronous code to pop data from a CatnapQueue and its underlying POSIX socket of optional [size]. This
-    /// function returns a coroutine that asynchronously runs pop and performs any necessary mult-queue operations at
+    /// function returns a coroutine that asynchronously runs pop and performs any necessary multi-queue operations at
     /// the libOS-level after the pop succeeds or fails.
     fn pop_coroutine(&self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
         let queue: CatnapQueue = self.get_queue(qd)?;
@@ -513,7 +512,7 @@ impl CatnapLibOS {
         let task: OperationTask = OperationTask::new(task_id, coroutine);
         match self.runtime.scheduler.insert(task) {
             Some(handle) => Ok(handle),
-            None => Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
+            None => Err(Fail::new(libc::EAGAIN, "cannot schedule coroutine")),
         }
     }
 }

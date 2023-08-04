@@ -329,22 +329,22 @@ impl CatnapQueue {
         }
     }
 
-    /// Generic function for spawning a control-path co-routine on [self].
+    /// Generic function for spawning a control-path coroutine on [self].
     fn do_generic_sync_control_path_call<F>(&self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        // Spawn co-routine.
+        // Spawn coroutine.
         let yielder: Yielder = Yielder::new();
         let yielder_handle: YielderHandle = yielder.get_handle();
         let task_handle: TaskHandle = match coroutine(yielder) {
-            // We successfully spawned the co-routine.
+            // We successfully spawned the coroutine.
             Ok(handle) => {
                 // Commit the operation on the socket.
                 self.socket.borrow_mut().commit();
                 handle
             },
-            // We failed to spawn the co-routine.
+            // We failed to spawn the coroutine.
             Err(e) => {
                 // Abort the operation on the socket.
                 self.socket.borrow_mut().abort();
@@ -360,7 +360,7 @@ impl CatnapQueue {
         Ok(task_handle.get_task_id().into())
     }
 
-    /// Generic function for spawning a data-path co-routine on [self].
+    /// Generic function for spawning a data-path coroutine on [self].
     fn do_generic_sync_data_path_call<F>(&self, coroutine: F) -> Result<QToken, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
