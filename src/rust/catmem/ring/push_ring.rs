@@ -14,6 +14,7 @@ use crate::{
             state::RingStateMachine,
         },
     },
+    scheduler::Mutex,
 };
 
 //======================================================================================================================
@@ -33,6 +34,8 @@ pub struct PushRing {
     state_machine: RingStateMachine,
     /// Underlying buffer.
     buffer: SharedRingBuffer<u16>,
+    /// Serialize acces to underlying ring buffer.
+    mutex: Mutex,
 }
 
 //======================================================================================================================
@@ -45,6 +48,7 @@ impl PushRing {
         Ok(Self {
             state_machine: RingStateMachine::new(),
             buffer: SharedRingBuffer::create(name, size)?,
+            mutex: Mutex::new(),
         })
     }
 
@@ -53,6 +57,7 @@ impl PushRing {
         Ok(Self {
             state_machine: RingStateMachine::new(),
             buffer: SharedRingBuffer::open(name, size)?,
+            mutex: Mutex::new(),
         })
     }
 
@@ -69,16 +74,33 @@ impl PushRing {
     /// Try to send an eof through the shared memory ring. If success, this queue is now closed, otherwise, return
     /// EAGAIN and retry.
     pub fn try_close(&mut self) -> Result<(), Fail> {
-        match self.buffer.try_enqueue(EOF) {
+        // Try to lock the ring buffer.
+        if !self.mutex.try_lock() {
+            return Err(Fail::new(libc::EAGAIN, "Could not lock ring buffer to push EOF"));
+        }
+
+        let result: Result<(), u16> = self.buffer.try_enqueue(EOF);
+        self.mutex.unlock();
+        match result {
             Ok(()) => Ok(()),
-            Err(_) => Err(Fail::new(libc::EAGAIN, "Could not push")),
+            Err(_) => Err(Fail::new(libc::EAGAIN, "Could not push EOF")),
         }
     }
 
-    /// Try to send a byte through the shared memory ring. If there is no space, return [false], otherwise, return [true] if successfully enqueued.
+    /// Try to send a byte through the shared memory ring. If there is no space or another thread is writing to this
+    /// ring, return [false], otherwise, return [true] if successfully enqueued.
     pub fn try_push(&mut self, byte: &u8) -> Result<bool, Fail> {
         let x: u16 = (*byte & 0xff) as u16;
-        Ok(self.buffer.try_enqueue(x).is_ok())
+        // Try to lock the ring buffer.
+        if !self.mutex.try_lock() {
+            return Ok(false);
+        }
+        // Write to the ring buffer.
+        let result: Result<(), u16> = self.buffer.try_enqueue(x);
+        // Unlock the ring buffer.
+        self.mutex.unlock();
+        // Return result.
+        Ok(result.is_ok())
     }
 
     /// Commits to moving into the prepared state.
