@@ -93,6 +93,11 @@ impl PushRing {
     /// Try to send a byte through the shared memory ring. If there is no space or another thread is writing to this
     /// ring, return [false], otherwise, return [true] if successfully enqueued.
     pub fn try_push(&mut self, byte: &u8) -> Result<bool, Fail> {
+        if self.state_machine.is_closing() {
+            return Err(Fail::new(libc::ECANCELED, "queue is closing"));
+        } else if self.state_machine.is_closed() {
+            return Err(Fail::new(libc::ECANCELED, "queue was closed"));
+        };
         let x: u16 = (*byte & 0xff) as u16;
         // Try to lock the ring buffer.
         if !self.mutex.try_lock() {
