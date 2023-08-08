@@ -10,6 +10,10 @@ use crate::{
         retry_errno,
         Socket,
     },
+    pal::constants::{
+        SOCK_DGRAM,
+        SOCK_STREAM,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -59,11 +63,11 @@ pub struct CatnapQueue {
 impl CatnapQueue {
     pub fn new(domain: libc::c_int, typ: libc::c_int) -> Result<Self, Fail> {
         // This was previously checked in the LibOS layer.
-        debug_assert!(typ == libc::SOCK_STREAM || typ == libc::SOCK_DGRAM);
+        debug_assert!(typ == SOCK_STREAM || typ == SOCK_DGRAM);
 
         let qtype: QType = match typ {
-            libc::SOCK_STREAM => QType::TcpSocket,
-            libc::SOCK_DGRAM => QType::UdpSocket,
+            SOCK_STREAM => QType::TcpSocket,
+            SOCK_DGRAM => QType::UdpSocket,
             // The following statement is unreachable because we have checked this on the libOS layer.
             _ => unreachable!("Invalid socket type (typ={:?})", typ),
         };

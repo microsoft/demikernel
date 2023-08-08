@@ -46,7 +46,7 @@ use crate::catcollar::CatcollarLibOS;
 use crate::catloop::CatloopLibOS;
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::CatmemLibOS;
-#[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+#[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::CatnapLibOS;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;

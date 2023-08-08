@@ -161,7 +161,14 @@ static void client(int argc,
                    unsigned max_iterations)
 {
     int sockqd = -1;
+
+    #ifdef _WIN32
+    char expected_buf[DATA_SIZE];
+    #endif
+
+    #ifdef  __linux__
     char expected_buf[data_size];
+    #endif
 
     /* Initialize demikernel */
     assert(demi_init(argc, argv) == 0);
