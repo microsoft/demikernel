@@ -24,6 +24,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        DemiRuntime,
         QDesc,
         QToken,
     },
@@ -87,12 +88,13 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-
+        #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+        let runtime: DemiRuntime = DemiRuntime::new();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
             #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
-            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap(CatnapLibOS::new(&config))),
+            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap(CatnapLibOS::new(&config, runtime.clone()))),
             #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
             LibOSName::CatnapW => Self::NetworkLibOS(NetworkLibOS::CatnapW(CatnapWLibOS::new(&config))),
             #[cfg(feature = "catcollar-libos")]

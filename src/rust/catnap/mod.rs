@@ -2,23 +2,14 @@
 // Licensed under the MIT license.
 
 mod queue;
-mod runtime;
 mod socket;
-
-//==============================================================================
-// Exports
-//==============================================================================
-
-pub use self::{
-    queue::CatnapQueue,
-    runtime::PosixRuntime,
-};
 
 //==============================================================================
 // Imports
 //==============================================================================
 
 use crate::{
+    catnap::queue::CatnapQueue,
     demikernel::config::Config,
     pal::{
         constants::SOMAXCONN,
@@ -45,6 +36,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        DemiRuntime,
         QDesc,
         QToken,
     },
@@ -82,7 +74,7 @@ pub struct CatnapLibOS {
     /// Table of queue descriptors.
     qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>>,
     /// Underlying runtime.
-    runtime: PosixRuntime,
+    runtime: DemiRuntime,
 }
 
 //======================================================================================================================
@@ -92,11 +84,10 @@ pub struct CatnapLibOS {
 /// Associate Functions for Catnap LibOS
 impl CatnapLibOS {
     /// Instantiates a Catnap LibOS.
-    pub fn new(_config: &Config) -> Self {
+    pub fn new(_config: &Config, runtime: DemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catnap::new");
         let qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>> = Rc::new(RefCell::new(IoQueueTable::<CatnapQueue>::new()));
-        let runtime: PosixRuntime = PosixRuntime::new();
         Self { qtable, runtime }
     }
 
@@ -189,8 +180,8 @@ impl CatnapLibOS {
             // Asynchronous accept code.
             let coroutine: Pin<Box<Operation>> = self.accept_coroutine(qd, yielder)?;
             // Insert async coroutine into the scheduler.
-            let task_id: String = format!("Catnap::accept for qd={:?}", qd);
-            self.runtime.insert_coroutine(task_id, coroutine)
+            let task_name: String = format!("Catnap::accept for qd={:?}", qd);
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
         Ok(self.get_queue(qd)?.accept(coroutine)?)
@@ -234,8 +225,8 @@ impl CatnapLibOS {
 
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = self.connect_coroutine(qd, remote, yielder)?;
-            let task_id: String = format!("Catnap::connect for qd={:?}", qd);
-            self.runtime.insert_coroutine(task_id, coroutine)
+            let task_name: String = format!("Catnap::connect for qd={:?}", qd);
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
         Ok(self.get_queue(qd)?.connect(coroutine)?)
@@ -285,8 +276,8 @@ impl CatnapLibOS {
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Async code to close this queue.
             let coroutine: Pin<Box<Operation>> = self.close_coroutine(qd, yielder)?;
-            let task_id: String = format!("Catnap::close for qd={:?}", qd);
-            self.runtime.insert_coroutine(task_id, coroutine)
+            let task_name: String = format!("Catnap::close for qd={:?}", qd);
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
         Ok(self.get_queue(qd)?.async_close(coroutine)?)
@@ -332,8 +323,8 @@ impl CatnapLibOS {
             .get_queue(qd)?
             .push(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.push_coroutine(qd, buf, yielder)?;
-                let task_id: String = format!("Catnap::push for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id, coroutine)
+                let task_name: String = format!("Catnap::push for qd={:?}", qd);
+                self.runtime.insert_coroutine(&task_name, coroutine)
             })?)
     }
 
@@ -371,8 +362,8 @@ impl CatnapLibOS {
             .get_queue(qd)?
             .push(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.pushto_coroutine(qd, buf, remote, yielder)?;
-                let task_id: String = format!("Catnap::pushto for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id, coroutine)
+                let task_name: String = format!("Catnap::pushto for qd={:?}", qd);
+                self.runtime.insert_coroutine(&task_name, coroutine)
             })?)
     }
 
@@ -414,8 +405,8 @@ impl CatnapLibOS {
             .get_queue(qd)?
             .pop(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.pop_coroutine(qd, size, yielder)?;
-                let task_id: String = format!("Catnap::pop for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id, coroutine)
+                let task_name: String = format!("Catnap::pop for qd={:?}", qd);
+                self.runtime.insert_coroutine(&task_name, coroutine)
             })?)
     }
 
@@ -522,7 +513,7 @@ impl Drop for CatnapLibOS {
 //==============================================================================
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(rt: &PosixRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
