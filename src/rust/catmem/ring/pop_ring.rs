@@ -14,6 +14,7 @@ use crate::{
             state::RingStateMachine,
         },
     },
+    scheduler::Mutex,
 };
 
 //======================================================================================================================
@@ -26,6 +27,8 @@ pub struct PopRing {
     state_machine: RingStateMachine,
     /// Underlying buffer.
     buffer: SharedRingBuffer<u16>,
+    /// Mutex to ensure single-threaded access to this ring.
+    mutex: Mutex,
 }
 
 //======================================================================================================================
@@ -38,6 +41,7 @@ impl PopRing {
         Ok(Self {
             state_machine: RingStateMachine::new(),
             buffer: SharedRingBuffer::create(name, size)?,
+            mutex: Mutex::new(),
         })
     }
 
@@ -46,6 +50,7 @@ impl PopRing {
         Ok(Self {
             state_machine: RingStateMachine::new(),
             buffer: SharedRingBuffer::open(name, size)?,
+            mutex: Mutex::new(),
         })
     }
 
@@ -55,7 +60,14 @@ impl PopRing {
         if self.state_machine.is_closed() {
             return Err(Fail::new(libc::ECONNRESET, "queue was closed"));
         };
-        if let Some(bytes) = self.buffer.try_dequeue() {
+        if !self.mutex.try_lock() {
+            let cause: String = format!("could not lock ring buffer to pop byte");
+            warn!("try_pop(): {}", &cause);
+            return Ok((None, false));
+        }
+        let out: Option<u16> = self.buffer.try_dequeue();
+        assert_eq!(self.mutex.unlock().is_ok(), true);
+        if let Some(bytes) = out {
             let (high, low): (u8, u8) = (((bytes >> 8) & 0xff) as u8, (bytes & 0xff) as u8);
             Ok((Some(low), high != 0))
         } else {
