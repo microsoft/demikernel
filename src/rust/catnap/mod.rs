@@ -525,7 +525,7 @@ impl Drop for CatnapLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        for mut queue in qtable.drain() {
+        for queue in qtable.drain() {
             if let Err(e) = queue.close() {
                 error!("close() failed (error={:?}", e);
             }
