@@ -57,8 +57,10 @@ impl PopRing {
     /// Try to pop a byte from the shared memory ring. If successful, return the byte and whether the eof flag is set,
     /// otherwise return None for a retry.
     pub fn try_pop(&mut self) -> Result<(Option<u8>, bool), Fail> {
-        if self.state_machine.is_closed() {
-            return Err(Fail::new(libc::ECONNRESET, "queue was closed"));
+        if self.state_machine.is_closing() {
+            return Err(Fail::new(libc::ECANCELED, "queue is closing"));
+        } else if self.state_machine.is_closed() {
+            return Err(Fail::new(libc::ECANCELED, "queue was closed"));
         };
         if !self.mutex.try_lock() {
             let cause: String = format!("could not lock ring buffer to pop byte");

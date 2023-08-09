@@ -47,6 +47,11 @@ impl RingStateMachine {
         self.current == RingState::Closed
     }
 
+    /// Asserts whether the current state is [RingState::Closing].
+    pub fn is_closing(&self) -> bool {
+        self.current == RingState::Closing
+    }
+
     /// Prepares to move into the next state.
     pub fn prepare(&mut self, op: RingControlOperation) -> Result<(), Fail> {
         let next: RingState = self.get_next_state(op)?;
