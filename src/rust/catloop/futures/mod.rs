@@ -17,16 +17,3 @@ use crate::runtime::{
     QDesc,
 };
 use ::std::net::SocketAddrV4;
-
-//======================================================================================================================
-// Structures
-//======================================================================================================================
-
-#[derive(Clone)]
-/// Operation Result
-pub enum OperationResult {
-    Accept(QDesc, SocketAddrV4),
-    Connect,
-    Close,
-    Failed(Fail),
-}
