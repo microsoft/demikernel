@@ -190,7 +190,7 @@ impl CatnapLibOS {
             let coroutine: Pin<Box<Operation>> = self.accept_coroutine(qd, yielder)?;
             // Insert async coroutine into the scheduler.
             let task_id: String = format!("Catnap::accept for qd={:?}", qd);
-            self.insert_coroutine(task_id, coroutine)
+            self.runtime.insert_coroutine(task_id, coroutine)
         };
 
         Ok(self.get_queue(qd)?.accept(coroutine)?)
@@ -235,7 +235,7 @@ impl CatnapLibOS {
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = self.connect_coroutine(qd, remote, yielder)?;
             let task_id: String = format!("Catnap::connect for qd={:?}", qd);
-            self.insert_coroutine(task_id, coroutine)
+            self.runtime.insert_coroutine(task_id, coroutine)
         };
 
         Ok(self.get_queue(qd)?.connect(coroutine)?)
@@ -286,7 +286,7 @@ impl CatnapLibOS {
             // Async code to close this queue.
             let coroutine: Pin<Box<Operation>> = self.close_coroutine(qd, yielder)?;
             let task_id: String = format!("Catnap::close for qd={:?}", qd);
-            self.insert_coroutine(task_id, coroutine)
+            self.runtime.insert_coroutine(task_id, coroutine)
         };
 
         Ok(self.get_queue(qd)?.async_close(coroutine)?)
@@ -333,7 +333,7 @@ impl CatnapLibOS {
             .push(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.push_coroutine(qd, buf, yielder)?;
                 let task_id: String = format!("Catnap::push for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
+                self.runtime.insert_coroutine(task_id, coroutine)
             })?)
     }
 
@@ -372,7 +372,7 @@ impl CatnapLibOS {
             .push(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.pushto_coroutine(qd, buf, remote, yielder)?;
                 let task_id: String = format!("Catnap::pushto for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
+                self.runtime.insert_coroutine(task_id, coroutine)
             })?)
     }
 
@@ -415,7 +415,7 @@ impl CatnapLibOS {
             .pop(move |yielder: Yielder| -> Result<TaskHandle, Fail> {
                 let coroutine: Pin<Box<Operation>> = self.pop_coroutine(qd, size, yielder)?;
                 let task_id: String = format!("Catnap::pop for qd={:?}", qd);
-                self.insert_coroutine(task_id, coroutine)
+                self.runtime.insert_coroutine(task_id, coroutine)
             })?)
     }
 
@@ -439,16 +439,13 @@ impl CatnapLibOS {
     pub fn poll(&self) {
         #[cfg(feature = "profiler")]
         timer!("catnap::poll");
-        self.runtime.scheduler.poll()
+        self.runtime.poll()
     }
 
     pub fn schedule(&self, qt: QToken) -> Result<TaskHandle, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::schedule");
-        match self.runtime.scheduler.from_task_id(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        }
+        self.runtime.from_task_id(qt)
     }
 
     pub fn pack_result(&self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
@@ -478,11 +475,7 @@ impl CatnapLibOS {
     fn take_result(&self, handle: TaskHandle) -> (QDesc, OperationResult) {
         #[cfg(feature = "take_result")]
         timer!("catnap::take_result");
-        let task: OperationTask = if let Some(task) = self.runtime.scheduler.remove(&handle) {
-            OperationTask::from(task.as_any())
-        } else {
-            panic!("Removing task that does not exist (either was previously removed or never inserted)");
-        };
+        let task: OperationTask = self.runtime.remove_coroutine(&handle);
 
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
         match result {
@@ -506,15 +499,6 @@ impl CatnapLibOS {
             None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
-
-    /// This function inserts a given [coroutine] into the scheduler with [task_id] to identify it.
-    fn insert_coroutine(&self, task_id: String, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
-        let task: OperationTask = OperationTask::new(task_id, coroutine);
-        match self.runtime.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
-            None => Err(Fail::new(libc::EAGAIN, "cannot schedule coroutine")),
-        }
-    }
 }
 
 //======================================================================================================================
@@ -525,7 +509,7 @@ impl Drop for CatnapLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
         let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        for mut queue in qtable.drain() {
+        for queue in qtable.drain() {
             if let Err(e) = queue.close() {
                 error!("close() failed (error={:?}", e);
             }
