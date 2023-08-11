@@ -38,6 +38,7 @@ enum SocketState {
 /// Encodes the state of a socket.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SocketStateMachine {
+    typ: libc::c_int,
     previous: Option<SocketState>,
     current: SocketState,
     next: Option<SocketState>,
@@ -48,9 +49,12 @@ pub struct SocketStateMachine {
 //======================================================================================================================
 
 impl SocketStateMachine {
-    /// Constructs a new [SocketState] that is on unbound state.
-    pub fn new_unbound() -> Self {
+    /// Constructs a new [SocketState] of type `typ` that is on unbound state.
+    pub fn new_unbound(typ: libc::c_int) -> Self {
+        // This was previously checked in the LibOS layer.
+        debug_assert!(typ == libc::SOCK_STREAM || typ == libc::SOCK_DGRAM);
         Self {
+            typ,
             previous: None,
             current: SocketState::NotBound,
             next: None,
@@ -60,6 +64,7 @@ impl SocketStateMachine {
     /// Constructs a new [SocketState] that is on connected state.
     pub fn new_connected() -> Self {
         Self {
+            typ: libc::SOCK_STREAM,
             previous: None,
             current: SocketState::Connected,
             next: None,

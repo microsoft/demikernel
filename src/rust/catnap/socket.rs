@@ -80,7 +80,7 @@ impl Socket {
                 }
 
                 Ok(Self {
-                    state_machine: SocketStateMachine::new_unbound(),
+                    state_machine: SocketStateMachine::new_unbound(typ),
                     fd,
                     local: None,
                     remote: None,
