@@ -269,6 +269,9 @@ impl Socket {
     /// This function tries to write a DemiBuffer to a socket. It returns a DemiBuffer with the remaining bytes that
     /// it did not succeeded in writing without blocking.
     pub fn try_push(&self, buf: &mut DemiBuffer, addr: Option<SocketAddrV4>) -> Result<(), Fail> {
+        // Ensure that the socket did not transition to an invalid state.
+        self.state_machine.may_push()?;
+
         let saddr: Option<SockAddr> = if let Some(addr) = addr.as_ref() {
             Some(linux::socketaddrv4_to_sockaddr(addr))
         } else {
@@ -314,6 +317,9 @@ impl Socket {
 
     /// Attempts to read data from the socket into the given buffer.
     pub fn try_pop(&self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
+        // Ensure that the socket did not transition to an invalid state.
+        self.state_machine.may_pop()?;
+
         let mut saddr: SockAddr = unsafe { mem::zeroed() };
         let mut addrlen: Socklen = mem::size_of::<SockAddrIn>() as u32;
 

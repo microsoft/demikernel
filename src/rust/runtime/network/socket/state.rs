@@ -71,6 +71,36 @@ impl SocketStateMachine {
         }
     }
 
+    /// Asserts whether the target [SocketState] may push data.
+    pub fn may_push(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+
+        if self.typ == libc::SOCK_STREAM {
+            self.ensure_connected()?;
+        }
+
+        // NOTE: no need to ensure other states, because this is checked on the prepare operation.
+
+        Ok(())
+    }
+
+    /// Asserts whether the target [SocketState] may pop data.
+    pub fn may_pop(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+
+        if self.typ == libc::SOCK_STREAM {
+            self.ensure_connected()?;
+        } else {
+            self.ensure_bound()?;
+        }
+
+        // NOTE: no need to ensure other states, because this is checked on the prepare operation.
+
+        Ok(())
+    }
+
     /// Commits to moving into the prepared state
     pub fn commit(&mut self) {
         self.previous = Some(self.current);
@@ -238,6 +268,46 @@ impl SocketStateMachine {
     /// Attempts to transition from a closed state.
     fn closed_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
         Err(fail(op, &(format!("socket is closed")), libc::EBADF))
+    }
+
+    /// Ensures that the target [SocketState] is bound.
+    fn ensure_bound(&self) -> Result<(), Fail> {
+        if self.current != SocketState::Bound {
+            let cause: String = format!("socket is not bound");
+            error!("ensure_bound(): {}", cause);
+            return Err(Fail::new(libc::EDESTADDRREQ, &cause));
+        }
+        Ok(())
+    }
+
+    /// Ensures that the target [SocketState] is connected.
+    fn ensure_connected(&self) -> Result<(), Fail> {
+        if self.current != SocketState::Connected {
+            let cause: String = format!("socket is not connected");
+            error!("ensure_connected(): {}", cause);
+            return Err(Fail::new(libc::ENOTCONN, &cause));
+        }
+        Ok(())
+    }
+
+    /// Ensures that the target [SocketState] is not closing.
+    fn ensure_not_closing(&self) -> Result<(), Fail> {
+        if self.current == SocketState::Closing {
+            let cause: String = format!("socket is closing");
+            error!("ensure_not_closing(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+        Ok(())
+    }
+
+    /// Ensures that the target [SocketState] is not closed.
+    fn ensure_not_closed(&self) -> Result<(), Fail> {
+        if self.current == SocketState::Closed {
+            let cause: String = format!("socket is closed");
+            error!("ensure_not_closed(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+        Ok(())
     }
 }
 
