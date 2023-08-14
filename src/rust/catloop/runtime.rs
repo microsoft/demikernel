@@ -96,12 +96,12 @@ impl CatloopRuntime {
     }
 
     /// This function gets all current queue tokens in the Catloop queue token table.
-    pub fn get_catloop_qt(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
+    pub fn get_catloop_qd(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
         self.catloop_qts.get(&qt)
     }
 
     /// This function gets all current queue tokens in the Catmem queue token table.
-    pub fn get_catmem_qt(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
+    pub fn get_catmem_qd(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
         self.catmem_qts.get(&qt)
     }
 
@@ -117,7 +117,7 @@ impl CatloopRuntime {
 
     /// This function checks whether [local] is already bound to a queue. Returns true if not bound and false if
     /// already in use.
-    pub fn check_bind_addr(&self, local: SocketAddrV4) -> bool {
+    pub fn is_bound_to_addr(&self, local: SocketAddrV4) -> bool {
         for (_, queue) in self.qtable.get_values() {
             match queue.get_socket() {
                 Socket::Active(Some(addr)) | Socket::Passive(addr) if addr == local => return false,

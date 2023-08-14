@@ -164,7 +164,7 @@ impl CatloopLibOS {
         let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
 
         // Check whether the address is in use.
-        if !runtime.check_bind_addr(local) {
+        if !runtime.is_bound_to_addr(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -513,7 +513,7 @@ impl CatloopLibOS {
         let runtime: Ref<CatloopRuntime> = self.runtime.borrow();
 
         // Check if the queue token came from the Catloop LibOS.
-        if let Some((ref opcode, _)) = runtime.get_catloop_qt(qt) {
+        if let Some((ref opcode, _)) = runtime.get_catloop_qd(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
@@ -538,7 +538,7 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((ref opcode, _)) = runtime.get_catmem_qt(qt) {
+        if let Some((ref opcode, _)) = runtime.get_catmem_qd(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
