@@ -164,7 +164,7 @@ impl Drop for CatloopRuntime {
             if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
                 if EphemeralPorts::is_private(addr.port()) {
                     if self.ephemeral_ports.free(addr.port()).is_err() {
-                        warn!("close(): leaking ephemeral port (port={})", addr.port());
+                        warn!("drop(): leaking ephemeral port (port={})", addr.port());
                     }
                 }
             }
