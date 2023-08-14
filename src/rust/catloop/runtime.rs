@@ -8,8 +8,6 @@
 use crate::{
     catloop::{
         CatloopQueue,
-        Operation,
-        OperationTask,
         Socket,
     },
     inetstack::protocols::ip::EphemeralPorts,
@@ -32,7 +30,6 @@ use ::rand::{
 use ::std::{
     collections::HashMap,
     net::SocketAddrV4,
-    pin::Pin,
 };
 //==============================================================================
 // Structures
