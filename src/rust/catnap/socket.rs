@@ -37,8 +37,8 @@ use ::std::{
 /// A socket.
 #[derive(Copy, Clone, Debug)]
 pub struct Socket {
-    /// The state of the socket.
-    state: SocketStateMachine,
+    /// The state machine.
+    state_machine: SocketStateMachine,
     /// Underlying file descriptor.
     fd: RawFd,
     /// The local address to which the socket is bound.
@@ -80,7 +80,7 @@ impl Socket {
                 }
 
                 Ok(Self {
-                    state: SocketStateMachine::new_unbound(),
+                    state_machine: SocketStateMachine::new_unbound(typ),
                     fd,
                     local: None,
                     remote: None,
@@ -95,7 +95,7 @@ impl Socket {
 
     /// Begins the bind operation.
     pub fn prepare_bind(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Bind)
+        self.state_machine.prepare(SocketOp::Bind)
     }
 
     /// Binds the target socket to `local` address.
@@ -124,7 +124,7 @@ impl Socket {
 
     /// Begins the listen operation.
     pub fn prepare_listen(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Listen)
+        self.state_machine.prepare(SocketOp::Listen)
     }
 
     /// Enables this socket to accept incoming connections.
@@ -142,12 +142,12 @@ impl Socket {
 
     /// Begins the accept operation.
     pub fn prepare_accept(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Accept)
+        self.state_machine.prepare(SocketOp::Accept)
     }
 
     /// Begins the accepted operation.
     pub fn prepare_accepted(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Accepted)
+        self.state_machine.prepare(SocketOp::Accepted)
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
@@ -178,7 +178,7 @@ impl Socket {
 
                 let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
                 Ok(Self {
-                    state: SocketStateMachine::new_connected(),
+                    state_machine: SocketStateMachine::new_connected(),
                     fd: new_fd,
                     local: None,
                     remote: Some(addr),
@@ -199,12 +199,12 @@ impl Socket {
     /// Begins the connect operation.
     pub fn prepare_connect(&mut self) -> Result<(), Fail> {
         // Set socket state to accepting.
-        self.state.prepare(SocketOp::Connect)
+        self.state_machine.prepare(SocketOp::Connect)
     }
 
     /// Begins he connected operation.
     pub fn prepare_connected(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Connected)
+        self.state_machine.prepare(SocketOp::Connected)
     }
 
     /// Constructs from [self] a socket that is attempting to connect to a remote address.
@@ -238,12 +238,12 @@ impl Socket {
     /// Begins the close operation.
     pub fn prepare_close(&mut self) -> Result<(), Fail> {
         // Set socket state to accepting.
-        self.state.prepare(SocketOp::Close)
+        self.state_machine.prepare(SocketOp::Close)
     }
 
     /// Begins the closed operation.
     pub fn prepare_closed(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Closed)
+        self.state_machine.prepare(SocketOp::Closed)
     }
 
     /// Constructs from [self] a socket that is closing.
@@ -269,6 +269,9 @@ impl Socket {
     /// This function tries to write a DemiBuffer to a socket. It returns a DemiBuffer with the remaining bytes that
     /// it did not succeeded in writing without blocking.
     pub fn try_push(&self, buf: &mut DemiBuffer, addr: Option<SocketAddrV4>) -> Result<(), Fail> {
+        // Ensure that the socket did not transition to an invalid state.
+        self.state_machine.may_push()?;
+
         let saddr: Option<SockAddr> = if let Some(addr) = addr.as_ref() {
             Some(linux::socketaddrv4_to_sockaddr(addr))
         } else {
@@ -314,6 +317,9 @@ impl Socket {
 
     /// Attempts to read data from the socket into the given buffer.
     pub fn try_pop(&self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
+        // Ensure that the socket did not transition to an invalid state.
+        self.state_machine.may_pop()?;
+
         let mut saddr: SockAddr = unsafe { mem::zeroed() };
         let mut addrlen: Socklen = mem::size_of::<SockAddrIn>() as u32;
 
@@ -359,17 +365,17 @@ impl Socket {
 
     /// Commits to moving into the prepared state
     pub fn commit(&mut self) {
-        self.state.commit()
+        self.state_machine.commit()
     }
 
     /// Discards the prepared state.
     pub fn abort(&mut self) {
-        self.state.abort()
+        self.state_machine.abort()
     }
 
     /// Rollbacks to the previous state.
     pub fn rollback(&mut self) {
-        self.state.rollback()
+        self.state_machine.rollback()
     }
 }
 
