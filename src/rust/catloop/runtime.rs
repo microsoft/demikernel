@@ -80,7 +80,11 @@ impl CatloopRuntime {
     pub fn get_queue(&mut self, qd: QDesc) -> Result<&mut CatloopQueue, Fail> {
         match self.qtable.get_mut(&qd) {
             Some(queue) => Ok(queue),
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_queue(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
