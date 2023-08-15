@@ -311,7 +311,7 @@ impl CatloopLibOS {
         };
         runtime.get_queue(qd)?.add_pending_op(&handle, &yielder_handle);
         let qt: QToken = handle.get_task_id().into();
-        runtime.insert_catloop_qt(qt, demi_opcode_t::DEMI_OPC_ACCEPT, qd);
+        runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_ACCEPT, qd);
 
         // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
         if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
@@ -403,7 +403,7 @@ impl CatloopLibOS {
                     .expect("queue should have already been found")
                     .add_pending_op(&handle, &yielder_handle);
                 let qt: QToken = handle.get_task_id().into();
-                runtime.insert_catloop_qt(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
+                runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
 
                 // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
                 if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
@@ -466,7 +466,7 @@ impl CatloopLibOS {
         // Remove socket from sockets table.
         if let Some(duplex_pipe) = runtime.get_queue(qd)?.get_pipe() {
             let qt: QToken = duplex_pipe.async_close()?;
-            runtime.insert_catloop_qt(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
+            runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
             Ok(Self::shift_qtoken(qt))
         } else {
             let yielder: Yielder = Yielder::new();
@@ -479,7 +479,7 @@ impl CatloopLibOS {
                 .expect("queue should have already been found")
                 .add_pending_op(&handle, &yielder_handle);
             let qt: QToken = handle.get_task_id().into();
-            runtime.insert_catloop_qt(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
+            runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
 
             // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
             if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
@@ -504,7 +504,7 @@ impl CatloopLibOS {
         };
 
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
-        runtime.insert_catmem_qt(qt, demi_opcode_t::DEMI_OPC_PUSH, qd);
+        runtime.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_PUSH, qd);
 
         Ok(Self::shift_qtoken(qt))
     }
@@ -524,7 +524,7 @@ impl CatloopLibOS {
         };
 
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
-        runtime.insert_catmem_qt(qt, demi_opcode_t::DEMI_OPC_POP, qd);
+        runtime.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_POP, qd);
 
         Ok(Self::shift_qtoken(qt))
     }
@@ -544,7 +544,7 @@ impl CatloopLibOS {
         let runtime: Ref<CatloopRuntime> = self.runtime.borrow();
 
         // Check if the queue token came from the Catloop LibOS.
-        if let Some((ref opcode, _)) = runtime.get_catloop_qd(qt) {
+        if let Some((ref opcode, _)) = runtime.get_catloop_op(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
@@ -569,7 +569,7 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((ref opcode, _)) = runtime.get_catmem_qd(qt) {
+        if let Some((ref opcode, _)) = runtime.get_catmem_op(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
@@ -619,7 +619,7 @@ impl CatloopLibOS {
         // Check if the queue token came from the Catloop LibOS.
         let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
 
-        if let Some((opcode, catloop_qd)) = runtime.free_catloop_qt(qt) {
+        if let Some((opcode, catloop_qd)) = runtime.free_catloop_op(qt) {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT | demi_opcode_t::DEMI_OPC_CONNECT | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -647,7 +647,7 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((opcode, catloop_qd)) = runtime.free_catmem_qt(qt) {
+        if let Some((opcode, catloop_qd)) = runtime.free_catmem_op(qt) {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_PUSH | demi_opcode_t::DEMI_OPC_POP | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -769,16 +769,6 @@ impl CatloopLibOS {
     /// Removes the coroutine associated with `handle` from the underlying scheduler.
     fn remove_coroutine(scheduler: &mut Scheduler, handle: &TaskHandle) -> Option<Box<dyn Task>> {
         scheduler.remove(handle)
-    }
-}
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-impl Drop for CatloopLibOS {
-    fn drop(&mut self) {
-        // This is a stateless object. All resources are managed by underlying components.
     }
 }
 

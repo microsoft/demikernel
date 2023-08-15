@@ -43,9 +43,9 @@ pub struct CatloopRuntime {
     /// Table of queue descriptors, it has one entry for each existing queue descriptor in Catloop LibOS.
     qtable: IoQueueTable<CatloopQueue>,
     /// Table for ongoing operations on Catloop LibOS.
-    catloop_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
+    catloop_ops: HashMap<QToken, (demi_opcode_t, QDesc)>,
     /// Table for ongoing operations Catmem LibOS.
-    catmem_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
+    catmem_ops: HashMap<QToken, (demi_opcode_t, QDesc)>,
 }
 
 //==============================================================================
@@ -59,8 +59,8 @@ impl CatloopRuntime {
         Self {
             ephemeral_ports: EphemeralPorts::new(&mut rng),
             qtable: IoQueueTable::<CatloopQueue>::new(),
-            catmem_qts: HashMap::default(),
-            catloop_qts: HashMap::default(),
+            catmem_ops: HashMap::default(),
+            catloop_ops: HashMap::default(),
         }
     }
 
@@ -85,34 +85,34 @@ impl CatloopRuntime {
         }
     }
 
-    /// Inserts a given `qt` queue token into the Catloop queue token table.
-    pub fn insert_catloop_qt(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
-        self.catloop_qts.insert(qt, (opcode, qd));
+    /// Inserts a given [qt] with its matching [opcode] and [qd] into the Catloop ops table.
+    pub fn insert_catloop_op(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
+        self.catloop_ops.insert(qt, (opcode, qd));
     }
 
-    /// Inserts a given `qt` into the Catmem queue token table.
-    pub fn insert_catmem_qt(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
-        self.catmem_qts.insert(qt, (opcode, qd));
+    /// Inserts a given [qt] with its matching [opcode] and [qd] into the Catloop ops table.
+    pub fn insert_catmem_op(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
+        self.catmem_ops.insert(qt, (opcode, qd));
     }
 
-    /// Gets the [QDesc] associated with `qt` in the Catloop queue token table.
-    pub fn get_catloop_qd(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
-        self.catloop_qts.get(&qt)
+    /// Gets the opcode and queue descriptor associated with this [qt].
+    pub fn get_catloop_op(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
+        self.catloop_ops.get(&qt)
     }
 
-    /// Gets the [QDesc] associated with `qt` in the Catmem queue token table.
-    pub fn get_catmem_qd(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
-        self.catmem_qts.get(&qt)
+    /// Gets the opcode and queue descriptor associated with this [qt].
+    pub fn get_catmem_op(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
+        self.catmem_ops.get(&qt)
     }
 
     /// Removes `qt` from the  Catloop queue token table.
-    pub fn free_catloop_qt(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
-        self.catloop_qts.remove(&qt)
+    pub fn free_catloop_op(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
+        self.catloop_ops.remove(&qt)
     }
 
     /// Removes `qt` from the Catmem queue token table.
-    pub fn free_catmem_qt(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
-        self.catmem_qts.remove(&qt)
+    pub fn free_catmem_op(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
+        self.catmem_ops.remove(&qt)
     }
 
     /// Checks whether `local` is bound to `addr`. On successful completion it returns `true` if not bound and `false` if
