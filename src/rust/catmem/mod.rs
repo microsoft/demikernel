@@ -24,19 +24,20 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        Operation,
+        OperationResult,
+        OperationTask,
         QDesc,
         QToken,
     },
     scheduler::{
         Scheduler,
         TaskHandle,
-        TaskWithResult,
         Yielder,
     },
 };
 use ::std::{
     cell::RefCell,
-    future::Future,
     mem,
     pin::Pin,
     rc::Rc,
@@ -45,19 +46,6 @@ use ::std::{
 //======================================================================================================================
 // Types
 //======================================================================================================================
-
-// TODO: Remove this once we unify return types.
-type Operation = dyn Future<Output = (QDesc, OperationResult)>;
-type OperationTask = TaskWithResult<(QDesc, OperationResult)>;
-
-#[derive(Clone)]
-/// Operation Result
-pub enum OperationResult {
-    Push,
-    Pop(DemiBuffer),
-    Close,
-    Failed(Fail),
-}
 
 /// Whether this queue is open for push or pop (i.e., producer or consumer).
 pub enum QMode {
@@ -223,7 +211,7 @@ impl CatmemLibOS {
                 Ok(result) => result,
                 Err(e) => return (qd, OperationResult::Failed(e)),
             };
-            (qd, OperationResult::Pop(buf))
+            (qd, OperationResult::Pop(None, buf))
         }))
     }
 
@@ -287,7 +275,7 @@ impl CatmemLibOS {
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
-            OperationResult::Pop(bytes) => match self.into_sgarray(bytes) {
+            OperationResult::Pop(_, bytes) => match self.into_sgarray(bytes) {
                 Ok(sga) => {
                     let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                     demi_qresult_t {
@@ -326,6 +314,7 @@ impl CatmemLibOS {
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
+            _ => panic!("This libOS does not support these operations"),
         };
         Ok(qr)
     }
