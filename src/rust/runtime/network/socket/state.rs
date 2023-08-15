@@ -5,9 +5,15 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    network::socket::operation::SocketOp,
+use crate::{
+    pal::constants::{
+        SOCK_DGRAM,
+        SOCK_STREAM,
+    },
+    runtime::{
+        fail::Fail,
+        network::socket::operation::SocketOp,
+    },
 };
 
 //======================================================================================================================
@@ -52,7 +58,7 @@ impl SocketStateMachine {
     /// Constructs a new [SocketState] of type `typ` that is on unbound state.
     pub fn new_unbound(typ: libc::c_int) -> Self {
         // This was previously checked in the LibOS layer.
-        debug_assert!(typ == libc::SOCK_STREAM || typ == libc::SOCK_DGRAM);
+        debug_assert!(typ == SOCK_STREAM || typ == SOCK_DGRAM);
         Self {
             typ,
             previous: None,
@@ -64,7 +70,7 @@ impl SocketStateMachine {
     /// Constructs a new [SocketState] that is on connected state.
     pub fn new_connected() -> Self {
         Self {
-            typ: libc::SOCK_STREAM,
+            typ: SOCK_STREAM,
             previous: None,
             current: SocketState::Connected,
             next: None,
@@ -76,7 +82,7 @@ impl SocketStateMachine {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
 
-        if self.typ == libc::SOCK_STREAM {
+        if self.typ == SOCK_STREAM {
             self.ensure_connected()?;
         }
 
@@ -90,7 +96,7 @@ impl SocketStateMachine {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
 
-        if self.typ == libc::SOCK_STREAM {
+        if self.typ == SOCK_STREAM {
             self.ensure_connected()?;
         } else {
             self.ensure_bound()?;
