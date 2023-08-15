@@ -70,7 +70,7 @@ pub async fn accept_coroutine(
             // Invalid reponse.
             Ok(false) => {
                 // Clean up newly allocated duplex pipe.
-                new_duplex_pipe.close();
+                new_duplex_pipe.close()?;
                 continue;
             },
             // Some error.

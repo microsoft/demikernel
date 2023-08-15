@@ -8,7 +8,7 @@
 mod duplex_pipe;
 mod futures;
 mod queue;
-
+mod runtime;
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -17,6 +17,7 @@ use self::{
     duplex_pipe::DuplexPipe,
     futures::OperationResult,
     queue::CatloopQueue,
+    runtime::CatloopRuntime,
 };
 use crate::{
     catloop::futures::{
@@ -34,7 +35,6 @@ use crate::{
     runtime::{
         fail::Fail,
         limits,
-        queue::IoQueueTable,
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -45,7 +45,8 @@ use crate::{
         QToken,
     },
     scheduler::{
-        Scheduler,
+        scheduler::Scheduler,
+        Task,
         TaskHandle,
         TaskWithResult,
         Yielder,
@@ -53,16 +54,12 @@ use crate::{
     },
     QType,
 };
-use ::rand::{
-    prelude::SmallRng,
-    SeedableRng,
-};
 use ::std::{
     cell::{
+        Ref,
         RefCell,
         RefMut,
     },
-    collections::HashMap,
     future::Future,
     mem,
     net::{
@@ -94,18 +91,10 @@ pub enum Socket {
 
 /// A LibOS that exposes exposes sockets semantics on a memory queue.
 pub struct CatloopLibOS {
-    /// Ephemeral port allocator.
-    ephemeral_ports: Rc<RefCell<EphemeralPorts>>,
-    /// Table of queue descriptors. This table has one entry for each existing queue descriptor in Catloop LibOS.
-    qtable: Rc<RefCell<IoQueueTable<CatloopQueue>>>,
+    runtime: Rc<RefCell<CatloopRuntime>>,
+    catmem: Rc<RefCell<CatmemLibOS>>,
     /// Underlying scheduler.
     scheduler: Scheduler,
-    /// Table for ongoing operations.
-    catloop_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
-    /// Table for ongoing operations.
-    catmem_qts: HashMap<QToken, (demi_opcode_t, QDesc)>,
-    /// Underlying reference to Catmem LibOS.
-    catmem: Rc<RefCell<CatmemLibOS>>,
 }
 
 //======================================================================================================================
@@ -127,14 +116,10 @@ impl CatloopLibOS {
 
     /// Instantiates a new LibOS.
     pub fn new() -> Self {
-        let mut rng: SmallRng = SmallRng::from_entropy();
         Self {
-            ephemeral_ports: Rc::new(RefCell::new(EphemeralPorts::new(&mut rng))),
-            qtable: Rc::new(RefCell::new(IoQueueTable::<CatloopQueue>::new())),
+            runtime: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
+            catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new())),
             scheduler: Scheduler::default(),
-            catmem_qts: HashMap::default(),
-            catloop_qts: HashMap::default(),
-            catmem: Rc::new(RefCell::new(CatmemLibOS::new())),
         }
     }
 
@@ -161,15 +146,13 @@ impl CatloopLibOS {
         };
 
         // Create fake socket.
-        let qd: QDesc = self.qtable.borrow_mut().alloc(CatloopQueue::new(qtype));
+        let qd: QDesc = self.runtime.borrow_mut().alloc_queue(qtype);
         Ok(qd)
     }
 
     /// Binds a socket to a local endpoint.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
-
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
 
         // Check if we are binding to the wildcard port.
         if local.port() == 0 {
@@ -178,37 +161,26 @@ impl CatloopLibOS {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        // Check if queue descriptor is valid.
-        if qtable.get(&qd).is_none() {
-            let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::EBADF, &cause));
-        };
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
 
         // Check whether the address is in use.
-        for (_, queue) in qtable.get_values() {
-            match queue.get_socket() {
-                Socket::Active(Some(addr)) | Socket::Passive(addr) if addr == local => {
-                    let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
-                    error!("bind(): {}", cause);
-                    return Err(Fail::new(libc::EADDRINUSE, &cause));
-                },
-                _ => {},
-            }
+        if !runtime.is_bound_to_addr(local) {
+            let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
-
         // Check if this is an ephemeral port.
         if EphemeralPorts::is_private(local.port()) {
-            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.ephemeral_ports.borrow_mut().alloc_port(local.port())?
+            // Allocate ephemeral port from the pool, to leave ephemeral port allocator in a consistent state.
+            runtime.alloc_ephemeral_port(Some(local.port()))?;
         }
 
-        // Get a mutable reference to the queue table here, once we are sure that it is valid.
-        let queue: &mut CatloopQueue = qtable.get_mut(&qd).expect("queue descriptor should be in queue table");
+        // Check if queue descriptor is valid.
+        let queue: &mut CatloopQueue = runtime.get_queue(qd)?;
 
         // Check that the socket associated with the queue is not listening.
-        if let Socket::Passive(_) = queue.get_socket() {
-            let cause: String = format!("Cannot bind a listening queue (qd={:?})", qd);
+        if let Socket::Passive(addr) = queue.get_socket() {
+            let cause: String = format!("Cannot bind a listening queue (qd={:?}, addr={:?})", qd, addr);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EBADF, &cause));
         }
@@ -238,26 +210,24 @@ impl CatloopLibOS {
         debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Check if the queue descriptor is registered in the sockets table.
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => match queue.get_socket() {
-                Socket::Active(Some(local)) => {
-                    queue.set_socket(Socket::Passive(local));
-                    Ok(())
-                },
-                Socket::Active(None) => {
-                    let cause: String = format!("Cannot call listen on an unbound socket (qd={:?})", qd);
-                    error!("listen(): {}", &cause);
-                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
-                },
-                Socket::Passive(_) => {
-                    let cause: String = format!("cannot call listen on an already listening socket (qd={:?})", qd);
-                    error!("listen(): {}", &cause);
-                    Err(Fail::new(libc::EBADF, &cause))
-                },
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+        let queue: &mut CatloopQueue = runtime.get_queue(qd)?;
+        match queue.get_socket() {
+            Socket::Active(Some(local)) => {
+                queue.set_socket(Socket::Passive(local));
+                Ok(())
             },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("listen(): {}", cause);
+            Socket::Active(None) => {
+                let cause: String = format!("Cannot call listen on an unbound socket (qd={:?})", qd);
+                error!("listen(): {}", &cause);
+                Err(Fail::new(libc::EOPNOTSUPP, &cause))
+            },
+            Socket::Passive(addr) => {
+                let cause: String = format!(
+                    "cannot call listen on an already listening socket (qd={:?}, addr={:?})",
+                    qd, addr
+                );
+                error!("listen(): {}", &cause);
                 Err(Fail::new(libc::EBADF, &cause))
             },
         }
@@ -266,90 +236,82 @@ impl CatloopLibOS {
     /// Accepts connections on a socket.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept() qd={:?}", qd);
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
 
-        // Issue accept operation.
-        let (control_duplex_pipe, local): (Rc<DuplexPipe>, SocketAddrV4) = match qtable.get_mut(&qd) {
-            Some(queue) => match queue.get_socket() {
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+        let (control_duplex_pipe, local): (Rc<DuplexPipe>, SocketAddrV4) = {
+            // Check if queue descriptor is valid and get a mutable reference.
+            let queue: &mut CatloopQueue = runtime.get_queue(qd)?;
+
+            // Issue accept operation.
+            match queue.get_socket() {
                 Socket::Passive(local) => match queue.get_pipe() {
-                    Some(pipe) => (pipe, local),
+                    Some(pipe) => (pipe.clone(), local),
                     None => {
                         let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
                         error!("accept(): {}", cause);
                         return Err(Fail::new(libc::EINVAL, &cause));
                     },
                 },
-                Socket::Active(_) => {
-                    let cause: String = format!("cannot call accept on an active socket (qd={:?})", qd);
+                Socket::Active(addr) => {
+                    let cause: String =
+                        format!("cannot call accept on an active socket (qd={:?}, addr={:?})", qd, addr);
                     error!("accept(): {}", &cause);
                     return Err(Fail::new(libc::EBADF, &cause));
                 },
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("accept(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
+            }
         };
 
-        let new_qd: QDesc = qtable.alloc(CatloopQueue::new(QType::TcpSocket));
-        let mut ephemeral_ports: RefMut<EphemeralPorts> = self.ephemeral_ports.borrow_mut();
-        let new_port: u16 = match ephemeral_ports.alloc_any() {
-            Ok(new_port) => new_port,
+        // Allocate queue descriptor and port number in advance.
+        let new_qd: QDesc = runtime.alloc_queue(QType::TcpSocket);
+        let new_port: u16 = match runtime.alloc_ephemeral_port(None) {
+            Ok(new_port) => new_port.unwrap(),
             Err(e) => return Err(e),
         };
-        let qtable_ptr: Rc<RefCell<IoQueueTable<CatloopQueue>>> = self.qtable.clone();
-        let ephemeral_ptr: Rc<RefCell<EphemeralPorts>> = self.ephemeral_ports.clone();
+
+        // NOTE: from this point, we need to rollback queue descriptor creation and port allocation if we fail.
+
         let yielder: Yielder = Yielder::new();
         // Will use this later on close.
         let yielder_handle: YielderHandle = yielder.get_handle();
-        let catmem: Rc<RefCell<CatmemLibOS>> = self.catmem.clone();
-        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-            // Wait for the accept to complete.
-            let result: Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> =
-                accept_coroutine(local.ip(), catmem, control_duplex_pipe.clone(), new_port, yielder).await;
-            // Handle result: if successful, borrow the queue table to set the socket and pipe metadata.
-            match result {
-                Ok((remote, duplex_pipe)) => {
-                    let mut qtable_: RefMut<IoQueueTable<CatloopQueue>> = qtable_ptr.borrow_mut();
-                    let queue: &mut CatloopQueue = qtable_
-                        .get_mut(&new_qd)
-                        .expect("New qd should have been already allocated");
-                    queue.set_socket(Socket::Active(Some(remote)));
-                    queue.set_pipe(duplex_pipe.clone());
-                    (qd, OperationResult::Accept(new_qd, remote))
-                },
-                Err(e) => {
-                    // Rollback the port allocation.
-                    if ephemeral_ptr.borrow_mut().free(new_port).is_err() {
-                        warn!("accept(): leaking ephemeral port (port={})", new_port);
-                    }
-                    qtable_ptr.borrow_mut().free(&new_qd);
-                    (qd, OperationResult::Failed(e))
-                },
-            }
-        });
-        let task_id: String = format!("Catloop::accept for qd={:?}", qd);
-        let task: OperationTask = OperationTask::new(task_id, coroutine);
-        let handle: TaskHandle = match self.scheduler.insert(task) {
-            Some(handle) => handle,
-            None => {
+        let coroutine: Pin<Box<Operation>> = match self.accept_async(
+            qd,
+            new_qd,
+            SocketAddrV4::new(local.ip().clone(), new_port),
+            control_duplex_pipe,
+            yielder,
+        ) {
+            Ok(coroutine) => coroutine,
+            Err(e) => {
                 // Rollback the port allocation
-                if ephemeral_ports.free(new_port).is_err() {
+                if runtime.free_ephemeral_port(new_port).is_err() {
+                    // We fail if and only if we attempted to free a port that was not allocated.
+                    // This is unexpected, but if it happens, issue a warning and keep going,
+                    // otherwise we would leave the queue in a dangling state.
                     warn!("accept(): leaking ephemeral port (port={})", new_port);
                 }
-                qtable.free(&new_qd);
-                let cause: String = format!("cannot schedule co-routine");
-                error!("accept(): {}", &cause);
-                return Err(Fail::new(libc::EAGAIN, &cause));
+                runtime.free_queue(new_qd);
+                return Err(e);
             },
         };
-        qtable
-            .get_mut(&qd)
-            .expect("We just used this qd so it should exist")
-            .add_pending_op(&handle, &yielder_handle);
+
+        let task_name: String = format!("Catloop::accept for qd={:?}", qd);
+        let handle: TaskHandle = match Self::insert_coroutine(&mut self.scheduler, task_name, coroutine) {
+            Ok(handle) => handle,
+            Err(e) => {
+                // Rollback the port allocation
+                if runtime.free_ephemeral_port(new_port).is_err() {
+                    // We fail if and only if we attempted to free a port that was not allocated.
+                    // This is unexpected, but if it happens, issue a warning and keep going,
+                    // otherwise we would leave the queue in a dangling state.
+                    warn!("accept(): leaking ephemeral port (port={})", new_port);
+                }
+                runtime.free_queue(new_qd);
+                return Err(e);
+            },
+        };
+        runtime.get_queue(qd)?.add_pending_op(&handle, &yielder_handle);
         let qt: QToken = handle.get_task_id().into();
-        self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_ACCEPT, qd));
+        runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_ACCEPT, qd);
 
         // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
         if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
@@ -361,68 +323,104 @@ impl CatloopLibOS {
         Ok(qt)
     }
 
+    /// This internal function is designed to help scope the arguments that we pass to the async coroutine more
+    /// explicitly.
+    fn accept_async(
+        &self,
+        qd: QDesc,
+        new_qd: QDesc,
+        new_addr: SocketAddrV4,
+        control_duplex_pipe: Rc<DuplexPipe>,
+        yielder: Yielder,
+    ) -> Result<Pin<Box<Operation>>, Fail> {
+        let runtime_ptr: Rc<RefCell<CatloopRuntime>> = self.runtime.clone();
+        let catmem_ptr: Rc<RefCell<CatmemLibOS>> = self.catmem.clone();
+
+        Ok(Box::pin(async move {
+            // Wait for the accept to complete.
+            let result: Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> =
+                accept_coroutine(new_addr.ip(), catmem_ptr, control_duplex_pipe, new_addr.port(), yielder).await;
+            // Handle result: if successful, borrow the runtime to update state.
+            let mut runtime_ = runtime_ptr.borrow_mut();
+            match result {
+                Ok((remote, duplex_pipe)) => {
+                    let queue: &mut CatloopQueue = runtime_
+                        .get_queue(new_qd)
+                        .expect("New qd should have been already allocated");
+                    queue.set_socket(Socket::Active(Some(remote)));
+                    queue.set_pipe(duplex_pipe.clone());
+                    (qd, OperationResult::Accept(new_qd, remote))
+                },
+                Err(e) => {
+                    // Rollback the port allocation.
+                    if runtime_.free_ephemeral_port(new_addr.port()).is_err() {
+                        // We fail if and only if we attempted to free a port that was not allocated.
+                        // This is unexpected, but if it happens, issue a warning and keep going,
+                        // otherwise we would leave the queue in a dangling state.
+                        warn!("accept(): leaking ephemeral port (port={})", new_addr.port());
+                    }
+                    runtime_.free_queue(new_qd);
+                    (qd, OperationResult::Failed(e))
+                },
+            }
+        }))
+    }
+
     /// Establishes a connection to a remote endpoint.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
 
         // Issue connect operation.
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => match queue.get_socket() {
-                Socket::Active(_) => {
-                    let qtable_ptr: Rc<RefCell<IoQueueTable<CatloopQueue>>> = self.qtable.clone();
-                    let yielder: Yielder = Yielder::new();
-                    // Will use this later on close.
-                    let yielder_handle: YielderHandle = yielder.get_handle();
-                    let catmem: Rc<RefCell<CatmemLibOS>> = self.catmem.clone();
-                    let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                        let result: Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> =
-                            connect_coroutine(catmem, remote, yielder).await;
-                        match result {
-                            Ok((remote, duplex_pipe)) => {
-                                let mut qtable_: RefMut<IoQueueTable<CatloopQueue>> = qtable_ptr.borrow_mut();
-                                let queue: &mut CatloopQueue =
-                                    qtable_.get_mut(&qd).expect("New qd should have been already allocated");
-                                // TODO: check whether we need to close the original control duplex pipe allocated on bind().
-                                queue.set_socket(Socket::Active(Some(remote)));
-                                queue.set_pipe(duplex_pipe.clone());
-                                (qd, OperationResult::Connect)
-                            },
-                            Err(e) => (qd, OperationResult::Failed(e)),
-                        }
-                    });
-                    let task_id: String = format!("Catloop::connect for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => {
-                            let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
-                            error!("connect(): {}", &cause);
-                            return Err(Fail::new(libc::EAGAIN, &cause));
+        match runtime.get_queue(qd)?.get_socket() {
+            Socket::Active(_) => {
+                let runtime_ptr: Rc<RefCell<CatloopRuntime>> = self.runtime.clone();
+                let yielder: Yielder = Yielder::new();
+                // Will use this later on close.
+                let yielder_handle: YielderHandle = yielder.get_handle();
+                let catmem_ptr: Rc<RefCell<CatmemLibOS>> = self.catmem.clone();
+                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                    let result: Result<(SocketAddrV4, Rc<DuplexPipe>), Fail> =
+                        connect_coroutine(catmem_ptr, remote, yielder).await;
+                    match result {
+                        Ok((remote, duplex_pipe)) => {
+                            let mut runtime_: RefMut<CatloopRuntime> = runtime_ptr.borrow_mut();
+                            let queue: &mut CatloopQueue = runtime_
+                                .get_queue(qd)
+                                .expect("New qd should have been already allocated");
+                            // TODO: check whether we need to close the original control duplex pipe allocated on bind().
+                            queue.set_socket(Socket::Active(Some(remote)));
+                            queue.set_pipe(duplex_pipe.clone());
+                            (qd, OperationResult::Connect)
                         },
-                    };
-                    queue.add_pending_op(&handle, &yielder_handle);
-                    let qt: QToken = handle.get_task_id().into();
-                    self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
-
-                    // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
-                    if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
-                        // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
-                        let message: String = format!("too many pending operations in Catloop");
-                        warn!("connect(): {}", &message);
+                        Err(e) => (qd, OperationResult::Failed(e)),
                     }
+                });
+                let task_name: String = format!("Catloop::connect for qd={:?}", qd);
+                let handle: TaskHandle = Self::insert_coroutine(&mut self.scheduler, task_name, coroutine)?;
+                runtime
+                    .get_queue(qd)
+                    .expect("queue should have already been found")
+                    .add_pending_op(&handle, &yielder_handle);
+                let qt: QToken = handle.get_task_id().into();
+                runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
 
-                    Ok(qt)
-                },
-                Socket::Passive(_) => {
-                    let cause: String = format!("cannot call connect on a listening socket (qd={:?})", qd);
-                    error!("connect(): {}", &cause);
-                    Err(Fail::new(libc::EOPNOTSUPP, &cause))
-                },
+                // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
+                if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
+                    // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
+                    let message: String = format!("too many pending operations in Catloop");
+                    warn!("connect(): {}", &message);
+                }
+
+                Ok(qt)
             },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+            Socket::Passive(addr) => {
+                let cause: String = format!(
+                    "cannot call connect on a listening socket (qd={:?}, addr={:?})",
+                    qd, addr
+                );
                 error!("connect(): {}", &cause);
-                Err(Fail::new(libc::EAGAIN, &cause))
+                Err(Fail::new(libc::EOPNOTSUPP, &cause))
             },
         }
     }
@@ -430,104 +428,83 @@ impl CatloopLibOS {
     /// Closes a socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
 
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
-        // Remove socket from sockets table.
-        match qtable.get_mut(&qd) {
-            // Socket is not bound to a duplex pipe.
-            Some(queue) => {
-                if let Some(duplex_pipe) = queue.get_pipe() {
-                    duplex_pipe.close()?;
-                }
-                // Rollback the port allocation.
-                if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
-                    if EphemeralPorts::is_private(addr.port()) {
-                        if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
-                            // We fail if and only if we attempted to free a port that was not allocated.
-                            // This is unexpected, but if it happens, issue a warning and keep going,
-                            // otherwise we would leave the queue in a dangling state.
-                            warn!("close(): leaking ephemeral port (port={})", addr.port());
-                        }
-                    }
-                }
-                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
-                qtable.free(&qd);
-                Ok(())
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("close(): {}", &cause);
-                Err(Fail::new(libc::EBADF, &cause))
-            },
+        // Socket is not bound to a duplex pipe.
+        if let Some(duplex_pipe) = runtime.get_queue(qd)?.get_pipe() {
+            duplex_pipe.close()?;
         }
+
+        // Rollback the port allocation.
+        if let Socket::Active(Some(addr)) | Socket::Passive(addr) = runtime
+            .get_queue(qd)
+            .expect("queue should have already been found")
+            .get_socket()
+        {
+            if EphemeralPorts::is_private(addr.port()) {
+                if runtime.free_ephemeral_port(addr.port()).is_err() {
+                    // We fail if and only if we attempted to free a port that was not allocated.
+                    // This is unexpected, but if it happens, issue a warning and keep going,
+                    // otherwise we would leave the queue in a dangling state.
+                    warn!("close(): leaking ephemeral port (port={})", addr.port());
+                }
+            }
+        }
+        runtime
+            .get_queue(qd)
+            .expect("queue should have already been found")
+            .cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+        runtime.free_queue(qd);
+
+        Ok(())
     }
 
     /// Asynchronously closes a socket.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
-
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
         // Remove socket from sockets table.
-        match qtable.get_mut(&qd) {
-            Some(queue) => {
-                if let Some(duplex_pipe) = queue.get_pipe() {
-                    let qt: QToken = duplex_pipe.async_close()?;
-                    self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CLOSE, qd));
-                    Ok(Self::shift_qtoken(qt))
-                } else {
-                    let yielder: Yielder = Yielder::new();
-                    let yielder_handle: YielderHandle = yielder.get_handle();
-                    let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Close) });
-                    let task_id: String = format!("Catloop::close for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => {
-                            let cause: String = format!("cannot schedule co-routine (qd={:?})", qd);
-                            error!("connect(): {}", &cause);
-                            return Err(Fail::new(libc::EAGAIN, &cause));
-                        },
-                    };
-                    queue.add_pending_op(&handle, &yielder_handle);
-                    let qt: QToken = handle.get_task_id().into();
-                    self.catloop_qts.insert(qt, (demi_opcode_t::DEMI_OPC_CONNECT, qd));
+        if let Some(duplex_pipe) = runtime.get_queue(qd)?.get_pipe() {
+            let qt: QToken = duplex_pipe.async_close()?;
+            runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
+            Ok(Self::shift_qtoken(qt))
+        } else {
+            let yielder: Yielder = Yielder::new();
+            let yielder_handle: YielderHandle = yielder.get_handle();
+            let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Close) });
+            let task_name: String = format!("Catloop::close for qd={:?}", qd);
+            let handle: TaskHandle = Self::insert_coroutine(&mut self.scheduler, task_name, coroutine)?;
+            runtime
+                .get_queue(qd)
+                .expect("queue should have already been found")
+                .add_pending_op(&handle, &yielder_handle);
+            let qt: QToken = handle.get_task_id().into();
+            runtime.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
 
-                    // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
-                    if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
-                        // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
-                        let message: String = format!("too many pending operations in Catloop");
-                        warn!("async_close(): {}", &message);
-                    }
+            // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
+            if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
+                // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
+                let message: String = format!("too many pending operations");
+                warn!("async_close(): {}", &message);
+            }
 
-                    Ok(qt)
-                }
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("close(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
+            Ok(qt)
         }
     }
 
     /// Pushes a scatter-gather array to a socket.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+        let queue: &mut CatloopQueue = runtime.get_queue(qd)?;
 
-        let catmem_qd: QDesc = match self.qtable.borrow().get(&qd) {
-            Some(queue) => match queue.get_pipe() {
-                Some(duplex_pipe) => duplex_pipe.tx(),
-                None => unreachable!("push() an unconnected queue"),
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("push(): {}", cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
+        let catmem_qd: QDesc = match queue.get_pipe() {
+            Some(duplex_pipe) => duplex_pipe.tx(),
+            None => unreachable!("push() an unconnected queue"),
         };
 
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
-        self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_PUSH, qd));
+        runtime.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_PUSH, qd);
 
         Ok(Self::shift_qtoken(qt))
     }
@@ -539,20 +516,15 @@ impl CatloopLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let catmem_qd: QDesc = match self.qtable.borrow().get(&qd) {
-            Some(queue) => match queue.get_pipe() {
-                Some(duplex_pipe) => duplex_pipe.rx(),
-                None => unreachable!("pop() an unconnected queue"),
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("pop(): {:?}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+        let queue: &mut CatloopQueue = runtime.get_queue(qd)?;
+        let catmem_qd: QDesc = match queue.get_pipe() {
+            Some(duplex_pipe) => duplex_pipe.rx(),
+            None => unreachable!("pop() an unconnected queue"),
         };
 
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
-        self.catmem_qts.insert(qt, (demi_opcode_t::DEMI_OPC_POP, qd));
+        runtime.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_POP, qd);
 
         Ok(Self::shift_qtoken(qt))
     }
@@ -569,8 +541,10 @@ impl CatloopLibOS {
 
     /// Inserts a queue token into the scheduler.
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        let runtime: Ref<CatloopRuntime> = self.runtime.borrow();
+
         // Check if the queue token came from the Catloop LibOS.
-        if let Some((ref opcode, _)) = self.catloop_qts.get(&qt) {
+        if let Some((ref opcode, _)) = runtime.get_catloop_op(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
@@ -595,7 +569,7 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((ref opcode, _)) = self.catmem_qts.get(&qt) {
+        if let Some((ref opcode, _)) = runtime.get_catmem_op(qt) {
             // Check if the queue token concerns an expected operation.
             if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
                 let cause: String = format!("unexpected queue token (qt={:?})", qt);
@@ -616,40 +590,36 @@ impl CatloopLibOS {
     /// Harvests resources on close.
     fn harvest_resources_on_close(&mut self, qd: QDesc) -> Result<(), Fail> {
         // If this was an async_close(), harvest resources.
-        let mut qtable: RefMut<IoQueueTable<CatloopQueue>> = self.qtable.borrow_mut();
-        match qtable.get_mut(&qd) {
-            Some(queue) => {
-                // Rollback the port allocation.
-                if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
-                    if EphemeralPorts::is_private(addr.port()) {
-                        if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
-                            // We fail if and only if we attempted to free a port that was not allocated.
-                            // This is unexpected, but if it happens, issue a warning and keep going,
-                            // otherwise we would leave the queue in a dangling state.
-                            warn!(
-                                "pack_result(): attempting to free an ephemeral port that was not allocated (port={})",
-                                addr.port()
-                            );
-                            warn!("pack_result(): leaking ephemeral port (port={})", addr.port());
-                        }
-                    }
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+        // Rollback the port allocation.
+        if let Socket::Active(Some(addr)) | Socket::Passive(addr) = runtime.get_queue(qd)?.get_socket() {
+            if EphemeralPorts::is_private(addr.port()) {
+                if runtime.free_ephemeral_port(addr.port()).is_err() {
+                    // We fail if and only if we attempted to free a port that was not allocated.
+                    // This is unexpected, but if it happens, issue a warning and keep going,
+                    // otherwise we would leave the queue in a dangling state.
+                    warn!(
+                        "pack_result(): attempting to free an ephemeral port that was not allocated (port={})",
+                        addr.port()
+                    );
+                    warn!("pack_result(): leaking ephemeral port (port={})", addr.port());
                 }
-                queue.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
-                qtable.free(&qd);
-                Ok(())
-            },
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("close(): {}", &cause);
-                Err(Fail::new(libc::EBADF, &cause))
-            },
+            }
         }
+        runtime
+            .get_queue(qd)
+            .expect("queue should have already been found")
+            .cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+        runtime.free_queue(qd);
+        Ok(())
     }
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         // Check if the queue token came from the Catloop LibOS.
-        if let Some((opcode, catloop_qd)) = self.catloop_qts.remove(&qt) {
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+
+        if let Some((opcode, catloop_qd)) = runtime.free_catloop_op(qt) {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT | demi_opcode_t::DEMI_OPC_CONNECT | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -660,6 +630,7 @@ impl CatloopLibOS {
                 },
             }
 
+            drop(runtime);
             // If this was an async_close(), harvest resources.
             if opcode == demi_opcode_t::DEMI_OPC_CLOSE {
                 self.harvest_resources_on_close(catloop_qd)?;
@@ -676,7 +647,7 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((opcode, catloop_qd)) = self.catmem_qts.remove(&qt) {
+        if let Some((opcode, catloop_qd)) = runtime.free_catmem_op(qt) {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_PUSH | demi_opcode_t::DEMI_OPC_POP | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -687,6 +658,7 @@ impl CatloopLibOS {
                 },
             }
 
+            drop(runtime);
             // The queue token came from the Catmem LibOS, thus forward operation.
             let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
 
@@ -717,7 +689,9 @@ impl CatloopLibOS {
 
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = if let Some(task) = self.scheduler.remove(&handle) {
+        let mut runtime: RefMut<CatloopRuntime> = self.runtime.borrow_mut();
+
+        let task: OperationTask = if let Some(task) = Self::remove_coroutine(&mut self.scheduler, &handle) {
             OperationTask::from(task.as_any())
         } else {
             panic!("Removing task that does not exist (either was previously removed or never inserted)");
@@ -725,10 +699,10 @@ impl CatloopLibOS {
 
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => queue.remove_pending_op(&handle),
-            None => debug!("take_result(): this queue was closed (qd={:?})", qd),
-        }
+        match runtime.get_queue(qd) {
+            Ok(queue) => queue.remove_pending_op(&handle),
+            Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
+        };
 
         (qd, result)
     }
@@ -778,29 +752,23 @@ impl CatloopLibOS {
         }
         qt.into()
     }
-}
 
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-impl Drop for CatloopLibOS {
-    // Releases all sockets allocated by Catnap.
-    fn drop(&mut self) {
-        for (_, queue) in self.qtable.borrow().get_values() {
-            if let Some(duplex_pipe) = queue.get_pipe() {
-                if duplex_pipe.close().is_err() {
-                    warn!("drop(): failed to close duplex pipe");
-                }
-            }
-            if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
-                if EphemeralPorts::is_private(addr.port()) {
-                    if self.ephemeral_ports.borrow_mut().free(addr.port()).is_err() {
-                        warn!("close(): leaking ephemeral port (port={})", addr.port());
-                    }
-                }
-            }
+    /// This function inserts `coroutine` into the scheduler with [task_id] to identify it.
+    fn insert_coroutine(
+        scheduler: &mut Scheduler,
+        task_name: String,
+        coroutine: Pin<Box<Operation>>,
+    ) -> Result<TaskHandle, Fail> {
+        let task: OperationTask = OperationTask::new(task_name, coroutine);
+        match scheduler.insert(task) {
+            Some(handle) => Ok(handle),
+            None => Err(Fail::new(libc::EAGAIN, "cannot schedule coroutine")),
         }
+    }
+
+    /// Removes the coroutine associated with `handle` from the underlying scheduler.
+    fn remove_coroutine(scheduler: &mut Scheduler, handle: &TaskHandle) -> Option<Box<dyn Task>> {
+        scheduler.remove(handle)
     }
 }
 
