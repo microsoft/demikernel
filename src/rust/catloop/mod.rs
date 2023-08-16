@@ -15,7 +15,6 @@ mod runtime;
 
 use self::{
     duplex_pipe::DuplexPipe,
-    futures::OperationResult,
     queue::CatloopQueue,
     runtime::CatloopRuntime,
 };
@@ -41,14 +40,15 @@ use crate::{
             demi_qr_value_t,
             demi_qresult_t,
         },
+        DemiRuntime,
+        Operation,
+        OperationResult,
+        OperationTask,
         QDesc,
         QToken,
     },
     scheduler::{
-        scheduler::Scheduler,
-        Task,
         TaskHandle,
-        TaskWithResult,
         Yielder,
         YielderHandle,
     },
@@ -60,7 +60,6 @@ use ::std::{
         RefCell,
         RefMut,
     },
-    future::Future,
     mem,
     net::{
         Ipv4Addr,
@@ -70,14 +69,6 @@ use ::std::{
     rc::Rc,
     slice,
 };
-
-//======================================================================================================================
-// Types
-//======================================================================================================================
-
-// TODO: Remove this once we unify return types.
-type Operation = dyn Future<Output = (QDesc, OperationResult)>;
-type OperationTask = TaskWithResult<(QDesc, OperationResult)>;
 
 //======================================================================================================================
 // Structures
@@ -94,8 +85,8 @@ pub struct CatloopLibOS {
     /// Catloop state.
     state: Rc<RefCell<CatloopRuntime>>,
     catmem: Rc<RefCell<CatmemLibOS>>,
-    /// Underlying scheduler.
-    scheduler: Scheduler,
+    /// Underlying coroutine runtime.
+    runtime: DemiRuntime,
 }
 
 //======================================================================================================================
@@ -120,7 +111,7 @@ impl CatloopLibOS {
         Self {
             state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
             catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new())),
-            scheduler: Scheduler::default(),
+            runtime: DemiRuntime::new(),
         }
     }
 
@@ -296,7 +287,7 @@ impl CatloopLibOS {
         };
 
         let task_name: String = format!("Catloop::accept for qd={:?}", qd);
-        let handle: TaskHandle = match Self::insert_coroutine(&mut self.scheduler, task_name, coroutine) {
+        let handle: TaskHandle = match self.runtime.insert_coroutine(&task_name, coroutine) {
             Ok(handle) => handle,
             Err(e) => {
                 // Rollback the port allocation
@@ -350,7 +341,7 @@ impl CatloopLibOS {
                         .expect("New qd should have been already allocated");
                     queue.set_socket(Socket::Active(Some(remote)));
                     queue.set_pipe(duplex_pipe.clone());
-                    (qd, OperationResult::Accept(new_qd, remote))
+                    (qd, OperationResult::Accept((new_qd, remote)))
                 },
                 Err(e) => {
                     // Rollback the port allocation.
@@ -397,7 +388,7 @@ impl CatloopLibOS {
                     }
                 });
                 let task_name: String = format!("Catloop::connect for qd={:?}", qd);
-                let handle: TaskHandle = Self::insert_coroutine(&mut self.scheduler, task_name, coroutine)?;
+                let handle: TaskHandle = self.runtime.insert_coroutine(&task_name, coroutine)?;
                 state
                     .get_queue(qd)
                     .expect("queue should have already been found")
@@ -473,7 +464,7 @@ impl CatloopLibOS {
             let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Close) });
             let task_name: String = format!("Catloop::close for qd={:?}", qd);
-            let handle: TaskHandle = Self::insert_coroutine(&mut self.scheduler, task_name, coroutine)?;
+            let handle: TaskHandle = self.runtime.insert_coroutine(&task_name, coroutine)?;
             state
                 .get_queue(qd)
                 .expect("queue should have already been found")
@@ -552,17 +543,7 @@ impl CatloopLibOS {
                 return Err(Fail::new(libc::EINVAL, &cause));
             }
 
-            // Resolve the queue token into the scheduler.
-            match self.scheduler.from_task_id(qt.into()) {
-                // Succeed to insert queue token in the scheduler.
-                Some(handle) => return Ok(handle),
-                // Failed to insert queue token in the scheduler.
-                None => {
-                    let cause: String = format!("invalid queue token (qt={:?})", qt);
-                    error!("schedule(): {:?}", &cause);
-                    return Err(Fail::new(libc::EINVAL, &cause));
-                },
-            }
+            return self.runtime.from_task_id(qt.into());
         }
 
         // The queue token is not registered in Catloop LibOS, thus un-shift it and try Catmem LibOs.
@@ -684,19 +665,14 @@ impl CatloopLibOS {
     /// Polls scheduling queues.
     pub fn poll(&self) {
         self.catmem.borrow().poll();
-        self.scheduler.poll()
+        self.runtime.poll()
     }
 
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
         let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
 
-        let task: OperationTask = if let Some(task) = Self::remove_coroutine(&mut self.scheduler, &handle) {
-            OperationTask::from(task.as_any())
-        } else {
-            panic!("Removing task that does not exist (either was previously removed or never inserted)");
-        };
-
+        let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
         match state.get_queue(qd) {
@@ -752,24 +728,6 @@ impl CatloopLibOS {
         }
         qt.into()
     }
-
-    /// This function inserts `coroutine` into the scheduler with [task_id] to identify it.
-    fn insert_coroutine(
-        scheduler: &mut Scheduler,
-        task_name: String,
-        coroutine: Pin<Box<Operation>>,
-    ) -> Result<TaskHandle, Fail> {
-        let task: OperationTask = OperationTask::new(task_name, coroutine);
-        match scheduler.insert(task) {
-            Some(handle) => Ok(handle),
-            None => Err(Fail::new(libc::EAGAIN, "cannot schedule coroutine")),
-        }
-    }
-
-    /// Removes the coroutine associated with `handle` from the underlying scheduler.
-    fn remove_coroutine(scheduler: &mut Scheduler, handle: &TaskHandle) -> Option<Box<dyn Task>> {
-        scheduler.remove(handle)
-    }
 }
 
 //======================================================================================================================
@@ -786,7 +744,7 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
             qr_ret: 0,
             qr_value: unsafe { mem::zeroed() },
         },
-        OperationResult::Accept(new_qd, addr) => {
+        OperationResult::Accept((new_qd, addr)) => {
             let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
@@ -819,5 +777,6 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
                 qr_value: unsafe { mem::zeroed() },
             }
         },
+        _ => panic!("Should be forwarded on to catmem"),
     }
 }
