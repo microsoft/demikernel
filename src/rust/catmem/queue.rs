@@ -113,12 +113,19 @@ impl CatmemQueue {
         {
             let mut ring: RefMut<Ring> = self.ring.borrow_mut();
             ring.prepare_close()?;
-            ring.close()?;
-            ring.commit();
-            ring.prepare_closed()?;
-            ring.commit();
+            match ring.close() {
+                Ok(()) => {
+                    ring.commit();
+                },
+                Err(e) => {
+                    ring.abort();
+                    return Err(e);
+                },
+            }
         }
+        self.ring.borrow_mut().prepare_closed()?;
         self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+        self.ring.borrow_mut().commit();
         Ok(())
     }
 
