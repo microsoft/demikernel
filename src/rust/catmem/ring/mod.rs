@@ -65,7 +65,7 @@ impl Ring {
         Ok(Self::PushOnly(PushRing::open(name, RING_BUFFER_CAPACITY)?))
     }
 
-    /// This function commits the ring to closing.
+    /// Commits the pending operation.
     pub fn commit(&mut self) {
         match self {
             Ring::PushOnly(ring) => ring.commit(),
@@ -73,7 +73,7 @@ impl Ring {
         }
     }
 
-    /// This function aborts a pending operation.
+    /// Aborts a pending operation.
     pub fn abort(&mut self) {
         match self {
             Ring::PushOnly(ring) => ring.abort(),
@@ -97,6 +97,7 @@ impl Ring {
         }
     }
 
+    /// Closes the target ring.
     pub fn close(&mut self) -> Result<(), Fail> {
         match self {
             Ring::PushOnly(ring) => {
@@ -116,6 +117,7 @@ impl Ring {
         }
     }
 
+    /// Attempts to close the target ring.
     pub fn try_close(&mut self) -> Result<(), Fail> {
         match self {
             Ring::PushOnly(ring) => ring.try_close(),
