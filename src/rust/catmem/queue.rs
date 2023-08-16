@@ -5,16 +5,20 @@
 // Imports
 //======================================================================================================================
 
-use super::{
-    ring::Ring,
-    QMode,
-};
 use crate::{
+    catmem::{
+        ring::{
+            Ring,
+            MAX_RETRIES_PUSH_EOF,
+        },
+        QMode,
+    },
     runtime::{
         fail::Fail,
         limits,
         memory::DemiBuffer,
         queue::IoQueue,
+        QToken,
         QType,
     },
     scheduler::{
@@ -24,17 +28,13 @@ use crate::{
     },
 };
 use ::std::{
-    cell::RefCell,
+    cell::{
+        RefCell,
+        RefMut,
+    },
     collections::HashMap,
     rc::Rc,
 };
-
-//======================================================================================================================
-// Constants
-//======================================================================================================================
-
-/// Maximum number of retries for pushing a EoF signal.
-const MAX_RETRIES_PUSH_EOF: u32 = 16;
 
 //======================================================================================================================
 // Structures
@@ -94,71 +94,55 @@ impl CatmemQueue {
         }
     }
 
+    pub fn shutdown(&mut self) -> Result<(), Fail> {
+        {
+            let mut ring: RefMut<Ring> = self.ring.borrow_mut();
+            ring.prepare_close()?;
+            ring.commit();
+            ring.prepare_closed()?;
+            ring.commit();
+        }
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was shutdown"));
+
+        Ok(())
+    }
+
     /// This function closes a ring endpoint.
     /// TODO merge this with async_close().
-    pub fn close(&self) -> Result<(), Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => {
-                // Attempt to push EoF.
-                // Maximum number of retries. This is set to an arbitrary small value.
-                for _ in 0..MAX_RETRIES_PUSH_EOF {
-                    match ring.try_close() {
-                        Ok(()) => return Ok(()),
-                        Err(_) => continue,
-                    }
-                }
-                let cause: String = format!("failed to push EoF");
-                error!("push_eof(): {}", cause);
-                Err(Fail::new(libc::EIO, &cause))
-            },
-            // Nothing to do on close for a pop ring.
-            Ring::PopOnly(_) => Ok(()),
+    pub fn close(&mut self) -> Result<(), Fail> {
+        {
+            let mut ring: RefMut<Ring> = self.ring.borrow_mut();
+            ring.prepare_close()?;
+            match ring.close() {
+                Ok(()) => {
+                    ring.commit();
+                },
+                Err(e) => {
+                    ring.abort();
+                    return Err(e);
+                },
+            }
         }
+        self.ring.borrow_mut().prepare_closed()?;
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+        self.ring.borrow_mut().commit();
+        Ok(())
     }
 
-    /// Prepares a transition to the closing state.
-    pub fn prepare_close(&self) -> Result<(), Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => ring.prepare_close(),
-            Ring::PopOnly(ring) => ring.prepare_close(),
-        }
-    }
-
-    /// Prepares a transition to the closed state.
-    pub fn prepare_closed(&self) -> Result<(), Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => ring.prepare_closed(),
-            Ring::PopOnly(ring) => ring.prepare_closed(),
-        }
-    }
-
-    /// This function commits the queue to closing.
-    pub fn commit(&self) {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => ring.commit(),
-            Ring::PopOnly(ring) => ring.commit(),
-        }
-    }
-
-    /// This function aborts a pending operation.
-    pub fn abort(&self) {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => ring.abort(),
-            Ring::PopOnly(_) => warn!("abort() called on a pop-only queue"),
-        }
-    }
-
-    fn try_close(&self) -> Result<(), Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => ring.try_close(),
-            Ring::PopOnly(_) => Ok(()),
-        }
+    /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
+    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.ring.borrow_mut().prepare_close()?;
+        self.do_generic_sync_control_path_call(insert_coroutine, false)
     }
 
     /// This function perms an async close on the target queue.
-    pub async fn async_close(&self, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn do_async_close(&self, yielder: Yielder) -> Result<(), Fail> {
         for _ in 0..MAX_RETRIES_PUSH_EOF {
-            if let Ok(_) = self.try_close() {
+            if let Ok(_) = self.ring.borrow_mut().try_close() {
                 return Ok(());
             }
             if let Err(cause) = yielder.yield_once().await {
@@ -179,13 +163,26 @@ impl CatmemQueue {
                 error!("{}", &cause);
                 Err(Fail::new(libc::EINVAL, cause))
             },
-            Ring::PopOnly(ring) => Ok(ring.try_pop()?),
+            Ring::PopOnly(ring) => {
+                let (byte, eof) = ring.try_pop()?;
+                if eof {
+                    ring.prepare_close()?;
+                    ring.commit();
+                }
+                Ok((byte, eof))
+            },
         }
+    }
+
+    /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
+    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
+        self.do_generic_sync_data_path_call(insert_coroutine)
     }
 
     /// This function pops a buffer of optional [size] from the queue. If the queue is connected to the push end of a
     /// shared memory ring, this function returns an error.
-    pub async fn pop(&self, size: Option<usize>, yielder: Yielder) -> Result<(DemiBuffer, bool), Fail> {
+    pub async fn do_pop(&self, size: Option<usize>, yielder: Yielder) -> Result<(DemiBuffer, bool), Fail> {
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let mut index: usize = 0;
@@ -230,6 +227,12 @@ impl CatmemQueue {
         Ok((buf, eof))
     }
 
+    /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
+    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
+        self.do_generic_sync_data_path_call(insert_coroutine)
+    }
+
     /// This private function tries to push a single byte and is used for scoping the borrow.
     fn try_push(&self, byte: &u8) -> Result<bool, Fail> {
         match &mut *self.ring.borrow_mut() {
@@ -244,7 +247,7 @@ impl CatmemQueue {
 
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
     /// this function returns an error.
-    pub async fn push(&self, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn do_push(&self, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
         for byte in &buf[..] {
             loop {
                 match self.try_push(byte)? {
@@ -263,15 +266,58 @@ impl CatmemQueue {
         Ok(())
     }
 
+    /// Generic function for spawning a control-path coroutine on [self].
+    fn do_generic_sync_control_path_call<F>(&self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        // Spawn coroutine.
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let task_handle: TaskHandle = match coroutine(yielder) {
+            // We successfully spawned the coroutine.
+            Ok(handle) => {
+                // Commit the operation on the socket.
+                self.ring.borrow_mut().commit();
+                handle
+            },
+            // We failed to spawn the coroutine.
+            Err(e) => {
+                // Abort the operation on the socket.
+                self.ring.borrow_mut().abort();
+                return Err(e);
+            },
+        };
+
+        // If requested, add this operation to the list of pending operations on this queue.
+        if add_as_pending_op {
+            self.add_pending_op(&task_handle, &yielder_handle);
+        }
+
+        Ok(task_handle.get_task_id().into())
+    }
+
+    /// Generic function for spawning a data-path coroutine on [self].
+    fn do_generic_sync_data_path_call<F>(&self, coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let task_handle: TaskHandle = coroutine(yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
+    }
+
     /// Adds a new operation to the list of pending operations on this queue.
-    pub fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
+    pub fn add_pending_op(&self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
         self.pending_ops
             .borrow_mut()
             .insert(handle.clone(), yielder_handle.clone());
     }
 
     /// Removes an operation from the list of pending operations on this queue.
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
+    pub fn remove_pending_op(&self, handle: &TaskHandle) {
         self.pending_ops
             .borrow_mut()
             .remove_entry(handle)
