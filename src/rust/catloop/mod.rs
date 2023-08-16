@@ -84,6 +84,7 @@ pub enum Socket {
 pub struct CatloopLibOS {
     /// Catloop state.
     state: Rc<RefCell<CatloopRuntime>>,
+    /// Underlying transport.
     catmem: Rc<RefCell<CatmemLibOS>>,
     /// Underlying coroutine runtime.
     runtime: DemiRuntime,
