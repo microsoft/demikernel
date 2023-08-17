@@ -56,7 +56,6 @@ use crate::{
 };
 use ::std::{
     cell::{
-        Ref,
         RefCell,
         RefMut,
     },
@@ -108,11 +107,11 @@ impl CatloopLibOS {
     const QTOKEN_SHIFT: u64 = 65536;
 
     /// Instantiates a new LibOS.
-    pub fn new() -> Self {
+    pub fn new(runtime: DemiRuntime) -> Self {
         Self {
             state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
-            catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new())),
-            runtime: DemiRuntime::new(),
+            catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new(runtime.clone()))),
+            runtime,
         }
     }
 
@@ -459,7 +458,7 @@ impl CatloopLibOS {
         if let Some(duplex_pipe) = state.get_queue(qd)?.get_pipe() {
             let qt: QToken = duplex_pipe.async_close()?;
             state.insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
-            Ok(Self::shift_qtoken(qt))
+            Ok(qt)
         } else {
             let yielder: Yielder = Yielder::new();
             let yielder_handle: YielderHandle = yielder.get_handle();
@@ -526,7 +525,7 @@ impl CatloopLibOS {
         let qt: QToken = self.catmem.borrow_mut().push(catmem_qd, sga)?;
         state.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_PUSH, qd);
 
-        Ok(Self::shift_qtoken(qt))
+        Ok(qt)
     }
 
     /// Pops data from a socket.
@@ -546,7 +545,7 @@ impl CatloopLibOS {
         let qt: QToken = self.catmem.borrow_mut().pop(catmem_qd, size)?;
         state.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_POP, qd);
 
-        Ok(Self::shift_qtoken(qt))
+        Ok(qt)
     }
 
     /// Allocates a scatter-gather array.
@@ -561,40 +560,7 @@ impl CatloopLibOS {
 
     /// Inserts a queue token into the scheduler.
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        let state: Ref<CatloopRuntime> = self.state.borrow();
-
-        // Check if the queue token came from the Catloop LibOS.
-        if let Some((ref opcode, _)) = state.get_catloop_op(qt) {
-            // Check if the queue token concerns an expected operation.
-            if opcode != &demi_opcode_t::DEMI_OPC_ACCEPT && opcode != &demi_opcode_t::DEMI_OPC_CONNECT {
-                let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                error!("schedule(): {:?}", &cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            }
-
-            return self.runtime.from_task_id(qt.into());
-        }
-
-        // The queue token is not registered in Catloop LibOS, thus un-shift it and try Catmem LibOs.
-        let qt: QToken = Self::try_unshift_qtoken(qt);
-
-        // Check if the queue token came from the Catmem LibOS.
-        if let Some((ref opcode, _)) = state.get_catmem_op(qt) {
-            // Check if the queue token concerns an expected operation.
-            if opcode != &demi_opcode_t::DEMI_OPC_PUSH && opcode != &demi_opcode_t::DEMI_OPC_POP {
-                let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                error!("schedule(): {:?}", &cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            }
-
-            // The queue token came from the Catmem LibOS, thus forward operation.
-            return self.catmem.borrow().from_task_id(qt);
-        }
-
-        // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
-        let cause: String = format!("unregistered queue token (qt={:?})", qt);
-        error!("schedule(): {:?}", &cause);
-        Err(Fail::new(libc::EINVAL, &cause))
+        self.runtime.from_task_id(qt.into())
     }
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
@@ -618,9 +584,6 @@ impl CatloopLibOS {
             return Ok(qr);
         }
 
-        // This is not a queue token from the Catloop LibOS, un-shift it and try Catmem LibOs.
-        let qt: QToken = Self::try_unshift_qtoken(qt);
-
         // Check if the queue token came from the Catmem LibOS.
         let opcode: Option<(demi_opcode_t, QDesc)> = self.state.borrow_mut().free_catmem_op(qt);
         if let Some((opcode, catloop_qd)) = opcode {
@@ -640,7 +603,6 @@ impl CatloopLibOS {
             // We temper queue descriptor and queue token that were stored in the queue result returned by Catmem LibOS,
             // because we only distribute to the application identifiers that are managed by Catloop LibLOS.
             qr.qr_qd = catloop_qd.to_owned().into();
-            qr.qr_qt = Self::shift_qtoken(qt).into();
 
             return Ok(qr);
         }
@@ -653,7 +615,6 @@ impl CatloopLibOS {
 
     /// Polls scheduling queues.
     pub fn poll(&self) {
-        self.catmem.borrow().poll();
         self.runtime.poll()
     }
 
@@ -699,23 +660,6 @@ impl CatloopLibOS {
         }
 
         false
-    }
-
-    /// Shifts a queue token by a certain amount.
-    fn shift_qtoken(qt: QToken) -> QToken {
-        let mut qt: u64 = qt.into();
-        qt += Self::QTOKEN_SHIFT;
-        qt.into()
-    }
-
-    /// Un-shifts a queue token by a certain amount. This is the inverse of [shift_qtoken].
-    fn try_unshift_qtoken(qt: QToken) -> QToken {
-        let mut qt: u64 = qt.into();
-        // Avoid underflow.
-        if qt >= Self::QTOKEN_SHIFT {
-            qt -= Self::QTOKEN_SHIFT;
-        }
-        qt.into()
     }
 }
 
