@@ -2,25 +2,27 @@
 // Licensed under the MIT license.
 
 //======================================================================================================================
-// Exports
-//======================================================================================================================
-
-mod pop_ring;
-mod push_ring;
-
-//======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use self::{
-    pop_ring::PopRing,
-    push_ring::PushRing,
+use crate::{
+    collections::shared_ring::SharedRingBuffer,
+    runtime::{
+        fail::Fail,
+        network::ring::{
+            operation::RingControlOperation,
+            state::RingStateMachine,
+        },
+    },
+    scheduler::Mutex,
 };
-use crate::runtime::fail::Fail;
 
 //======================================================================================================================
 // Constants
 //======================================================================================================================
+
+/// End of file signal.
+const EOF: u16 = (1 & 0xff) << 8;
 
 /// Capacity of the ring buffer, in bytes.
 /// This does not correspond to the effective number of bytes that may be stored in the ring buffer due to layout and
@@ -35,9 +37,15 @@ pub const MAX_RETRIES_PUSH_EOF: u32 = 16;
 //======================================================================================================================
 
 /// An endpoint for a unidirectional queue built on a shared ring buffer
-pub enum Ring {
-    PushOnly(PushRing),
-    PopOnly(PopRing),
+pub struct Ring {
+    /// Underlying buffer used for sending data.
+    push_buf: SharedRingBuffer<u16>,
+    /// Underlying buffer used for receiving data.
+    pop_buf: SharedRingBuffer<u16>,
+    /// Indicates whether the ring is open or closed.
+    state_machine: RingStateMachine,
+    /// Mutex to ensure single-threaded access to this ring.
+    mutex: Mutex,
 }
 
 //======================================================================================================================
@@ -45,83 +53,136 @@ pub enum Ring {
 //======================================================================================================================
 
 impl Ring {
-    /// Creates a new shared memory ring and connects to the push/producer end.
-    pub fn create_pop_ring(name: &str) -> Result<Self, Fail> {
-        Ok(Self::PopOnly(PopRing::create(name, RING_BUFFER_CAPACITY)?))
+    /// Creates a new shared memory ring.
+    pub fn create(name: &str) -> Result<Self, Fail> {
+        // Check if provided name is valid.
+        if name.is_empty() {
+            return Err(Fail::new(libc::EINVAL, "name of shared memory region cannot be empty"));
+        }
+        Ok(Self {
+            push_buf: SharedRingBuffer::create(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            pop_buf: SharedRingBuffer::create(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
+            state_machine: RingStateMachine::new(),
+            mutex: Mutex::new(),
+        })
     }
 
-    /// Creates a new shared memory ring and connects to the push/producer end.
-    pub fn create_push_ring(name: &str) -> Result<Self, Fail> {
-        Ok(Self::PushOnly(PushRing::create(name, RING_BUFFER_CAPACITY)?))
+    /// Opens an existing shared memory ring.
+    pub fn open(name: &str) -> Result<Self, Fail> {
+        // Check if provided name is valid.
+        if name.is_empty() {
+            return Err(Fail::new(libc::EINVAL, "name of shared memory region cannot be empty"));
+        }
+        Ok(Self {
+            push_buf: SharedRingBuffer::open(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
+            pop_buf: SharedRingBuffer::open(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            state_machine: RingStateMachine::new(),
+            mutex: Mutex::new(),
+        })
     }
 
-    /// Opens an existing shared memory ring and connects to the pop/consumer end.
-    pub fn open_pop_ring(name: &str) -> Result<Self, Fail> {
-        Ok(Self::PopOnly(PopRing::open(name, RING_BUFFER_CAPACITY)?))
-    }
-
-    /// Opens an existing shared memory ring and connects to the push/producer end.
-    pub fn open_push_ring(name: &str) -> Result<Self, Fail> {
-        Ok(Self::PushOnly(PushRing::open(name, RING_BUFFER_CAPACITY)?))
-    }
-
-    /// Commits the pending operation.
-    pub fn commit(&mut self) {
-        match self {
-            Ring::PushOnly(ring) => ring.commit(),
-            Ring::PopOnly(ring) => ring.commit(),
+    /// Try to pop a byte from the shared memory ring. If successful, return the byte and whether the eof flag is set,
+    /// otherwise return None for a retry.
+    pub fn try_pop(&mut self) -> Result<(Option<u8>, bool), Fail> {
+        if self.state_machine.is_closing() {
+            return Err(Fail::new(libc::ECANCELED, "queue is closing"));
+        } else if self.state_machine.is_closed() {
+            return Err(Fail::new(libc::ECANCELED, "queue was closed"));
+        };
+        if !self.mutex.try_lock() {
+            let cause: String = format!("could not lock ring buffer to pop byte");
+            warn!("try_pop(): {}", &cause);
+            return Ok((None, false));
+        }
+        let out: Option<u16> = self.pop_buf.try_dequeue();
+        assert_eq!(self.mutex.unlock().is_ok(), true);
+        if let Some(bytes) = out {
+            let (high, low): (u8, u8) = (((bytes >> 8) & 0xff) as u8, (bytes & 0xff) as u8);
+            Ok((Some(low), high != 0))
+        } else {
+            Ok((None, false))
         }
     }
 
-    /// Aborts a pending operation.
-    pub fn abort(&mut self) {
-        match self {
-            Ring::PushOnly(ring) => ring.abort(),
-            Ring::PopOnly(_) => warn!("abort() called on a pop-only queue"),
+    /// Try to send a byte through the shared memory ring. If there is no space or another thread is writing to this
+    /// ring, return [false], otherwise, return [true] if successfully enqueued.
+    pub fn try_push(&mut self, byte: &u8) -> Result<bool, Fail> {
+        if self.state_machine.is_closing() {
+            return Err(Fail::new(libc::ECANCELED, "queue is closing"));
+        } else if self.state_machine.is_closed() {
+            return Err(Fail::new(libc::ECANCELED, "queue was closed"));
+        };
+        let x: u16 = (*byte & 0xff) as u16;
+        // Try to lock the ring buffer.
+        if !self.mutex.try_lock() {
+            let cause: String = format!("could not lock ring buffer to push byte");
+            warn!("try_push(): {}", &cause);
+            return Ok(false);
         }
-    }
-
-    /// Prepares a transition to the closing state.
-    pub fn prepare_close(&mut self) -> Result<(), Fail> {
-        match self {
-            Ring::PushOnly(ring) => ring.prepare_close(),
-            Ring::PopOnly(ring) => ring.prepare_close(),
-        }
-    }
-
-    /// Prepares a transition to the closed state.
-    pub fn prepare_closed(&mut self) -> Result<(), Fail> {
-        match self {
-            Ring::PushOnly(ring) => ring.prepare_closed(),
-            Ring::PopOnly(ring) => ring.prepare_closed(),
-        }
+        // Write to the ring buffer.
+        let result: Result<(), u16> = self.push_buf.try_enqueue(x);
+        // Unlock the ring buffer.
+        assert_eq!(self.mutex.unlock().is_ok(), true);
+        // Return result.
+        Ok(result.is_ok())
     }
 
     /// Closes the target ring.
     pub fn close(&mut self) -> Result<(), Fail> {
-        match self {
-            Ring::PushOnly(ring) => {
-                // Attempt to push EoF.
-                // Maximum number of retries. This is set to an arbitrary small value.
-                for _ in 0..MAX_RETRIES_PUSH_EOF {
-                    match ring.try_close() {
-                        Ok(()) => return Ok(()),
-                        Err(_) => continue,
-                    }
-                }
-                let cause: String = format!("failed to push EoF");
-                error!("push_eof(): {}", cause);
-                Err(Fail::new(libc::EIO, &cause))
-            },
-            Ring::PopOnly(_) => Ok(()),
+        // Attempt to push EoF.
+        // Maximum number of retries. This is set to an arbitrary small value.
+        for _ in 0..MAX_RETRIES_PUSH_EOF {
+            match self.try_close() {
+                Ok(()) => return Ok(()),
+                Err(_) => continue,
+            }
         }
+        let cause: String = format!("failed to push EoF");
+        error!("push_eof(): {}", cause);
+        Err(Fail::new(libc::EIO, &cause))
     }
 
     /// Attempts to close the target ring.
     pub fn try_close(&mut self) -> Result<(), Fail> {
-        match self {
-            Ring::PushOnly(ring) => ring.try_close(),
-            Ring::PopOnly(_) => Ok(()),
+        self.do_close()
+    }
+
+    /// Try to send an eof through the shared memory ring. If success, this queue is now closed, otherwise, return
+    /// EAGAIN and retry.
+    fn do_close(&mut self) -> Result<(), Fail> {
+        // Try to lock the ring buffer.
+        if !self.mutex.try_lock() {
+            let cause: String = format!("could not lock ring buffer to push EOF");
+            error!("try_close(): {}", &cause);
+            return Err(Fail::new(libc::EAGAIN, &cause));
         }
+
+        let result: Result<(), u16> = self.push_buf.try_enqueue(EOF);
+        assert_eq!(self.mutex.unlock().is_ok(), true);
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(_) => Err(Fail::new(libc::EAGAIN, "Could not push EOF")),
+        }
+    }
+
+    /// Prepares a transition to the [PopRingState::Closing] state.
+    pub fn prepare_close(&mut self) -> Result<(), Fail> {
+        self.state_machine.prepare(RingControlOperation::Close)
+    }
+
+    /// Prepares a transition to the [PopRingState::Closed] state.
+    pub fn prepare_closed(&mut self) -> Result<(), Fail> {
+        self.state_machine.prepare(RingControlOperation::Closed)
+    }
+
+    /// Commits to moving into the prepared state.
+    pub fn commit(&mut self) {
+        self.state_machine.commit();
+    }
+
+    /// Aborts prepared state.
+    pub fn abort(&mut self) {
+        self.state_machine.abort();
     }
 }
