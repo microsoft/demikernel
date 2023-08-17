@@ -34,6 +34,7 @@ use crate::{
     runtime::{
         fail::Fail,
         limits,
+        memory::MemoryRuntime,
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -550,12 +551,12 @@ impl CatloopLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.catmem.borrow_mut().alloc_sgarray(size)
+        self.runtime.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.catmem.borrow_mut().free_sgarray(sga)
+        self.runtime.free_sgarray(sga)
     }
 
     /// Inserts a queue token into the scheduler.

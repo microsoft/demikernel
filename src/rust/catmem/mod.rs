@@ -217,12 +217,12 @@ impl CatmemLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        MemoryRuntime::alloc_sgarray(self, size)
+        self.runtime.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        MemoryRuntime::free_sgarray(self, sga)
+        self.runtime.free_sgarray(sga)
     }
 
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
