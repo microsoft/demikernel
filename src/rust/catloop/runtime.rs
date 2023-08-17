@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catloop::{
-        CatloopQueue,
-        Socket,
-    },
+    catloop::CatloopQueue,
     inetstack::protocols::ip::EphemeralPorts,
     runtime::{
         fail::Fail,
@@ -18,7 +15,6 @@ use crate::{
             IoQueueTable,
             QDesc,
             QToken,
-            QType,
         },
         types::demi_opcode_t,
     },
@@ -48,9 +44,9 @@ pub struct CatloopRuntime {
     catmem_ops: HashMap<QToken, (demi_opcode_t, QDesc)>,
 }
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 /// Catloop Runtime. This data structure holds all of the cross-queue state for the Catloop libOS.
 impl CatloopRuntime {
@@ -64,9 +60,9 @@ impl CatloopRuntime {
         }
     }
 
-    /// Allocates a new [CatloopQueue] of `qtype`.
-    pub fn alloc_queue(&mut self, qtype: QType) -> QDesc {
-        self.qtable.alloc(CatloopQueue::new(qtype))
+    /// Allocates a new [CatloopQueue].
+    pub fn alloc_queue(&mut self, queue: CatloopQueue) -> QDesc {
+        self.qtable.alloc(queue)
     }
 
     pub fn free_queue(&mut self, qd: QDesc) {
@@ -74,9 +70,9 @@ impl CatloopRuntime {
     }
 
     /// Gets the [CatloopQueue] associated with `qd`. If not `qd` does not refer to a valid, then return `EBADF` is returned.
-    pub fn get_queue(&mut self, qd: QDesc) -> Result<&mut CatloopQueue, Fail> {
-        match self.qtable.get_mut(&qd) {
-            Some(queue) => Ok(queue),
+    pub fn get_queue(&self, qd: QDesc) -> Result<CatloopQueue, Fail> {
+        match self.qtable.get(&qd) {
+            Some(queue) => Ok(queue.clone()),
             None => {
                 let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
                 error!("get_queue(): {}", cause);
@@ -109,8 +105,8 @@ impl CatloopRuntime {
     /// already in use.
     pub fn is_bound_to_addr(&self, local: SocketAddrV4) -> bool {
         for (_, queue) in self.qtable.get_values() {
-            match queue.get_socket() {
-                Socket::Active(Some(addr)) | Socket::Passive(addr) if addr == local => return false,
+            match queue.local() {
+                Some(addr) if addr == local => return false,
                 _ => continue,
             }
         }
@@ -143,13 +139,11 @@ impl MemoryRuntime for CatloopRuntime {}
 impl Drop for CatloopRuntime {
     /// Releases all resources allocated by Catloop.
     fn drop(&mut self) {
-        for (_, queue) in self.qtable.get_values() {
-            if let Some(duplex_pipe) = queue.get_pipe() {
-                if duplex_pipe.close().is_err() {
-                    warn!("drop(): failed to close duplex pipe");
-                }
+        for (qd, queue) in self.qtable.get_values() {
+            if let Err(e) = queue.close() {
+                warn!("drop(): leaking qd={:?} (e={:?})", qd, e);
             }
-            if let Socket::Active(Some(addr)) | Socket::Passive(addr) = queue.get_socket() {
+            if let Some(addr) = queue.local() {
                 if EphemeralPorts::is_private(addr.port()) {
                     if self.ephemeral_ports.free(addr.port()).is_err() {
                         warn!("drop(): leaking ephemeral port (port={})", addr.port());
