@@ -88,7 +88,6 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-        #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
         let runtime: DemiRuntime = DemiRuntime::new();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
@@ -104,9 +103,9 @@ impl LibOS {
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
             #[cfg(feature = "catmem-libos")]
-            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new())),
+            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new(runtime.clone()))),
             #[cfg(feature = "catloop-libos")]
-            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new())),
+            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new(runtime.clone()))),
             _ => panic!("unsupported libos"),
         };
 

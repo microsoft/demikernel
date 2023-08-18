@@ -95,16 +95,6 @@ impl CatloopRuntime {
         self.catmem_ops.insert(qt, (opcode, qd));
     }
 
-    /// Gets the opcode and queue descriptor associated with this [qt].
-    pub fn get_catloop_op(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
-        self.catloop_ops.get(&qt)
-    }
-
-    /// Gets the opcode and queue descriptor associated with this [qt].
-    pub fn get_catmem_op(&self, qt: QToken) -> Option<&(demi_opcode_t, QDesc)> {
-        self.catmem_ops.get(&qt)
-    }
-
     /// Removes `qt` from the  Catloop queue token table.
     pub fn free_catloop_op(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
         self.catloop_ops.remove(&qt)

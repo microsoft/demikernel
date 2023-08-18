@@ -24,6 +24,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        DemiRuntime,
         Operation,
         OperationResult,
         OperationTask,
@@ -31,7 +32,6 @@ use crate::{
         QToken,
     },
     scheduler::{
-        Scheduler,
         TaskHandle,
         Yielder,
     },
@@ -62,7 +62,7 @@ pub enum QMode {
 /// FIXME: https://github.com/microsoft/demikernel/issues/856
 pub struct CatmemLibOS {
     qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>>,
-    scheduler: Scheduler,
+    runtime: DemiRuntime,
 }
 
 //======================================================================================================================
@@ -78,10 +78,10 @@ impl MemoryRuntime for CatmemLibOS {}
 /// Associated functions for Catmem LibOS.
 impl CatmemLibOS {
     /// Instantiates a new LibOS.
-    pub fn new() -> Self {
+    pub fn new(runtime: DemiRuntime) -> Self {
         CatmemLibOS {
             qtable: Rc::new(RefCell::new(IoQueueTable::<CatmemQueue>::new())),
-            scheduler: Scheduler::default(),
+            runtime,
         }
     }
 
@@ -125,7 +125,7 @@ impl CatmemLibOS {
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = self.async_close_coroutine(qd, yielder)?;
             let task_name: String = format!("catmem::async_close for qd={:?}", qd);
-            self.insert_coroutine(&task_name, coroutine)
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
         Ok(self.get_queue(qd)?.async_close(coroutine)?)
     }
@@ -169,7 +169,7 @@ impl CatmemLibOS {
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = self.push_coroutine(qd, buf, yielder)?;
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
-            self.insert_coroutine(&task_name, coroutine)
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
         self.get_queue(qd)?.push(coroutine)
     }
@@ -197,7 +197,7 @@ impl CatmemLibOS {
         let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = self.pop_coroutine(qd, size, yielder)?;
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
-            self.insert_coroutine(&task_name, coroutine)
+            self.runtime.insert_coroutine(&task_name, coroutine)
         };
         self.get_queue(qd)?.pop(coroutine)
     }
@@ -217,33 +217,17 @@ impl CatmemLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        MemoryRuntime::alloc_sgarray(self, size)
+        self.runtime.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        MemoryRuntime::free_sgarray(self, sga)
-    }
-
-    pub fn insert_coroutine(&self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
-        let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
-            None => {
-                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
-                error!("insert_coroutine(): {}", cause);
-                Err(Fail::new(libc::EAGAIN, &cause))
-            },
-        }
+        self.runtime.free_sgarray(sga)
     }
 
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = if let Some(task) = self.scheduler.remove(&handle) {
-            OperationTask::from(task.as_any())
-        } else {
-            panic!("Removing task that does not exist (either was previously removed or never inserted)");
-        };
+        let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
         match self.qtable.borrow_mut().get_mut(&qd) {
@@ -255,14 +239,7 @@ impl CatmemLibOS {
     }
 
     pub fn from_task_id(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.scheduler.from_task_id(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => {
-                let cause: String = format!("invalid queue token (qt={:?})", qt);
-                error!("from_task_id(): {}", cause);
-                Err(Fail::new(libc::EINVAL, &cause))
-            },
-        }
+        self.runtime.from_task_id(qt.into())
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
@@ -320,7 +297,7 @@ impl CatmemLibOS {
     }
 
     pub fn poll(&self) {
-        self.scheduler.poll()
+        self.runtime.poll()
     }
 
     fn get_queue(&self, qd: QDesc) -> Result<CatmemQueue, Fail> {
