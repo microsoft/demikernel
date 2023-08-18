@@ -44,16 +44,6 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Types
-//======================================================================================================================
-
-/// Whether this queue is open for push or pop (i.e., producer or consumer).
-pub enum QMode {
-    Push,
-    Pop,
-}
-
-//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -85,19 +75,19 @@ impl CatmemLibOS {
         }
     }
 
-    /// Creates a new memory queue and connects to the [mode] end.
-    pub fn create_pipe(&self, name: &str, mode: QMode) -> Result<QDesc, Fail> {
+    /// Creates a new memory queue.
+    pub fn create_pipe(&self, name: &str) -> Result<QDesc, Fail> {
         trace!("create_pipe() name={:?}", name);
-        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::create(name, mode)?);
+        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::create(name)?);
 
         Ok(qd)
     }
 
-    /// Opens a memory queue and connects to the [mode] end.
-    pub fn open_pipe(&self, name: &str, mode: QMode) -> Result<QDesc, Fail> {
+    /// Opens a memory queue.
+    pub fn open_pipe(&self, name: &str) -> Result<QDesc, Fail> {
         trace!("open_pipe() name={:?}", name);
 
-        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::open(name, mode)?);
+        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::open(name)?);
 
         Ok(qd)
     }

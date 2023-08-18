@@ -6,12 +6,9 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::{
-        ring::{
-            Ring,
-            MAX_RETRIES_PUSH_EOF,
-        },
-        QMode,
+    catmem::ring::{
+        Ring,
+        MAX_RETRIES_PUSH_EOF,
     },
     runtime::{
         fail::Fail,
@@ -54,9 +51,8 @@ pub struct CatmemQueue {
 //======================================================================================================================
 
 impl CatmemQueue {
-    /// This function creates a new CatmemQueue and a new shared ring buffer and connects to it to either the consumer
-    /// or producer end indicated by [mode].
-    pub fn create(name: &str, mode: QMode) -> Result<Self, Fail> {
+    /// Creates a new [CatmemQueue] and a new shared ring buffer.
+    pub fn create(name: &str) -> Result<Self, Fail> {
         let pending_ops: Rc<RefCell<HashMap<TaskHandle, YielderHandle>>> =
             Rc::new(RefCell::<HashMap<TaskHandle, YielderHandle>>::new(HashMap::<
                 TaskHandle,
@@ -68,9 +64,8 @@ impl CatmemQueue {
         })
     }
 
-    /// This function creates a new CatmemQueue and attaches to an existing share ring buffer as either a consumer or
-    /// producer as indicated by [mode].
-    pub fn open(name: &str, mode: QMode) -> Result<Self, Fail> {
+    /// Creates a new [CatmemQueue] and attaches it to an existing share ring buffer.
+    pub fn open(name: &str) -> Result<Self, Fail> {
         let pending_ops: Rc<RefCell<HashMap<TaskHandle, YielderHandle>>> =
             Rc::new(RefCell::<HashMap<TaskHandle, YielderHandle>>::new(HashMap::<
                 TaskHandle,
