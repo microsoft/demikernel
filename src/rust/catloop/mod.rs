@@ -463,9 +463,37 @@ impl CatloopLibOS {
         } else {
             let yielder: Yielder = Yielder::new();
             let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Close) });
-            let task_name: String = format!("Catloop::close for qd={:?}", qd);
-            let handle: TaskHandle = self.runtime.insert_coroutine(&task_name, coroutine)?;
+            let state_ptr: Rc<RefCell<CatloopRuntime>> = self.state.clone();
+            let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                // If this was an async_close(), harvest resources.
+                let mut state: RefMut<CatloopRuntime> = state_ptr.borrow_mut();
+                // Rollback the port allocation.
+                if let Socket::Active(Some(addr)) | Socket::Passive(addr) =
+                    state.get_queue(qd).expect("queue should exist").get_socket()
+                {
+                    if EphemeralPorts::is_private(addr.port()) {
+                        if state.free_ephemeral_port(addr.port()).is_err() {
+                            // We fail if and only if we attempted to free a port that was not allocated.
+                            // This is unexpected, but if it happens, issue a warning and keep going,
+                            // otherwise we would leave the queue in a dangling state.
+                            warn!(
+                                "pack_result(): attempting to free an ephemeral port that was not allocated (port={})",
+                                addr.port()
+                            );
+                            warn!("pack_result(): leaking ephemeral port (port={})", addr.port());
+                        }
+                    }
+                }
+                state
+                    .get_queue(qd)
+                    .expect("queue should have already been found")
+                    .cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+                state.free_queue(qd);
+
+                (qd, OperationResult::Close)
+            });
+            let task_id: String = format!("Catloop::close for qd={:?}", qd);
+            let handle: TaskHandle = self.runtime.insert_coroutine(&task_id, coroutine)?;
             state
                 .get_queue(qd)
                 .expect("queue should have already been found")
@@ -569,39 +597,11 @@ impl CatloopLibOS {
         Err(Fail::new(libc::EINVAL, &cause))
     }
 
-    /// Harvests resources on close.
-    fn harvest_resources_on_close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        // If this was an async_close(), harvest resources.
-        let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
-        // Rollback the port allocation.
-        if let Socket::Active(Some(addr)) | Socket::Passive(addr) = state.get_queue(qd)?.get_socket() {
-            if EphemeralPorts::is_private(addr.port()) {
-                if state.free_ephemeral_port(addr.port()).is_err() {
-                    // We fail if and only if we attempted to free a port that was not allocated.
-                    // This is unexpected, but if it happens, issue a warning and keep going,
-                    // otherwise we would leave the queue in a dangling state.
-                    warn!(
-                        "pack_result(): attempting to free an ephemeral port that was not allocated (port={})",
-                        addr.port()
-                    );
-                    warn!("pack_result(): leaking ephemeral port (port={})", addr.port());
-                }
-            }
-        }
-        state
-            .get_queue(qd)
-            .expect("queue should have already been found")
-            .cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
-        state.free_queue(qd);
-        Ok(())
-    }
-
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         // Check if the queue token came from the Catloop LibOS.
-        let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
-
-        if let Some((opcode, catloop_qd)) = state.free_catloop_op(qt) {
+        let opcode: Option<(demi_opcode_t, QDesc)> = self.state.borrow_mut().free_catloop_op(qt);
+        if let Some((opcode, _)) = opcode {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT | demi_opcode_t::DEMI_OPC_CONNECT | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -611,13 +611,6 @@ impl CatloopLibOS {
                     return Err(Fail::new(libc::EINVAL, &cause));
                 },
             }
-
-            drop(state);
-            // If this was an async_close(), harvest resources.
-            if opcode == demi_opcode_t::DEMI_OPC_CLOSE {
-                self.harvest_resources_on_close(catloop_qd)?;
-            }
-
             // Construct operation result.
             let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
             let qr: demi_qresult_t = pack_result(r, qd, qt.into());
@@ -629,7 +622,8 @@ impl CatloopLibOS {
         let qt: QToken = Self::try_unshift_qtoken(qt);
 
         // Check if the queue token came from the Catmem LibOS.
-        if let Some((opcode, catloop_qd)) = state.free_catmem_op(qt) {
+        let opcode: Option<(demi_opcode_t, QDesc)> = self.state.borrow_mut().free_catmem_op(qt);
+        if let Some((opcode, catloop_qd)) = opcode {
             // Check if the queue token concerns an expected operation.
             match opcode {
                 demi_opcode_t::DEMI_OPC_PUSH | demi_opcode_t::DEMI_OPC_POP | demi_opcode_t::DEMI_OPC_CLOSE => {},
@@ -640,14 +634,8 @@ impl CatloopLibOS {
                 },
             }
 
-            drop(state);
             // The queue token came from the Catmem LibOS, thus forward operation.
             let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
-
-            // If this was an async_close(), harvest resources.
-            if opcode == demi_opcode_t::DEMI_OPC_CLOSE {
-                self.harvest_resources_on_close(catloop_qd)?;
-            }
 
             // We temper queue descriptor and queue token that were stored in the queue result returned by Catmem LibOS,
             // because we only distribute to the application identifiers that are managed by Catloop LibLOS.
