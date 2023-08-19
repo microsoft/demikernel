@@ -182,22 +182,20 @@ impl CatloopLibOS {
         trace!("accept() qd={:?}", qd);
 
         // Keep a reference to this for later.
-        let state: Rc<RefCell<CatloopRuntime>> = self.state.clone();
+        let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
+        let local: SocketAddrV4 = queue.local().expect("socket should be bound to local address");
+        let new_port: u16 = match self.state.borrow_mut().alloc_ephemeral_port(None) {
+            Ok(new_port) => new_port.unwrap(),
+            Err(e) => return Err(e),
+        };
 
         // Create coroutine to run this accept.
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
-            let local: SocketAddrV4 = queue.local().expect("socket should be bound to local address");
-            let new_port: u16 = match self.state.borrow_mut().alloc_ephemeral_port(None) {
-                Ok(new_port) => new_port.unwrap(),
-                Err(e) => return Err(e),
-            };
-
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Asynchronous accept code.
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(
                 qd,
                 self.state.clone(),
-                queue,
+                queue.clone(),
                 SocketAddrV4::new(*local.ip(), new_port),
                 yielder,
             ));
@@ -205,12 +203,8 @@ impl CatloopLibOS {
             let task_name: String = format!("Catloop::accept for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        let qt: QToken = state
-            .borrow()
-            .get_queue(qd)
-            .expect("This queue should exist")
-            .accept(coroutine)?;
-        state
+        let qt: QToken = queue.accept(coroutine)?;
+        self.state
             .borrow_mut()
             .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_ACCEPT, qd);
 
@@ -254,22 +248,16 @@ impl CatloopLibOS {
     /// the connect.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        // Save reference for later.
-        let state: Rc<RefCell<CatloopRuntime>> = self.state.clone();
+        let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
 
         // Create connect coroutine.
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(
-                qd,
-                self.state.borrow().get_queue(qd)?,
-                remote,
-                yielder,
-            ));
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, queue.clone(), remote, yielder));
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        let qt: QToken = state.borrow().get_queue(qd)?.connect(coroutine)?;
-        state
+        let qt: QToken = queue.connect(coroutine)?;
+        self.state
             .borrow_mut()
             .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
 
@@ -328,28 +316,23 @@ impl CatloopLibOS {
     pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
 
-        // Save this reference for later.
-        let state: Rc<RefCell<CatloopRuntime>> = self.state.clone();
+        let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
 
         // Note that this coroutine is only inserted if we do not allocate a Catmem coroutine.
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
-                self.state.clone(),
-                self.state.borrow().get_queue(qd)?,
-                qd,
-                yielder,
-            ));
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> =
+                Box::pin(Self::close_coroutine(self.state.clone(), queue.clone(), qd, yielder));
             let task_name: String = format!("Catloop::close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        let (qt, inserted_catloop): (QToken, bool) = self.state.borrow().get_queue(qd)?.async_close(coroutine)?;
+        let (qt, inserted_catloop): (QToken, bool) = queue.async_close(coroutine)?;
         if inserted_catloop {
-            state
+            self.state
                 .borrow_mut()
                 .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
         } else {
-            state
+            self.state
                 .borrow_mut()
                 .insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
         }

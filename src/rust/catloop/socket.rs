@@ -164,7 +164,7 @@ impl Socket {
             let new_qd: QDesc = match pop_magic_number(catmem.clone(), catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
                 // and sending the port number to the remote.
-                Ok(true) => create_pipe(catmem.clone(), &ipv4, new_port, &yielder).await?,
+                Ok(true) => create_pipe(catmem.clone(), catmem_qd, &ipv4, new_port, &yielder).await?,
                 // Invalid request.
                 Ok(false) => continue,
                 // Some error.
@@ -217,7 +217,7 @@ impl Socket {
 
             // Open underlying pipes.
             let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
-            let new_qd: QDesc = catmem.borrow().create_pipe(&format_pipe_str(ipv4, new_port))?;
+            let new_qd: QDesc = catmem.borrow().open_pipe(&format_pipe_str(ipv4, new_port))?;
             // Send an ack to the server over the new pipe.
             send_ack(catmem.clone(), new_qd, &yielder).await?;
             Ok((new_qd, remote))
@@ -403,6 +403,7 @@ async fn pop_magic_number(catmem: Rc<RefCell<CatmemLibOS>>, catmem_qd: QDesc, yi
 // Sends the port number to the peer process.
 async fn create_pipe(
     catmem: Rc<RefCell<CatmemLibOS>>,
+    catmem_qd: QDesc,
     ipv4: &Ipv4Addr,
     port: u16,
     yielder: &Yielder,
@@ -420,7 +421,7 @@ async fn create_pipe(
     slice.copy_from_slice(&port.to_ne_bytes());
 
     // Push the port number.
-    let qt: QToken = catmem.borrow().push(new_qd, &sga)?;
+    let qt: QToken = catmem.borrow().push(catmem_qd, &sga)?;
     let handle: TaskHandle = {
         // Get the task handle from the task id.
         catmem.borrow().from_task_id(qt)?

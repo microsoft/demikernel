@@ -131,7 +131,9 @@ impl CatloopQueue {
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&self) -> Result<(), Fail> {
-        self.socket.borrow_mut().close()
+        self.socket.borrow_mut().close()?;
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+        Ok(())
     }
 
     /// Start an asynchronous coroutine to close this queue if necessary.
@@ -145,7 +147,9 @@ impl CatloopQueue {
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn do_close(&self) -> Result<(), Fail> {
-        Socket::do_close(self.socket.clone())
+        Socket::do_close(self.socket.clone())?;
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+        Ok(())
     }
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
