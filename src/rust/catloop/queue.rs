@@ -24,10 +24,7 @@ use crate::{
     },
 };
 use ::std::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
+    cell::RefCell,
     collections::HashMap,
     net::{
         Ipv4Addr,
@@ -75,34 +72,12 @@ impl CatloopQueue {
 
     /// Binds the target queue to `local` address.
     pub fn bind(&self, local: SocketAddrV4) -> Result<(), Fail> {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_bind()?;
-        match socket.bind(local) {
-            Ok(_) => {
-                socket.commit();
-                Ok(())
-            },
-            Err(e) => {
-                socket.abort();
-                Err(e)
-            },
-        }
+        self.socket.borrow_mut().bind(local)
     }
 
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&self) -> Result<(), Fail> {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_listen()?;
-        match socket.listen() {
-            Ok(_) => {
-                socket.commit();
-                Ok(())
-            },
-            Err(e) => {
-                socket.abort();
-                Err(e)
-            },
-        }
+        self.socket.borrow_mut().listen()
     }
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
@@ -111,29 +86,25 @@ impl CatloopQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.socket.borrow_mut().prepare_accept()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, true)
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().accept(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
     pub async fn do_accept(&self, ipv4: &Ipv4Addr, new_port: u16, yielder: &Yielder) -> Result<Self, Fail> {
-        // Check whether we are accepting on this queue.
-        self.socket.borrow_mut().prepare_accepted()?;
         // Try to call underlying platform accept.
-        match Socket::accept(self.socket.clone(), ipv4, new_port, yielder).await {
-            Ok(new_accepted_socket) => {
-                self.socket.borrow_mut().commit();
-                Ok(Self {
-                    qtype: self.qtype,
-                    socket: Rc::new(RefCell::new(new_accepted_socket)),
-                    pending_ops: Rc::new(RefCell::new(HashMap::<TaskHandle, YielderHandle>::new())),
-                })
-            },
-            Err(e) => {
-                self.socket.borrow_mut().rollback();
-                Err(e)
-            },
+        match Socket::do_accept(self.socket.clone(), ipv4, new_port, yielder).await {
+            Ok(new_accepted_socket) => Ok(Self {
+                qtype: self.qtype,
+                socket: Rc::new(RefCell::new(new_accepted_socket)),
+                pending_ops: Rc::new(RefCell::new(HashMap::<TaskHandle, YielderHandle>::new())),
+            }),
+            Err(e) => Err(e),
         }
     }
 
@@ -144,44 +115,23 @@ impl CatloopQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.socket.borrow_mut().prepare_connect()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, true)
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().connect(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
     /// asynchronous code necessary to run a connect and any single-queue functionality after the connect completes.
     pub async fn do_connect(&self, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
-        self.socket.borrow_mut().prepare_connected()?;
-
-        match Socket::connect(self.socket.clone(), remote, yielder).await {
-            Ok(()) => {
-                self.socket.borrow_mut().commit();
-                Ok(())
-            },
-            Err(e) => {
-                self.socket.borrow_mut().rollback();
-                Err(e)
-            },
-        }
+        Socket::do_connect(self.socket.clone(), remote, yielder).await
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&self) -> Result<(), Fail> {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_close()?;
-        socket.commit();
-        match socket.close() {
-            Ok(_) => {
-                socket.prepare_closed()?;
-                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-                socket.commit();
-                Ok(())
-            },
-            Err(e) => {
-                socket.abort();
-                Err(e)
-            },
-        }
+        self.socket.borrow_mut().close()
     }
 
     /// Start an asynchronous coroutine to close this queue if necessary.
@@ -189,31 +139,13 @@ impl CatloopQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_close()?;
-        match socket.async_close() {
-            Ok(Some(qt)) => {
-                socket.commit();
-                Ok((qt, false))
-            },
-            Ok(None) => {
-                let qt: QToken = self.do_generic_sync_control_path_call(insert_coroutine, false)?;
-                Ok((qt, true))
-            },
-            Err(e) => {
-                socket.abort();
-                Err(e)
-            },
-        }
+        let yielder: Yielder = Yielder::new();
+        self.socket.borrow_mut().async_close(insert_coroutine, yielder)
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
-    pub fn do_async_close(&self) -> Result<(), Fail> {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_closed()?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-        socket.commit();
-        Ok(())
+    pub fn do_close(&self) -> Result<(), Fail> {
+        Socket::do_close(self.socket.clone())
     }
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
@@ -226,37 +158,6 @@ impl CatloopQueue {
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
     pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
         self.socket.borrow().pop(size)
-    }
-
-    /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        // Spawn coroutine.
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = match coroutine(yielder) {
-            // We successfully spawned the coroutine.
-            Ok(handle) => {
-                // Commit the operation on the socket.
-                self.socket.borrow_mut().commit();
-                handle
-            },
-            // We failed to spawn the coroutine.
-            Err(e) => {
-                // Abort the operation on the socket.
-                self.socket.borrow_mut().abort();
-                return Err(e);
-            },
-        };
-
-        // If requested, add this operation to the list of pending operations on this queue.
-        if add_as_pending_op {
-            self.add_pending_op(&task_handle, &yielder_handle);
-        }
-
-        Ok(task_handle.get_task_id().into())
     }
 
     /// Adds a new operation to the list of pending operations on this queue.

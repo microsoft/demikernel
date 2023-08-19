@@ -109,50 +109,51 @@ impl Socket {
         }
     }
 
-    /// Begins the bind operation.
-    pub fn prepare_bind(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Bind)
-    }
-
     /// Binds the target socket to `local` address.
     /// TODO: Should probably move the create of the duplex pipe to listen.
     pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Bind)?;
         // Create underlying memory channels.
         let ipv4: &Ipv4Addr = local.ip();
         let port: u16 = local.port();
-        self.catmem_qd = Some(self.catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port))?);
+        self.catmem_qd = match self.catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port)) {
+            Ok(qd) => {
+                self.state.commit();
+                Some(qd)
+            },
+            Err(e) => {
+                self.state.rollback();
+                return Err(e);
+            },
+        };
         self.local = Some(local);
         Ok(())
     }
 
-    /// Begins the listen operation.
-    pub fn prepare_listen(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Listen)
-    }
-
     /// Enables this socket to accept incoming connections.
-    pub fn listen(&self) -> Result<(), Fail> {
+    pub fn listen(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Listen)?;
+        self.state.commit();
         // Nothing to do.
         Ok(())
     }
 
-    /// Begins the accept operation.
-    pub fn prepare_accept(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Accept)
-    }
-
-    /// Begins the accepted operation.
-    pub fn prepare_accepted(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Accepted)
+    pub fn accept<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state.prepare(SocketOp::Accept)?;
+        self.do_generic_sync_control_path_call(coroutine, yielder)
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
-    pub async fn accept(
+    pub async fn do_accept(
         socket: Rc<RefCell<Self>>,
         ipv4: &Ipv4Addr,
         new_port: u16,
         yielder: &Yielder,
     ) -> Result<Self, Fail> {
+        socket.borrow_mut().state.prepare(SocketOp::Accepted)?;
         let catmem: Rc<RefCell<CatmemLibOS>> = socket.borrow().catmem.clone();
         let catmem_qd: QDesc = socket
             .borrow()
@@ -175,7 +176,10 @@ impl Socket {
             // Check that the remote has retrieved the port number and responded with a magic number.
             match pop_magic_number(catmem.clone(), new_qd, &yielder).await {
                 // Valid response. Connection successfully established, so return new port and pipe to application.
-                Ok(true) => return Ok(new_socket),
+                Ok(true) => {
+                    socket.borrow_mut().state.commit();
+                    return Ok(new_socket);
+                },
                 // Invalid response.
                 Ok(false) => {
                     // Clean up newly allocated duplex pipe.
@@ -183,69 +187,110 @@ impl Socket {
                     continue;
                 },
                 // Some error.
-                Err(e) => return Err(e),
+                Err(e) => {
+                    socket.borrow_mut().state.rollback();
+                    return Err(e);
+                },
             };
         }
     }
 
-    /// Begins the connect operation.
-    pub fn prepare_connect(&mut self) -> Result<(), Fail> {
-        // Set socket state to accepting.
-        self.state.prepare(SocketOp::Connect)
-    }
-
-    /// Begins he connected operation.
-    pub fn prepare_connected(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Connected)
+    pub fn connect<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state.prepare(SocketOp::Connect)?;
+        self.do_generic_sync_control_path_call(coroutine, yielder)
     }
 
     /// Connects this socket to [remote].
-    pub async fn connect(socket: Rc<RefCell<Self>>, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
+    pub async fn do_connect(socket: Rc<RefCell<Self>>, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
+        socket.borrow_mut().state.prepare(SocketOp::Connected)?;
         let ipv4: &Ipv4Addr = remote.ip();
         let port: u16 = remote.port().into();
         let catmem: Rc<RefCell<CatmemLibOS>> = socket.borrow().catmem.clone();
 
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
-        let new_port: u16 = get_port(catmem.clone(), ipv4, port, yielder).await?;
+        let result: Result<(QDesc, SocketAddrV4), Fail> = {
+            let new_port: u16 = get_port(catmem.clone(), ipv4, port, yielder).await?;
 
-        // Open underlying pipes.
-        let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
-        let new_qd: QDesc = catmem.borrow().create_pipe(&format_pipe_str(ipv4, new_port))?;
-        // Send an ack to the server over the new pipe.
-        send_ack(catmem.clone(), new_qd, &yielder).await?;
-        socket.borrow_mut().catmem_qd = Some(new_qd);
-        socket.borrow_mut().remote = Some(remote);
-        Ok(())
-    }
+            // Open underlying pipes.
+            let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
+            let new_qd: QDesc = catmem.borrow().create_pipe(&format_pipe_str(ipv4, new_port))?;
+            // Send an ack to the server over the new pipe.
+            send_ack(catmem.clone(), new_qd, &yielder).await?;
+            Ok((new_qd, remote))
+        };
 
-    /// Begins the close operation.
-    pub fn prepare_close(&mut self) -> Result<(), Fail> {
-        // Set socket state to accepting.
-        self.state.prepare(SocketOp::Close)
-    }
-
-    /// Begins the closed operation.
-    pub fn prepare_closed(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Closed)
+        match result {
+            Ok((new_qd, remote)) => {
+                let mut socket: RefMut<Socket> = socket.borrow_mut();
+                socket.state.commit();
+                socket.catmem_qd = Some(new_qd);
+                socket.remote = Some(remote);
+                Ok(())
+            },
+            Err(e) => {
+                socket.borrow_mut().state.rollback();
+                Err(e)
+            },
+        }
     }
 
     /// Closes this socket.
-    pub fn close(&self) -> Result<(), Fail> {
+    pub fn close(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Close)?;
+        self.state.commit();
+        self.state.prepare(SocketOp::Closed)?;
         if let Some(qd) = self.catmem_qd {
-            self.catmem.borrow_mut().close(qd)
-        } else {
-            Ok(())
-        }
+            match self.catmem.borrow_mut().close(qd) {
+                Ok(()) => {
+                    self.state.commit();
+                    return Ok(());
+                },
+                Err(e) => {
+                    self.state.rollback();
+                    return Err(e);
+                },
+            }
+        };
+        self.state.commit();
+        Ok(())
     }
 
     /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close(&self) -> Result<Option<QToken>, Fail> {
+    pub fn async_close<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<(QToken, bool), Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state.prepare(SocketOp::Close)?;
         if let Some(qd) = self.catmem_qd {
-            Ok(Some(self.catmem.borrow().async_close(qd)?))
+            match self.catmem.borrow().async_close(qd) {
+                Ok(qt) => {
+                    self.state.commit();
+                    Ok((qt, false))
+                },
+                Err(e) => {
+                    self.state.rollback();
+                    Err(e)
+                },
+            }
         } else {
-            Ok(None)
+            Ok((
+                self.do_generic_sync_control_path_call(coroutine, yielder)?
+                    .get_task_id()
+                    .into(),
+                true,
+            ))
         }
+    }
+
+    pub fn do_close(socket: Rc<RefCell<Self>>) -> Result<(), Fail> {
+        let mut socket: RefMut<Self> = socket.borrow_mut();
+        socket.state.prepare(SocketOp::Closed)?;
+        socket.state.commit();
+        Ok(())
     }
 
     /// Pushes to the underlying Catmem queue that is the transport for this socket.
@@ -274,19 +319,26 @@ impl Socket {
         self.remote
     }
 
-    /// Commits to moving into the prepared state
-    pub fn commit(&mut self) {
-        self.state.commit()
-    }
-
-    /// Discards the prepared state.
-    pub fn abort(&mut self) {
-        self.state.abort()
-    }
-
-    /// Rollbacks to the previous state.
-    pub fn rollback(&mut self) {
-        self.state.rollback()
+    /// Generic function for spawning a control-path coroutine on [self].
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        // Spawn coroutine.
+        match coroutine(yielder) {
+            // We successfully spawned the coroutine.
+            Ok(handle) => {
+                // Commit the operation on the socket.
+                self.state.commit();
+                Ok(handle)
+            },
+            // We failed to spawn the coroutine.
+            Err(e) => {
+                // Abort the operation on the socket.
+                self.state.abort();
+                Err(e)
+            },
+        }
     }
 }
 

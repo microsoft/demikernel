@@ -365,7 +365,7 @@ impl CatloopLibOS {
         qd: QDesc,
         _: Yielder,
     ) -> (QDesc, OperationResult) {
-        match queue.do_async_close() {
+        match queue.do_close() {
             Ok(()) => {
                 let mut state: RefMut<CatloopRuntime> = state.borrow_mut();
                 if let Some(addr) = queue.local() {
