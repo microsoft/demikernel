@@ -6,12 +6,9 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::{
-        ring::{
-            Ring,
-            MAX_RETRIES_PUSH_EOF,
-        },
-        QMode,
+    catmem::ring::{
+        Ring,
+        MAX_RETRIES_PUSH_EOF,
     },
     runtime::{
         fail::Fail,
@@ -54,44 +51,30 @@ pub struct CatmemQueue {
 //======================================================================================================================
 
 impl CatmemQueue {
-    /// This function creates a new CatmemQueue and a new shared ring buffer and connects to it to either the consumer
-    /// or producer end indicated by [mode].
-    pub fn create(name: &str, mode: QMode) -> Result<Self, Fail> {
+    /// Creates a new [CatmemQueue] and a new shared ring buffer.
+    pub fn create(name: &str) -> Result<Self, Fail> {
         let pending_ops: Rc<RefCell<HashMap<TaskHandle, YielderHandle>>> =
             Rc::new(RefCell::<HashMap<TaskHandle, YielderHandle>>::new(HashMap::<
                 TaskHandle,
                 YielderHandle,
             >::new()));
-        match mode {
-            QMode::Push => Ok(Self {
-                ring: Rc::new(RefCell::<Ring>::new(Ring::create_push_ring(name)?)),
-                pending_ops,
-            }),
-            QMode::Pop => Ok(Self {
-                ring: Rc::new(RefCell::<Ring>::new(Ring::create_pop_ring(name)?)),
-                pending_ops,
-            }),
-        }
+        Ok(Self {
+            ring: Rc::new(RefCell::<Ring>::new(Ring::create(name)?)),
+            pending_ops,
+        })
     }
 
-    /// This function creates a new CatmemQueue and attaches to an existing share ring buffer as either a consumer or
-    /// producer as indicated by [mode].
-    pub fn open(name: &str, mode: QMode) -> Result<Self, Fail> {
+    /// Creates a new [CatmemQueue] and attaches it to an existing share ring buffer.
+    pub fn open(name: &str) -> Result<Self, Fail> {
         let pending_ops: Rc<RefCell<HashMap<TaskHandle, YielderHandle>>> =
             Rc::new(RefCell::<HashMap<TaskHandle, YielderHandle>>::new(HashMap::<
                 TaskHandle,
                 YielderHandle,
             >::new()));
-        match mode {
-            QMode::Push => Ok(Self {
-                ring: Rc::new(RefCell::<Ring>::new(Ring::open_push_ring(name)?)),
-                pending_ops,
-            }),
-            QMode::Pop => Ok(Self {
-                ring: Rc::new(RefCell::<Ring>::new(Ring::open_pop_ring(name)?)),
-                pending_ops,
-            }),
-        }
+        Ok(Self {
+            ring: Rc::new(RefCell::<Ring>::new(Ring::open(name)?)),
+            pending_ops,
+        })
     }
 
     pub fn shutdown(&mut self) -> Result<(), Fail> {
@@ -157,21 +140,13 @@ impl CatmemQueue {
 
     /// This private function tries to pop from the queue and is mostly used for scoping the borrow.
     fn try_pop(&self) -> Result<(Option<u8>, bool), Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(_) => {
-                let cause: &String = &format!("Cannot pop from push-only queue");
-                error!("{}", &cause);
-                Err(Fail::new(libc::EINVAL, cause))
-            },
-            Ring::PopOnly(ring) => {
-                let (byte, eof) = ring.try_pop()?;
-                if eof {
-                    ring.prepare_close()?;
-                    ring.commit();
-                }
-                Ok((byte, eof))
-            },
+        let mut ring: RefMut<Ring> = self.ring.borrow_mut();
+        let (byte, eof) = ring.try_pop()?;
+        if eof {
+            ring.prepare_close()?;
+            ring.commit();
         }
+        Ok((byte, eof))
     }
 
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
@@ -235,14 +210,7 @@ impl CatmemQueue {
 
     /// This private function tries to push a single byte and is used for scoping the borrow.
     fn try_push(&self, byte: &u8) -> Result<bool, Fail> {
-        match &mut *self.ring.borrow_mut() {
-            Ring::PushOnly(ring) => Ok(ring.try_push(byte)?),
-            Ring::PopOnly(_) => {
-                let cause: &String = &format!("Cannot push to a pop-only queue");
-                error!("{}", &cause);
-                Err(Fail::new(libc::EINVAL, cause))
-            },
-        }
+        self.ring.borrow_mut().try_push(byte)
     }
 
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
