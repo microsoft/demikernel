@@ -163,11 +163,20 @@ impl Socket {
             let new_qd: QDesc = match pop_magic_number(catmem.clone(), catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
                 // and sending the port number to the remote.
-                Ok(true) => create_pipe(catmem.clone(), catmem_qd, &ipv4, new_port, &yielder).await?,
+                Ok(true) => match create_pipe(catmem.clone(), catmem_qd, &ipv4, new_port, &yielder).await {
+                    Ok(new_qd) => new_qd,
+                    Err(e) => {
+                        socket.borrow_mut().state.rollback();
+                        return Err(e);
+                    },
+                },
                 // Invalid request.
                 Ok(false) => continue,
                 // Some error.
-                Err(e) => return Err(e),
+                Err(e) => {
+                    socket.borrow_mut().state.rollback();
+                    return Err(e);
+                },
             };
 
             let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(*ipv4, new_port)));
@@ -212,13 +221,28 @@ impl Socket {
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
         let result: Result<(QDesc, SocketAddrV4), Fail> = {
-            let new_port: u16 = get_port(catmem.clone(), ipv4, port, yielder).await?;
+            let new_port: u16 = match get_port(catmem.clone(), ipv4, port, yielder).await {
+                Ok(new_port) => new_port,
+                Err(e) => {
+                    socket.borrow_mut().state.rollback();
+                    return Err(e);
+                },
+            };
 
             // Open underlying pipes.
             let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
-            let new_qd: QDesc = catmem.borrow().open_pipe(&format_pipe_str(ipv4, new_port))?;
+            let new_qd: QDesc = match catmem.borrow().open_pipe(&format_pipe_str(ipv4, new_port)) {
+                Ok(new_qd) => new_qd,
+                Err(e) => {
+                    socket.borrow_mut().state.rollback();
+                    return Err(e);
+                },
+            };
             // Send an ack to the server over the new pipe.
-            send_ack(catmem.clone(), new_qd, &yielder).await?;
+            if let Err(e) = send_ack(catmem.clone(), new_qd, &yielder).await {
+                socket.borrow_mut().state.rollback();
+                return Err(e);
+            }
             Ok((new_qd, remote))
         };
 
