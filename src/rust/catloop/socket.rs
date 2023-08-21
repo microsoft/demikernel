@@ -134,7 +134,6 @@ impl Socket {
     pub fn listen(&mut self) -> Result<(), Fail> {
         self.state.prepare(SocketOp::Listen)?;
         self.state.commit();
-        // Nothing to do.
         Ok(())
     }
 
