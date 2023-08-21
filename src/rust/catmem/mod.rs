@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod queue;
+pub mod queue;
 mod ring;
 
 //======================================================================================================================
@@ -112,35 +112,41 @@ impl CatmemLibOS {
     /// Asynchronously close a socket.
     pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = self.async_close_coroutine(qd, yielder)?;
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
+                self.qtable.clone(),
+                self.get_queue(qd)?.clone(),
+                qd,
+                yielder,
+            ));
             let task_name: String = format!("catmem::async_close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         Ok(self.get_queue(qd)?.async_close(coroutine)?)
     }
 
-    pub fn async_close_coroutine(&self, qd: QDesc, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
-        let qtable_ptr: Rc<RefCell<IoQueueTable<CatmemQueue>>> = self.qtable.clone();
-        let queue: CatmemQueue = self.get_queue(qd)?;
-        Ok(Box::pin(async move {
-            // Wait for close operation to complete.
-            match queue.do_async_close(yielder).await {
-                // Operation completed successfully, thus free resources.
-                Ok(()) => {
-                    // Release the queue descriptor, even if pushing EoF failed. This will prevent any further
-                    // operations on the queue, as well as it will ensure that the underlying shared ring buffer will
-                    // be eventually released.
-                    qtable_ptr.borrow_mut().free(&qd);
-                    (qd, OperationResult::Close)
-                },
-                // Operation failed, thus warn and return an error.
-                Err(e) => {
-                    warn!("async_close(): {:?}", &e);
-                    (qd, OperationResult::Failed(e))
-                },
-            }
-        }))
+    pub async fn close_coroutine(
+        qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>>,
+        queue: CatmemQueue,
+        qd: QDesc,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
+        // Wait for close operation to complete.
+        match queue.do_async_close(yielder).await {
+            // Operation completed successfully, thus free resources.
+            Ok(()) => {
+                // Release the queue descriptor, even if pushing EoF failed. This will prevent any further
+                // operations on the queue, as well as it will ensure that the underlying shared ring buffer will
+                // be eventually released.
+                qtable.borrow_mut().free(&qd);
+                (qd, OperationResult::Close)
+            },
+            // Operation failed, thus warn and return an error.
+            Err(e) => {
+                warn!("async_close(): {:?}", &e);
+                (qd, OperationResult::Failed(e))
+            },
+        }
     }
 
     /// Pushes a scatter-gather array to a Push ring. If not a Push ring, then fail.
@@ -155,25 +161,27 @@ impl CatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
+        let queue: CatmemQueue = self.get_queue(qd)?;
         // Issue pop operation.
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = self.push_coroutine(qd, buf, yielder)?;
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        self.get_queue(qd)?.push(coroutine)
+        queue.push(coroutine)
     }
 
-    pub fn push_coroutine(&self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
-        let queue: CatmemQueue = self.get_queue(qd)?;
-
-        Ok(Box::pin(async move {
-            // Handle result.
-            match queue.do_push(buf, yielder).await {
-                Ok(()) => (qd, OperationResult::Push),
-                Err(e) => (qd, OperationResult::Failed(e)),
-            }
-        }))
+    pub async fn push_coroutine(
+        qd: QDesc,
+        queue: CatmemQueue,
+        buf: DemiBuffer,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
+        // Handle result.
+        match queue.do_push(buf, yielder).await {
+            Ok(()) => (qd, OperationResult::Push),
+            Err(e) => (qd, OperationResult::Failed(e)),
+        }
     }
 
     /// Pops data from a Pop ring. If not a Pop ring, then return an error.
@@ -183,26 +191,28 @@ impl CatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
+        let queue: CatmemQueue = self.get_queue(qd)?;
         // Issue pop operation.
-        let coroutine = move |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = self.pop_coroutine(qd, size, yielder)?;
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        self.get_queue(qd)?.pop(coroutine)
+        queue.pop(coroutine)
     }
 
-    fn pop_coroutine(&self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> Result<Pin<Box<Operation>>, Fail> {
-        let queue: CatmemQueue = self.get_queue(qd)?;
-
-        Ok(Box::pin(async move {
-            // Wait for pop to complete.
-            let (buf, _) = match queue.do_pop(size, yielder).await {
-                Ok(result) => result,
-                Err(e) => return (qd, OperationResult::Failed(e)),
-            };
-            (qd, OperationResult::Pop(None, buf))
-        }))
+    pub async fn pop_coroutine(
+        qd: QDesc,
+        queue: CatmemQueue,
+        size: Option<usize>,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
+        // Wait for pop to complete.
+        let (buf, _) = match queue.do_pop(size, yielder).await {
+            Ok(result) => result,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+        (qd, OperationResult::Pop(None, buf))
     }
 
     /// Allocates a scatter-gather array.
@@ -290,11 +300,15 @@ impl CatmemLibOS {
         self.runtime.poll()
     }
 
-    fn get_queue(&self, qd: QDesc) -> Result<CatmemQueue, Fail> {
+    pub fn get_queue(&self, qd: QDesc) -> Result<CatmemQueue, Fail> {
         match self.qtable.borrow_mut().get_mut(&qd) {
             Some(queue) => Ok(queue.clone()),
             None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
+    }
+
+    pub fn get_qtable(&self) -> Rc<RefCell<IoQueueTable<CatmemQueue>>> {
+        self.qtable.clone()
     }
 }
 
