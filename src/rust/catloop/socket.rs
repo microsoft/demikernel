@@ -309,6 +309,7 @@ impl Socket {
         }
     }
 
+    /// Closes `socket`.
     pub fn do_close(socket: Rc<RefCell<Self>>) -> Result<(), Fail> {
         let mut socket: RefMut<Self> = socket.borrow_mut();
         socket.state.prepare(SocketOp::Closed)?;
