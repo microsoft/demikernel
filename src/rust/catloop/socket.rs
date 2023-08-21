@@ -319,18 +319,22 @@ impl Socket {
 
     /// Pushes to the underlying Catmem queue that is the transport for this socket.
     pub fn push(&self, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        match self.catmem_qd {
-            Some(qd) => self.catmem.borrow().push(qd, sga),
-            None => Err(Fail::new(libc::EINVAL, "pipe not connected")),
-        }
+        self.state.may_push()?;
+        // It is safe to unwrap here, because we have just checked for the socket state
+        // and by construction it should be connected. If not, the socket state machine
+        // was not correctly driven.
+        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        self.catmem.borrow().push(qd, sga)
     }
 
     /// Pop from the underlying Catmem queue that is the transport for this socket.
     pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
-        match self.catmem_qd {
-            Some(qd) => self.catmem.borrow().pop(qd, size),
-            None => Err(Fail::new(libc::EINVAL, "pipe not connected")),
-        }
+        self.state.may_pop()?;
+        // It is safe to unwrap here, because we have just checked for the socket state
+        // and by construction it should be connected. If not, the socket state machine
+        // was not correctly driven.
+        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        self.catmem.borrow().pop(qd, size)
     }
 
     /// Returns the `local` address to which [self] is bound.
