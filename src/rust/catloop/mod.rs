@@ -154,6 +154,13 @@ impl CatloopLibOS {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
+        // Check if we are binding to a non-local address.
+        if &self.config.local_ipv4_addr() != local.ip() {
+            let cause: String = format!("cannot bind to non-local address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
+        }
+
         let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
 
         // Check whether the address is in use.
