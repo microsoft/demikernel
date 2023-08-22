@@ -16,8 +16,13 @@ int demi_pushto(demi_qtoken_t *qt_out, int sockqd, const demi_sgarray_t *sga, co
 
 ## Description
 
-`demi_pushto()` asynchronously pushes a scatter-gather array to a socket I/O queue. It only works on connection-mode
-sockets.
+`demi_pushto()` asynchronously pushes a scatter-gather array to a socket I/O queue. It works with connection-mode or
+connectionless-mode socket.
+
+If the socket is a connectionless-mode socket, the message shall be sent to the address specified by `dest_addr` if no
+pre-specified peer address has been set. If a peer address has been pre-specified, either the message shall be sent to
+the address specified by `dest_addr` (overriding the pre-specified peer address), or the function shall return -1 and
+set errno to [EISCONN].
 
 The `sockqd` parameter is the I/O queue descriptor that is associated with the target socket I/O queue.
 
