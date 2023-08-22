@@ -84,7 +84,7 @@ static int connect_get_sockqd(const struct sockaddr_in *const addr)
     return sockqd;
 }
 
-static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int sockqd, size_t data_size)
+static int push_get_sent_nbytes(const int sockqd, size_t data_size)
 {
     demi_qtoken_t tok = -1;
     demi_qresult_t res = {0};
@@ -93,7 +93,9 @@ static int push_get_sent_nbytes(const struct sockaddr_in *const addr, const int 
 
     assert(sga.sga_segs != 0);
     memset(sga.sga_segs[0].sgaseg_buf, 1, data_size);
-    assert(demi_pushto(&tok, sockqd, &sga, (const struct sockaddr *)addr, sizeof(struct sockaddr_in)) == 0);
+    // ToDo: demi_pushto() also must work for TCP on all LibOSes.
+    // FIXME: https://github.com/microsoft/demikernel/issues/137
+    assert(demi_push(&tok, sockqd, &sga) == 0);
     assert(demi_wait(&res, tok, NULL) == 0);
     assert(res.qr_opcode == DEMI_OPC_PUSH);
     sent_bytes = sga.sga_segs[0].sgaseg_len;
@@ -109,7 +111,7 @@ static void run_client(const struct sockaddr_in *const addr, size_t data_size, u
 
     while (sent_bytes < max_bytes)
     {
-        sent_bytes += push_get_sent_nbytes(addr, sockqd, data_size);
+        sent_bytes += push_get_sent_nbytes(sockqd, data_size);
         fprintf(stdout, "push: total bytes sent: (%zu)\n", sent_bytes);
     }
 }
