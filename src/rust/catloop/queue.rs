@@ -10,11 +10,13 @@ use crate::{
     catmem::CatmemLibOS,
     runtime::{
         fail::Fail,
+        memory::DemiBuffer,
         queue::{
             IoQueue,
             QType,
         },
-        types::demi_sgarray_t,
+        OperationResult,
+        QDesc,
         QToken,
     },
     scheduler::{
@@ -136,32 +138,57 @@ impl CatloopQueue {
         Ok(())
     }
 
-    /// Start an asynchronous coroutine to close this queue if necessary.
-    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<(QToken, bool), Fail>
+    /// Start an asynchronous coroutine to close this queue.
+    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         let yielder: Yielder = Yielder::new();
-        self.socket.borrow_mut().async_close(insert_coroutine, yielder)
+        let task_handle: TaskHandle = self.socket.borrow_mut().async_close(insert_coroutine, yielder)?;
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
-    pub fn do_close(&self) -> Result<(), Fail> {
-        Socket::do_close(self.socket.clone())?;
+    pub async fn do_close(&self, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        let result: (QDesc, OperationResult) = Socket::do_close(self.socket.clone(), yielder).await?;
         self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-        Ok(())
+        Ok(result)
     }
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push(&self, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        self.socket.borrow().push(sga)
+    pub fn push<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().push(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
+    }
+
+    pub async fn do_push(&self, buf: DemiBuffer, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        Socket::do_push(self.socket.clone(), buf, yielder).await
     }
 
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
-        self.socket.borrow().pop(size)
+    pub fn pop<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().pop(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
+    }
+
+    pub async fn do_pop(&self, size: Option<usize>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        Socket::do_pop(self.socket.clone(), size, yielder).await
     }
 
     /// Adds a new operation to the list of pending operations on this queue.

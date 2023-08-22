@@ -14,19 +14,14 @@ use crate::{
         queue::{
             IoQueueTable,
             QDesc,
-            QToken,
         },
-        types::demi_opcode_t,
     },
 };
 use ::rand::{
     prelude::SmallRng,
     SeedableRng,
 };
-use ::std::{
-    collections::HashMap,
-    net::SocketAddrV4,
-};
+use ::std::net::SocketAddrV4;
 
 //======================================================================================================================
 // Structures
@@ -38,10 +33,6 @@ pub struct CatloopRuntime {
     ephemeral_ports: EphemeralPorts,
     /// Table of queue descriptors, it has one entry for each existing queue descriptor in Catloop LibOS.
     qtable: IoQueueTable<CatloopQueue>,
-    /// Table for ongoing operations on Catloop LibOS.
-    catloop_ops: HashMap<QToken, (demi_opcode_t, QDesc)>,
-    /// Table for ongoing operations Catmem LibOS.
-    catmem_ops: HashMap<QToken, (demi_opcode_t, QDesc)>,
 }
 
 //======================================================================================================================
@@ -55,8 +46,6 @@ impl CatloopRuntime {
         Self {
             ephemeral_ports: EphemeralPorts::new(&mut rng),
             qtable: IoQueueTable::<CatloopQueue>::new(),
-            catmem_ops: HashMap::default(),
-            catloop_ops: HashMap::default(),
         }
     }
 
@@ -79,26 +68,6 @@ impl CatloopRuntime {
                 Err(Fail::new(libc::EBADF, &cause))
             },
         }
-    }
-
-    /// Inserts a given [qt] with its matching [opcode] and [qd] into the Catloop ops table.
-    pub fn insert_catloop_op(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
-        self.catloop_ops.insert(qt, (opcode, qd));
-    }
-
-    /// Inserts a given [qt] with its matching [opcode] and [qd] into the Catloop ops table.
-    pub fn insert_catmem_op(&mut self, qt: QToken, opcode: demi_opcode_t, qd: QDesc) {
-        self.catmem_ops.insert(qt, (opcode, qd));
-    }
-
-    /// Removes `qt` from the  Catloop queue token table.
-    pub fn free_catloop_op(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
-        self.catloop_ops.remove(&qt)
-    }
-
-    /// Removes `qt` from the Catmem queue token table.
-    pub fn free_catmem_op(&mut self, qt: QToken) -> Option<(demi_opcode_t, QDesc)> {
-        self.catmem_ops.remove(&qt)
     }
 
     /// Checks whether `local` is bound to `addr`. On successful completion it returns `true` if not bound and `false` if

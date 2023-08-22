@@ -6,14 +6,19 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::CatmemLibOS,
+    catmem::{
+        queue::CatmemQueue,
+        CatmemLibOS,
+    },
     runtime::{
         fail::Fail,
+        memory::DemiBuffer,
         network::socket::{
             operation::SocketOp,
             state::SocketStateMachine,
         },
         queue::{
+            IoQueueTable,
             QDesc,
             QToken,
         },
@@ -22,6 +27,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        OperationResult,
     },
     scheduler::{
         TaskHandle,
@@ -283,58 +289,91 @@ impl Socket {
     }
 
     /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<(QToken, bool), Fail>
+    pub fn async_close<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state.prepare(SocketOp::Close)?;
-        if let Some(qd) = self.catmem_qd {
-            match self.catmem.borrow().async_close(qd) {
-                Ok(qt) => {
-                    self.state.commit();
-                    Ok((qt, false))
-                },
-                Err(e) => {
-                    self.state.rollback();
-                    Err(e)
-                },
-            }
-        } else {
-            Ok((
-                self.do_generic_sync_control_path_call(coroutine, yielder)?
-                    .get_task_id()
-                    .into(),
-                true,
-            ))
-        }
+        Ok(self.do_generic_sync_control_path_call(coroutine, yielder)?)
     }
 
     /// Closes `socket`.
-    pub fn do_close(socket: Rc<RefCell<Self>>) -> Result<(), Fail> {
-        let mut socket: RefMut<Self> = socket.borrow_mut();
-        socket.state.prepare(SocketOp::Closed)?;
-        socket.state.commit();
-        Ok(())
+    pub async fn do_close(socket: Rc<RefCell<Self>>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        // Should we assert that we're stil in the close state?
+        let qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>> = socket.borrow().catmem.borrow().get_qtable().clone();
+        if let Some(qd) = socket.borrow().catmem_qd {
+            let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+            socket.borrow_mut().state.prepare(SocketOp::Closed)?;
+
+            match CatmemLibOS::close_coroutine(qtable, queue, qd, yielder).await {
+                (qd, OperationResult::Close) => {
+                    socket.borrow_mut().state.commit();
+                    Ok((qd, OperationResult::Close))
+                },
+                (qd, OperationResult::Failed(e)) => {
+                    // Where to revert to?
+                    socket.borrow_mut().state.rollback();
+                    Ok((qd, OperationResult::Failed(e)))
+                },
+                _ => panic!("Should not return anything other than close or fail"),
+            }
+        } else {
+            // We know that the queue descriptor will be replaced so it doesn't matter what we put here.
+            Ok((QDesc::from(0), OperationResult::Close))
+        }
     }
 
-    /// Pushes to the underlying Catmem queue that is the transport for this socket.
-    pub fn push(&self, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        self.state.may_push()?;
+    /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
+    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
+        &self,
+        coroutine: F,
+        yielder: Yielder,
+    ) -> Result<TaskHandle, Fail> {
+        coroutine(yielder)
+    }
+
+    /// Asynchronous code for pushing to the underlying Catmem transport.
+    pub async fn do_push(
+        socket: Rc<RefCell<Self>>,
+        buf: DemiBuffer,
+        yielder: Yielder,
+    ) -> Result<(QDesc, OperationResult), Fail> {
+        socket.borrow().state.may_push()?;
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        self.catmem.borrow().push(qd, sga)
+        let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
+        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+        Ok(CatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
     }
 
-    /// Pop from the underlying Catmem queue that is the transport for this socket.
-    pub fn pop(&self, size: Option<usize>) -> Result<QToken, Fail> {
-        self.state.may_pop()?;
+    /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
+    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
+        &self,
+        coroutine: F,
+        yielder: Yielder,
+    ) -> Result<TaskHandle, Fail> {
+        coroutine(yielder)
+    }
+
+    /// Asynchronous code for popping from the underlying Catmem transport.
+    pub async fn do_pop(
+        socket: Rc<RefCell<Self>>,
+        size: Option<usize>,
+        yielder: Yielder,
+    ) -> Result<(QDesc, OperationResult), Fail> {
+        socket.borrow().state.may_pop()?;
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        self.catmem.borrow().pop(qd, size)
+        let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
+        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+        match CatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
+            (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(socket.borrow().remote(), buf))),
+            (qd, result) => Ok((qd, result)),
+        }
     }
 
     /// Returns the `local` address to which [self] is bound.
