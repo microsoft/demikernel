@@ -88,25 +88,11 @@ impl ConcurrentRingBuffer {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let layout: Layout = Layout::new::<usize>();
+        let push_offset: *mut usize = Self::alloc::<usize>()?;
+        unsafe { *push_offset = 0 };
 
-        let push_offset: *mut usize = unsafe {
-            let ptr: *mut usize = alloc::alloc(layout) as *mut usize;
-            if ptr.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-            *ptr = 0;
-            ptr
-        };
-
-        let pop_offset: *mut usize = unsafe {
-            let ptr: *mut usize = alloc::alloc(layout) as *mut usize;
-            if ptr.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-            *ptr = 0;
-            ptr
-        };
+        let pop_offset: *mut usize = Self::alloc::<usize>()?;
+        unsafe { *pop_offset = 0 };
 
         let me: Self = Self {
             pop_offset,
@@ -312,6 +298,19 @@ impl ConcurrentRingBuffer {
         let pop_offset = peek(self.pop_offset);
 
         pop_offset == push_offset
+    }
+
+    /// Allocates a memory area.
+    fn alloc<T>() -> Result<*mut T, Fail> {
+        let layout: Layout = Layout::new::<T>();
+        let ptr: *mut T = unsafe { alloc::alloc(layout) as *mut T };
+        if ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+
+        unsafe { *ptr = mem::zeroed() };
+
+        Ok(ptr)
     }
 }
 
