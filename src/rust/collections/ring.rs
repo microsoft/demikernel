@@ -40,6 +40,14 @@ pub struct RingBuffer<T> {
 }
 
 //======================================================================================================================
+// Traits
+//======================================================================================================================
+
+pub trait Ring: Sized {
+    fn from_raw_parts(init: bool, ptr: *mut u8, size: usize) -> Result<Self, Fail>;
+}
+
+//======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
@@ -50,7 +58,7 @@ where
 {
     /// Creates a ring buffer.
     #[allow(unused)]
-    pub fn new(capacity: usize) -> Result<RingBuffer<T>, Fail> {
+    fn new(capacity: usize) -> Result<RingBuffer<T>, Fail> {
         // Check if capacity is invalid.
         if !capacity.is_power_of_two() {
             return Err(Fail::new(
@@ -85,72 +93,6 @@ where
             buffer: raw_array::RawArray::<T>::new(capacity)?,
             mask: capacity - 1,
             is_managed: true,
-        })
-    }
-
-    /// Constructs a ring buffer from raw parts.
-    pub fn from_raw_parts(init: bool, mut ptr: *mut u8, size: usize) -> Result<RingBuffer<T>, Fail> {
-        // Check if we have a valid pointer.
-        if ptr.is_null() {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "cannot construct a ring buffer from a null pointer",
-            ));
-        }
-
-        // Check if the memory region is properly aligned.
-        let align_of_usize: usize = mem::align_of::<usize>();
-        if ptr.align_offset(align_of_usize) != 0 {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "cannot construct a ring buffer from a unaligned memory region",
-            ));
-        }
-
-        const SIZE_OF_USIZE: usize = mem::size_of::<usize>();
-        let size_of_t: usize = mem::size_of::<T>();
-        let mut size_of_ring: usize = SIZE_OF_USIZE + SIZE_OF_USIZE;
-
-        // Compute pointers and required padding.
-        let front_ptr: *mut usize = ptr as *mut usize;
-        unsafe { ptr = ptr.add(SIZE_OF_USIZE) };
-        let back_ptr: *mut usize = ptr as *mut usize;
-        unsafe { ptr = ptr.add(SIZE_OF_USIZE) };
-        let buffer_ptr: *mut u8 = {
-            let padding: usize = ptr.align_offset(size_of_t);
-            size_of_ring += padding;
-            unsafe { ptr.add(padding) }
-        };
-
-        // Check if memory region is big enough.
-        if size < (size_of_ring + size_of_t) {
-            return Err(Fail::new(
-                libc::EINVAL,
-                "memory region is too small to fit in a ring buffer",
-            ));
-        }
-
-        // Compute length of buffer.
-        // It should be the highest power of two that fits in.
-        let len: usize = {
-            let maxlen: usize = (size - size_of_ring) / size_of_t;
-            1 << maxlen.ilog2()
-        };
-
-        // Initialize back and front pointers only if requested.
-        if init {
-            unsafe {
-                *back_ptr = 0;
-                *front_ptr = 0;
-            }
-        }
-
-        Ok(RingBuffer {
-            back_ptr,
-            front_ptr,
-            buffer: raw_array::RawArray::<T>::from_raw_parts(buffer_ptr as *mut T, len)?,
-            mask: len - 1,
-            is_managed: false,
         })
     }
 
@@ -305,13 +247,85 @@ impl<T> Drop for RingBuffer<T> {
     }
 }
 
+/// Ring trait implementation.
+impl<T> Ring for RingBuffer<T> {
+    /// Constructs a ring buffer from raw parts.
+    fn from_raw_parts(init: bool, mut ptr: *mut u8, size: usize) -> Result<RingBuffer<T>, Fail> {
+        // Check if we have a valid pointer.
+        if ptr.is_null() {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "cannot construct a ring buffer from a null pointer",
+            ));
+        }
+
+        // Check if the memory region is properly aligned.
+        let align_of_usize: usize = mem::align_of::<usize>();
+        if ptr.align_offset(align_of_usize) != 0 {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "cannot construct a ring buffer from a unaligned memory region",
+            ));
+        }
+
+        const SIZE_OF_USIZE: usize = mem::size_of::<usize>();
+        let size_of_t: usize = mem::size_of::<T>();
+        let mut size_of_ring: usize = SIZE_OF_USIZE + SIZE_OF_USIZE;
+
+        // Compute pointers and required padding.
+        let front_ptr: *mut usize = ptr as *mut usize;
+        unsafe { ptr = ptr.add(SIZE_OF_USIZE) };
+        let back_ptr: *mut usize = ptr as *mut usize;
+        unsafe { ptr = ptr.add(SIZE_OF_USIZE) };
+        let buffer_ptr: *mut u8 = {
+            let padding: usize = ptr.align_offset(size_of_t);
+            size_of_ring += padding;
+            unsafe { ptr.add(padding) }
+        };
+
+        // Check if memory region is big enough.
+        if size < (size_of_ring + size_of_t) {
+            return Err(Fail::new(
+                libc::EINVAL,
+                "memory region is too small to fit in a ring buffer",
+            ));
+        }
+
+        // Compute length of buffer.
+        // It should be the highest power of two that fits in.
+        let len: usize = {
+            let maxlen: usize = (size - size_of_ring) / size_of_t;
+            1 << maxlen.ilog2()
+        };
+
+        // Initialize back and front pointers only if requested.
+        if init {
+            unsafe {
+                *back_ptr = 0;
+                *front_ptr = 0;
+            }
+        }
+
+        Ok(RingBuffer {
+            back_ptr,
+            front_ptr,
+            buffer: raw_array::RawArray::<T>::from_raw_parts(buffer_ptr as *mut T, len)?,
+            mask: len - 1,
+            is_managed: false,
+        })
+    }
+}
+
 //======================================================================================================================
 // Unit Tests
 //======================================================================================================================
 
 #[cfg(test)]
 mod test {
-    use super::RingBuffer;
+    use super::{
+        Ring,
+        RingBuffer,
+    };
     use ::anyhow::Result;
     use ::core::mem;
     use ::std::thread;

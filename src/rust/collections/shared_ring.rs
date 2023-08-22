@@ -7,7 +7,7 @@
 // Imports
 //======================================================================================================================
 use crate::{
-    collections::ring::RingBuffer,
+    collections::ring::Ring,
     pal::linux::shm::SharedMemory,
     runtime::fail::Fail,
 };
@@ -21,10 +21,10 @@ use ::std::ops::Deref;
 ///
 /// This structure resides on a shared memory region and it is lock-free.
 /// This abstraction ensures the correct concurrent access by a single writer and a single reader.
-pub struct SharedRingBuffer<T: Copy> {
+pub struct SharedRingBuffer<T: Ring> {
     #[allow(unused)]
     shm: SharedMemory,
-    ring: RingBuffer<T>,
+    ring: T,
 }
 
 //======================================================================================================================
@@ -32,18 +32,18 @@ pub struct SharedRingBuffer<T: Copy> {
 //======================================================================================================================
 
 /// Associated functions for shared ring buffers.
-impl<T: Copy> SharedRingBuffer<T> {
+impl<T: Ring> SharedRingBuffer<T> {
     /// Creates a new shared ring buffer.
-    pub fn create(name: &str, capacity: usize) -> Result<SharedRingBuffer<T>, Fail> {
+    pub fn create(name: &str, capacity: usize) -> Result<Self, Fail> {
         let mut shm: SharedMemory = SharedMemory::create(&name, capacity)?;
-        let ring: RingBuffer<T> = RingBuffer::<T>::from_raw_parts(true, shm.as_mut_ptr(), shm.len())?;
+        let ring: T = T::from_raw_parts(true, shm.as_mut_ptr(), shm.len())?;
         Ok(SharedRingBuffer { shm, ring })
     }
 
     /// Opens an existing shared ring buffer.
-    pub fn open(name: &str, capacity: usize) -> Result<SharedRingBuffer<T>, Fail> {
+    pub fn open(name: &str, capacity: usize) -> Result<Self, Fail> {
         let mut shm: SharedMemory = SharedMemory::open(&name, capacity)?;
-        let ring: RingBuffer<T> = RingBuffer::<T>::from_raw_parts(false, shm.as_mut_ptr(), shm.len())?;
+        let ring: T = T::from_raw_parts(false, shm.as_mut_ptr(), shm.len())?;
         Ok(SharedRingBuffer { shm, ring })
     }
 }
@@ -53,8 +53,8 @@ impl<T: Copy> SharedRingBuffer<T> {
 //======================================================================================================================
 
 /// Dereference trait implementation for shared ring buffers.
-impl<T: Copy> Deref for SharedRingBuffer<T> {
-    type Target = RingBuffer<T>;
+impl<T: Ring> Deref for SharedRingBuffer<T> {
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.ring
@@ -68,6 +68,7 @@ impl<T: Copy> Deref for SharedRingBuffer<T> {
 #[cfg(test)]
 mod test {
     use super::SharedRingBuffer;
+    use crate::collections::ring::RingBuffer;
     use ::anyhow::Result;
     use ::std::{
         sync::Barrier,
@@ -86,10 +87,11 @@ mod test {
     #[test]
     fn ring_buffer_on_shm_sequential() -> Result<()> {
         let shm_name: String = "shm-test-ring-buffer-serial".to_string();
-        let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::create(&shm_name, RING_BUFFER_CAPACITY) {
-            Ok(ring) => ring,
-            Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
-        };
+        let ring: SharedRingBuffer<RingBuffer<u8>> =
+            match SharedRingBuffer::<RingBuffer<u8>>::create(&shm_name, RING_BUFFER_CAPACITY) {
+                Ok(ring) => ring,
+                Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
+            };
 
         for i in 0..ring.capacity() {
             ring.enqueue((i & 255) as u8);
@@ -121,10 +123,11 @@ mod test {
 
         thread::scope(|s| {
             let writer: ScopedJoinHandle<Result<()>> = s.spawn(|| {
-                let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::create(&shm_name, RING_BUFFER_CAPACITY) {
-                    Ok(ring) => ring,
-                    Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
-                };
+                let ring: SharedRingBuffer<RingBuffer<u8>> =
+                    match SharedRingBuffer::<RingBuffer<u8>>::create(&shm_name, RING_BUFFER_CAPACITY) {
+                        Ok(ring) => ring,
+                        Err(_) => anyhow::bail!("creating a shared ring buffer should be possible"),
+                    };
 
                 barrier.wait();
 
@@ -141,10 +144,11 @@ mod test {
             let reader: ScopedJoinHandle<Result<()>> = s.spawn(|| {
                 barrier.wait();
 
-                let ring: SharedRingBuffer<u8> = match SharedRingBuffer::<u8>::open(&shm_name, RING_BUFFER_CAPACITY) {
-                    Ok(ring) => ring,
-                    Err(_) => anyhow::bail!("openining a shared ring buffer should be possible"),
-                };
+                let ring: SharedRingBuffer<RingBuffer<u8>> =
+                    match SharedRingBuffer::<RingBuffer<u8>>::open(&shm_name, RING_BUFFER_CAPACITY) {
+                        Ok(ring) => ring,
+                        Err(_) => anyhow::bail!("opening a shared ring buffer should be possible"),
+                    };
                 for _ in 0..ROUNDS {
                     for i in 0..ring.capacity() {
                         let item: u8 = ring.dequeue();

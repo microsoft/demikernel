@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    collections::shared_ring::SharedRingBuffer,
+    collections::{
+        ring::RingBuffer,
+        shared_ring::SharedRingBuffer,
+    },
     runtime::{
         fail::Fail,
         network::ring::{
@@ -39,9 +42,9 @@ pub const MAX_RETRIES_PUSH_EOF: u32 = 16;
 /// An endpoint for a unidirectional queue built on a shared ring buffer
 pub struct Ring {
     /// Underlying buffer used for sending data.
-    push_buf: SharedRingBuffer<u16>,
+    push_buf: SharedRingBuffer<RingBuffer<u16>>,
     /// Underlying buffer used for receiving data.
-    pop_buf: SharedRingBuffer<u16>,
+    pop_buf: SharedRingBuffer<RingBuffer<u16>>,
     /// Indicates whether the ring is open or closed.
     state_machine: RingStateMachine,
     /// Mutex to ensure single-threaded access to this ring.
