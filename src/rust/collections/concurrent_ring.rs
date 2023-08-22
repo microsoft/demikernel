@@ -82,6 +82,12 @@ impl ConcurrentRingBuffer {
     #[allow(unused)]
     pub fn new(capacity: usize) -> Result<Self, Fail> {
         // Check if capacity is invalid.
+        if capacity == 0 {
+            let cause: String = format!("invalid capacity (capacity={})", capacity);
+            error!("new(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
         let layout: Layout = Layout::new::<usize>();
 
         let push_offset: *mut usize = unsafe {
