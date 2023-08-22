@@ -59,7 +59,10 @@ use ::std::{
         RefMut,
     },
     mem,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     pin::Pin,
     rc::Rc,
 };
@@ -131,7 +134,16 @@ impl CatloopLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
+        // Check if we are binding to the wildcard address.
+        // FIXME: https://github.com/demikernel/demikernel/issues/189
+        if local.ip() == &Ipv4Addr::UNSPECIFIED {
+            let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
+
         // Check if we are binding to the wildcard port.
+        // FIXME: https://github.com/demikernel/demikernel/issues/582
         if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
