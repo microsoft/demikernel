@@ -100,7 +100,8 @@ impl ConcurrentRingBuffer {
             buffer: raw_array::RawArray::<u8>::new(capacity)?,
             is_managed: true,
         };
-        // Intialize the first header to 0.
+
+        // Initialize the first header to 0.
         me.write_header(0, 0);
 
         Ok(me)
