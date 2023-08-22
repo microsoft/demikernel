@@ -586,7 +586,19 @@ async fn get_port(
     // Issue receive operation to wait for connect request ack.
     let size: usize = mem::size_of::<u16>();
     // Open connection to server.
-    let connect_qd = catmem.borrow().open_pipe(&format_pipe_str(ipv4, port))?;
+    let connect_qd: QDesc = match catmem.borrow().open_pipe(&format_pipe_str(ipv4, port)) {
+        Ok(qd) => qd,
+        Err(e) => {
+            // Interpose error.
+            if e.errno == libc::ENOENT {
+                let cause: String = format!("failed to establish connection (ipv4={:?}, port={:?})", ipv4, port);
+                error!("get_port(): {:?}", &cause);
+                return Err(Fail::new(libc::ECONNREFUSED, &cause));
+            }
+
+            return Err(e);
+        },
+    };
 
     let qt: QToken = catmem.borrow().pop(connect_qd, Some(size))?;
     trace!("Read port qtoken={:?}", qt);
