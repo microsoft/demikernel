@@ -319,7 +319,7 @@ impl Socket {
             }
         } else {
             // We know that the queue descriptor will be replaced so it doesn't matter what we put here.
-            Ok((QDesc::from(0), OperationResult::Close))
+            Ok((QDesc::from(QDesc::MAX), OperationResult::Close))
         }
     }
 
