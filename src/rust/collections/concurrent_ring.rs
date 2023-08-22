@@ -129,7 +129,7 @@ impl ConcurrentRingBuffer {
         }
         // reserve_space will allocate space for the header.
         if let Some(push_offset) = self.reserve_space(len) {
-            debug_assert!(push_offset % 2 == 0);
+            debug_assert!(push_offset % HEADER_SIZE == 0);
             // Push first part of buffer. If longer than the capacity of the ring, wrap around.
             let first_offset: usize = push_offset + HEADER_SIZE;
             let first_len: usize = if push_offset + len + HEADER_SIZE > self.capacity() {
