@@ -29,7 +29,10 @@ use crate::{
     runtime::{
         fail::Fail,
         limits,
-        memory::MemoryRuntime,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -83,10 +86,6 @@ pub struct CatloopLibOS {
 //======================================================================================================================
 
 impl CatloopLibOS {
-    /// Shift value that is applied to all queue tokens that are managed by the Catmem LibOS.
-    /// This is required to avoid collisions between queue tokens that are managed by Catmem LibOS and Catloop LibOS.
-    const QTOKEN_SHIFT: u64 = 65536;
-
     /// Instantiates a new LibOS.
     pub fn new(runtime: DemiRuntime) -> Self {
         Self {
@@ -204,9 +203,6 @@ impl CatloopLibOS {
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         let qt: QToken = queue.accept(coroutine)?;
-        self.state
-            .borrow_mut()
-            .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_ACCEPT, qd);
 
         Ok(qt)
     }
@@ -257,16 +253,6 @@ impl CatloopLibOS {
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         let qt: QToken = queue.connect(coroutine)?;
-        self.state
-            .borrow_mut()
-            .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
-
-        // Check if the returned queue token falls in the space of queue tokens of the Catmem LibOS.
-        if Into::<u64>::into(qt) >= Self::QTOKEN_SHIFT {
-            // This queue token may colide with a queue token in the Catmem LibOS. Warn and keep going.
-            let message: String = format!("too many pending operations in Catloop");
-            warn!("connect(): {}", &message);
-        }
 
         Ok(qt)
     }
@@ -326,17 +312,7 @@ impl CatloopLibOS {
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        let (qt, inserted_catloop): (QToken, bool) = queue.async_close(coroutine)?;
-        if inserted_catloop {
-            self.state
-                .borrow_mut()
-                .insert_catloop_op(qt, demi_opcode_t::DEMI_OPC_CONNECT, qd);
-        } else {
-            self.state
-                .borrow_mut()
-                .insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_CLOSE, qd);
-        }
-        Ok(qt)
+        Ok(queue.async_close(coroutine)?)
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
@@ -346,10 +322,10 @@ impl CatloopLibOS {
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
         qd: QDesc,
-        _: Yielder,
+        yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        match queue.do_close() {
-            Ok(()) => {
+        match queue.do_close(yielder).await {
+            Ok((_, OperationResult::Close)) => {
                 let mut state: RefMut<CatloopRuntime> = state.borrow_mut();
                 if let Some(addr) = queue.local() {
                     if EphemeralPorts::is_private(addr.port()) {
@@ -365,36 +341,90 @@ impl CatloopLibOS {
                 state.free_queue(qd);
                 (qd, OperationResult::Close)
             },
+            Ok((_, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
             Err(e) => (qd, OperationResult::Failed(e)),
+            _ => panic!("Should not return anything other than close or error"),
         }
     }
 
-    /// Pushes a scatter-gather array to a Catmem queue. Returns the (shifted) qtoken for the Catmem coroutine that
-    /// runs this push operation.
+    /// Schedules a coroutine to push to a Catloop queue.
     pub fn push(&self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
-        let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
-        let queue: CatloopQueue = state.get_queue(qd)?;
-        let qt: QToken = queue.push(sga)?;
-        state.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_PUSH, qd);
+        let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
+
+        if buf.len() == 0 {
+            let cause: String = format!("zero-length buffer (qd={:?})", qd);
+            error!("push(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+        let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
+            let task_name: String = format!("Catloop::connect for qd={:?}", qd);
+            self.runtime.insert_coroutine(&task_name, coroutine)
+        };
+        let qt: QToken = queue.push(coroutine)?;
 
         Ok(qt)
     }
 
-    /// Pops data from an underlying Catmem queue. Returns the (shifted) qtoken for the Catmem coroutine that runs this
-    /// pop operations.
+    /// Asynchronous code to push to a Catloop queue.
+    async fn push_coroutine(
+        qd: QDesc,
+        queue: CatloopQueue,
+        buf: DemiBuffer,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
+        match queue.do_push(buf, yielder).await {
+            // Reminder to translate the queue descriptor from Catmem to Catloop
+            Ok((_, OperationResult::Push)) => (qd, OperationResult::Push),
+            Ok((_, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
+            Err(e) => {
+                warn!("connect() failed (qd={:?}, error={:?})", qd, e.cause);
+                (qd, OperationResult::Failed(e))
+            },
+            _ => {
+                panic!("Should not return anything other than push or error.")
+            },
+        }
+    }
+
+    /// Schedules a coroutine to pop data from a Catloop queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
-        let queue: CatloopQueue = state.get_queue(qd)?;
-        let qt: QToken = queue.pop(size)?;
-        state.insert_catmem_op(qt, demi_opcode_t::DEMI_OPC_POP, qd);
+        let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
+        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
+            let task_name: String = format!("Catloop::connect for qd={:?}", qd);
+            self.runtime.insert_coroutine(&task_name, coroutine)
+        };
+        let qt: QToken = queue.pop(coroutine)?;
 
         Ok(qt)
+    }
+
+    /// Coroutine to pop from a Catloop queue.
+    async fn pop_coroutine(
+        qd: QDesc,
+        queue: CatloopQueue,
+        size: Option<usize>,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
+        match queue.do_pop(size, yielder).await {
+            Ok((_, OperationResult::Pop(addr, buf))) => (qd, OperationResult::Pop(addr, buf)),
+            Ok((_catmem_qd, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
+            Err(e) => {
+                warn!("pop() failed (qd={:?}, error={:?})", qd, e.cause);
+                (qd, OperationResult::Failed(e))
+            },
+            _ => {
+                panic!("Should not return anything other than pop or error.")
+            },
+        }
     }
 
     /// Allocates a scatter-gather array.
@@ -414,52 +444,11 @@ impl CatloopLibOS {
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        // Check if the queue token came from the Catloop LibOS.
-        let opcode: Option<(demi_opcode_t, QDesc)> = self.state.borrow_mut().free_catloop_op(qt);
-        if let Some((opcode, _)) = opcode {
-            // Check if the queue token concerns an expected operation.
-            match opcode {
-                demi_opcode_t::DEMI_OPC_ACCEPT | demi_opcode_t::DEMI_OPC_CONNECT | demi_opcode_t::DEMI_OPC_CLOSE => {},
-                _ => {
-                    let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                    error!("pack_result(): {:?}", &cause);
-                    return Err(Fail::new(libc::EINVAL, &cause));
-                },
-            }
-            // Construct operation result.
-            let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-            let qr: demi_qresult_t = pack_result(r, qd, qt.into());
+        // Construct operation result.
+        let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
+        let qr: demi_qresult_t = pack_result(&self.runtime, r, qd, qt.into());
 
-            return Ok(qr);
-        }
-
-        // Check if the queue token came from the Catmem LibOS.
-        let opcode: Option<(demi_opcode_t, QDesc)> = self.state.borrow_mut().free_catmem_op(qt);
-        if let Some((opcode, catloop_qd)) = opcode {
-            // Check if the queue token concerns an expected operation.
-            match opcode {
-                demi_opcode_t::DEMI_OPC_PUSH | demi_opcode_t::DEMI_OPC_POP | demi_opcode_t::DEMI_OPC_CLOSE => {},
-                _ => {
-                    let cause: String = format!("unexpected queue token (qt={:?})", qt);
-                    error!("pack_result(): {:?}", &cause);
-                    return Err(Fail::new(libc::EINVAL, &cause));
-                },
-            }
-
-            // The queue token came from the Catmem LibOS, thus forward operation.
-            let mut qr: demi_qresult_t = self.catmem.borrow_mut().pack_result(handle, qt)?;
-
-            // We temper queue descriptor and queue token that were stored in the queue result returned by Catmem LibOS,
-            // because we only distribute to the application identifiers that are managed by Catloop LibLOS.
-            qr.qr_qd = catloop_qd.to_owned().into();
-
-            return Ok(qr);
-        }
-
-        // The queue token is not registered in Catloop LibOS nor Catmem LibOS.
-        let cause: String = format!("unregistered queue token (qt={:?})", qt);
-        error!("pack_result(): {:?}", &cause);
-        Err(Fail::new(libc::EINVAL, &cause))
+        return Ok(qr);
     }
 
     /// Polls scheduling queues.
@@ -488,7 +477,7 @@ impl CatloopLibOS {
 //======================================================================================================================
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
@@ -530,6 +519,37 @@ fn pack_result(result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
                 qr_value: unsafe { mem::zeroed() },
             }
         },
-        _ => panic!("Should be forwarded on to catmem"),
+        OperationResult::Push => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
+            qr_qd: qd.into(),
+            qr_qt: qt,
+            qr_ret: 0,
+            qr_value: unsafe { mem::zeroed() },
+        },
+        OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
+            Ok(mut sga) => {
+                if let Some(addr) = addr {
+                    sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr);
+                }
+                let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_POP,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_ret: 0,
+                    qr_value,
+                }
+            },
+            Err(e) => {
+                warn!("Operation Failed: {:?}", e);
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_ret: e.errno as i64,
+                    qr_value: unsafe { mem::zeroed() },
+                }
+            },
+        },
     }
 }
