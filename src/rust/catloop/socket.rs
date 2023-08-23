@@ -151,6 +151,11 @@ impl Socket {
         self.do_generic_sync_control_path_call(coroutine, yielder)
     }
 
+    /// Begins the accept operation.
+    pub fn prepare_accept(&mut self) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Accept)
+    }
+
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
     pub async fn do_accept(
         socket: Rc<RefCell<Self>>,
