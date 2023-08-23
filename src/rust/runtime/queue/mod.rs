@@ -15,7 +15,11 @@ use ::slab::{
     Iter,
     Slab,
 };
-use ::std::future::Future;
+use ::std::{
+    any::Any,
+    future::Future,
+    net::SocketAddrV4,
+};
 
 //======================================================================================================================
 // Exports
@@ -39,8 +43,14 @@ pub type BackgroundTask = TaskWithResult<()>;
 // Structures
 //======================================================================================================================
 
-pub trait IoQueue {
+pub trait IoQueue: Any {
     fn get_qtype(&self) -> QType;
+}
+
+pub trait NetworkQueue: IoQueue{
+    fn local(&self) -> Option<SocketAddrV4>;
+    fn remote(&self) -> Option<SocketAddrV4>;
+    fn as_any_ref(&self) -> &dyn Any;
 }
 
 /// I/O queue descriptors table.
