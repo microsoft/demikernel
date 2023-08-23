@@ -38,6 +38,11 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
+        queue::{
+            IoQueue,
+            IoQueueTable,
+            NetworkQueue,
+        },
     },
     scheduler::{
         scheduler::Scheduler,
@@ -45,9 +50,22 @@ use crate::{
     },
 };
 use ::std::{
+    any::{
+        Any,
+        TypeId,
+    },
     boxed::Box,
+    cell::{
+        Ref,
+        RefCell,
+        RefMut,
+    },
+    net::SocketAddrV4,
     pin::Pin,
+    rc::Rc,
 };
+
+type IoQueueType = Box<dyn NetworkQueue>;
 
 //======================================================================================================================
 // Structures
@@ -58,6 +76,9 @@ use ::std::{
 pub struct DemiRuntime {
     /// Scheduler
     scheduler: Scheduler,
+    /// Shared IoQueueTable.
+    /// FIXME: Currently only holds network queues. Change to IoQueue once all libOSes are merged.
+    qtable: Rc<RefCell<IoQueueTable<IoQueueType>>>,
 }
 
 //======================================================================================================================
@@ -69,6 +90,9 @@ impl DemiRuntime {
     pub fn new() -> Self {
         Self {
             scheduler: Scheduler::default(),
+            qtable: Rc::new(RefCell::<IoQueueTable<IoQueueType>>::new(
+                IoQueueTable::<IoQueueType>::new(),
+            )),
         }
     }
 
@@ -111,6 +135,51 @@ impl DemiRuntime {
             },
         }
     }
+
+    pub fn alloc_queue<T: NetworkQueue>(&self, queue: T) -> QDesc {
+        self.qtable.borrow_mut().alloc(Box::new(queue))
+    }
+
+    pub fn get_qtable(&self) -> Ref<IoQueueTable<Box<dyn NetworkQueue>>> {
+        self.qtable.borrow()
+    }
+
+    pub fn get_mut_qtable(&self) -> RefMut<IoQueueTable<Box<dyn NetworkQueue>>> {
+        self.qtable.borrow_mut()
+    }
+
+    pub fn free_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Option<T> {
+        match self.qtable.borrow_mut().free(&qd) {
+            Some(queue) => {
+                let queue_ptr: &dyn Any = queue.as_any_ref();
+                if queue_ptr.type_id() == TypeId::of::<T>() {
+                    Some(
+                        queue_ptr
+                            .downcast_ref::<T>()
+                            .expect("We have already checked the queue type first")
+                            .clone(),
+                    )
+                } else {
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    pub fn get_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Result<T, Fail> {
+        // Hack to clone the queue.
+        match self.qtable.borrow().get(&qd) {
+            Some(queue) => {
+                let queue_ptr: &dyn Any = queue.as_ref().as_any_ref();
+                match queue_ptr.downcast_ref::<T>() {
+                    Some(result) => Ok(result.clone()),
+                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor type")),
+                }
+            },
+            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+        }
+    }
 }
 
 //======================================================================================================================
@@ -122,6 +191,32 @@ impl MemoryRuntime for DemiRuntime {}
 
 /// Runtime Trait Implementation for POSIX Runtime
 impl Runtime for DemiRuntime {}
+
+/// IoQueue trait for IoQueueType
+
+/// NetworkQueue trait for IoQueueType
+impl IoQueue for IoQueueType {
+    fn get_qtype(&self) -> QType {
+        self.as_ref().get_qtype()
+    }
+}
+
+impl NetworkQueue for IoQueueType {
+    /// Returns the local address to which the target queue is bound.
+    fn local(&self) -> Option<SocketAddrV4> {
+        self.as_ref().local()
+    }
+
+    /// Returns the remote address to which the target queue is connected to.
+    fn remote(&self) -> Option<SocketAddrV4> {
+        self.as_ref().remote()
+    }
+
+    /// Returns an Any reference that can be cast to the actual queue.
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+}
 
 //======================================================================================================================
 // Traits
