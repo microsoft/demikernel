@@ -16,6 +16,7 @@ use crate::{
         memory::DemiBuffer,
         queue::{
             IoQueue,
+            NetworkQueue,
             QType,
         },
         QToken,
@@ -27,6 +28,7 @@ use crate::{
     },
 };
 use ::std::{
+    any::Any,
     cell::{
         Ref,
         RefCell,
@@ -71,16 +73,6 @@ impl CatnapQueue {
             socket: Rc::new(RefCell::new(Socket::new(domain, typ)?)),
             pending_ops: Rc::new(RefCell::new(HashMap::<TaskHandle, YielderHandle>::new())),
         })
-    }
-
-    /// Returns the local address to which the target queue is bound.
-    pub fn local(&self) -> Option<SocketAddrV4> {
-        self.socket.borrow().local()
-    }
-
-    /// Returns the remote address to which the target queue is connected to.
-    pub fn remote(&self) -> Option<SocketAddrV4> {
-        self.socket.borrow().remote()
     }
 
     /// Binds the target queue to `local` address.
@@ -405,5 +397,21 @@ impl CatnapQueue {
 impl IoQueue for CatnapQueue {
     fn get_qtype(&self) -> QType {
         self.qtype
+    }
+}
+
+impl NetworkQueue for CatnapQueue {
+    /// Returns the local address to which the target queue is bound.
+    fn local(&self) -> Option<SocketAddrV4> {
+        self.socket.borrow().local()
+    }
+
+    /// Returns the remote address to which the target queue is connected to.
+    fn remote(&self) -> Option<SocketAddrV4> {
+        self.socket.borrow().remote()
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
     }
 }

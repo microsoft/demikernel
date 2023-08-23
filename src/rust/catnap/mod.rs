@@ -24,7 +24,7 @@ use crate::{
             MemoryRuntime,
         },
         queue::{
-            IoQueueTable,
+            NetworkQueue,
             Operation,
             OperationResult,
             OperationTask,
@@ -46,17 +46,12 @@ use crate::{
     },
 };
 use ::std::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
     mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
     pin::Pin,
-    rc::Rc,
 };
 
 #[cfg(feature = "profiler")]
@@ -71,8 +66,6 @@ use crate::timer;
 /// Catnap libOS. All state is kept in the [runtime] and [qtable].
 /// TODO: Move [qtable] into [runtime] so all state is contained in the PosixRuntime.
 pub struct CatnapLibOS {
-    /// Table of queue descriptors.
-    qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>>,
     /// Underlying runtime.
     runtime: DemiRuntime,
 }
@@ -87,8 +80,7 @@ impl CatnapLibOS {
     pub fn new(_config: &Config, runtime: DemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catnap::new");
-        let qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>> = Rc::new(RefCell::new(IoQueueTable::<CatnapQueue>::new()));
-        Self { qtable, runtime }
+        Self { runtime }
     }
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a CatnapQueue that
@@ -112,7 +104,7 @@ impl CatnapLibOS {
 
         // Create underlying queue.
         let queue: CatnapQueue = CatnapQueue::new(domain, typ)?;
-        let qd: QDesc = self.qtable.borrow_mut().alloc(queue);
+        let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
     }
 
@@ -140,7 +132,7 @@ impl CatnapLibOS {
         }
 
         // Check wether the address is in use.
-        for (_, queue) in self.qtable.borrow_mut().get_values() {
+        for (_, queue) in self.runtime.get_qtable().get_values() {
             if let Some(addr) = queue.local() {
                 if addr == local {
                     let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
@@ -181,7 +173,7 @@ impl CatnapLibOS {
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Asynchronous accept code.
             let coroutine: Pin<Box<Operation>> =
-                Box::pin(Self::accept_coroutine(self.qtable.clone(), queue.clone(), qd, yielder));
+                Box::pin(Self::accept_coroutine(self.runtime.clone(), queue.clone(), qd, yielder));
             // Insert async coroutine into the scheduler.
             let task_name: String = format!("Catnap::accept for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
@@ -194,7 +186,7 @@ impl CatnapLibOS {
     /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
     async fn accept_coroutine(
-        qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>>,
+        runtime: DemiRuntime,
         queue: CatnapQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -207,7 +199,7 @@ impl CatnapLibOS {
                 let addr: SocketAddrV4 = new_queue
                     .remote()
                     .expect("An accepted socket must have a remote address");
-                let new_qd: QDesc = qtable.borrow_mut().alloc(new_queue);
+                let new_qd: QDesc = runtime.alloc_queue(new_queue);
                 (qd, OperationResult::Accept((new_qd, addr)))
             },
             Err(e) => {
@@ -263,7 +255,7 @@ impl CatnapLibOS {
         // Issue close operation.
         self.get_queue(qd)?.close()?;
         // Remove the queue from the queue table.
-        self.qtable.borrow_mut().free(&qd);
+        self.runtime.free_queue::<CatnapQueue>(qd);
         Ok(())
     }
 
@@ -278,7 +270,7 @@ impl CatnapLibOS {
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Async code to close this queue.
             let coroutine: Pin<Box<Operation>> =
-                Box::pin(Self::close_coroutine(self.qtable.clone(), queue.clone(), qd, yielder));
+                Box::pin(Self::close_coroutine(self.runtime.clone(), queue.clone(), qd, yielder));
             let task_name: String = format!("Catnap::close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
@@ -290,7 +282,7 @@ impl CatnapLibOS {
     /// and the underlying POSIX socket and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     async fn close_coroutine(
-        qtable: Rc<RefCell<IoQueueTable<CatnapQueue>>>,
+        runtime: DemiRuntime,
         queue: CatnapQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -299,7 +291,7 @@ impl CatnapLibOS {
         match queue.do_close(yielder).await {
             Ok(()) => {
                 // Remove the queue from the queue table.
-                qtable.borrow_mut().free(&qd);
+                runtime.free_queue::<CatnapQueue>(qd);
                 (qd, OperationResult::Close)
             },
             Err(e) => {
@@ -474,9 +466,9 @@ impl CatnapLibOS {
         match result {
             OperationResult::Close => {},
             _ => {
-                match self.qtable.borrow_mut().get_mut(&qd) {
-                    Some(queue) => queue.remove_pending_op(&handle),
-                    None => debug!("Catnap::take_result() qd={:?}, This queue was closed", qd),
+                match self.get_queue(qd) {
+                    Ok(queue) => queue.remove_pending_op(&handle),
+                    Err(_) => debug!("Catnap::take_result() qd={:?}, This queue was closed", qd),
                 };
             },
         }
@@ -484,13 +476,8 @@ impl CatnapLibOS {
         (qd, result)
     }
 
-    /// Get the CatnapQueue associated with this [qd]. If not a valid queue, then return EBADF with "invalid queue
-    /// descriptor".
     fn get_queue(&self, qd: QDesc) -> Result<CatnapQueue, Fail> {
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => Ok(queue.clone()),
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+        Ok(self.runtime.get_queue::<CatnapQueue>(qd)?)
     }
 }
 
@@ -501,9 +488,12 @@ impl CatnapLibOS {
 impl Drop for CatnapLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
-        let mut qtable: RefMut<IoQueueTable<CatnapQueue>> = self.qtable.borrow_mut();
-        for queue in qtable.drain() {
-            if let Err(e) = queue.close() {
+        for queue in self.runtime.get_mut_qtable().drain() {
+            let queue_: &CatnapQueue = queue
+                .as_any_ref()
+                .downcast_ref::<CatnapQueue>()
+                .expect("Should check queue type");
+            if let Err(e) = queue_.close() {
                 error!("close() failed (error={:?}", e);
             }
         }
