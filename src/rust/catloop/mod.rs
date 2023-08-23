@@ -205,7 +205,6 @@ impl CatloopLibOS {
 
         // Keep a reference to this for later.
         let queue: CatloopQueue = self.state.borrow().get_queue(qd)?;
-        let local: SocketAddrV4 = queue.local().expect("socket should be bound to local address");
         let new_port: u16 = match self.state.borrow_mut().alloc_ephemeral_port(None) {
             Ok(new_port) => new_port.unwrap(),
             Err(e) => return Err(e),
@@ -218,7 +217,7 @@ impl CatloopLibOS {
                 qd,
                 self.state.clone(),
                 queue.clone(),
-                SocketAddrV4::new(*local.ip(), new_port),
+                new_port,
                 yielder,
             ));
             // Insert async coroutine into the scheduler.
@@ -237,25 +236,29 @@ impl CatloopLibOS {
         qd: QDesc,
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
-        new_addr: SocketAddrV4,
+        new_port: u16,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
         // Wait for the accept to complete.
-        let result: Result<CatloopQueue, Fail> = queue.do_accept(new_addr.ip(), new_addr.port(), &yielder).await;
+        let result: Result<CatloopQueue, Fail> = queue.do_accept(new_port, &yielder).await;
         // Handle result: if successful, borrow the state to update state.
         let mut state_: RefMut<CatloopRuntime> = state.borrow_mut();
         match result {
             Ok(new_queue) => {
+                // It is safe to unwrap here, because we ensured that the queue is bound to a local address.
                 let new_qd: QDesc = state_.alloc_queue(new_queue);
-                (qd, OperationResult::Accept((new_qd, new_addr)))
+                (
+                    qd,
+                    OperationResult::Accept((new_qd, SocketAddrV4::new(*queue.local().unwrap().ip(), new_port))),
+                )
             },
             Err(e) => {
                 // Rollback the port allocation.
-                if state_.free_ephemeral_port(new_addr.port()).is_err() {
+                if state_.free_ephemeral_port(new_port).is_err() {
                     // We fail if and only if we attempted to free a port that was not allocated.
                     // This is unexpected, but if it happens, issue a warning and keep going,
                     // otherwise we would leave the queue in a dangling state.
-                    warn!("accept(): leaking ephemeral port (port={})", new_addr.port());
+                    warn!("accept(): leaking ephemeral port (port={})", new_port);
                 }
                 (qd, OperationResult::Failed(e))
             },
