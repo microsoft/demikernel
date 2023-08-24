@@ -180,6 +180,17 @@ impl DemiRuntime {
             None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
+
+    /// Checks whether `local` is alreadyb bound to a queue. If the address is in use, returns `true`, else false.
+    pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+        for (_, queue) in self.qtable.borrow().get_values() {
+            match queue.local() {
+                Some(addr) if addr == local => return true,
+                _ => continue,
+            }
+        }
+        false
+    }
 }
 
 //======================================================================================================================
