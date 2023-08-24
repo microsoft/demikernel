@@ -46,14 +46,12 @@ use crate::{
     },
     scheduler::{
         scheduler::Scheduler,
+        Task,
         TaskHandle,
     },
 };
 use ::std::{
-    any::{
-        Any,
-        TypeId,
-    },
+    any::Any,
     boxed::Box,
     cell::{
         Ref,
@@ -111,12 +109,13 @@ impl DemiRuntime {
 
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`.
     pub fn remove_coroutine(&self, handle: &TaskHandle) -> OperationTask {
-        OperationTask::from(
-            self.scheduler
-                .remove(&handle)
-                .expect("Removing task that does not exist (either was previously removed or never inserted")
-                .as_any(),
-        )
+        // 1. Remove Task from scheduler.
+        let boxed_task: Box<dyn Task> = self
+            .scheduler
+            .remove(handle)
+            .expect("Removing task that does not exist (either was previously removed or never inserted");
+        // 2. Cast to void and then downcast to operation task.
+        OperationTask::from(boxed_task.as_any())
     }
 
     /// Performs a single pool on the underlying scheduler.
@@ -149,36 +148,33 @@ impl DemiRuntime {
     }
 
     pub fn free_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Option<T> {
-        match self.qtable.borrow_mut().free(&qd) {
-            Some(queue) => {
-                let queue_ptr: &dyn Any = queue.as_any_ref();
-                if queue_ptr.type_id() == TypeId::of::<T>() {
-                    Some(
-                        queue_ptr
-                            .downcast_ref::<T>()
-                            .expect("We have already checked the queue type first")
-                            .clone(),
-                    )
-                } else {
-                    None
-                }
-            },
-            None => None,
+        if let Some(boxed_queue_ptr) = self.qtable.borrow_mut().free(&qd) {
+            if let Some(queue_ptr) = Self::downcast_queue_ptr::<T>(&boxed_queue_ptr) {
+                return Some(queue_ptr.clone());
+            }
         }
+        None
     }
 
     pub fn get_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Result<T, Fail> {
         // Hack to clone the queue.
         match self.qtable.borrow().get(&qd) {
-            Some(queue) => {
-                let queue_ptr: &dyn Any = queue.as_ref().as_any_ref();
-                match queue_ptr.downcast_ref::<T>() {
-                    Some(result) => Ok(result.clone()),
-                    None => Err(Fail::new(libc::EBADF, "invalid queue descriptor type")),
-                }
+            Some(boxed_queue_ptr) => match Self::downcast_queue_ptr::<T>(boxed_queue_ptr) {
+                Some(queue_ptr) => Ok(queue_ptr.clone()),
+                None => Err(Fail::new(libc::EBADF, "invalid queue descriptor type")),
             },
             None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
+    }
+
+    /// Downcasts a [NetworkQueue] reference to a concrete queue type reference `&T`.
+    pub fn downcast_queue_ptr<T: NetworkQueue + Clone>(boxed_queue_ptr: &Box<dyn NetworkQueue>) -> Option<&T> {
+        // 1. Get reference to queue inside the box.
+        let queue_ptr: &dyn NetworkQueue = boxed_queue_ptr.as_ref();
+        // 2. Cast that reference to a void pointer for downcasting.
+        let void_ptr: &dyn Any = queue_ptr.as_any_ref();
+        // 3. Downcast to concrete type T
+        void_ptr.downcast_ref::<T>()
     }
 }
 

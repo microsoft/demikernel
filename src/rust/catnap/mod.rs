@@ -39,6 +39,7 @@ use crate::{
         DemiRuntime,
         QDesc,
         QToken,
+        Runtime,
     },
     scheduler::{
         TaskHandle,
@@ -53,6 +54,7 @@ use ::std::{
     },
     pin::Pin,
 };
+use std::any::Any;
 
 #[cfg(feature = "profiler")]
 use crate::timer;
@@ -488,13 +490,17 @@ impl CatnapLibOS {
 impl Drop for CatnapLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
-        for queue in self.runtime.get_mut_qtable().drain() {
-            let queue_: &CatnapQueue = queue
-                .as_any_ref()
-                .downcast_ref::<CatnapQueue>()
-                .expect("Should check queue type");
-            if let Err(e) = queue_.close() {
-                error!("close() failed (error={:?}", e);
+        for boxed_queue_ptr in self.runtime.get_mut_qtable().drain() {
+            let queue: Option<&CatnapQueue> = DemiRuntime::downcast_queue_ptr(&boxed_queue_ptr);
+            match queue {
+                Some(queue) => {
+                    if let Err(e) = queue.close() {
+                        error!("close() failed (error={:?}", e);
+                    }
+                },
+                None => {
+                    error!("drop(): attempting to drop something that is not a CatnapQueue");
+                },
             }
         }
     }
