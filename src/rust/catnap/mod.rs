@@ -132,10 +132,14 @@ impl CatnapLibOS {
         }
 
         // Check wether the address is in use.
-        if self.runtime.addr_in_use(local) {
-            let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
-            error!("bind(): {}", &cause);
-            return Err(Fail::new(libc::EADDRINUSE, &cause));
+        for (_, queue) in self.runtime.get_qtable().get_values() {
+            if let Some(addr) = queue.local() {
+                if addr == local {
+                    let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
+                    error!("bind(): {}", &cause);
+                    return Err(Fail::new(libc::EADDRINUSE, &cause));
+                }
+            }
         }
 
         // Issue bind operation.
