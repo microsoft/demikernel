@@ -88,9 +88,6 @@ impl CatloopQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        // Check whether we are accepting on this queue.
-        self.socket.borrow_mut().prepare_accept()?;
-
         let yielder: Yielder = Yielder::new();
         let yielder_handle: YielderHandle = yielder.get_handle();
 
