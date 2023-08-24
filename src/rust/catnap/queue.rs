@@ -78,7 +78,6 @@ impl CatnapQueue {
     /// Binds the target queue to `local` address.
     pub fn bind(&self, local: SocketAddrV4) -> Result<(), Fail> {
         let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_bind()?;
         match socket.bind(local) {
             Ok(_) => {
                 socket.commit();
@@ -94,7 +93,6 @@ impl CatnapQueue {
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&self, backlog: usize) -> Result<(), Fail> {
         let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_listen()?;
         match socket.listen(backlog) {
             Ok(_) => {
                 socket.commit();
@@ -113,8 +111,12 @@ impl CatnapQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.socket.borrow_mut().prepare_accept()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, true)
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().accept(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
@@ -160,8 +162,12 @@ impl CatnapQueue {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.socket.borrow_mut().prepare_connect()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, true)
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
+        let task_handle: TaskHandle = self.socket.borrow_mut().connect(insert_coroutine, yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle.get_task_id().into())
     }
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
@@ -194,6 +200,16 @@ impl CatnapQueue {
         }
     }
 
+    /// Start an asynchronous coroutine to close this queue.
+    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let task_handle: TaskHandle = self.socket.borrow_mut().async_close(insert_coroutine, yielder)?;
+        Ok(task_handle.get_task_id().into())
+    }
+
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&self) -> Result<(), Fail> {
         let mut socket: RefMut<Socket> = self.socket.borrow_mut();
@@ -211,16 +227,6 @@ impl CatnapQueue {
                 Err(e)
             },
         }
-    }
-
-    /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
-    /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
-    pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        self.socket.borrow_mut().prepare_close()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, false)
     }
 
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
@@ -326,37 +332,6 @@ impl CatnapQueue {
                 Err(e) => return Err(e),
             }
         }
-    }
-
-    /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        // Spawn coroutine.
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = match coroutine(yielder) {
-            // We successfully spawned the coroutine.
-            Ok(handle) => {
-                // Commit the operation on the socket.
-                self.socket.borrow_mut().commit();
-                handle
-            },
-            // We failed to spawn the coroutine.
-            Err(e) => {
-                // Abort the operation on the socket.
-                self.socket.borrow_mut().abort();
-                return Err(e);
-            },
-        };
-
-        // If requested, add this operation to the list of pending operations on this queue.
-        if add_as_pending_op {
-            self.add_pending_op(&task_handle, &yielder_handle);
-        }
-
-        Ok(task_handle.get_task_id().into())
     }
 
     /// Generic function for spawning a data-path coroutine on [self].

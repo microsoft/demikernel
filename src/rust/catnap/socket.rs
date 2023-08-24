@@ -22,6 +22,10 @@ use crate::{
             state::SocketStateMachine,
         },
     },
+    scheduler::{
+        TaskHandle,
+        Yielder,
+    },
 };
 use ::std::{
     mem,
@@ -93,13 +97,11 @@ impl Socket {
         }
     }
 
-    /// Begins the bind operation.
-    pub fn prepare_bind(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Bind)
-    }
-
     /// Binds the target socket to `local` address.
     pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
+        // Begin bind operation.
+        self.state_machine.prepare(SocketOp::Bind)?;
+
         // Bind underlying socket.
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
         match unsafe {
@@ -122,13 +124,11 @@ impl Socket {
         }
     }
 
-    /// Begins the listen operation.
-    pub fn prepare_listen(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Listen)
-    }
-
     /// Enables this socket to accept incoming connections.
     pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
+        // Begins the listen operation.
+        self.state_machine.prepare(SocketOp::Listen)?;
+
         // Set underlying OS socket to listen.
         if unsafe { libc::listen(self.fd, backlog as i32) } != 0 {
             let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -140,14 +140,19 @@ impl Socket {
         Ok(())
     }
 
-    /// Begins the accept operation.
-    pub fn prepare_accept(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Accept)
-    }
-
     /// Begins the accepted operation.
     pub fn prepare_accepted(&mut self) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Accepted)
+    }
+
+    /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
+    /// synchronous functionality necessary to start an accept.
+    pub fn accept<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Accept)?;
+        self.do_generic_sync_control_path_call(coroutine, yielder)
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
@@ -196,15 +201,20 @@ impl Socket {
         }
     }
 
-    /// Begins the connect operation.
-    pub fn prepare_connect(&mut self) -> Result<(), Fail> {
-        // Set socket state to accepting.
-        self.state_machine.prepare(SocketOp::Connect)
-    }
-
     /// Begins he connected operation.
     pub fn prepare_connected(&mut self) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Connected)
+    }
+
+    /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
+    /// connect completes.
+    pub fn connect<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Connect)?;
+        self.do_generic_sync_control_path_call(coroutine, yielder)
     }
 
     /// Constructs from [self] a socket that is attempting to connect to a remote address.
@@ -244,6 +254,16 @@ impl Socket {
     /// Begins the closed operation.
     pub fn prepare_closed(&mut self) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Closed)
+    }
+
+    /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
+    /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
+    pub fn async_close<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Close)?;
+        Ok(self.do_generic_sync_control_path_call(coroutine, yielder)?)
     }
 
     /// Constructs from [self] a socket that is closing.
@@ -376,6 +396,28 @@ impl Socket {
     /// Rollbacks to the previous state.
     pub fn rollback(&mut self) {
         self.state_machine.rollback()
+    }
+
+    /// Generic function for spawning a control-path coroutine on [self].
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        // Spawn coroutine.
+        match coroutine(yielder) {
+            // We successfully spawned the coroutine.
+            Ok(handle) => {
+                // Commit the operation on the socket.
+                self.state_machine.commit();
+                Ok(handle)
+            },
+            // We failed to spawn the coroutine.
+            Err(e) => {
+                // Abort the operation on the socket.
+                self.state_machine.abort();
+                Err(e)
+            },
+        }
     }
 }
 
