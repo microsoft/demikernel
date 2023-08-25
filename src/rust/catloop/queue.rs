@@ -98,9 +98,10 @@ impl CatloopQueue {
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
-    pub async fn do_accept(&self, ipv4: &Ipv4Addr, new_port: u16, yielder: &Yielder) -> Result<Self, Fail> {
+    pub async fn do_accept(&self, new_port: u16, yielder: &Yielder) -> Result<Self, Fail> {
         // Try to call underlying platform accept.
-        match Socket::do_accept(self.socket.clone(), ipv4, new_port, yielder).await {
+        // It is safe to unwrap here because we ensured that the socket is bound, thus it is assigned a local address.
+        match Socket::do_accept(self.socket.clone(), self.local().unwrap().ip(), new_port, yielder).await {
             Ok(new_accepted_socket) => Ok(Self {
                 qtype: self.qtype,
                 socket: Rc::new(RefCell::new(new_accepted_socket)),
