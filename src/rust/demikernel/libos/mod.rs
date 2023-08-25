@@ -105,7 +105,9 @@ impl LibOS {
             #[cfg(feature = "catmem-libos")]
             LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new(runtime.clone()))),
             #[cfg(feature = "catloop-libos")]
-            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new(runtime.clone()))),
+            LibOSName::Catloop => {
+                Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new(&config, runtime.clone())))
+            },
             _ => panic!("unsupported libos"),
         };
 

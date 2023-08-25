@@ -19,6 +19,7 @@ use ::yaml_rust::{
 //======================================================================================================================
 
 /// Demikernel configuration.
+#[derive(Clone, Debug)]
 pub struct Config(pub Yaml);
 
 //======================================================================================================================
@@ -42,7 +43,7 @@ impl Config {
     }
 
     /// Reads the local IPv4 address parameter from the underlying configuration file.
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos", feature = "catloop-libos"))]
     pub fn local_ipv4_addr(&self) -> ::std::net::Ipv4Addr {
         // FIXME: this function should return a result.
         use ::std::net::Ipv4Addr;

@@ -20,6 +20,7 @@ use self::{
 use crate::{
     catmem::CatmemLibOS,
     demi_sgarray_t,
+    demikernel::config::Config,
     inetstack::protocols::ip::EphemeralPorts,
     pal::{
         constants::SOMAXCONN,
@@ -82,6 +83,8 @@ pub struct CatloopLibOS {
     catmem: Rc<RefCell<CatmemLibOS>>,
     /// Underlying coroutine runtime.
     runtime: DemiRuntime,
+    /// Configuration.
+    config: Config,
 }
 
 //======================================================================================================================
@@ -90,11 +93,12 @@ pub struct CatloopLibOS {
 
 impl CatloopLibOS {
     /// Instantiates a new LibOS.
-    pub fn new(runtime: DemiRuntime) -> Self {
+    pub fn new(config: &Config, runtime: DemiRuntime) -> Self {
         Self {
             state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
             catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new(runtime.clone()))),
             runtime,
+            config: config.clone(),
         }
     }
 
@@ -148,6 +152,13 @@ impl CatloopLibOS {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
+
+        // Check if we are binding to a non-local address.
+        if &self.config.local_ipv4_addr() != local.ip() {
+            let cause: String = format!("cannot bind to non-local address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
         }
 
         let mut state: RefMut<CatloopRuntime> = self.state.borrow_mut();
