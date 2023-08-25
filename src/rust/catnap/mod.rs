@@ -481,29 +481,6 @@ impl CatnapLibOS {
     }
 }
 
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-impl Drop for CatnapLibOS {
-    // Releases all sockets allocated by Catnap.
-    fn drop(&mut self) {
-        for boxed_queue_ptr in self.runtime.get_mut_qtable().drain() {
-            let queue: Option<&CatnapQueue> = DemiRuntime::downcast_queue_ptr(&boxed_queue_ptr);
-            match queue {
-                Some(queue) => {
-                    if let Err(e) = queue.close() {
-                        error!("close() failed (error={:?}", e);
-                    }
-                },
-                None => {
-                    error!("drop(): attempting to drop something that is not a CatnapQueue");
-                },
-            }
-        }
-    }
-}
-
 //==============================================================================
 // Standalone Functions
 //==============================================================================

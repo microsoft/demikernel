@@ -1,0 +1,75 @@
+{
+	"folders": [
+		{
+			"name": "demikernel",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"rust-analyzer.cargo.features": [
+			"catnap-libos",
+			"catcollar-libos",
+			"catnip-libos",
+			"catpowder-libos",
+			"catmem-libos",
+			"catloop-libos",
+			"mlx4"
+		],
+		"rust-analyzer.server.extraEnv": {
+			"PKG_CONFIG_PATH": "/home/irene/lib/pkgconfig/:/home/irene/lib/x86_64-linux-gnu/pkgconfig"
+		},
+		"C_Cpp.default.compilerPath": "/usr/bin/gcc",
+		"files.associations": {
+			"wait.h": "c",
+			"sga.h": "c",
+			"dlfcn.h": "c",
+			"stdio.h": "c",
+			"unistd.h": "c",
+			"glue.h": "c",
+			"libos.h": "c",
+			"interpose.h": "c",
+			"utils.h": "c",
+			"epoll.h": "c"
+		},
+		"editor.formatOnSave": true,
+		"editor.formatOnPaste": false,
+		"cSpell.ignoreWords": [
+			"DGRAM",
+			"EADDRINUSE",
+			"EAGAIN",
+			"EBADF",
+			"ECONNREFUSED",
+			"EDESTADDRREQ",
+			"EINVAL",
+			"ENOTSUP",
+			"INET",
+			"demi",
+			"libos",
+			"numsegs",
+			"pushto",
+			"qresult",
+			"qtoken",
+			"saddr",
+			"seglen",
+			"segs",
+			"sgaalloc",
+			"sgafree",
+			"sgarray",
+			"sgaseg",
+			"sockaddr",
+			"socklen",
+			"struct",
+			"sockqd"
+		],
+		"cSpell.words": [
+			"catcollar",
+			"Catloop",
+			"catpowder",
+			"getpeername",
+			"PDPIX"
+		],
+		"rust-analyzer.linkedProjects": [
+			"./Cargo.toml"
+		]
+	}
+}

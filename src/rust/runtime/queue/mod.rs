@@ -10,7 +10,10 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use crate::scheduler::TaskWithResult;
+use crate::{
+    runtime::Fail,
+    scheduler::TaskWithResult,
+};
 use ::slab::{
     Iter,
     Slab,
@@ -47,10 +50,11 @@ pub trait IoQueue: Any {
     fn get_qtype(&self) -> QType;
 }
 
-pub trait NetworkQueue: IoQueue{
+pub trait NetworkQueue: IoQueue {
     fn local(&self) -> Option<SocketAddrV4>;
     fn remote(&self) -> Option<SocketAddrV4>;
     fn as_any_ref(&self) -> &dyn Any;
+    fn close(&self) -> Result<(), Fail>;
 }
 
 /// I/O queue descriptors table.

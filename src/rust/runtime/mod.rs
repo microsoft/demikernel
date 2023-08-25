@@ -212,6 +212,22 @@ impl NetworkQueue for IoQueueType {
     fn as_any_ref(&self) -> &dyn Any {
         self
     }
+
+    /// Closes the queue in the IoQueueTable for drop.
+    fn close(&self) -> Result<(), Fail> {
+        self.as_ref().close()
+    }
+}
+
+impl Drop for DemiRuntime {
+    // Releases closes all network queues in the IoQueueTable
+    fn drop(&mut self) {
+        for queue in self.qtable.borrow_mut().drain() {
+            if let Err(e) = queue.close() {
+                error!("close() failed (error={:?}", e);
+            }
+        }
+    }
 }
 
 //======================================================================================================================

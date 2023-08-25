@@ -194,25 +194,6 @@ impl CatnapQueue {
         }
     }
 
-    /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
-    pub fn close(&self) -> Result<(), Fail> {
-        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
-        socket.prepare_close()?;
-        socket.commit();
-        match socket.try_close() {
-            Ok(_) => {
-                socket.prepare_closed()?;
-                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-                socket.commit();
-                Ok(())
-            },
-            Err(e) => {
-                socket.abort();
-                Err(e)
-            },
-        }
-    }
-
     /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
     pub fn async_close<F>(&self, insert_coroutine: F) -> Result<QToken, Fail>
@@ -413,5 +394,24 @@ impl NetworkQueue for CatnapQueue {
 
     fn as_any_ref(&self) -> &dyn Any {
         self
+    }
+
+    /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
+    fn close(&self) -> Result<(), Fail> {
+        let mut socket: RefMut<Socket> = self.socket.borrow_mut();
+        socket.prepare_close()?;
+        socket.commit();
+        match socket.try_close() {
+            Ok(_) => {
+                socket.prepare_closed()?;
+                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+                socket.commit();
+                Ok(())
+            },
+            Err(e) => {
+                socket.abort();
+                Err(e)
+            },
+        }
     }
 }
