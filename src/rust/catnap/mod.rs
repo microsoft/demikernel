@@ -39,7 +39,6 @@ use crate::{
         DemiRuntime,
         QDesc,
         QToken,
-        Runtime,
     },
     scheduler::{
         TaskHandle,
@@ -54,7 +53,6 @@ use ::std::{
     },
     pin::Pin,
 };
-use std::any::Any;
 
 #[cfg(feature = "profiler")]
 use crate::timer;
