@@ -114,11 +114,13 @@ impl Socket {
             stats if stats == 0 => {
                 // Update socket.
                 self.local = Some(local);
+                self.state_machine.commit();
                 Ok(())
             },
             _ => {
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
                 error!("failed to bind socket (errno={:?})", errno);
+                self.state_machine.abort();
                 Err(Fail::new(errno, "operation failed"))
             },
         }
@@ -130,19 +132,18 @@ impl Socket {
         self.state_machine.prepare(SocketOp::Listen)?;
 
         // Set underlying OS socket to listen.
-        if unsafe { libc::listen(self.fd, backlog as i32) } != 0 {
-            let errno: libc::c_int = unsafe { *libc::__errno_location() };
-            error!("failed to listen ({:?})", errno);
-            return Err(Fail::new(errno, "operation failed"));
+        match unsafe { libc::listen(self.fd, backlog as i32) } {
+            0 => {
+                self.state_machine.commit();
+                Ok(())
+            },
+            _ => {
+                self.state_machine.abort();
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                error!("failed to listen on socket (errno={:?})", errno);
+                Err(Fail::new(errno, "operation failed"))
+            },
         }
-
-        // If successful, update the state.
-        Ok(())
-    }
-
-    /// Begins the accepted operation.
-    pub fn prepare_accepted(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Accepted)
     }
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
@@ -157,6 +158,10 @@ impl Socket {
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
     pub fn try_accept(&mut self) -> Result<Self, Fail> {
+        // Check whether we are accepting on this queue.
+        self.state_machine.may_accept()?;
+        self.state_machine.prepare(SocketOp::Accepted)?;
+
         // Done with checks, do actual accept.
         let mut saddr: SockAddr = unsafe { mem::zeroed() };
         let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
@@ -182,6 +187,7 @@ impl Socket {
                 }
 
                 let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
+                self.state_machine.commit();
                 Ok(Self {
                     state_machine: SocketStateMachine::new_connected(),
                     fd: new_fd,
@@ -201,11 +207,6 @@ impl Socket {
         }
     }
 
-    /// Begins he connected operation.
-    pub fn prepare_connected(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Connected)
-    }
-
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
     /// connect completes.
@@ -219,6 +220,9 @@ impl Socket {
 
     /// Constructs from [self] a socket that is attempting to connect to a remote address.
     pub fn try_connect(&mut self, remote: SocketAddrV4) -> Result<(), Fail> {
+        // Check whether we can connect.
+        self.state_machine.may_connect()?;
+        self.state_machine.prepare(SocketOp::Connected)?;
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&remote);
         match unsafe {
             libc::connect(
@@ -231,6 +235,7 @@ impl Socket {
             stats if stats == 0 => {
                 trace!("connection established ({:?})", remote);
                 self.remote = Some(remote);
+                self.state_machine.commit();
                 Ok(())
             },
             // Operation not completed, thus parse errno to find out what happened.
@@ -245,15 +250,10 @@ impl Socket {
         }
     }
 
-    /// Begins the close operation.
-    pub fn prepare_close(&mut self) -> Result<(), Fail> {
-        // Set socket state to accepting.
-        self.state_machine.prepare(SocketOp::Close)
-    }
-
-    /// Begins the closed operation.
-    pub fn prepare_closed(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Closed)
+    pub fn close(&mut self) -> Result<(), Fail> {
+        self.state_machine.prepare(SocketOp::Close)?;
+        self.state_machine.commit();
+        self.try_close()
     }
 
     /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
@@ -268,10 +268,13 @@ impl Socket {
 
     /// Constructs from [self] a socket that is closing.
     pub fn try_close(&mut self) -> Result<(), Fail> {
+        self.state_machine.prepare(SocketOp::Closed)?;
         match unsafe { libc::close(self.fd) } {
             // Operation completed.
             stats if stats == 0 => {
                 trace!("socket closed fd={:?}", self.fd);
+                self.state_machine.commit();
+
                 return Ok(());
             },
             // Operation not completed, thus parse errno to find out what happened.
@@ -281,6 +284,9 @@ impl Socket {
                 if errno != libc::EINTR {
                     error!("{}", message);
                 }
+                // Pretty sure this should be rollback, not abort.
+                self.state_machine.rollback();
+
                 Err(Fail::new(errno, &message))
             },
         }
@@ -381,16 +387,6 @@ impl Socket {
     /// Returns the `remote` address tot which [self] is connected.
     pub fn remote(&self) -> Option<SocketAddrV4> {
         self.remote
-    }
-
-    /// Commits to moving into the prepared state
-    pub fn commit(&mut self) {
-        self.state_machine.commit()
-    }
-
-    /// Discards the prepared state.
-    pub fn abort(&mut self) {
-        self.state_machine.abort()
     }
 
     /// Rollbacks to the previous state.
