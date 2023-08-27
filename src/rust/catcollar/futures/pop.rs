@@ -7,6 +7,7 @@
 
 use crate::{
     catcollar::{
+        futures::retry_errno,
         runtime::RequestId,
         IoUringRuntime,
     },
@@ -14,84 +15,50 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
+    scheduler::Yielder,
 };
 use ::std::{
-    future::Future,
     net::SocketAddrV4,
     os::fd::RawFd,
-    pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
 };
 
-//==============================================================================
-// Structures
-//==============================================================================
-
-/// Pop Operation Descriptor
-pub struct PopFuture {
-    /// Underlying runtime.
-    rt: IoUringRuntime,
-    /// Associated file descriptor.
+pub async fn pop_coroutine(
+    mut rt: IoUringRuntime,
     fd: RawFd,
-    /// Associated receive buffer.
     buf: DemiBuffer,
-}
-
-//==============================================================================
-// Associate Functions
-//==============================================================================
-
-/// Associate Functions for Pop Operation Descriptors
-impl PopFuture {
-    /// Creates a descriptor for a pop operation.
-    pub fn new(rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer) -> Self {
-        Self { rt, fd, buf }
-    }
-}
-
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
-/// Future Trait Implementation for Pop Operation Descriptors
-impl Future for PopFuture {
-    type Output = Result<(Option<SocketAddrV4>, DemiBuffer), Fail>;
-
-    /// Polls the underlying pop operation.
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &mut PopFuture = self.get_mut();
-        let request_id: RequestId = self_.rt.pop(self_.fd, self_.buf.clone())?;
-        match self_.rt.peek(request_id) {
+    yielder: Yielder,
+) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
+    let request_id: RequestId = rt.pop(fd, buf.clone())?;
+    loop {
+        match rt.peek(request_id) {
             // Operation completed.
             Ok((addr, size)) if size >= 0 => {
                 trace!("data received ({:?} bytes)", size);
-                let trim_size: usize = self_.buf.len() - (size as usize);
-                let mut buf: DemiBuffer = self_.buf.clone();
+                let trim_size: usize = buf.len() - (size as usize);
+                let mut buf: DemiBuffer = buf.clone();
                 buf.trim(trim_size)?;
-                Poll::Ready(Ok((addr, buf)))
+                return Ok((addr, buf));
             },
             // Operation not completed, thus parse errno to find out what happened.
             Ok((None, size)) if size < 0 => {
                 let errno: i32 = -size;
-                // Operation in progress.
-                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
-                    ctx.waker().wake_by_ref();
-                    return Poll::Pending;
-                }
-                // Operation failed.
-                else {
-                    let message: String = format!("pus(): operation failed (errno={:?})", errno);
+                if retry_errno(errno) {
+                    if let Err(e) = yielder.yield_once().await {
+                        let message: String = format!("pop(): operation canceled (err={:?})", e);
+                        error!("{}", message);
+                        return Err(Fail::new(libc::ECANCELED, &message));
+                    }
+                } else {
+                    let message: String = format!("pop(): operation failed (errno={:?})", errno);
                     error!("{}", message);
-                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                    return Err(Fail::new(errno, &message));
                 }
             },
             // Operation failed.
             Err(e) => {
-                warn!("pop failed ({:?})", e);
-                Poll::Ready(Err(e))
+                let message: String = format!("pop(): operation failed (err={:?})", e);
+                error!("{}", message);
+                return Err(e);
             },
             // Should not happen.
             _ => panic!("pop failed: unknown error"),

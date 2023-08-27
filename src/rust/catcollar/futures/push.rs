@@ -7,6 +7,7 @@
 
 use crate::{
     catcollar::{
+        futures::retry_errno,
         runtime::RequestId,
         IoUringRuntime,
     },
@@ -14,80 +15,40 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
     },
+    scheduler::Yielder,
 };
-use ::std::{
-    future::Future,
-    os::fd::RawFd,
-    pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
-};
+use ::std::os::fd::RawFd;
 
-//==============================================================================
-// Structures
-//==============================================================================
-
-/// Push Operation Descriptor
-pub struct PushFuture {
-    /// Underlying runtime.
-    rt: IoUringRuntime,
-    /// Associated file descriptor.
-    fd: RawFd,
-    /// Associated receive buffer.
-    buf: DemiBuffer,
-}
-
-//==============================================================================
-// Associate Functions
-//==============================================================================
-
-/// Associate Functions for Push Operation Descriptors
-impl PushFuture {
-    /// Creates a descriptor for a push operation.
-    pub fn new(rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer) -> Self {
-        Self { rt, fd, buf }
-    }
-}
-
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
-/// Future Trait Implementation for Push Operation Descriptors
-impl Future for PushFuture {
-    type Output = Result<(), Fail>;
-
-    /// Polls the underlying push operation.
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        let self_: &mut PushFuture = self.get_mut();
-        let request_id: RequestId = self_.rt.push(self_.fd, self_.buf.clone())?;
-        match self_.rt.peek(request_id) {
+pub async fn push_coroutine(mut rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    loop {
+        let request_id: RequestId = rt.push(fd, buf.clone())?;
+        match rt.peek(request_id) {
             // Operation completed.
             Ok((_, size)) if size >= 0 => {
                 trace!("data pushed ({:?} bytes)", size);
-                Poll::Ready(Ok(()))
+                return Ok(());
             },
             // Operation not completed, thus parse errno to find out what happened.
             Ok((None, size)) if size < 0 => {
                 let errno: i32 = -size;
                 // Operation in progress.
-                if errno == libc::EWOULDBLOCK || errno == libc::EAGAIN {
-                    ctx.waker().wake_by_ref();
-                    return Poll::Pending;
-                }
-                // Operation failed.
-                else {
+                if retry_errno(errno) {
+                    if let Err(e) = yielder.yield_once().await {
+                        let message: String = format!("push(): operation canceled (err={:?})", e);
+                        error!("{}", message);
+                        return Err(Fail::new(libc::ECANCELED, &message));
+                    }
+                } else {
                     let message: String = format!("push(): operation failed (errno={:?})", errno);
                     error!("{}", message);
-                    return Poll::Ready(Err(Fail::new(errno, &message)));
+                    return Err(Fail::new(errno, &message));
                 }
             },
             // Operation failed.
             Err(e) => {
-                warn!("push failed ({:?})", e);
-                Poll::Ready(Err(e))
+                let message: String = format!("push(): operation failed (err={:?})", e);
+                error!("{}", message);
+                return Err(e);
             },
             // Should not happen.
             _ => panic!("push failed: unknown error"),
