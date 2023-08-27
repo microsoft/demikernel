@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod futures;
 mod iouring;
 mod queue;
 mod runtime;
@@ -12,21 +11,16 @@ mod runtime;
 
 pub use self::{
     queue::CatcollarQueue,
-    runtime::IoUringRuntime,
+    runtime::{
+        IoUringRuntime,
+        RequestId,
+    },
 };
 
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use self::futures::{
-    accept::accept_coroutine,
-    close::close_coroutine,
-    connect::connect_coroutine,
-    pop::pop_coroutine,
-    push::push_coroutine,
-    pushto::pushto_coroutine,
-};
 use crate::{
     demikernel::config::Config,
     pal::{
@@ -248,7 +242,7 @@ impl CatcollarLibOS {
 
         // Issue accept operation.
         let yielder: Yielder = Yielder::new();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::do_accept(self.qtable.clone(), qd, fd, yielder));
+        let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(self.qtable.clone(), qd, fd, yielder));
         let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
         let task: OperationTask = OperationTask::new(task_id, coroutine);
         let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -258,14 +252,14 @@ impl CatcollarLibOS {
         Ok(handle.get_task_id().into())
     }
 
-    async fn do_accept(
+    async fn accept_coroutine(
         qtable: Rc<RefCell<IoQueueTable<CatcollarQueue>>>,
         qd: QDesc,
         fd: RawFd,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
         // Borrow the queue table to either update the queue metadata or free the queue on error.
-        match accept_coroutine(fd, yielder).await {
+        match Self::do_accept(fd, yielder).await {
             Ok((new_fd, addr)) => {
                 let mut queue: CatcollarQueue = CatcollarQueue::new(QType::TcpSocket);
                 queue.set_addr(addr);
@@ -274,6 +268,59 @@ impl CatcollarLibOS {
                 (qd, OperationResult::Accept((new_qd, addr)))
             },
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_accept(fd: RawFd, yielder: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
+        // Socket address of accept connection.
+        let mut saddr: SockAddr = unsafe { mem::zeroed() };
+        let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
+
+        loop {
+            match unsafe { libc::accept(fd, &mut saddr as *mut SockAddr, &mut address_len) } {
+                // Operation completed.
+                new_fd if new_fd >= 0 => {
+                    trace!("connection accepted ({:?})", new_fd);
+
+                    // Set socket options.
+                    unsafe {
+                        if linux::set_tcp_nodelay(new_fd) != 0 {
+                            let errno: libc::c_int = *libc::__errno_location();
+                            warn!("cannot set TCP_NONDELAY option (errno={:?})", errno);
+                        }
+                        if linux::set_nonblock(new_fd) != 0 {
+                            let errno: libc::c_int = *libc::__errno_location();
+                            warn!("cannot set O_NONBLOCK option (errno={:?})", errno);
+                        }
+                        if linux::set_so_reuseport(new_fd) != 0 {
+                            let errno: libc::c_int = *libc::__errno_location();
+                            warn!("cannot set SO_REUSEPORT option (errno={:?})", errno);
+                        }
+                    }
+
+                    let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
+                    break Ok((new_fd, addr));
+                },
+
+                // Operation not completed, thus parse errno to find out what happened.
+                _ => {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                    // Operation in progress.
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("accept(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            break Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        // Operation failed.
+                        let message: String = format!("accept(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        break Err(Fail::new(errno, &message));
+                    }
+                },
+            }
         }
     }
 
@@ -286,7 +333,7 @@ impl CatcollarLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     let yielder: Yielder = Yielder::new();
-                    let coroutine: Pin<Box<Operation>> = Box::pin(Self::do_connect(qd, fd, remote, yielder));
+                    let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
                     let task_id: String = format!("Catcollar::connect for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -301,11 +348,47 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_connect(qd: QDesc, fd: RawFd, remote: SocketAddrV4, yielder: Yielder) -> (QDesc, OperationResult) {
+    async fn connect_coroutine(
+        qd: QDesc,
+        fd: RawFd,
+        remote: SocketAddrV4,
+        yielder: Yielder,
+    ) -> (QDesc, OperationResult) {
         // Handle the result.
-        match connect_coroutine(fd, remote, yielder).await {
+        match Self::do_connect(fd, remote, yielder).await {
             Ok(()) => (qd, OperationResult::Connect),
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_connect(fd: RawFd, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&remote);
+        loop {
+            match unsafe { libc::connect(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
+                // Operation completed.
+                stats if stats == 0 => {
+                    trace!("connection established (fd={:?})", fd);
+                    return Ok(());
+                },
+                // Operation not completed, thus parse errno to find out what happened.
+                _ => {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                    // Operation in progress.
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("connect(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            return Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        // Operation failed.
+                        let message: String = format!("connect(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        return Err(Fail::new(errno, &message));
+                    }
+                },
+            }
         }
     }
 
@@ -339,7 +422,8 @@ impl CatcollarLibOS {
             Some(queue) => match queue.get_fd() {
                 Some(fd) => {
                     let yielder: Yielder = Yielder::new();
-                    let coroutine: Pin<Box<Operation>> = Box::pin(Self::do_close(self.qtable.clone(), qd, fd, yielder));
+                    let coroutine: Pin<Box<Operation>> =
+                        Box::pin(Self::close_coroutine(self.qtable.clone(), qd, fd, yielder));
                     let task_id: String = format!("Catcollar::close for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -354,7 +438,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_close(
+    async fn close_coroutine(
         qtable: Rc<RefCell<IoQueueTable<CatcollarQueue>>>,
         qd: QDesc,
         fd: RawFd,
@@ -362,12 +446,42 @@ impl CatcollarLibOS {
     ) -> (QDesc, OperationResult) {
         // Handle the result: Borrow the qtable and free the queue metadata and queue descriptor if the
         // close was successful.
-        match close_coroutine(fd, yielder).await {
+        match Self::do_close(fd, yielder).await {
             Ok(()) => {
                 qtable.borrow_mut().free(&qd);
                 (qd, OperationResult::Close)
             },
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_close(fd: RawFd, yielder: Yielder) -> Result<(), Fail> {
+        loop {
+            match unsafe { libc::close(fd) } {
+                // Operation completed.
+                stats if stats == 0 => {
+                    trace!("socket closed fd={:?}", fd);
+                    return Ok(());
+                },
+                // Operation not completed, thus parse errno to find out what happened.
+                _ => {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+
+                    // Operation was interrupted, retry?
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("close(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            return Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        // Operation failed.
+                        let message: String = format!("close(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        return Err(Fail::new(errno, &message));
+                    }
+                },
+            }
         }
     }
 
@@ -388,7 +502,7 @@ impl CatcollarLibOS {
                     // Issue operation.
                     let yielder: Yielder = Yielder::new();
                     let coroutine: Pin<Box<Operation>> =
-                        Box::pin(Self::do_push(self.runtime.clone(), qd, fd, buf, yielder));
+                        Box::pin(Self::push_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
                     let task_id: String = format!("Catcollar::push for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -403,16 +517,53 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_push(
+    async fn push_coroutine(
         rt: IoUringRuntime,
         qd: QDesc,
         fd: RawFd,
         buf: DemiBuffer,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        match push_coroutine(rt, fd, buf, yielder).await {
+        match Self::do_push(rt, fd, buf, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_push(mut rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+        let request_id: RequestId = rt.push(fd, buf.clone())?;
+        loop {
+            match rt.peek(request_id) {
+                // Operation completed.
+                Ok((_, size)) if size >= 0 => {
+                    trace!("data pushed ({:?} bytes)", size);
+                    return Ok(());
+                },
+                // Operation not completed, thus parse errno to find out what happened.
+                Ok((None, size)) if size < 0 => {
+                    let errno: i32 = -size;
+                    // Operation in progress.
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("push(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            return Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        let message: String = format!("push(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        return Err(Fail::new(errno, &message));
+                    }
+                },
+                // Operation failed.
+                Err(e) => {
+                    let message: String = format!("push(): operation failed (err={:?})", e);
+                    error!("{}", message);
+                    return Err(e);
+                },
+                // Should not happen.
+                _ => panic!("push failed: unknown error"),
+            }
         }
     }
 
@@ -432,8 +583,14 @@ impl CatcollarLibOS {
                         Some(fd) => {
                             // Issue operation.
                             let yielder: Yielder = Yielder::new();
-                            let coroutine: Pin<Box<Operation>> =
-                                Box::pin(Self::do_pushto(self.runtime.clone(), qd, fd, remote, buf, yielder));
+                            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pushto_coroutine(
+                                self.runtime.clone(),
+                                qd,
+                                fd,
+                                remote,
+                                buf,
+                                yielder,
+                            ));
                             let task_id: String = format!("Catcollar::pushto for qd={:?}", qd);
                             let task: OperationTask = OperationTask::new(task_id, coroutine);
                             let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -451,7 +608,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_pushto(
+    async fn pushto_coroutine(
         rt: IoUringRuntime,
         qd: QDesc,
         fd: RawFd,
@@ -459,9 +616,52 @@ impl CatcollarLibOS {
         buf: DemiBuffer,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        match pushto_coroutine(rt, fd, remote, buf, yielder).await {
+        match Self::do_pushto(rt, fd, remote, buf, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_pushto(
+        mut rt: IoUringRuntime,
+        fd: RawFd,
+        remote: SocketAddrV4,
+        buf: DemiBuffer,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        let request_id: RequestId = rt.pushto(fd, remote, buf.clone())?;
+        loop {
+            match rt.peek(request_id) {
+                // Operation completed.
+                Ok((_, size)) if size >= 0 => {
+                    trace!("data pushed ({:?} bytes)", size);
+                    return Ok(());
+                },
+                // Operation not completed, thus parse errno to find out what happened.
+                Ok((None, size)) if size < 0 => {
+                    let errno: i32 = -size;
+                    // Operation in progress.
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("pushto(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            return Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        let message: String = format!("push(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        return Err(Fail::new(errno, &message));
+                    }
+                },
+                // Operation failed.
+                Err(e) => {
+                    let message: String = format!("push(): operation failed (err={:?})", e);
+                    error!("{}", message);
+                    return Err(e);
+                },
+                // Should not happen.
+                _ => panic!("push failed: unknown error"),
+            }
         }
     }
 
@@ -483,7 +683,7 @@ impl CatcollarLibOS {
                 Some(fd) => {
                     let yielder: Yielder = Yielder::new();
                     let coroutine: Pin<Box<Operation>> =
-                        Box::pin(Self::do_pop(self.runtime.clone(), qd, fd, buf, yielder));
+                        Box::pin(Self::pop_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
                     let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
                     let task: OperationTask = OperationTask::new(task_id, coroutine);
                     let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
@@ -499,7 +699,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_pop(
+    async fn pop_coroutine(
         rt: IoUringRuntime,
         qd: QDesc,
         fd: RawFd,
@@ -507,9 +707,53 @@ impl CatcollarLibOS {
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
         // Handle the result: if successful, return the addr and buffer.
-        match pop_coroutine(rt, fd, buf, yielder).await {
+        match Self::do_pop(rt, fd, buf, yielder).await {
             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
             Err(e) => (qd, OperationResult::Failed(e)),
+        }
+    }
+
+    async fn do_pop(
+        mut rt: IoUringRuntime,
+        fd: RawFd,
+        buf: DemiBuffer,
+        yielder: Yielder,
+    ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
+        let request_id: RequestId = rt.pop(fd, buf.clone())?;
+        loop {
+            match rt.peek(request_id) {
+                // Operation completed.
+                Ok((addr, size)) if size >= 0 => {
+                    trace!("data received ({:?} bytes)", size);
+                    let trim_size: usize = buf.len() - (size as usize);
+                    let mut buf: DemiBuffer = buf.clone();
+                    buf.trim(trim_size)?;
+                    break Ok((addr, buf));
+                },
+                // Operation not completed, thus parse errno to find out what happened.
+                Ok((None, size)) if size < 0 => {
+                    let errno: i32 = -size;
+                    if retry_errno(errno) {
+                        if let Err(e) = yielder.yield_once().await {
+                            let message: String = format!("pop(): operation canceled (err={:?})", e);
+                            error!("{}", message);
+                            break Err(Fail::new(libc::ECANCELED, &message));
+                        }
+                    } else {
+                        let message: String = format!("pop(): operation failed (errno={:?})", errno);
+                        error!("{}", message);
+                        break Err(Fail::new(errno, &message));
+                    }
+                },
+                // Operation failed.
+                Err(e) => {
+                    let message: String = format!("pop(): operation failed (err={:?})", e);
+                    error!("{}", message);
+                    break Err(e);
+                },
+                // Should not happen.
+                _ => panic!("pop failed: unknown error"),
+            }
         }
     }
 
@@ -632,4 +876,9 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
             }
         },
     }
+}
+
+/// Check whether `errno` indicates that we should retry.
+pub fn retry_errno(errno: i32) -> bool {
+    errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
 }
