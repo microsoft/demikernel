@@ -244,12 +244,7 @@ impl CatcollarLibOS {
         let yielder: Yielder = Yielder::new();
         let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(self.qtable.clone(), qd, fd, yielder));
         let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
-        let task: OperationTask = OperationTask::new(task_id, coroutine);
-        let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-            Some(handle) => handle,
-            None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-        };
-        Ok(handle.get_task_id().into())
+        Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
     }
 
     async fn accept_coroutine(
@@ -335,12 +330,7 @@ impl CatcollarLibOS {
                     let yielder: Yielder = Yielder::new();
                     let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
                     let task_id: String = format!("Catcollar::connect for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                    };
-                    Ok(handle.get_task_id().into())
+                    Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -425,12 +415,7 @@ impl CatcollarLibOS {
                     let coroutine: Pin<Box<Operation>> =
                         Box::pin(Self::close_coroutine(self.qtable.clone(), qd, fd, yielder));
                     let task_id: String = format!("Catcollar::close for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                    };
-                    Ok(handle.get_task_id().into())
+                    Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -504,12 +489,7 @@ impl CatcollarLibOS {
                     let coroutine: Pin<Box<Operation>> =
                         Box::pin(Self::push_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
                     let task_id: String = format!("Catcollar::push for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                    };
-                    Ok(handle.get_task_id().into())
+                    Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },
@@ -592,12 +572,7 @@ impl CatcollarLibOS {
                                 yielder,
                             ));
                             let task_id: String = format!("Catcollar::pushto for qd={:?}", qd);
-                            let task: OperationTask = OperationTask::new(task_id, coroutine);
-                            let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-                                Some(handle) => handle,
-                                None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                            };
-                            Ok(handle.get_task_id().into())
+                            Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
                         },
                         None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
                     },
@@ -685,13 +660,7 @@ impl CatcollarLibOS {
                     let coroutine: Pin<Box<Operation>> =
                         Box::pin(Self::pop_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
                     let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
-                    let task: OperationTask = OperationTask::new(task_id, coroutine);
-                    let handle: TaskHandle = match self.runtime.scheduler.insert(task) {
-                        Some(handle) => handle,
-                        None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                    };
-                    let qt: QToken = handle.get_task_id().into();
-                    Ok(qt)
+                    Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
                 },
                 None => unreachable!("CatcollarQueue has invalid underlying file descriptor"),
             },

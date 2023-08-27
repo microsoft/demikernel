@@ -20,9 +20,14 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
+        Operation,
+        OperationTask,
         Runtime,
     },
-    scheduler::scheduler::Scheduler,
+    scheduler::{
+        scheduler::Scheduler,
+        TaskHandle,
+    },
 };
 use ::std::{
     cell::RefCell,
@@ -32,6 +37,7 @@ use ::std::{
     },
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
+    pin::Pin,
     rc::Rc,
 };
 
@@ -141,6 +147,19 @@ impl IoUringRuntime {
                     // Something bad has happened.
                     Err(e) => Err(e),
                 }
+            },
+        }
+    }
+
+    /// Inserts the `coroutine` named `task_name` into the scheduler.
+    pub fn insert_coroutine(&self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
+        let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
+        match self.scheduler.insert(task) {
+            Some(handle) => Ok(handle),
+            None => {
+                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                error!("insert_coroutine(): {}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
             },
         }
     }
