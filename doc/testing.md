@@ -141,7 +141,7 @@ python3 tools/demikernel_ci.py \
     --repository $DEMIKERNEL_PATH \
     --branch $DEMIKERNEL_BRANCH \
     --libos $LIBOS \
-    --test-system \
+    --test-system all \
     --server-addr $SERVER_IPV4_ADDR \
     --client-addr $CLIENT_IPV4_ADDR
 ```
