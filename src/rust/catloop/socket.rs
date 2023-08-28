@@ -299,7 +299,7 @@ impl Socket {
 
     /// Closes `socket`.
     pub async fn do_close(socket: Rc<RefCell<Self>>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
-        // Should we assert that we're stil in the close state?
+        // TODO: Should we assert that we're still in the close state?
         let qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>> = socket.borrow().catmem.borrow().get_qtable().clone();
         let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
         if let Some(qd) = catmem_qd {
