@@ -301,7 +301,8 @@ impl Socket {
     pub async fn do_close(socket: Rc<RefCell<Self>>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
         // Should we assert that we're stil in the close state?
         let qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>> = socket.borrow().catmem.borrow().get_qtable().clone();
-        if let Some(qd) = socket.borrow().catmem_qd {
+        let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
+        if let Some(qd) = catmem_qd {
             let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
             socket.borrow_mut().state.prepare(SocketOp::Closed)?;
 
