@@ -166,7 +166,8 @@ def job_test_integration_tcp_rust(
     test_name = "integration-test"
     jobs: dict[str, subprocess.Popen[str]] = {}
     jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
-    jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    if libos != "catloop":
+        jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
@@ -233,7 +234,7 @@ def run_pipeline(
         if status["checkout"] and status["compile"]:
             status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
                                                       is_sudo, config_path, log_directory)
-            if libos == "catnap":
+            if libos == "catnap" or libos == "catloop":
                 status["integration_tests"] = job_test_integration_tcp_rust(
                     repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
             elif libos == "catmem":
