@@ -280,6 +280,13 @@ impl CatnapQueue {
                     drop(socket);
                     yielder.yield_once().await?;
                 },
+                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                    // Operation in progress. Check if cancelled.
+                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
+                    // succeeds.
+                    drop(socket);
+                    yielder.yield_once().await?;
+                },
                 Err(e) => return Err(e),
             }
         }
