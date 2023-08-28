@@ -573,7 +573,8 @@ impl<const N: usize> InetStack<N> {
     }
 
     /// Waits for an operation to complete.
-    #[deprecated]
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/889
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait2");
