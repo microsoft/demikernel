@@ -25,8 +25,8 @@ implementation, search for `mod tests` and `cfg(test)` in the code base.
 
 Unit tests may be run in multiple ways:
 
-- [Using the Demikernel's CI tool (ie; `demikernel_ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
-- [Using Demikernel's build system (ie. make)](#running-unit-tests-from-the-shell-ie-bash). This method is strongly discouraged.
+- [Using the Demikernel's CI tool (_i.e.,_ `demikernel-ci`)](#running-unit-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
+- [Using Demikernel's build system (_i.e.,_ make)](#running-unit-tests-from-the-shell-ie-bash). This method is strongly discouraged.
 
 > Regardless the method you choose to follow:
 >
@@ -34,7 +34,7 @@ Unit tests may be run in multiple ways:
 information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
 > - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
 
-### Running Unit Tests with Demikernel's CI Tool (ie. `demikernel_ci`)
+### Running Unit Tests with Demikernel's CI Tool (_i.e.,_ `demikernel-ci`)
 
 In order to use this method, you should first do the following setup once:
 
@@ -62,7 +62,7 @@ python3 tools/demikernel_ci.py \
     --test-unit
 ```
 
-### Running Unit Tests from the Shell (ie. `bash`)
+### Running Unit Tests from the Shell (_i.e.,_ `bash`)
 
 ```bash
 # Run unit tests with Catnap LibOS.
@@ -99,9 +99,9 @@ These tests are located in `demikernel/examples/` and detailed in the following 
 
 System-level tests may be run in multiple ways:
 
-- [Using the Demikernel's CI tool (ie. `demikernel_ci`)](#running-system-level-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
-- [Using Demikernel's build system (ie. `make`)](#running-system-level-tests-with-demikernels-build-system-ie-make). This method is discouraged, because you will have to deal by yourself with specific arguments for each test.
-- [Directly from the shell (ie. `bash`)](#running-system-level-tests-from-the-shell-ie-bash). This method is strongly discouraged, because you will have to not only deal with
+- [Using the Demikernel's CI tool (_i.e.,_ `demikernel-ci`)](#running-system-level-tests-with-demikernels-ci-tool-ie-demikernel-ci). This is the preferred method.
+- [Using Demikernel's build system (_i.e.,_ `make`)](#running-system-level-tests-with-demikernels-build-system-ie-make). This method is discouraged, because you will have to deal by yourself with specific arguments for each test.
+- [Directly from the shell (_i.e.,_ `bash`)](#running-system-level-tests-from-the-shell-ie-bash). This method is strongly discouraged, because you will have to not only deal with
 specific arguments for each test, but also with intricacies of your shell.
 
 > Regardless the method you choose to follow:
@@ -110,7 +110,7 @@ specific arguments for each test, but also with intricacies of your shell.
 information on how to set up Demikernel's development environment, check out instructions in the `README.md` file.
 > - Catnip and Catpowder LibOSes require you to have superuser privileges on the testing machines.
 
-### Running System-Level Tests with Demikernel's CI Tool (ie. `demikernel_ci`)
+### Running System-Level Tests with Demikernel's CI Tool (_i.e.,_ `demikernel-ci`)
 
 In order to use this method, you should first do the following setup once:
 
@@ -142,7 +142,7 @@ python3 tools/demikernel_ci.py \
     --client-addr $CLIENT_IPV4_ADDR
 ```
 
-### Running System-Level Tests with Demikernel's Build System (ie. `make`)
+### Running System-Level Tests with Demikernel's Build System (_i.e.,_ `make`)
 
 ```bash
 # Set parameters for Demikernel's TCP/UDP stack.
@@ -184,7 +184,7 @@ make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server demikernel
 make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client demikernel-pipe-name'
 ```
 
-### Running System-Level Tests from the Shell (ie. `bash`)
+### Running System-Level Tests from the Shell (_i.e.,_ `bash`)
 
 ```bash
 # Set location for Demikernel's config file.
