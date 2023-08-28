@@ -599,7 +599,8 @@ impl<const N: usize> InetStack<N> {
     }
 
     /// Waits for any operation to complete.
-    #[deprecated]
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/890
     pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::wait_any2");
