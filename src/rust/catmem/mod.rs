@@ -127,7 +127,7 @@ impl CatmemLibOS {
 
     pub async fn close_coroutine(
         qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>>,
-        queue: CatmemQueue,
+        mut queue: CatmemQueue,
         qd: QDesc,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
