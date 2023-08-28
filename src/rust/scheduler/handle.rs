@@ -53,7 +53,11 @@ pub struct YielderHandle {
 impl TaskHandle {
     /// Creates a new Task Handle.
     pub fn new(task_id: u64, waker_page_ref: WakerPageRef, waker_page_offset: usize) -> Self {
-        Self { task_id, waker_page_ref, waker_page_offset }
+        Self {
+            task_id,
+            waker_page_ref,
+            waker_page_offset,
+        }
     }
 
     /// Queries whether or not the coroutine in the Task has completed.
@@ -67,7 +71,8 @@ impl TaskHandle {
     }
 
     /// Removes the task from the scheduler and keeps it from running again.
-    #[deprecated]
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/886
     pub fn deschedule(&mut self) {
         self.waker_page_ref.mark_dropped(self.waker_page_offset);
     }
