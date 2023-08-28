@@ -381,7 +381,8 @@ impl CatnapQueue {
     /// Removes an operation from the list of pending operations on this queue. This function should only be called if
     /// add_pending_op() was previously called.
     /// TODO: Remove this when we clean up take_result().
-    #[deprecated]
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/888
     pub fn remove_pending_op(&self, handle: &TaskHandle) {
         self.pending_ops.borrow_mut().remove(handle);
     }
