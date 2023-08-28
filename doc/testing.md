@@ -44,7 +44,9 @@ In order to use this method, you should first do the following setup once:
 ```bash
 # Set parameters for remote machines.
 export SERVER_HOSTNAME=demikernel-vm0
+export SERVER_IPV4_ADDR=192.0.2.10
 export CLIENT_HOSTNAME=demikernel-vm1
+export CLIENT_IPV4_ADDR=192.0.2.11
 export DEMIKERNEL_PATH=/path/to/demikernel
 export DEMIKERNEL_BRANCH=dev
 
@@ -59,7 +61,9 @@ python3 tools/demikernel_ci.py \
     --repository $DEMIKERNEL_PATH \
     --branch $DEMIKERNEL_BRANCH \
     --libos $LIBOS \
-    --test-unit
+    --test-unit \
+    --server-addr $SERVER_IPV4_ADDR \
+    --client-addr $CLIENT_IPV4_ADDR
 ```
 
 ### Running Unit Tests from the Shell (_i.e.,_ `bash`)
