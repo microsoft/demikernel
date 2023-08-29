@@ -42,9 +42,11 @@ impl RingStateMachine {
         }
     }
 
-    /// Asserts whether the current state is [RingState::Closed].
-    pub fn is_closed(&self) -> bool {
-        self.current == RingState::Closed
+    /// Asserts wether the target [RingState] is in a state were we push data.
+    pub fn may_push(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
     }
 
     /// Asserts whether the current state is [RingState::Closing].
