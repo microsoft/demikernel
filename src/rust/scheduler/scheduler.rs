@@ -96,7 +96,10 @@ impl Scheduler {
             let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
             (&waker_page_refs[waker_page_index], waker_page_offset)
         };
-        assert!(!waker_page_ref.was_dropped(waker_page_offset), "Task was previously dropped");
+        assert!(
+            !waker_page_ref.was_dropped(waker_page_offset),
+            "Task was previously dropped"
+        );
         waker_page_ref.clear(waker_page_offset);
         if let Some(task) = self.tasks.borrow_mut().remove_unpin(pin_slab_index) {
             trace!(
@@ -107,7 +110,10 @@ impl Scheduler {
             );
             Some(task)
         } else {
-            warn!("Unable to unpin and remove: id={:?}, pin_slab_index={:?}", task_id, pin_slab_index);
+            warn!(
+                "Unable to unpin and remove: id={:?}, pin_slab_index={:?}",
+                task_id, pin_slab_index
+            );
             None
         }
     }
@@ -148,7 +154,12 @@ impl Scheduler {
 
         let task_id = self.get_new_task_id(pin_slab_index);
 
-        trace!("insert(): name={:?}, id={:?}, pin_slab_index={:?}", task_name, task_id, pin_slab_index);
+        trace!(
+            "insert(): name={:?}, id={:?}, pin_slab_index={:?}",
+            task_name,
+            task_id,
+            pin_slab_index
+        );
         let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
         Some(TaskHandle::new(task_id, waker_page_ref.clone(), waker_page_offset))
     }
@@ -250,7 +261,8 @@ impl Scheduler {
         }
     }
 
-    #[deprecated]
+    // This function is deprecated, do not use.
+    // FIXME: https://github.com/microsoft/demikernel/issues/884
     fn remove_dropped_tasks(&self, waker_page_index: usize, dropped_offsets: u64) {
         for waker_page_offset in BitIter::from(dropped_offsets) {
             let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
@@ -269,7 +281,10 @@ impl Scheduler {
                     let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
                     waker_page_refs[waker_page_index].clear(waker_page_offset);
                 },
-                Some(false) => warn!("poll(): cannot remove a task that does not exist (pin_slab_index={})", pin_slab_index),
+                Some(false) => warn!(
+                    "poll(): cannot remove a task that does not exist (pin_slab_index={})",
+                    pin_slab_index
+                ),
                 None => warn!("poll(): failed to remove task (pin_slab_index={})", pin_slab_index),
             };
         }
@@ -502,7 +517,7 @@ mod tests {
 
     #[test]
     fn from_task_id_returns_none_for_non_existing_task_id() -> Result<()> {
-         let scheduler: Scheduler = Scheduler::default();
+        let scheduler: Scheduler = Scheduler::default();
         match scheduler.from_task_id(0) {
             Some(_) => anyhow::bail!("from_task_id() must return None"),
             None => {},
@@ -514,10 +529,10 @@ mod tests {
     fn from_task_id_returns_correct_task_handle() -> Result<()> {
         let scheduler: Scheduler = Scheduler::default();
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(42)));
-         let handle: TaskHandle = match scheduler.insert(task) {
-             Some(handle) => handle,
-             None => anyhow::bail!("insert() failed"),
-         };
+        let handle: TaskHandle = match scheduler.insert(task) {
+            Some(handle) => handle,
+            None => anyhow::bail!("insert() failed"),
+        };
         let task_id: u64 = handle.get_task_id();
         match scheduler.from_task_id(task_id) {
             Some(retreived_task_handle) => crate::ensure_eq!(task_id, retreived_task_handle.get_task_id()),
