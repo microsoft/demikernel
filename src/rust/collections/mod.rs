@@ -8,5 +8,6 @@ cfg_if! {
         pub mod raw_array;
         pub mod ring;
         pub mod shared_ring;
+        pub mod concurrent_ring;
     }
 }
