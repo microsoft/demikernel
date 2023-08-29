@@ -49,9 +49,11 @@ impl RingStateMachine {
         Ok(())
     }
 
-    /// Asserts whether the current state is [RingState::Closing].
-    pub fn is_closing(&self) -> bool {
-        self.current == RingState::Closing
+    /// Asserts wether the target [RingState] is in a state were we pop data.
+    pub fn may_pop(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
     }
 
     /// Prepares to move into the next state.
