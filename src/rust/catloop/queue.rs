@@ -13,6 +13,7 @@ use crate::{
         memory::DemiBuffer,
         queue::{
             IoQueue,
+            NetworkQueue,
             QType,
         },
         OperationResult,
@@ -26,12 +27,10 @@ use crate::{
     },
 };
 use ::std::{
+    any::Any,
     cell::RefCell,
     collections::HashMap,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddrV4,
     rc::Rc,
 };
 
@@ -202,7 +201,6 @@ impl CatloopQueue {
     /// Removes an operation from the list of pending operations on this queue. This function should only be called if
     /// add_pending_op() was previously called.
     /// TODO: Remove this when we clean up take_result().
-    #[deprecated]
     pub fn remove_pending_op(&self, handle: &TaskHandle) {
         self.pending_ops.borrow_mut().remove(handle);
     }
@@ -225,5 +223,22 @@ impl CatloopQueue {
 impl IoQueue for CatloopQueue {
     fn get_qtype(&self) -> QType {
         self.qtype
+    }
+}
+
+impl NetworkQueue for CatloopQueue {
+    /// Returns the local address to which the target queue is bound.
+    fn local(&self) -> Option<SocketAddrV4> {
+        self.socket.borrow().local()
+    }
+
+    /// Returns the remote address to which the target queue is connected to.
+    fn remote(&self) -> Option<SocketAddrV4> {
+        self.socket.borrow().remote()
+    }
+
+    /// Returns this queue as an Any for dynamic typing
+    fn as_any_ref(&self) -> &dyn Any {
+        self
     }
 }
