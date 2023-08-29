@@ -81,6 +81,7 @@ impl SocketStateMachine {
     pub fn may_accept(&self) -> Result<(), Fail> {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
+        self.ensure_accepting()?;
         Ok(())
     }
 
