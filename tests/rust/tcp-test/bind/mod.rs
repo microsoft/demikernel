@@ -36,7 +36,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for bind() on TCP sockets.
-pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(libos: &mut LibOS, local: &Ipv4Addr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(
@@ -52,7 +52,7 @@ pub fn run(libos: &mut LibOS, local: &Ipv4Addr, remote: &Ipv4Addr) -> Vec<(Strin
     crate::collect!(result, crate::test!(bind_to_wildcard_port(libos, local)));
     crate::collect!(result, crate::test!(bind_to_wildcard_address(libos)));
     crate::collect!(result, crate::test!(bind_to_wildcard_address_and_port(libos)));
-    crate::collect!(result, crate::test!(bind_to_non_local_address(libos, remote)));
+    crate::collect!(result, crate::test!(bind_to_non_local_address(libos)));
     crate::collect!(result, crate::test!(bind_to_closed_socket(libos, local)));
 
     result
@@ -230,14 +230,15 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to bind to a non-local address.
-fn bind_to_non_local_address(libos: &mut LibOS, remote: &Ipv4Addr) -> Result<()> {
+fn bind_to_non_local_address(libos: &mut LibOS) -> Result<()> {
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
     let addr: SocketAddrV4 = {
+        let ip: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
         let port: u16 = 8080;
-        SocketAddrV4::new(*remote, port)
+        SocketAddrV4::new(ip, port)
     };
 
     // Fail to bind socket.
