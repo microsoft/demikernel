@@ -117,7 +117,8 @@ impl RingStateMachine {
         if self.current == RingState::Closing {
             let cause: String = format!("ring is closing");
             error!("ensure_not_closing(): {}", cause);
-            return Err(Fail::new(libc::EBADF, &cause));
+            // FIXME: https://github.com/microsoft/demikernel/issues/916
+            return Err(Fail::new(libc::ECANCELED, &cause));
         }
         Ok(())
     }
@@ -127,7 +128,8 @@ impl RingStateMachine {
         if self.current == RingState::Closed {
             let cause: String = format!("ring is closed");
             error!("ensure_not_clossed(): {}", cause);
-            return Err(Fail::new(libc::EBADF, &cause));
+            // FIXME: https://github.com/microsoft/demikernel/issues/916
+            return Err(Fail::new(libc::ECANCELED, &cause));
         }
         Ok(())
     }
