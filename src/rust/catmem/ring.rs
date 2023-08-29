@@ -145,14 +145,9 @@ impl Ring {
         Err(Fail::new(libc::EIO, &cause))
     }
 
-    /// Attempts to close the target ring.
-    pub fn try_close(&mut self) -> Result<(), Fail> {
-        self.do_close()
-    }
-
     /// Try to send an eof through the shared memory ring. If success, this queue is now closed, otherwise, return
     /// EAGAIN and retry.
-    fn do_close(&mut self) -> Result<(), Fail> {
+    pub fn try_close(&mut self) -> Result<(), Fail> {
         // Try to lock the ring buffer.
         if !self.mutex.try_lock() {
             let cause: String = format!("could not lock ring buffer to push EOF");
