@@ -77,6 +77,20 @@ impl SocketStateMachine {
         }
     }
 
+    /// Asserts whether the target may continue accepting connections.
+    pub fn may_accept(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
+    }
+
+    /// Asserts whether the target may continue connecting to a remote.
+    pub fn may_connect(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
+    }
+
     /// Asserts whether the target [SocketState] may push data.
     pub fn may_push(&self) -> Result<(), Fail> {
         self.ensure_not_closing()?;
@@ -129,8 +143,10 @@ impl SocketStateMachine {
     pub fn prepare(&mut self, op: SocketOp) -> Result<(), Fail> {
         let next: SocketState = self.get_next_state(op)?;
         if next != SocketState::Closing {
-            if self.next.is_some() {
-                return Err(fail(op, &(format!("socket is busy")), libc::EBUSY));
+            if let Some(pending) = self.next {
+                if pending != next {
+                    return Err(fail(op, &(format!("socket is busy")), libc::EBUSY));
+                }
             }
         }
         self.next = Some(next);

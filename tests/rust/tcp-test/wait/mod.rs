@@ -271,6 +271,7 @@ fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAd
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")
         },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
         Ok(_) => anyhow::bail!("wait() should not succeed with accept()"),
         Err(_) => anyhow::bail!("wait() should timeout with accept()"),
     }
@@ -287,6 +288,10 @@ fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAd
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
             accepted_completed = true
         },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {
+            accepted_completed = true
+        },
+
         Ok(_) => anyhow::bail!("wait() should not succeed with accept()"),
         Err(_) => anyhow::bail!("wait() should timeout with accept()"),
     }
