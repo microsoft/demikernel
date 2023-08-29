@@ -151,17 +151,6 @@ impl CatmemQueue {
         Ok(())
     }
 
-    /// This private function tries to pop from the queue and is mostly used for scoping the borrow.
-    fn try_pop(&self) -> Result<(Option<u8>, bool), Fail> {
-        let mut ring: RefMut<Ring> = self.ring.borrow_mut();
-        let (byte, eof) = ring.try_pop()?;
-        if eof {
-            ring.prepare_close()?;
-            ring.commit();
-        }
-        Ok((byte, eof))
-    }
-
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
     pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
@@ -175,7 +164,12 @@ impl CatmemQueue {
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let mut index: usize = 0;
         let eof: bool = loop {
-            match self.try_pop()? {
+            let (byte, eof): (Option<u8>, bool) = self.ring.borrow_mut().try_pop()?;
+            if eof {
+                self.ring.borrow_mut().prepare_close()?;
+                self.ring.borrow_mut().commit();
+            }
+            match (byte, eof) {
                 (Some(byte), eof) => {
                     if eof {
                         // If eof, then trim everything that we have received so far and return.
