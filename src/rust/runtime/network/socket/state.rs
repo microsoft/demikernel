@@ -302,6 +302,16 @@ impl SocketStateMachine {
         Ok(())
     }
 
+    /// Ensures that the target [SocketState] is accepting incoming connections.
+    fn ensure_accepting(&self) -> Result<(), Fail> {
+        if self.current != SocketState::Accepting {
+            let cause: String = format!("socket is not listening");
+            error!("ensure_listening(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+        Ok(())
+    }
+
     /// Ensures that the target [SocketState] is connected.
     fn ensure_connected(&self) -> Result<(), Fail> {
         if self.current != SocketState::Connected {
