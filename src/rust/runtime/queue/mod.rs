@@ -47,7 +47,7 @@ pub trait IoQueue: Any {
     fn get_qtype(&self) -> QType;
 }
 
-pub trait NetworkQueue: IoQueue{
+pub trait NetworkQueue: IoQueue {
     fn local(&self) -> Option<SocketAddrV4>;
     fn remote(&self) -> Option<SocketAddrV4>;
     fn as_any_ref(&self) -> &dyn Any;
@@ -108,8 +108,13 @@ impl<T: IoQueue> IoQueueTable<T> {
 
     /// Releases the entry associated with an I/O queue descriptor.
     pub fn free(&mut self, qd: &QDesc) -> Option<T> {
-        let index: u32 = self.get_index(qd)?;
-        Some(self.table.remove(index as usize))
+        let index: Option<u32> = self.get_index(qd);
+        if let Some(index) = index {
+            Some(self.table.remove(index as usize))
+        } else {
+            error!("free(): attemped to release unregistered queue (qd={:?})", qd);
+            None
+        }
     }
 
     /// Gets an iterator over all registered queues.

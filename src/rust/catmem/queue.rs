@@ -123,19 +123,32 @@ impl CatmemQueue {
     }
 
     /// This function perms an async close on the target queue.
-    pub async fn do_async_close(&self, yielder: Yielder) -> Result<(), Fail> {
-        for _ in 0..MAX_RETRIES_PUSH_EOF {
-            if let Ok(_) = self.ring.borrow_mut().try_close() {
-                return Ok(());
+    pub async fn do_async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        let mut retries: u32 = MAX_RETRIES_PUSH_EOF;
+        let x = loop {
+            if let Ok(()) = self.ring.borrow_mut().try_close() {
+                break Ok(());
             }
             if let Err(cause) = yielder.yield_once().await {
-                return Err(cause);
+                break Err(cause);
             }
+            if retries == 0 {
+                let cause: String = format!("failed to push EoF");
+                error!("push_eof(): {}", cause);
+                break Err(Fail::new(libc::EIO, &cause));
+            }
+
+            retries -= 1;
+        };
+        if x.is_err() {
+            self.ring.borrow_mut().abort();
+            return x;
         }
-        // We ran out of retries, thus fail.
-        let cause: String = format!("failed to push EoF");
-        error!("push_eof(): {}", cause);
-        Err(Fail::new(libc::EIO, &cause))
+
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
+        self.ring.borrow_mut().commit();
+
+        Ok(())
     }
 
     /// This private function tries to pop from the queue and is mostly used for scoping the borrow.
