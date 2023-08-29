@@ -63,7 +63,7 @@ impl Ring {
             return Err(Fail::new(libc::EINVAL, "name of shared memory region cannot be empty"));
         }
         Ok(Self {
-            push_buf: SharedRingBuffer::create(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            push_buf: SharedRingBuffer::create(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             pop_buf: SharedRingBuffer::create(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
             mutex: Mutex::new(),
@@ -78,7 +78,7 @@ impl Ring {
         }
         Ok(Self {
             push_buf: SharedRingBuffer::open(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
-            pop_buf: SharedRingBuffer::open(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            pop_buf: SharedRingBuffer::open(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
             mutex: Mutex::new(),
         })
