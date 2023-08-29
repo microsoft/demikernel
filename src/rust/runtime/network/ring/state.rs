@@ -107,6 +107,16 @@ impl RingStateMachine {
             RingControlOperation::Closed => Err(fail(op, &(format!("ring is closed")), libc::EBADF)),
         }
     }
+
+    /// Ensures that the target [RingState] is not [RingState::Closing].
+    fn ensure_not_closing(&self) -> Result<(), Fail> {
+        if self.current == RingState::Closing {
+            let cause: String = format!("ring is closing");
+            error!("ensure_not_closing(): {}", cause);
+            return Err(Fail::new(libc::EBADF, &cause));
+        }
+        Ok(())
+    }
 }
 
 //======================================================================================================================
