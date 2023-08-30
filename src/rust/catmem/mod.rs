@@ -17,7 +17,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        queue::IoQueueTable,
+        queue::downcast_queue,
         types::{
             demi_opcode_t,
             demi_qr_value_t,
@@ -37,10 +37,8 @@ use crate::{
     },
 };
 use ::std::{
-    cell::RefCell,
     mem,
     pin::Pin,
-    rc::Rc,
 };
 
 #[cfg(feature = "profiler")]
@@ -54,15 +52,8 @@ use crate::timer;
 /// TODO: Add support for bi-directional memory queues.
 /// FIXME: https://github.com/microsoft/demikernel/issues/856
 pub struct CatmemLibOS {
-    qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>>,
     runtime: DemiRuntime,
 }
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-impl MemoryRuntime for CatmemLibOS {}
 
 //======================================================================================================================
 // Associated Functions
@@ -74,10 +65,7 @@ impl CatmemLibOS {
     pub fn new(runtime: DemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catmem::new");
-        CatmemLibOS {
-            qtable: Rc::new(RefCell::new(IoQueueTable::<CatmemQueue>::new())),
-            runtime,
-        }
+        CatmemLibOS { runtime }
     }
 
     /// Creates a new memory queue.
@@ -85,7 +73,7 @@ impl CatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::create_pipe");
         trace!("create_pipe() name={:?}", name);
-        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::create(name)?);
+        let qd: QDesc = self.runtime.alloc_queue::<CatmemQueue>(CatmemQueue::create(name)?);
 
         Ok(qd)
     }
@@ -96,7 +84,7 @@ impl CatmemLibOS {
         timer!("catmem::open_pipe");
         trace!("open_pipe() name={:?}", name);
 
-        let qd: QDesc = self.qtable.borrow_mut().alloc(CatmemQueue::open(name)?);
+        let qd: QDesc = self.runtime.alloc_queue::<CatmemQueue>(CatmemQueue::open(name)?);
 
         Ok(qd)
     }
@@ -107,9 +95,8 @@ impl CatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::shutdown");
         trace!("shutdown() qd={:?}", qd);
-        self.get_queue(qd)?.shutdown()?;
-        self.qtable.borrow_mut().free(&qd);
-        Ok(())
+        let queue: CatmemQueue = self.runtime.free_queue::<CatmemQueue>(&qd)?;
+        queue.shutdown()
     }
 
     /// Closes a memory queue.
@@ -117,9 +104,8 @@ impl CatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::close");
         trace!("close() qd={:?}", qd);
-        self.get_queue(qd)?.close()?;
-        self.qtable.borrow_mut().free(&qd);
-        Ok(())
+        let queue: CatmemQueue = self.runtime.free_queue::<CatmemQueue>(&qd)?;
+        queue.close()
     }
 
     /// Asynchronously close a socket.
@@ -127,22 +113,19 @@ impl CatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::async_close");
         trace!("async_close() qd={:?}", qd);
+        let queue: CatmemQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
-                self.qtable.clone(),
-                self.get_queue(qd)?.clone(),
-                qd,
-                yielder,
-            ));
+            let coroutine: Pin<Box<Operation>> =
+                Box::pin(Self::close_coroutine(self.runtime.clone(), queue.clone(), qd, yielder));
             let task_name: String = format!("catmem::async_close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        Ok(self.get_queue(qd)?.async_close(coroutine)?)
+        Ok(queue.async_close(coroutine)?)
     }
 
     pub async fn close_coroutine(
-        qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>>,
-        mut queue: CatmemQueue,
+        runtime: DemiRuntime,
+        queue: CatmemQueue,
         qd: QDesc,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
@@ -153,7 +136,7 @@ impl CatmemLibOS {
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further
                 // operations on the queue, as well as it will ensure that the underlying shared ring buffer will
                 // be eventually released.
-                qtable.borrow_mut().free(&qd);
+                runtime.free_queue::<CatmemQueue>(&qd).expect("queue should exist");
                 (qd, OperationResult::Close)
             },
             // Operation failed, thus warn and return an error.
@@ -170,7 +153,7 @@ impl CatmemLibOS {
         timer!("catmem::push");
         trace!("push() qd={:?}", qd);
 
-        let buf: DemiBuffer = self.clone_sgarray(sga)?;
+        let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
 
         if buf.len() == 0 {
             let cause: String = format!("zero-length buffer (qd={:?})", qd);
@@ -178,7 +161,7 @@ impl CatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let queue: CatmemQueue = self.get_queue(qd)?;
+        let queue: CatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
@@ -210,7 +193,7 @@ impl CatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let queue: CatmemQueue = self.get_queue(qd)?;
+        let queue: CatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
@@ -255,9 +238,9 @@ impl CatmemLibOS {
         let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => queue.remove_pending_op(&handle),
-            None => debug!("take_result(): this queue was closed (qd={:?})", qd),
+        match self.get_queue(&qd) {
+            Ok(queue) => queue.remove_pending_op(&handle),
+            Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
         }
 
         (qd, result)
@@ -267,6 +250,16 @@ impl CatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::from_task_id");
         self.runtime.from_task_id(qt.into())
+    }
+
+    /// Allocates a scatter-gather array.
+    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.runtime.alloc_sgarray(size)
+    }
+
+    /// Releases a scatter-gather array.
+    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.runtime.free_sgarray(sga)
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
@@ -281,7 +274,7 @@ impl CatmemLibOS {
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
-            OperationResult::Pop(_, bytes) => match self.into_sgarray(bytes) {
+            OperationResult::Pop(_, bytes) => match self.runtime.into_sgarray(bytes) {
                 Ok(sga) => {
                     let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                     demi_qresult_t {
@@ -331,19 +324,16 @@ impl CatmemLibOS {
         self.runtime.poll()
     }
 
-    pub fn get_queue(&self, qd: QDesc) -> Result<CatmemQueue, Fail> {
+    pub fn get_queue(&self, qd: &QDesc) -> Result<CatmemQueue, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::get_queue");
-        match self.qtable.borrow_mut().get_mut(&qd) {
-            Some(queue) => Ok(queue.clone()),
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
+        Ok(self.runtime.get_qtable().get::<CatmemQueue>(qd)?.clone())
     }
 
-    pub fn get_qtable(&self) -> Rc<RefCell<IoQueueTable<CatmemQueue>>> {
+    pub fn get_runtime(&self) -> DemiRuntime {
         #[cfg(feature = "profiler")]
         timer!("catmem::get_qtable");
-        self.qtable.clone()
+        self.runtime.clone()
     }
 }
 
@@ -354,10 +344,12 @@ impl CatmemLibOS {
 impl Drop for CatmemLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
-        for mut queue in self.qtable.borrow_mut().drain() {
-            if let Err(e) = queue.close() {
-                error!("push_eof() failed: {:?}", e);
-                warn!("leaking shared memory region");
+        for boxed_queue in self.runtime.get_mut_qtable().drain() {
+            if let Ok(catmem_queue) = downcast_queue::<CatmemQueue>(boxed_queue) {
+                if let Err(e) = catmem_queue.close() {
+                    error!("push_eof() failed: {:?}", e);
+                    warn!("leaking shared memory region");
+                }
             }
         }
     }
