@@ -16,6 +16,9 @@ use ::demikernel::{
 use ::std::env;
 use core::slice;
 
+#[cfg(feature = "profiler")]
+use ::demikernel::perftools::profiler;
+
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -169,6 +172,9 @@ impl PipeServer {
             println!("pop {:?} bytes", nbytes);
         }
 
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
         Ok(())
     }
 }
@@ -214,6 +220,9 @@ impl PipeClient {
             }
             println!("push {:?}", i);
         }
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
         Ok(())
     }
