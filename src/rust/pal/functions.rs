@@ -58,7 +58,7 @@ use windows::Win32::Networking::WinSock::SOCKADDR_IN;
 use crate::pal::constants::AF_INET;
 
 #[cfg(target_os = "windows")]
-pub fn convert_socket_addr_v4_to_sockaddr(addr: &SocketAddrV4) -> SOCKADDR {
+pub fn socketaddrv4_to_sockaddr(addr: &SocketAddrV4) -> SOCKADDR {
     let mut sockaddr_in: SOCKADDR_IN = unsafe { std::mem::zeroed() };
     sockaddr_in.sin_family = AF_INET;
     sockaddr_in.sin_port = addr.port().to_be();

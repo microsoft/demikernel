@@ -9,10 +9,10 @@ mod socket;
 //==============================================================================
 
 #[cfg(target_os = "linux")]
-use crate::pal::linux;
+use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 #[cfg(target_os = "windows")]
-use crate::pal::functions::convert_socket_addr_v4_to_sockaddr;
+use crate::pal::functions::socketaddrv4_to_sockaddr;
 
 use crate::{
     catnap::queue::CatnapQueue,
@@ -529,10 +529,7 @@ fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) ->
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
-            #[cfg(target_os = "linux")]
-            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
-            #[cfg(target_os = "windows")]
-            let saddr: SockAddr = convert_socket_addr_v4_to_sockaddr(&addr);
+            let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
@@ -556,13 +553,8 @@ fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) ->
         },
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
-                #[cfg(target_os = "linux")]
                 if let Some(addr) = addr {
-                    sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr);
-                }
-                #[cfg(target_os = "windows")]
-                if let Some(addr) = addr {
-                    sga.sga_addr = convert_socket_addr_v4_to_sockaddr(&addr);
+                    sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
                 }
                 let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                 demi_qresult_t {
