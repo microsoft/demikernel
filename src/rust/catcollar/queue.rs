@@ -6,10 +6,14 @@
 //======================================================================================================================
 
 use crate::runtime::{
-    queue::IoQueue,
+    queue::{
+        IoQueue,
+        NetworkQueue,
+    },
     QType,
 };
 use ::std::{
+    any::Any,
     net::SocketAddrV4,
     os::unix::prelude::RawFd,
 };
@@ -50,11 +54,6 @@ impl CatcollarQueue {
         self.fd = Some(fd);
     }
 
-    /// Gets underlying socket address.
-    pub fn get_addr(&self) -> Option<SocketAddrV4> {
-        self.addr
-    }
-
     /// Sets underlying socket address.
     pub fn set_addr(&mut self, addr: SocketAddrV4) {
         self.addr = Some(addr);
@@ -68,5 +67,29 @@ impl CatcollarQueue {
 impl IoQueue for CatcollarQueue {
     fn get_qtype(&self) -> QType {
         self.qtype
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+impl NetworkQueue for CatcollarQueue {
+    /// Returns the local address to which the target queue is bound.
+    fn local(&self) -> Option<SocketAddrV4> {
+        self.addr
+    }
+
+    /// Returns the remote address to which the target queue is connected to.
+    fn remote(&self) -> Option<SocketAddrV4> {
+        None
     }
 }
