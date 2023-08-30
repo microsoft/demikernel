@@ -78,7 +78,7 @@ use crate::timer;
 /// [CatloopLibOS] represents a multi-queue Catloop library operating system that provides the Demikernel network API
 /// on top of shared memory queues provided by Catmem. [CatloopLibOS] is stateless and purely contains multi-queue
 /// functionality necessary to run the Catloop libOS. All state is kept in the [state], while [runtime] holds the
-/// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instatnce.
+/// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instance.
 pub struct CatloopLibOS {
     /// Catloop state.
     state: Rc<RefCell<CatloopRuntime>>,
