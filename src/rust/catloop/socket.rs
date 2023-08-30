@@ -18,7 +18,6 @@ use crate::{
             state::SocketStateMachine,
         },
         queue::{
-            IoQueueTable,
             QDesc,
             QToken,
         },
@@ -27,6 +26,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        DemiRuntime,
         OperationResult,
     },
     scheduler::{
@@ -301,13 +301,12 @@ impl Socket {
     /// Closes `socket`.
     pub async fn do_close(socket: Rc<RefCell<Self>>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
         // TODO: Should we assert that we're still in the close state?
-        let qtable: Rc<RefCell<IoQueueTable<CatmemQueue>>> = socket.borrow().catmem.borrow().get_qtable().clone();
         let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
         if let Some(qd) = catmem_qd {
-            let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+            let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
             socket.borrow_mut().state.prepare(SocketOp::Closed)?;
-
-            match CatmemLibOS::close_coroutine(qtable, queue, qd, yielder).await {
+            let runtime: DemiRuntime = socket.borrow().catmem.borrow().get_runtime();
+            match CatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
                 (qd, OperationResult::Close) => {
                     socket.borrow_mut().state.commit();
                     Ok((qd, OperationResult::Close))
@@ -346,7 +345,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
         Ok(CatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
     }
 
@@ -371,7 +370,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(qd)?;
+        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
         match CatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
             (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(socket.borrow().remote(), buf))),
             (qd, result) => Ok((qd, result)),
