@@ -10,6 +10,7 @@ use crate::runtime::{
     queue::IoQueue,
     QType,
 };
+use ::std::any::Any;
 
 //======================================================================================================================
 // Structures
@@ -54,5 +55,17 @@ impl<const N: usize> TcpQueue<N> {
 impl<const N: usize> IoQueue for TcpQueue<N> {
     fn get_qtype(&self) -> QType {
         QType::TcpSocket
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
     }
 }

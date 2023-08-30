@@ -8,7 +8,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        queue::InetQueue,
         tcp::operations::{
             AcceptFuture,
             ConnectFuture,
@@ -48,7 +47,7 @@ pub struct Engine<const N: usize> {
     pub clock: TimerRc,
     pub arp: ArpPeer<N>,
     pub ipv4: Peer<N>,
-    pub qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
+    pub qtable: Rc<RefCell<IoQueueTable>>,
 }
 
 impl<const N: usize> Engine<N> {
@@ -59,7 +58,7 @@ impl<const N: usize> Engine<N> {
         let arp_options = rt.arp_options.clone();
         let udp_config = rt.udp_config.clone();
         let tcp_config = rt.tcp_config.clone();
-        let qtable = Rc::new(RefCell::new(IoQueueTable::<InetQueue<N>>::new()));
+        let qtable = Rc::new(RefCell::new(IoQueueTable::new()));
         let arp = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),

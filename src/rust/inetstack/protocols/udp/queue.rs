@@ -20,6 +20,7 @@ use ::futures::{
 };
 use ::libc::EIO;
 use ::std::{
+    any::Any,
     cell::RefCell,
     net::SocketAddrV4,
     rc::Rc,
@@ -181,5 +182,17 @@ impl<T> Clone for SharedQueue<T> {
 impl IoQueue for UdpQueue {
     fn get_qtype(&self) -> crate::QType {
         crate::QType::UdpSocket
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
     }
 }

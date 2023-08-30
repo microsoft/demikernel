@@ -7,7 +7,6 @@ use crate::{
         icmpv4::Icmpv4Peer,
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        queue::InetQueue,
         tcp::TcpPeer,
         udp::UdpPeer,
     },
@@ -50,7 +49,7 @@ impl<const N: usize> Peer<N> {
     pub fn new(
         rt: Rc<dyn NetworkRuntime<N>>,
         scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
+        qtable: Rc<RefCell<IoQueueTable>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,

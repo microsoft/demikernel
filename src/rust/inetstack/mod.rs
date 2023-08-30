@@ -12,15 +12,20 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        queue::InetQueue,
-        tcp::operations::{
-            AcceptFuture,
-            CloseFuture,
-            ConnectFuture,
-            PopFuture,
-            PushFuture,
+        tcp::{
+            operations::{
+                AcceptFuture,
+                CloseFuture,
+                ConnectFuture,
+                PopFuture,
+                PushFuture,
+            },
+            queue::TcpQueue,
         },
-        udp::UdpPopFuture,
+        udp::{
+            queue::UdpQueue,
+            UdpPopFuture,
+        },
         Peer,
     },
     pal::constants::{
@@ -42,7 +47,6 @@ use crate::{
             NetworkRuntime,
         },
         queue::{
-            IoQueue,
             IoQueueTable,
             Operation,
             OperationResult,
@@ -99,7 +103,7 @@ const MAX_RECV_ITERS: usize = 2;
 pub struct InetStack<const N: usize> {
     arp: ArpPeer<N>,
     ipv4: Peer<N>,
-    qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>>,
+    qtable: Rc<RefCell<IoQueueTable>>,
     rt: Rc<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
     scheduler: Scheduler,
@@ -119,8 +123,7 @@ impl<const N: usize> InetStack<N> {
         rng_seed: [u8; 32],
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let qtable: Rc<RefCell<IoQueueTable<InetQueue<N>>>> =
-            Rc::new(RefCell::new(IoQueueTable::<InetQueue<N>>::new()));
+        let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
         let arp: ArpPeer<N> = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
@@ -163,9 +166,9 @@ impl<const N: usize> InetStack<N> {
     /// Looks up queue type based on queue descriptor
     ///
     fn lookup_qtype(&self, &qd: &QDesc) -> Option<QType> {
-        match self.qtable.borrow().get(&qd) {
-            Some(queue) => Some(queue.get_qtype()),
-            None => None,
+        match self.qtable.borrow().get_type(&qd) {
+            Ok(qtype) => Some(qtype),
+            Err(_) => None,
         }
     }
 
@@ -284,7 +287,7 @@ impl<const N: usize> InetStack<N> {
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
                 let (new_qd, future): (QDesc, AcceptFuture<N>) = self.ipv4.tcp.do_accept(qd);
-                let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue<N>>>> = self.qtable.clone();
+                let qtable_ptr: Rc<RefCell<IoQueueTable>> = self.qtable.clone();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Wait for accept to complete.
                     let result: Result<(QDesc, SocketAddrV4), Fail> = future.await;
@@ -292,7 +295,10 @@ impl<const N: usize> InetStack<N> {
                     match result {
                         Ok((_, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
                         Err(e) => {
-                            qtable_ptr.borrow_mut().free(&new_qd);
+                            qtable_ptr
+                                .borrow_mut()
+                                .free::<TcpQueue<N>>(&new_qd)
+                                .expect("queue should have been allocated");
                             (qd, OperationResult::Failed(e))
                         },
                     }
@@ -397,7 +403,7 @@ impl<const N: usize> InetStack<N> {
         timer!("inetstack::async_close");
         trace!("async_close(): qd={:?}", qd);
 
-        let qtable_ptr: Rc<RefCell<IoQueueTable<InetQueue<N>>>> = self.qtable.clone();
+        let qtable_ptr: Rc<RefCell<IoQueueTable>> = self.qtable.clone();
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
                 let future: CloseFuture<N> = self.ipv4.tcp.do_async_close(qd)?;
@@ -406,7 +412,10 @@ impl<const N: usize> InetStack<N> {
                     let result: Result<(), Fail> = future.await;
                     match result {
                         Ok(()) => {
-                            qtable_ptr.borrow_mut().free(&qd);
+                            qtable_ptr
+                                .borrow_mut()
+                                .free::<TcpQueue<N>>(&qd)
+                                .expect("queue should exist");
                             (qd, OperationResult::Close)
                         },
                         Err(e) => (qd, OperationResult::Failed(e)),
@@ -418,7 +427,10 @@ impl<const N: usize> InetStack<N> {
                 self.ipv4.udp.do_close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    qtable_ptr.borrow_mut().free(&qd);
+                    qtable_ptr
+                        .borrow_mut()
+                        .free::<UdpQueue>(&qd)
+                        .expect("queue should exist");
                     (qd, OperationResult::Close)
                 });
                 (task_id, coroutine)
