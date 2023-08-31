@@ -816,7 +816,10 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 /// Converts a [sockaddr] into a [SocketAddrV4].
 fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
     // TODO: Change the logic below and rename this function once we support V6 addresses as well.
-    let sin: SockAddrIn = unsafe { *mem::transmute::<*const sockaddr, *const SockAddrIn>(saddr) };
+    let sin: SockAddrIn = unsafe {
+        let ptr: *const SockAddrIn = saddr.cast::<SockAddrIn>();
+        ptr.read_unaligned()
+    };
     if sin.sin_family != AF_INET {
         return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
     };
