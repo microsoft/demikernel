@@ -24,10 +24,8 @@ use ::std::net::SocketAddrV4;
 use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::CatloopLibOS;
-#[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+#[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::CatnapLibOS;
-#[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-use crate::catnapw::CatnapWLibOS;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -41,10 +39,8 @@ use crate::catpowder::CatpowderLibOS;
 pub enum NetworkLibOS {
     #[cfg(feature = "catpowder-libos")]
     Catpowder(CatpowderLibOS),
-    #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+    #[cfg(all(feature = "catnap-libos"))]
     Catnap(CatnapLibOS),
-    #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-    CatnapW(CatnapWLibOS),
     #[cfg(feature = "catcollar-libos")]
     Catcollar(CatcollarLibOS),
     #[cfg(feature = "catnip-libos")]
@@ -69,10 +65,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.socket(domain, socket_type, protocol),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.socket(domain, socket_type, protocol),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.socket(domain, socket_type, protocol),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.socket(domain, socket_type, protocol),
             #[cfg(feature = "catnip-libos")]
@@ -87,10 +81,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.bind(sockqd, local),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.bind(sockqd, local),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catnip-libos")]
@@ -120,10 +112,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.listen(sockqd, backlog),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.listen(sockqd, backlog),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catnip-libos")]
@@ -138,10 +128,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.accept(sockqd),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.accept(sockqd),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.accept(sockqd),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.accept(sockqd),
             #[cfg(feature = "catnip-libos")]
@@ -156,10 +144,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.connect(sockqd, remote),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.connect(sockqd, remote),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catnip-libos")]
@@ -174,10 +160,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.close(sockqd),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.close(sockqd),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.close(sockqd),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.close(sockqd),
             #[cfg(feature = "catnip-libos")]
@@ -191,10 +175,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.async_close(sockqd),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.async_close(sockqd),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => unimplemented!("Async close not supported yet"),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.async_close(sockqd),
             #[cfg(feature = "catnip-libos")]
@@ -209,10 +191,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.push(sockqd, sga),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.push(sockqd, sga),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catnip-libos")]
@@ -227,10 +207,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.pushto(sockqd, sga, to),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.pushto(sockqd, sga, to),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnip-libos")]
@@ -245,10 +223,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.pop(sockqd, size),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.pop(sockqd, size),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.pop(sockqd),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.pop(sockqd, size),
             #[cfg(feature = "catnip-libos")]
@@ -263,10 +239,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.poll_bg_work(),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.poll(),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.poll(),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.poll(),
             #[cfg(feature = "catnip-libos")]
@@ -281,10 +255,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.schedule(qt),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.schedule(qt),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.schedule(qt),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.schedule(qt),
             #[cfg(feature = "catnip-libos")]
@@ -298,10 +270,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.pack_result(handle, qt),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.pack_result(handle, qt),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.pack_result(handle, qt),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.pack_result(handle, qt),
             #[cfg(feature = "catnip-libos")]
@@ -316,10 +286,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.sgaalloc(size),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.sgaalloc(size),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.sgaalloc(size),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.sgaalloc(size),
             #[cfg(feature = "catnip-libos")]
@@ -334,10 +302,8 @@ impl NetworkLibOS {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.sgafree(sga),
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.sgafree(sga),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            NetworkLibOS::CatnapW(libos) => libos.sgafree(sga),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.sgafree(sga),
             #[cfg(feature = "catnip-libos")]

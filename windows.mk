@@ -70,7 +70,7 @@ RECURSIVE_COPY_FORCE_NO_PROMPT = xcopy /S /E /Y /I
 #=======================================================================================================================
 
 !ifndef LIBOS
-LIBOS = catnapw
+LIBOS = catnap
 !endif
 CARGO_FEATURES = $(CARGO_FEATURES) --features=$(LIBOS)-libos
 
@@ -114,6 +114,7 @@ all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
+	IF NOT EXIST $(BINDIR) mkdir $(BINDIR)
 	$(RECURSIVE_COPY_FORCE_NO_PROMPT) $(DEMIKERNEL_DLL) $(BINDIR)
 	$(RECURSIVE_COPY_FORCE_NO_PROMPT) $(DEMIKERNEL_LIB) $(BINDIR)
 

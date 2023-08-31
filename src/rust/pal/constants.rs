@@ -21,7 +21,7 @@ pub const SOCK_STREAM: i32 = WinSock::SOCK_STREAM as i32;
 pub const SOCK_DGRAM: i32 = WinSock::SOCK_DGRAM as i32;
 
 #[cfg(target_os = "windows")]
-pub const SOMAXCONN: i32 = WinSock::SOMAXCONN;
+pub const SOMAXCONN: i32 = WinSock::SOMAXCONN as i32;
 
 //==============================================================================
 // Linux constants

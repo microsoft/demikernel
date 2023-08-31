@@ -41,11 +41,9 @@ mod catpowder;
 #[cfg(feature = "catcollar-libos")]
 mod catcollar;
 
-#[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+#[cfg(all(feature = "catnap-libos"))]
 mod catnap;
 
-#[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-mod catnapw;
 
 #[cfg(feature = "catmem-libos")]
 mod catmem;

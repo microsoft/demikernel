@@ -8,13 +8,23 @@ mod socket;
 // Imports
 //==============================================================================
 
+#[cfg(target_os = "linux")]
+use crate::pal::linux::socketaddrv4_to_sockaddr;
+
+#[cfg(target_os = "windows")]
+use crate::pal::functions::socketaddrv4_to_sockaddr;
+
 use crate::{
     catnap::queue::CatnapQueue,
     demikernel::config::Config,
     pal::{
-        constants::SOMAXCONN,
+        constants::{
+            AF_INET_VALUE,
+            SOCK_DGRAM,
+            SOCK_STREAM,
+            SOMAXCONN,
+        },
         data_structures::SockAddr,
-        linux,
     },
     runtime::{
         fail::Fail,
@@ -91,12 +101,12 @@ impl CatnapLibOS {
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
-        if domain != libc::AF_INET {
+        if domain != AF_INET_VALUE {
             return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
         }
 
         // Parse socket type.
-        if (typ != libc::SOCK_STREAM) && (typ != libc::SOCK_DGRAM) {
+        if (typ != SOCK_STREAM) && (typ != SOCK_DGRAM) {
             let cause: String = format!("socket type not supported (type={:?})", typ);
             error!("socket(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
@@ -519,7 +529,7 @@ fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) ->
             qr_value: unsafe { mem::zeroed() },
         },
         OperationResult::Accept((new_qd, addr)) => {
-            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
+            let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
             let qr_value: demi_qr_value_t = demi_qr_value_t {
                 ares: demi_accept_result_t {
                     qd: new_qd.into(),
@@ -544,7 +554,7 @@ fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) ->
         OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
             Ok(mut sga) => {
                 if let Some(addr) = addr {
-                    sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr);
+                    sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
                 }
                 let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                 demi_qresult_t {

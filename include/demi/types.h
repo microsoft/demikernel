@@ -34,7 +34,13 @@ extern "C"
     /**
      * @brief A segment of a scatter-gather array.
      */
+    #ifdef _WIN32
+    #pragma pack(1)
+    typedef struct demi_sgaseg
+    #endif
+    #ifdef __linux__
     typedef struct __attribute__((__packed__)) demi_sgaseg
+    #endif
     {
         void *sgaseg_buf;    /**< Underlying data.       */
         uint32_t sgaseg_len; /**< Size in bytes of data. */
@@ -43,7 +49,13 @@ extern "C"
     /**
      * @brief A scatter-gather array.
      */
+    #ifdef _WIN32
+    #pragma pack(1)
+    typedef struct demi_sgarray
+    #endif
+    #ifdef __linux__
     typedef struct __attribute__((__packed__)) demi_sgarray
+    #endif
     {
         void *sga_buf;                                /**< Reserved.                                       */
         uint32_t sga_numsegs;                         /**< Number of segments in the scatter-gather array. */
@@ -68,7 +80,13 @@ extern "C"
     /**
      * @brief Result value for an accept operation.
      */
+    #ifdef _WIN32
+    #pragma pack(1)
+    typedef struct demi_accept_result
+    #endif
+    #ifdef __linux__
     typedef struct __attribute__((__packed__)) demi_accept_result
+    #endif
     {
         int32_t qd;                  /**< Socket I/O queue descriptor of accepted connection. */
         struct sockaddr_in addr; /**< Remote address of accepted connection.              */
@@ -77,7 +95,13 @@ extern "C"
     /**
      * @brief Result value for an asynchronous I/O operation.
      */
+    #ifdef _WIN32
+    #pragma pack(1)
+    typedef struct demi_qresult
+    #endif
+    #ifdef __linux__
     typedef struct __attribute__((__packed__)) demi_qresult
+    #endif
     {
         enum demi_opcode qr_opcode; /**< Opcode of completed operation.                              */
         int32_t qr_qd;              /**< I/O queue descriptor associated to the completed operation. */

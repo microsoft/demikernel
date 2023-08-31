@@ -46,10 +46,8 @@ use crate::catcollar::CatcollarLibOS;
 use crate::catloop::CatloopLibOS;
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::CatmemLibOS;
-#[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+#[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::CatnapLibOS;
-#[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-use crate::catnapw::CatnapWLibOS;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -92,10 +90,8 @@ impl LibOS {
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
-            #[cfg(all(feature = "catnap-libos", target_os = "linux"))]
+            #[cfg(all(feature = "catnap-libos"))]
             LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap(CatnapLibOS::new(&config, runtime.clone()))),
-            #[cfg(all(feature = "catnapw-libos", target_os = "windows"))]
-            LibOSName::CatnapW => Self::NetworkLibOS(NetworkLibOS::CatnapW(CatnapWLibOS::new(&config))),
             #[cfg(feature = "catcollar-libos")]
             LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config))),
             #[cfg(feature = "catpowder-libos")]
