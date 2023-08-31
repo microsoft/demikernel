@@ -21,6 +21,9 @@ use ::core::{
 };
 use ::std::alloc;
 
+#[cfg(feature = "profiler")]
+use crate::timer;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -59,6 +62,8 @@ where
     /// Creates a ring buffer.
     #[allow(unused)]
     fn new(capacity: usize) -> Result<RingBuffer<T>, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::new");
         // Check if capacity is invalid.
         if !capacity.is_power_of_two() {
             return Err(Fail::new(
@@ -99,12 +104,16 @@ where
     /// Returns the effective capacity of the target ring buffer.
     #[allow(unused)]
     pub fn capacity(&self) -> usize {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::capacity");
         self.buffer.capacity() - 1
     }
 
     /// Peeks the target ring buffer and checks if it is full.
     #[allow(unused)]
     pub fn is_full(&self) -> bool {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::is_null");
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
 
@@ -119,6 +128,8 @@ where
     /// Peeks the target ring buffer and checks if it is empty.
     #[allow(unused)]
     pub fn is_empty(&self) -> bool {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::is_empty");
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
 
@@ -132,6 +143,8 @@ where
 
     /// Attempts to insert an item at the back of the target ring buffer.
     pub fn try_enqueue(&self, item: T) -> Result<(), T> {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::try_enqueue");
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
 
@@ -155,6 +168,8 @@ where
     /// Inserts an item at the back of the target ring buffer. This function may block (spin).
     #[allow(unused)]
     pub fn enqueue(&self, item: T) {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::enqueue");
         loop {
             if self.try_enqueue(item).is_ok() {
                 break;
@@ -164,6 +179,8 @@ where
 
     /// Attempts to remove the item from the front of the target ring buffer.
     pub fn try_dequeue(&self) -> Option<T> {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::try_dequeue");
         let front_cached: usize = self.get_front();
         let back_cached: usize = self.get_back();
 
@@ -187,6 +204,8 @@ where
     /// Removes the item from the front of the target ring buffer. This function may block (spin).
     #[allow(unused)]
     pub fn dequeue(&self) -> T {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::dequeue");
         loop {
             if let Some(item) = self.try_dequeue() {
                 break item;
@@ -196,6 +215,8 @@ where
 
     /// Atomically gets the `front` index.
     fn get_front(&self) -> usize {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::get_front");
         let front: &mut AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.front_ptr });
         let front_cached: usize = front.load(atomic::Ordering::Relaxed);
         front_cached
@@ -203,12 +224,16 @@ where
 
     /// Atomically sets the `front` index.
     fn set_front(&self, val: usize) {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::set_front");
         let front: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.front_ptr });
         front.store(val, atomic::Ordering::Relaxed);
     }
 
     /// Atomically gets the `back` index.
     fn get_back(&self) -> usize {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::get_back");
         let back: &mut AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.back_ptr });
         let back_cached: usize = back.load(atomic::Ordering::Relaxed);
         back_cached
@@ -216,6 +241,8 @@ where
 
     /// Atomically sets the `back` index.
     fn set_back(&self, val: usize) {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::set_back");
         let back: &AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *self.back_ptr });
         back.store(val, atomic::Ordering::Relaxed);
     }
@@ -251,6 +278,8 @@ impl<T> Drop for RingBuffer<T> {
 impl<T> Ring for RingBuffer<T> {
     /// Constructs a ring buffer from raw parts.
     fn from_raw_parts(init: bool, mut ptr: *mut u8, size: usize) -> Result<RingBuffer<T>, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("collections::ring::from_raw_parts");
         // Check if we have a valid pointer.
         if ptr.is_null() {
             return Err(Fail::new(
