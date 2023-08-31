@@ -1122,8 +1122,9 @@ impl<const N: usize> ControlBlock<N> {
         if added_out_of_order {
             match self.out_of_order_fin.get() {
                 Some(fin) => {
-                    debug_assert_eq!(fin, recv_next);
-                    return true;
+                    if fin == recv_next {
+                        return true;
+                    }
                 },
                 _ => (),
             }
