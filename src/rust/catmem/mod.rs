@@ -146,8 +146,6 @@ impl CatmemLibOS {
         qd: QDesc,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::close_coroutine");
         // Wait for close operation to complete.
         match queue.do_async_close(yielder).await {
             // Operation completed successfully, thus free resources.
@@ -196,8 +194,6 @@ impl CatmemLibOS {
         buf: DemiBuffer,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::push_coroutine");
         // Handle result.
         match queue.do_push(buf, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
@@ -230,8 +226,6 @@ impl CatmemLibOS {
         size: Option<usize>,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::pop_coroutine");
         // Wait for pop to complete.
         let (buf, _) = match queue.do_pop(size, yielder).await {
             Ok(result) => result,
