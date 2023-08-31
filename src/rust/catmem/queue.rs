@@ -151,17 +151,6 @@ impl CatmemQueue {
         Ok(())
     }
 
-    /// This private function tries to pop from the queue and is mostly used for scoping the borrow.
-    fn try_pop(&self) -> Result<(Option<u8>, bool), Fail> {
-        let mut ring: RefMut<Ring> = self.ring.borrow_mut();
-        let (byte, eof) = ring.try_pop()?;
-        if eof {
-            ring.prepare_close()?;
-            ring.commit();
-        }
-        Ok((byte, eof))
-    }
-
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
     pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&self, insert_coroutine: F) -> Result<QToken, Fail> {
@@ -175,7 +164,12 @@ impl CatmemQueue {
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let mut index: usize = 0;
         let eof: bool = loop {
-            match self.try_pop()? {
+            let (byte, eof): (Option<u8>, bool) = self.ring.borrow_mut().try_pop()?;
+            if eof {
+                self.ring.borrow_mut().prepare_close()?;
+                self.ring.borrow_mut().commit();
+            }
+            match (byte, eof) {
                 (Some(byte), eof) => {
                     if eof {
                         // If eof, then trim everything that we have received so far and return.
@@ -221,17 +215,13 @@ impl CatmemQueue {
         self.do_generic_sync_data_path_call(insert_coroutine)
     }
 
-    /// This private function tries to push a single byte and is used for scoping the borrow.
-    fn try_push(&self, byte: &u8) -> Result<bool, Fail> {
-        self.ring.borrow_mut().try_push(byte)
-    }
-
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
     /// this function returns an error.
     pub async fn do_push(&self, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
         for byte in &buf[..] {
             loop {
-                match self.try_push(byte)? {
+                let push_result: bool = self.ring.borrow_mut().try_push(byte)?;
+                match push_result {
                     true => break,
                     false => {
                         // Operation not completed. Check if it was cancelled.

@@ -63,7 +63,7 @@ impl Ring {
             return Err(Fail::new(libc::EINVAL, "name of shared memory region cannot be empty"));
         }
         Ok(Self {
-            push_buf: SharedRingBuffer::create(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            push_buf: SharedRingBuffer::create(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             pop_buf: SharedRingBuffer::create(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
             mutex: Mutex::new(),
@@ -78,7 +78,7 @@ impl Ring {
         }
         Ok(Self {
             push_buf: SharedRingBuffer::open(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
-            pop_buf: SharedRingBuffer::open(&format!("{}:_", name), RING_BUFFER_CAPACITY)?,
+            pop_buf: SharedRingBuffer::open(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
             mutex: Mutex::new(),
         })
@@ -145,14 +145,9 @@ impl Ring {
         Err(Fail::new(libc::EIO, &cause))
     }
 
-    /// Attempts to close the target ring.
-    pub fn try_close(&mut self) -> Result<(), Fail> {
-        self.do_close()
-    }
-
     /// Try to send an eof through the shared memory ring. If success, this queue is now closed, otherwise, return
     /// EAGAIN and retry.
-    fn do_close(&mut self) -> Result<(), Fail> {
+    pub fn try_close(&mut self) -> Result<(), Fail> {
         // Try to lock the ring buffer.
         if !self.mutex.try_lock() {
             let cause: String = format!("could not lock ring buffer to push EOF");

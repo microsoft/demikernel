@@ -450,7 +450,6 @@ mod test {
     /// Capacity for ring buffer in bytes.
     const RING_BUFFER_CAPACITY: usize = 4096;
     const ITERATIONS: usize = 128;
-    const CONCURRENT_CLIENTS: usize = 10;
 
     /// Creates a ring buffer with a valid capacity.
     fn do_new() -> Result<ConcurrentRingBuffer> {
