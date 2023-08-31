@@ -250,8 +250,6 @@ impl CatloopLibOS {
         new_port: u16,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::accept_coroutine");
         // Wait for the accept to complete.
         let result: Result<CatloopQueue, Fail> = queue.do_accept(new_port, &yielder).await;
         // Handle result: if successful, borrow the state to update state.
@@ -309,8 +307,6 @@ impl CatloopLibOS {
         remote: SocketAddrV4,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::connect_coroutine");
         // Wait for connect operation to complete.
         match queue.do_connect(remote, &yielder).await {
             Ok(()) => (qd, OperationResult::Connect),
@@ -378,8 +374,6 @@ impl CatloopLibOS {
         qd: QDesc,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::close_coroutine");
         match queue.do_close(yielder).await {
             Ok((_, OperationResult::Close)) => {
                 let mut state: RefMut<CatloopRuntime> = state.borrow_mut();
@@ -433,8 +427,6 @@ impl CatloopLibOS {
         buf: DemiBuffer,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::push_coroutine");
         match queue.do_push(buf, yielder).await {
             // Reminder to translate the queue descriptor from Catmem to Catloop
             Ok((_, OperationResult::Push)) => (qd, OperationResult::Push),
@@ -476,8 +468,6 @@ impl CatloopLibOS {
         size: Option<usize>,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::pop_coroutine");
         match queue.do_pop(size, yielder).await {
             Ok((_, OperationResult::Pop(addr, buf))) => (qd, OperationResult::Pop(addr, buf)),
             Ok((_catmem_qd, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
