@@ -68,6 +68,9 @@ use ::std::{
     rc::Rc,
 };
 
+#[cfg(feature = "profiler")]
+use crate::timer;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -75,7 +78,7 @@ use ::std::{
 /// [CatloopLibOS] represents a multi-queue Catloop library operating system that provides the Demikernel network API
 /// on top of shared memory queues provided by Catmem. [CatloopLibOS] is stateless and purely contains multi-queue
 /// functionality necessary to run the Catloop libOS. All state is kept in the [state], while [runtime] holds the
-/// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instatnce.
+/// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instance.
 pub struct CatloopLibOS {
     /// Catloop state.
     state: Rc<RefCell<CatloopRuntime>>,
@@ -94,6 +97,8 @@ pub struct CatloopLibOS {
 impl CatloopLibOS {
     /// Instantiates a new LibOS.
     pub fn new(config: &Config, runtime: DemiRuntime) -> Self {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::new");
         Self {
             state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
             catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new(runtime.clone()))),
@@ -105,6 +110,8 @@ impl CatloopLibOS {
     /// Creates a socket. This function contains the libOS-level functionality needed to create a CatloopQueue that
     /// wraps the underlying Catmem queue.
     pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
@@ -135,6 +142,8 @@ impl CatloopLibOS {
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// CatloopQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // Check if we are binding to the wildcard address.
@@ -183,6 +192,8 @@ impl CatloopLibOS {
     /// functionality to move the CatloopQueue into a listening state.
     // FIXME: https://github.com/demikernel/demikernel/issues/697
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::listen");
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
@@ -197,6 +208,8 @@ impl CatloopLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the accept.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::accept");
         trace!("accept() qd={:?}", qd);
 
         // Keep a reference to this for later.
@@ -269,6 +282,8 @@ impl CatloopLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
         let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
 
@@ -304,6 +319,8 @@ impl CatloopLibOS {
 
     /// Synchronously closes a CatloopQueue and its underlying Catmem queues.
     pub fn close(&self, qd: QDesc) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::close");
         trace!("close() qd={:?}", qd);
         let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
         queue.close()?;
@@ -325,6 +342,8 @@ impl CatloopLibOS {
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::async_close");
         trace!("async_close() qd={:?}", qd);
 
         let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
@@ -380,6 +399,8 @@ impl CatloopLibOS {
 
     /// Schedules a coroutine to push to a Catloop queue.
     pub fn push(&self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::push");
         trace!("push() qd={:?}", qd);
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
 
@@ -422,6 +443,8 @@ impl CatloopLibOS {
 
     /// Schedules a coroutine to pop data from a Catloop queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
@@ -460,21 +483,29 @@ impl CatloopLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::sgaalloc");
         self.runtime.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::sgafree");
         self.runtime.free_sgarray(sga)
     }
 
     /// Inserts a queue token into the scheduler.
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::schedule");
         self.runtime.from_task_id(qt.into())
     }
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::pack_result");
         // Construct operation result.
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
         let qr: demi_qresult_t = pack_result(&self.runtime, r, qd, qt.into());
@@ -484,11 +515,15 @@ impl CatloopLibOS {
 
     /// Polls scheduling queues.
     pub fn poll(&self) {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::poll");
         self.runtime.poll()
     }
 
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::take_result");
         let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
@@ -501,6 +536,8 @@ impl CatloopLibOS {
     }
 
     fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::addr_in_use");
         for (_, queue) in self.runtime.get_qtable().get_values() {
             match queue.local() {
                 Some(addr) if addr == local => return true,
