@@ -81,6 +81,7 @@ impl SocketStateMachine {
     pub fn may_accept(&self) -> Result<(), Fail> {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
+        self.ensure_accepting()?;
         Ok(())
     }
 
@@ -298,6 +299,16 @@ impl SocketStateMachine {
             let cause: String = format!("socket is not bound");
             error!("ensure_bound(): {}", cause);
             return Err(Fail::new(libc::EDESTADDRREQ, &cause));
+        }
+        Ok(())
+    }
+
+    /// Ensures that the target [SocketState] is accepting incoming connections.
+    fn ensure_accepting(&self) -> Result<(), Fail> {
+        if self.current != SocketState::Accepting {
+            let cause: String = format!("socket is not listening");
+            error!("ensure_listening(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
         Ok(())
     }

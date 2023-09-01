@@ -165,6 +165,7 @@ impl Socket {
             .catmem_qd
             .expect("Must be a catmem queue in this state.");
         loop {
+            socket.borrow_mut().state.may_accept()?;
             // Grab next request from the control duplex pipe.
             let new_qd: QDesc = match pop_magic_number(catmem.clone(), catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
