@@ -298,7 +298,9 @@ impl CatnapLibOS {
         // Wait for close operation to complete.
         match queue.do_close(yielder).await {
             Ok(()) => {
-                // Remove the queue from the queue table.
+                // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
+                // schedule this coroutine and no other close coroutine should be able to run due to state machine
+                // checks.
                 runtime.free_queue::<CatnapQueue>(&qd).expect("queue should exist");
                 (qd, OperationResult::Close)
             },

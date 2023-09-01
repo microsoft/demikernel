@@ -310,6 +310,7 @@ impl<const N: usize> TcpPeer<N> {
                     Poll::Ready(result) => match result {
                         Ok(cb) => cb,
                         Err(err) => {
+                            // The new queue should have been allocated before this coroutine was scheduled.
                             inner
                                 .qtable
                                 .borrow_mut()
@@ -328,6 +329,7 @@ impl<const N: usize> TcpPeer<N> {
         let remote: SocketAddrV4 = established.cb.get_remote();
         {
             let mut qtable: RefMut<IoQueueTable> = inner.qtable.borrow_mut();
+            // This queue should have been allocated before the coroutine was scheduled.
             let new_queue: &mut TcpQueue<N> = qtable.get_mut(&new_qd).expect("Should have been pre-allocated");
             new_queue.set_socket(Socket::Established(established));
         }
@@ -444,7 +446,7 @@ impl<const N: usize> TcpPeer<N> {
         // look up socket
         let (addr, result): (SocketAddrV4, Result<(), Fail>) =
             match inner.qtable.borrow_mut().get_mut::<TcpQueue<N>>(&qd) {
-                Ok(ref mut queue) => {
+                Ok(queue) => {
                     match queue.get_socket() {
                         // Closing an active socket.
                         Socket::Established(socket) => {
@@ -488,7 +490,7 @@ impl<const N: usize> TcpPeer<N> {
     /// Closes a TCP socket.
     pub fn do_async_close(&self, qd: QDesc) -> Result<CloseFuture<N>, Fail> {
         match self.inner.borrow().qtable.borrow_mut().get_mut::<TcpQueue<N>>(&qd) {
-            Ok(ref mut queue) => {
+            Ok(queue) => {
                 match queue.get_socket() {
                     // Closing an active socket.
                     Socket::Established(socket) => {

@@ -176,6 +176,7 @@ impl CatcollarLibOS {
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
         match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
+                // Expect is safe here because we already looked up the queue in get_queue_fd().
                 self.qtable
                     .borrow_mut()
                     .get_mut::<CatcollarQueue>(&qd)
@@ -355,6 +356,8 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         match unsafe { libc::close(fd) } {
             stats if stats == 0 => {
+                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
+                // coroutine should be able to run due to state machine checks.
                 self.qtable
                     .borrow_mut()
                     .free::<CatcollarQueue>(&qd)
@@ -389,6 +392,8 @@ impl CatcollarLibOS {
         // close was successful.
         match Self::do_close(fd, yielder).await {
             Ok(()) => {
+                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
+                // coroutine should be able to run due to state machine checks.
                 qtable
                     .borrow_mut()
                     .free::<CatcollarQueue>(&qd)

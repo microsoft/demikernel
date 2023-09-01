@@ -309,7 +309,7 @@ impl<const N: usize> UdpPeer<N> {
 
         let recv_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = match self.bound.get(&local) {
             Some(qd) => match qtable.get::<UdpQueue>(&qd) {
-                Ok(ref queue) => queue.get_recv_queue(),
+                Ok(queue) => queue.get_recv_queue(),
                 Err(_) => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
             },
             None => {
@@ -317,7 +317,7 @@ impl<const N: usize> UdpPeer<N> {
                 let local: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, hdr.dest_port());
                 match self.bound.get(&local) {
                     Some(qd) => match qtable.get::<UdpQueue>(&qd) {
-                        Ok(ref queue) => queue.get_recv_queue(),
+                        Ok(queue) => queue.get_recv_queue(),
                         Err(_) => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
                     },
                     None => return Err(Fail::new(libc::ENOTCONN, "port not bound")),

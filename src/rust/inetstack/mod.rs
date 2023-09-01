@@ -412,6 +412,8 @@ impl<const N: usize> InetStack<N> {
                     let result: Result<(), Fail> = future.await;
                     match result {
                         Ok(()) => {
+                            // Expect is safe here because we looked up the queue to schedule this coroutine and no
+                            // other close coroutine should be able to run due to state machine checks.
                             qtable_ptr
                                 .borrow_mut()
                                 .free::<TcpQueue<N>>(&qd)

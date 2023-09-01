@@ -334,6 +334,7 @@ impl CatloopLibOS {
                 }
             }
         }
+        // Expect is safe here because we looked up the queue to close it.
         self.runtime
             .free_queue::<CatloopQueue>(&qd)
             .expect("queue should exist");
@@ -389,7 +390,8 @@ impl CatloopLibOS {
                         }
                     }
                 }
-
+                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
+                // coroutine should be able to run due to state machine checks.
                 runtime.free_queue::<CatloopQueue>(&qd).expect("queue should exist");
                 (qd, OperationResult::Close)
             },

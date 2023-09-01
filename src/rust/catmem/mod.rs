@@ -136,6 +136,8 @@ impl CatmemLibOS {
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further
                 // operations on the queue, as well as it will ensure that the underlying shared ring buffer will
                 // be eventually released.
+                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
+                // coroutine should be able to run due to state machine checks.
                 runtime.free_queue::<CatmemQueue>(&qd).expect("queue should exist");
                 (qd, OperationResult::Close)
             },
