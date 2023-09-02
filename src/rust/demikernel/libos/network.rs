@@ -25,7 +25,7 @@ use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::CatloopLibOS;
 #[cfg(all(feature = "catnap-libos"))]
-use crate::catnap::CatnapLibOS;
+use crate::catnap::SharedCatnapLibOS;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -40,7 +40,7 @@ pub enum NetworkLibOS {
     #[cfg(feature = "catpowder-libos")]
     Catpowder(CatpowderLibOS),
     #[cfg(all(feature = "catnap-libos"))]
-    Catnap(CatnapLibOS),
+    Catnap(SharedCatnapLibOS),
     #[cfg(feature = "catcollar-libos")]
     Catcollar(CatcollarLibOS),
     #[cfg(feature = "catnip-libos")]
