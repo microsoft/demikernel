@@ -156,6 +156,16 @@ impl DemiRuntimeInner {
     pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
         self.qtable.free(qd)
     }
+
+    /// Gets a reference to the queue associated with [qd].
+    pub fn get_queue<'a, T: IoQueue>(&'a self, qd: &QDesc) -> Result<&'a T, Fail> {
+        self.qtable.get(qd)
+    }
+
+    /// Gets a mutable reference to the queue associated with [qd].
+    pub fn get_mut_queue<'a, T: IoQueue>(&'a mut self, qd: &QDesc) -> Result<&'a mut T, Fail> {
+        self.qtable.get_mut(qd)
+    }
 }
 
 impl<T> SharedObject<T> {
