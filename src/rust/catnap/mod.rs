@@ -97,7 +97,7 @@ impl CatnapLibOS {
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a CatnapQueue that
     /// wraps the underlying POSIX socket.
-    pub fn socket(&self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
+    pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
@@ -171,7 +171,7 @@ impl CatnapLibOS {
     /// Synchronous cross-queue code to start accepting a connection. This function schedules the asynchronous
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the accept.
-    pub fn accept(&self, qd: QDesc) -> Result<QToken, Fail> {
+    pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
@@ -194,7 +194,7 @@ impl CatnapLibOS {
     /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
     async fn accept_coroutine(
-        runtime: DemiRuntime,
+        mut runtime: DemiRuntime,
         queue: CatnapQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -221,7 +221,7 @@ impl CatnapLibOS {
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
-    pub fn connect(&self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
@@ -256,7 +256,7 @@ impl CatnapLibOS {
     }
 
     /// Synchronously closes a CatnapQueue and its underlying POSIX socket.
-    pub fn close(&self, qd: QDesc) -> Result<(), Fail> {
+    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::close");
         trace!("close() qd={:?}", qd);
@@ -269,7 +269,7 @@ impl CatnapLibOS {
 
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
-    pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::async_close");
         trace!("async_close() qd={:?}", qd);
@@ -290,7 +290,7 @@ impl CatnapLibOS {
     /// and the underlying POSIX socket and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     async fn close_coroutine(
-        runtime: DemiRuntime,
+        mut runtime: DemiRuntime,
         queue: CatnapQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -354,7 +354,7 @@ impl CatnapLibOS {
     /// Synchronous code to pushto [buf] to [remote] on a CatnapQueue and its underlying POSIX socket. This
     /// function schedules the coroutine that asynchronously runs the pushto and any synchronous multi-queue
     /// functionality after pushto begins.
-    pub fn pushto(&self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
@@ -395,7 +395,7 @@ impl CatnapLibOS {
     /// Synchronous code to pop data from a CatnapQueue and its underlying POSIX socket of optional [size]. This
     /// function schedules the asynchronous coroutine and performs any necessary synchronous, multi-queue operations
     /// at the libOS-level before beginning the pop.
-    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
@@ -443,7 +443,7 @@ impl CatnapLibOS {
         self.runtime.from_task_id(qt)
     }
 
-    pub fn pack_result(&self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::pack_result");
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
@@ -467,7 +467,7 @@ impl CatnapLibOS {
     }
 
     /// Takes out the result from the [OperationTask] associated with the target [TaskHandle].
-    fn take_result(&self, handle: TaskHandle) -> (QDesc, OperationResult) {
+    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
         #[cfg(feature = "take_result")]
         timer!("catnap::take_result");
         let task: OperationTask = self.runtime.remove_coroutine(&handle);

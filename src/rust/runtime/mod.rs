@@ -51,10 +51,9 @@ use crate::{
 };
 use ::std::{
     boxed::Box,
-    cell::{
-        Ref,
-        RefCell,
-        RefMut,
+    ops::{
+        Deref,
+        DerefMut,
     },
     pin::Pin,
     rc::Rc,
@@ -65,29 +64,40 @@ use ::std::{
 //======================================================================================================================
 
 /// Demikernel Runtime
-#[derive(Clone)]
-pub struct DemiRuntime {
+pub struct DemiRuntimeInner {
     /// Scheduler
     scheduler: Scheduler,
     /// Shared IoQueueTable.
-    qtable: Rc<RefCell<IoQueueTable>>,
+    qtable: IoQueueTable,
 }
+
+#[derive(Clone)]
+pub struct DemiRuntime(pub SharedObject<DemiRuntimeInner>);
+
+/// The SharedObject wraps an object that will be shared across coroutines.
+pub struct SharedObject<T>(pub Rc<T>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for POSIX Runtime
 impl DemiRuntime {
+    pub fn new() -> Self {
+        Self(SharedObject::new(DemiRuntimeInner::new()))
+    }
+}
+
+/// Associate Functions for POSIX Runtime
+impl DemiRuntimeInner {
     pub fn new() -> Self {
         Self {
             scheduler: Scheduler::default(),
-            qtable: Rc::new(RefCell::<IoQueueTable>::new(IoQueueTable::new())),
+            qtable: IoQueueTable::new(),
         }
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_coroutine(&self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
+    pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
             Some(handle) => Ok(handle),
@@ -100,7 +110,7 @@ impl DemiRuntime {
     }
 
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`.
-    pub fn remove_coroutine(&self, handle: &TaskHandle) -> OperationTask {
+    pub fn remove_coroutine(&mut self, handle: &TaskHandle) -> OperationTask {
         // 1. Remove Task from scheduler.
         let boxed_task: Box<dyn Task> = self
             .scheduler
@@ -128,23 +138,29 @@ impl DemiRuntime {
     }
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
-    pub fn alloc_queue<T: IoQueue>(&self, queue: T) -> QDesc {
-        self.qtable.borrow_mut().alloc::<T>(queue)
+    pub fn alloc_queue<T: IoQueue>(&mut self, queue: T) -> QDesc {
+        self.qtable.alloc::<T>(queue)
     }
 
     /// Returns a reference to the I/O queue table.
-    pub fn get_qtable(&self) -> Ref<IoQueueTable> {
-        self.qtable.borrow()
+    pub fn get_qtable(&self) -> &IoQueueTable {
+        &self.qtable
     }
 
     /// Returns a mutable reference to the I/O queue table.
-    pub fn get_mut_qtable(&self) -> RefMut<IoQueueTable> {
-        self.qtable.borrow_mut()
+    pub fn get_mut_qtable(&mut self) -> &mut IoQueueTable {
+        &mut self.qtable
     }
 
     /// Frees the queue associated with [qd] and returns the freed queue.
-    pub fn free_queue<T: IoQueue>(&self, qd: &QDesc) -> Result<T, Fail> {
-        self.qtable.borrow_mut().free(qd)
+    pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
+        self.qtable.free(qd)
+    }
+}
+
+impl<T> SharedObject<T> {
+    pub fn new(object: T) -> Self {
+        Self(Rc::new(object))
     }
 }
 
@@ -153,10 +169,42 @@ impl DemiRuntime {
 //======================================================================================================================
 
 /// Memory Runtime Trait Implementation for POSIX Runtime
-impl MemoryRuntime for DemiRuntime {}
+impl MemoryRuntime for DemiRuntimeInner {}
 
-/// Runtime Trait Implementation for POSIX Runtime
-impl Runtime for DemiRuntime {}
+impl<T> Deref for SharedObject<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<T> DerefMut for SharedObject<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let ptr: *mut T = Rc::as_ptr(&self.0) as *mut T;
+        unsafe { &mut *ptr }
+    }
+}
+
+impl<T> Clone for SharedObject<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl Deref for DemiRuntime {
+    type Target = DemiRuntimeInner;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for DemiRuntime {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
 
 //======================================================================================================================
 // Traits

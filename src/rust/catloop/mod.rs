@@ -244,7 +244,7 @@ impl CatloopLibOS {
     /// the accept succeeds or fails.
     async fn accept_coroutine(
         qd: QDesc,
-        runtime: DemiRuntime,
+        mut runtime: DemiRuntime,
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
         new_port: u16,
@@ -318,9 +318,7 @@ impl CatloopLibOS {
     }
 
     /// Synchronously closes a CatloopQueue and its underlying Catmem queues.
-    pub fn close(&self, qd: QDesc) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::close");
+    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close() qd={:?}", qd);
         let queue: CatloopQueue = self.get_queue(&qd)?;
         queue.close()?;
@@ -344,9 +342,7 @@ impl CatloopLibOS {
 
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
-    pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::async_close");
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
 
         let queue: CatloopQueue = self.get_queue(&qd)?;
@@ -371,7 +367,7 @@ impl CatloopLibOS {
     /// and the underlying Catmem queue and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     async fn close_coroutine(
-        runtime: DemiRuntime,
+        mut runtime: DemiRuntime,
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
         qd: QDesc,
@@ -402,9 +398,7 @@ impl CatloopLibOS {
     }
 
     /// Schedules a coroutine to push to a Catloop queue.
-    pub fn push(&self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::push");
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
 
