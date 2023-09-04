@@ -58,7 +58,7 @@ impl<const N: usize> Engine<N> {
         let arp_options = rt.arp_options.clone();
         let udp_config = rt.udp_config.clone();
         let tcp_config = rt.tcp_config.clone();
-        let qtable = Rc::new(RefCell::new(IoQueueTable::new()));
+        let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
         let arp = ArpPeer::new(
             rt.clone(),
             scheduler.clone(),
