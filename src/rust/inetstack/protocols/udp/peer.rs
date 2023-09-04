@@ -320,6 +320,7 @@ impl<const N: usize> UdpPeer<N> {
                         Ok(queue) => queue.get_recv_queue(),
                         Err(_) => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
                     },
+                    // TODO: Send ICMPv4 error in this condition.
                     None => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
                 }
             },
