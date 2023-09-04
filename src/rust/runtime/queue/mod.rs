@@ -103,11 +103,19 @@ impl IoQueueTable {
     pub fn get_type(&self, qd: &QDesc) -> Result<QType, Fail> {
         let index: u32 = match self.get_index(qd) {
             Some(index) => index,
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_type(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
         match self.table.get(index as usize) {
             Some(boxed_queue_ptr) => Ok(boxed_queue_ptr.get_qtype()),
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_type(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
@@ -115,11 +123,19 @@ impl IoQueueTable {
     pub fn get<'a, T: IoQueue>(&'a self, qd: &QDesc) -> Result<&'a T, Fail> {
         let index: u32 = match self.get_index(qd) {
             Some(index) => index,
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
         match self.table.get(index as usize) {
             Some(boxed_queue_ptr) => Ok(downcast_queue_ptr::<T>(boxed_queue_ptr)?),
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
@@ -127,11 +143,19 @@ impl IoQueueTable {
     pub fn get_mut<'a, T: IoQueue>(&'a mut self, qd: &QDesc) -> Result<&'a mut T, Fail> {
         let index: u32 = match self.get_index(qd) {
             Some(index) => index,
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_mut(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
         };
         match self.table.get_mut(index as usize) {
             Some(boxed_queue_ptr) => Ok(downcast_mut_ptr::<T>(boxed_queue_ptr)?),
-            None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_mut(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
@@ -140,8 +164,9 @@ impl IoQueueTable {
         let index: u32 = match self.get_index(qd) {
             Some(index) => index,
             None => {
-                error!("free(): attemped to release unregistered queue (qd={:?})", qd);
-                return Err(Fail::new(libc::EBADF, "invalid queue descriptor"));
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("free(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
             },
         };
         Ok(downcast_queue::<T>(self.table.remove(index as usize))?)
@@ -183,7 +208,11 @@ pub fn downcast_queue_ptr<'a, T: IoQueue>(boxed_queue_ptr: &'a Box<dyn IoQueue>)
     // 3. Downcast to concrete type T
     match void_ptr.downcast_ref::<T>() {
         Some(ptr) => Ok(ptr),
-        None => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        None => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_queue_ptr(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
     }
 }
 
@@ -195,7 +224,11 @@ pub fn downcast_mut_ptr<'a, T: IoQueue>(boxed_queue_ptr: &'a mut Box<dyn IoQueue
     // 3. Downcast to concrete type T
     match void_ptr.downcast_mut::<T>() {
         Some(ptr) => Ok(ptr),
-        None => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        None => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_mut_ptr(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
     }
 }
 
@@ -204,7 +237,11 @@ pub fn downcast_queue<T: IoQueue>(boxed_queue: Box<dyn IoQueue>) -> Result<T, Fa
     // 1. Downcast from boxed type to concrete type T
     match boxed_queue.as_any().downcast::<T>() {
         Ok(queue) => Ok(*queue),
-        Err(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        Err(_) => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_queue(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
     }
 }
 
