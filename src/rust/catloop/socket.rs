@@ -482,7 +482,7 @@ async fn create_pipe(
     // control duplex pipe. This prevents us from running into a race
     // condition were the remote makes progress faster than us and attempts
     // to open the duplex pipe before it is created.
-    let new_qd = catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port))?;
+    let new_qd: QDesc = catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port))?;
     // Allocate a scatter-gather array and send the port number to the remote.
     let sga: demi_sgarray_t = catmem.borrow_mut().alloc_sgarray(mem::size_of_val(&port))?;
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
