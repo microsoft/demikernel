@@ -72,10 +72,10 @@ pub struct DemiRuntimeInner {
 }
 
 #[derive(Clone)]
-pub struct DemiRuntime(pub SharedObject<DemiRuntimeInner>);
+pub struct DemiRuntime(SharedObject<DemiRuntimeInner>);
 
 /// The SharedObject wraps an object that will be shared across coroutines.
-pub struct SharedObject<T>(pub Rc<T>);
+pub struct SharedObject<T>(Rc<T>);
 
 //======================================================================================================================
 // Associate Functions
