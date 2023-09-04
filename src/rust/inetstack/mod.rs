@@ -295,6 +295,8 @@ impl<const N: usize> InetStack<N> {
                     match result {
                         Ok((_, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
                         Err(e) => {
+                            // Is is safe to call expect here because we looked up the queue to schedule this coroutine
+                            // and no other accept coroutine should be able to run due to state machine checks.
                             qtable_ptr
                                 .borrow_mut()
                                 .free::<TcpQueue<N>>(&new_qd)
@@ -429,6 +431,8 @@ impl<const N: usize> InetStack<N> {
                 self.ipv4.udp.do_close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+                    // Expect is safe here because we looked up the queue to schedule this coroutine and no
+                    // other close coroutine should be able to run due to state machine checks.
                     qtable_ptr
                         .borrow_mut()
                         .free::<UdpQueue>(&qd)
