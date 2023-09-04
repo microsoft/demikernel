@@ -722,10 +722,11 @@ impl CatcollarLibOS {
         let qtable: Ref<IoQueueTable> = self.qtable.borrow();
         match qtable.get::<CatcollarQueue>(&qd)?.get_fd() {
             Some(fd) => Ok(fd),
-            None => Err(Fail::new(
-                libc::EBADF,
-                "CatcollarQueue has invalid underlying file descriptor",
-            )),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_cause_fd(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 }
