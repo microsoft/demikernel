@@ -106,7 +106,7 @@ impl IoQueueTable {
             None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         };
         match self.table.get(index as usize) {
-            Some(ref boxed_queue_ptr) => Ok(boxed_queue_ptr.get_qtype()),
+            Some(boxed_queue_ptr) => Ok(boxed_queue_ptr.get_qtype()),
             None => return Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
         }
     }
