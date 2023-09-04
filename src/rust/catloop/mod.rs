@@ -319,6 +319,8 @@ impl CatloopLibOS {
 
     /// Synchronously closes a CatloopQueue and its underlying Catmem queues.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::close");
         trace!("close() qd={:?}", qd);
         let queue: CatloopQueue = self.get_queue(&qd)?;
         queue.close()?;
@@ -343,6 +345,8 @@ impl CatloopLibOS {
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::async_close");
         trace!("async_close() qd={:?}", qd);
 
         let queue: CatloopQueue = self.get_queue(&qd)?;
@@ -399,6 +403,8 @@ impl CatloopLibOS {
 
     /// Schedules a coroutine to push to a Catloop queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("catloop::push");
         trace!("push() qd={:?}", qd);
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
 
