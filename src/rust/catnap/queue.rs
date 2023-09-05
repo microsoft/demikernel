@@ -53,8 +53,10 @@ pub struct CatnapQueue {
     socket: Socket,
     pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
+
 #[derive(Clone)]
 pub struct SharedCatnapQueue(SharedObject<CatnapQueue>);
+
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
@@ -124,8 +126,6 @@ impl SharedCatnapQueue {
                 },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
                         return Err(e);
@@ -166,8 +166,6 @@ impl SharedCatnapQueue {
                 Ok(r) => return Ok(r),
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
                         return Err(e);
@@ -217,8 +215,6 @@ impl SharedCatnapQueue {
                 },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
                         return Err(e);
@@ -256,14 +252,10 @@ impl SharedCatnapQueue {
                         return Ok(());
                     }
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     yielder.yield_once().await?;
                 },
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     yielder.yield_once().await?;
                 },
                 Err(e) => return Err(e),
@@ -296,8 +288,6 @@ impl SharedCatnapQueue {
                 Ok(addr) => return Ok((addr, buf.clone())),
                 Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
                     // Operation in progress. Check if cancelled.
-                    // We drop the socket here to ensure that the borrow_mut() in the next iteration of the loop
-                    // succeeds.
                     yielder.yield_once().await?;
                 },
                 Err(e) => return Err(e),
