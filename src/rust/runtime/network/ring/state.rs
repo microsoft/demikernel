@@ -42,14 +42,18 @@ impl RingStateMachine {
         }
     }
 
-    /// Asserts whether the current state is [RingState::Closed].
-    pub fn is_closed(&self) -> bool {
-        self.current == RingState::Closed
+    /// Asserts wether the target [RingState] is in a state were we push data.
+    pub fn may_push(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
     }
 
-    /// Asserts whether the current state is [RingState::Closing].
-    pub fn is_closing(&self) -> bool {
-        self.current == RingState::Closing
+    /// Asserts wether the target [RingState] is in a state were we pop data.
+    pub fn may_pop(&self) -> Result<(), Fail> {
+        self.ensure_not_closing()?;
+        self.ensure_not_closed()?;
+        Ok(())
     }
 
     /// Prepares to move into the next state.
@@ -106,6 +110,28 @@ impl RingStateMachine {
             RingControlOperation::Close => Err(fail(op, &(format!("ring is closed")), libc::EBADF)),
             RingControlOperation::Closed => Err(fail(op, &(format!("ring is closed")), libc::EBADF)),
         }
+    }
+
+    /// Ensures that the target [RingState] is not [RingState::Closing].
+    fn ensure_not_closing(&self) -> Result<(), Fail> {
+        if self.current == RingState::Closing {
+            let cause: String = format!("ring is closing");
+            error!("ensure_not_closing(): {}", cause);
+            // FIXME: https://github.com/microsoft/demikernel/issues/916
+            return Err(Fail::new(libc::ECANCELED, &cause));
+        }
+        Ok(())
+    }
+
+    /// Ensures that the target [RingState] is not [RingState::Closed].
+    fn ensure_not_closed(&self) -> Result<(), Fail> {
+        if self.current == RingState::Closed {
+            let cause: String = format!("ring is closed");
+            error!("ensure_not_clossed(): {}", cause);
+            // FIXME: https://github.com/microsoft/demikernel/issues/916
+            return Err(Fail::new(libc::ECANCELED, &cause));
+        }
+        Ok(())
     }
 }
 
