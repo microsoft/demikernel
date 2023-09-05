@@ -159,7 +159,7 @@ impl DemiRuntimeInner {
 
     /// Gets a reference to a shared queue. It is very important that this function bump the reference count (using
     /// clone) so that we can track how many references to this shared queue that we have handed out.
-    /// TODO: This should only return SharedObject types but for now we will also allow other clonable queue types.
+    /// TODO: This should only return SharedObject types but for now we will also allow other cloneable queue types.
     pub fn get_shared_queue<T: IoQueue + Clone>(&self, qd: &QDesc) -> Result<T, Fail> {
         Ok(self.qtable.get::<T>(qd)?.clone())
     }
