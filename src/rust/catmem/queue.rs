@@ -25,6 +25,7 @@ use crate::{
     },
 };
 use ::std::{
+    any::Any,
     cell::{
         RefCell,
         RefMut,
@@ -77,7 +78,7 @@ impl CatmemQueue {
         })
     }
 
-    pub fn shutdown(&mut self) -> Result<(), Fail> {
+    pub fn shutdown(&self) -> Result<(), Fail> {
         {
             let mut ring: RefMut<Ring> = self.ring.borrow_mut();
             ring.prepare_close()?;
@@ -92,7 +93,7 @@ impl CatmemQueue {
 
     /// This function closes a ring endpoint.
     /// TODO merge this with async_close().
-    pub fn close(&mut self) -> Result<(), Fail> {
+    pub fn close(&self) -> Result<(), Fail> {
         {
             let mut ring: RefMut<Ring> = self.ring.borrow_mut();
             ring.prepare_close()?;
@@ -123,7 +124,7 @@ impl CatmemQueue {
     }
 
     /// This function perms an async close on the target queue.
-    pub async fn do_async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn do_async_close(&self, yielder: Yielder) -> Result<(), Fail> {
         let mut retries: u32 = MAX_RETRIES_PUSH_EOF;
         let x = loop {
             if let Ok(()) = self.ring.borrow_mut().try_close() {
@@ -296,7 +297,7 @@ impl CatmemQueue {
     }
 
     /// Cancels all pending operations on this queue.
-    pub fn cancel_pending_ops(&mut self, cause: Fail) {
+    pub fn cancel_pending_ops(&self, cause: Fail) {
         for (handle, mut yielder_handle) in self.pending_ops.borrow_mut().drain() {
             if !handle.has_completed() {
                 yielder_handle.wake_with(Err(cause.clone()));
@@ -312,5 +313,17 @@ impl CatmemQueue {
 impl IoQueue for CatmemQueue {
     fn get_qtype(&self) -> QType {
         QType::MemoryQueue
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
     }
 }

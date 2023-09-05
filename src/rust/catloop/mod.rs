@@ -34,7 +34,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        queue::NetworkQueue,
+        queue::downcast_queue_ptr,
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -182,7 +182,7 @@ impl CatloopLibOS {
         }
 
         // Check if queue descriptor is valid.
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // Check that the socket associated with the queue is not listening.
         queue.bind(local)
@@ -200,7 +200,7 @@ impl CatloopLibOS {
         debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Check if the queue descriptor is registered in the sockets table.
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         queue.listen()
     }
 
@@ -213,7 +213,7 @@ impl CatloopLibOS {
         trace!("accept() qd={:?}", qd);
 
         // Keep a reference to this for later.
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         let new_port: u16 = match self.state.borrow_mut().alloc_ephemeral_port(None) {
             Ok(new_port) => new_port.unwrap(),
             Err(e) => return Err(e),
@@ -285,7 +285,7 @@ impl CatloopLibOS {
         #[cfg(feature = "profiler")]
         timer!("catloop::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // Create connect coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -322,7 +322,7 @@ impl CatloopLibOS {
         #[cfg(feature = "profiler")]
         timer!("catloop::close");
         trace!("close() qd={:?}", qd);
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         queue.close()?;
         if let Some(addr) = queue.local() {
             if EphemeralPorts::is_private(addr.port()) {
@@ -334,7 +334,10 @@ impl CatloopLibOS {
                 }
             }
         }
-        self.runtime.free_queue::<CatloopQueue>(qd);
+        // Expect is safe here because we looked up the queue to close it.
+        self.runtime
+            .free_queue::<CatloopQueue>(&qd)
+            .expect("queue should exist");
 
         Ok(())
     }
@@ -346,7 +349,7 @@ impl CatloopLibOS {
         timer!("catloop::async_close");
         trace!("async_close() qd={:?}", qd);
 
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // Note that this coroutine is only inserted if we do not allocate a Catmem coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -387,8 +390,9 @@ impl CatloopLibOS {
                         }
                     }
                 }
-
-                runtime.free_queue::<CatloopQueue>(qd);
+                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
+                // coroutine should be able to run due to state machine checks.
+                runtime.free_queue::<CatloopQueue>(&qd).expect("queue should exist");
                 (qd, OperationResult::Close)
             },
             Ok((_, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
@@ -409,7 +413,7 @@ impl CatloopLibOS {
             error!("push(): {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
         }
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
@@ -450,7 +454,7 @@ impl CatloopLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let queue: CatloopQueue = self.runtime.get_queue::<CatloopQueue>(qd)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
@@ -527,7 +531,7 @@ impl CatloopLibOS {
         let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
-        match self.runtime.get_queue::<CatloopQueue>(qd) {
+        match self.get_queue(&qd) {
             Ok(queue) => queue.remove_pending_op(&handle),
             Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
         };
@@ -539,12 +543,18 @@ impl CatloopLibOS {
         #[cfg(feature = "profiler")]
         timer!("catloop::addr_in_use");
         for (_, queue) in self.runtime.get_qtable().get_values() {
-            match queue.local() {
-                Some(addr) if addr == local => return true,
-                _ => continue,
+            if let Ok(catloop_queue) = downcast_queue_ptr::<CatloopQueue>(queue) {
+                match catloop_queue.local() {
+                    Some(addr) if addr == local => return true,
+                    _ => continue,
+                }
             }
         }
         false
+    }
+
+    fn get_queue(&self, qd: &QDesc) -> Result<CatloopQueue, Fail> {
+        Ok(self.runtime.get_qtable().get::<CatloopQueue>(qd)?.clone())
     }
 }
 

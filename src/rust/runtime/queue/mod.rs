@@ -10,7 +10,10 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use crate::scheduler::TaskWithResult;
+use crate::{
+    runtime::fail::Fail,
+    scheduler::TaskWithResult,
+};
 use ::slab::{
     Iter,
     Slab,
@@ -45,17 +48,19 @@ pub type BackgroundTask = TaskWithResult<()>;
 
 pub trait IoQueue: Any {
     fn get_qtype(&self) -> QType;
+    fn as_any_ref(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn as_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 pub trait NetworkQueue: IoQueue {
     fn local(&self) -> Option<SocketAddrV4>;
     fn remote(&self) -> Option<SocketAddrV4>;
-    fn as_any_ref(&self) -> &dyn Any;
 }
 
 /// I/O queue descriptors table.
-pub struct IoQueueTable<T: IoQueue> {
-    table: Slab<T>,
+pub struct IoQueueTable {
+    table: Slab<Box<dyn IoQueue>>,
 }
 
 //======================================================================================================================
@@ -63,7 +68,7 @@ pub struct IoQueueTable<T: IoQueue> {
 //======================================================================================================================
 
 /// Associated functions for I/O queue descriptors tables.
-impl<T: IoQueue> IoQueueTable<T> {
+impl IoQueueTable {
     /// Offset for I/O queue descriptors.
     ///
     /// When Demikernel is interposing system calls of the underlying OS
@@ -76,13 +81,13 @@ impl<T: IoQueue> IoQueueTable<T> {
     /// Creates an I/O queue descriptors table.
     pub fn new() -> Self {
         Self {
-            table: Slab::<T>::new(),
+            table: Slab::<Box<dyn IoQueue>>::new(),
         }
     }
 
     /// Allocates a new entry in the target I/O queue descriptors table.
-    pub fn alloc(&mut self, queue: T) -> QDesc {
-        let index: usize = self.table.insert(queue);
+    pub fn alloc<T: IoQueue>(&mut self, queue: T) -> QDesc {
+        let index: usize = self.table.insert(Box::new(queue));
 
         // Ensure that the allocation would yield to a safe conversion between usize to u32.
         // Note: This imposes a limit on the number of open queue descriptors in u32::MAX.
@@ -94,35 +99,85 @@ impl<T: IoQueue> IoQueueTable<T> {
         QDesc::from((index as u32) + Self::BASE_QD)
     }
 
-    /// Gets/borrows a reference to the queue metadata associated with an I/O queue descriptor.
-    pub fn get(&self, qd: &QDesc) -> Option<&T> {
-        let index: u32 = self.get_index(qd)?;
-        self.table.get(index as usize)
-    }
-
-    /// Gets/borrows a mutable reference to the queue metadata associated with an I/O queue descriptor
-    pub fn get_mut(&mut self, qd: &QDesc) -> Option<&mut T> {
-        let index: u32 = self.get_index(qd)?;
-        self.table.get_mut(index as usize)
-    }
-
-    /// Releases the entry associated with an I/O queue descriptor.
-    pub fn free(&mut self, qd: &QDesc) -> Option<T> {
-        let index: Option<u32> = self.get_index(qd);
-        if let Some(index) = index {
-            Some(self.table.remove(index as usize))
-        } else {
-            error!("free(): attemped to release unregistered queue (qd={:?})", qd);
-            None
+    /// Gets the type of the queue.
+    pub fn get_type(&self, qd: &QDesc) -> Result<QType, Fail> {
+        let index: u32 = match self.get_index(qd) {
+            Some(index) => index,
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_type(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        };
+        match self.table.get(index as usize) {
+            Some(boxed_queue_ptr) => Ok(boxed_queue_ptr.get_qtype()),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_type(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
         }
     }
 
+    /// Gets/borrows a reference to the queue metadata associated with an I/O queue descriptor.
+    pub fn get<'a, T: IoQueue>(&'a self, qd: &QDesc) -> Result<&'a T, Fail> {
+        let index: u32 = match self.get_index(qd) {
+            Some(index) => index,
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        };
+        match self.table.get(index as usize) {
+            Some(boxed_queue_ptr) => Ok(downcast_queue_ptr::<T>(boxed_queue_ptr)?),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
+        }
+    }
+
+    /// Gets/borrows a mutable reference to the queue metadata associated with an I/O queue descriptor
+    pub fn get_mut<'a, T: IoQueue>(&'a mut self, qd: &QDesc) -> Result<&'a mut T, Fail> {
+        let index: u32 = match self.get_index(qd) {
+            Some(index) => index,
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_mut(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        };
+        match self.table.get_mut(index as usize) {
+            Some(boxed_queue_ptr) => Ok(downcast_mut_ptr::<T>(boxed_queue_ptr)?),
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("get_mut(): {}", &cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
+        }
+    }
+
+    /// Releases the entry associated with an I/O queue descriptor.
+    pub fn free<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
+        let index: u32 = match self.get_index(qd) {
+            Some(index) => index,
+            None => {
+                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+                error!("free(): {}", &cause);
+                return Err(Fail::new(libc::EBADF, &cause));
+            },
+        };
+        Ok(downcast_queue::<T>(self.table.remove(index as usize))?)
+    }
+
     /// Gets an iterator over all registered queues.
-    pub fn get_values(&self) -> Iter<'_, T> {
+    pub fn get_values(&self) -> Iter<'_, Box<dyn IoQueue>> {
         self.table.iter()
     }
 
-    pub fn drain(&mut self) -> slab::Drain<'_, T> {
+    pub fn drain(&mut self) -> slab::Drain<'_, Box<dyn IoQueue>> {
         self.table.drain()
     }
 
@@ -141,6 +196,56 @@ impl<T: IoQueue> IoQueueTable<T> {
 }
 
 //======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+/// Downcasts a [IoQueue] reference to a concrete queue type reference `&T`.
+pub fn downcast_queue_ptr<'a, T: IoQueue>(boxed_queue_ptr: &'a Box<dyn IoQueue>) -> Result<&'a T, Fail> {
+    // 1. Get reference to queue inside the box.
+    let queue_ptr: &dyn IoQueue = boxed_queue_ptr.as_ref();
+    // 2. Cast that reference to a void pointer for downcasting.
+    let void_ptr: &dyn Any = queue_ptr.as_any_ref();
+    // 3. Downcast to concrete type T
+    match void_ptr.downcast_ref::<T>() {
+        Some(ptr) => Ok(ptr),
+        None => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_queue_ptr(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
+    }
+}
+
+pub fn downcast_mut_ptr<'a, T: IoQueue>(boxed_queue_ptr: &'a mut Box<dyn IoQueue>) -> Result<&'a mut T, Fail> {
+    // 1. Get reference to queue inside the box.
+    let queue_ptr: &mut dyn IoQueue = boxed_queue_ptr.as_mut();
+    // 2. Cast that reference to a void pointer for downcasting.
+    let void_ptr: &mut dyn Any = queue_ptr.as_any_mut();
+    // 3. Downcast to concrete type T
+    match void_ptr.downcast_mut::<T>() {
+        Some(ptr) => Ok(ptr),
+        None => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_mut_ptr(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
+    }
+}
+
+/// Downcasts a boxed [IoQueue] to a concrete queue type `T`.
+pub fn downcast_queue<T: IoQueue>(boxed_queue: Box<dyn IoQueue>) -> Result<T, Fail> {
+    // 1. Downcast from boxed type to concrete type T
+    match boxed_queue.as_any().downcast::<T>() {
+        Ok(queue) => Ok(*queue),
+        Err(_) => {
+            let cause: String = format!("invalid queue type");
+            error!("downcast_queue(): {}", &cause);
+            Err(Fail::new(libc::EINVAL, &cause))
+        },
+    }
+}
+
+//======================================================================================================================
 // Unit Tests
 //======================================================================================================================
 
@@ -154,28 +259,40 @@ mod tests {
         QDesc,
         QType,
     };
+    use ::std::any::Any;
     use ::test::{
         black_box,
         Bencher,
     };
-
     pub struct TestQueue {}
 
     impl IoQueue for TestQueue {
         fn get_qtype(&self) -> QType {
             QType::TestQueue
         }
+
+        fn as_any_ref(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn as_any(self: Box<Self>) -> Box<dyn Any> {
+            self
+        }
     }
 
     #[bench]
     fn bench_alloc_free(b: &mut Bencher) {
-        let mut ioqueue_table: IoQueueTable<TestQueue> = IoQueueTable::<TestQueue>::new();
+        let mut ioqueue_table: IoQueueTable = IoQueueTable::new();
 
         b.iter(|| {
-            let qd: QDesc = ioqueue_table.alloc(TestQueue {});
+            let qd: QDesc = ioqueue_table.alloc::<TestQueue>(TestQueue {});
             black_box(qd);
-            let qtype: Option<TestQueue> = ioqueue_table.free(&qd);
-            black_box(qtype);
+            let queue: TestQueue = ioqueue_table.free::<TestQueue>(&qd).expect("must be TestQueue");
+            black_box(queue);
         });
     }
 }

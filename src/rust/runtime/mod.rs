@@ -41,7 +41,6 @@ use crate::{
         queue::{
             IoQueue,
             IoQueueTable,
-            NetworkQueue,
         },
     },
     scheduler::{
@@ -51,19 +50,15 @@ use crate::{
     },
 };
 use ::std::{
-    any::Any,
     boxed::Box,
     cell::{
         Ref,
         RefCell,
         RefMut,
     },
-    net::SocketAddrV4,
     pin::Pin,
     rc::Rc,
 };
-
-type IoQueueType = Box<dyn NetworkQueue>;
 
 //======================================================================================================================
 // Structures
@@ -75,8 +70,7 @@ pub struct DemiRuntime {
     /// Scheduler
     scheduler: Scheduler,
     /// Shared IoQueueTable.
-    /// FIXME: Currently only holds network queues. Change to IoQueue once all libOSes are merged.
-    qtable: Rc<RefCell<IoQueueTable<IoQueueType>>>,
+    qtable: Rc<RefCell<IoQueueTable>>,
 }
 
 //======================================================================================================================
@@ -88,9 +82,7 @@ impl DemiRuntime {
     pub fn new() -> Self {
         Self {
             scheduler: Scheduler::default(),
-            qtable: Rc::new(RefCell::<IoQueueTable<IoQueueType>>::new(
-                IoQueueTable::<IoQueueType>::new(),
-            )),
+            qtable: Rc::new(RefCell::<IoQueueTable>::new(IoQueueTable::new())),
         }
     }
 
@@ -135,46 +127,24 @@ impl DemiRuntime {
         }
     }
 
-    pub fn alloc_queue<T: NetworkQueue>(&self, queue: T) -> QDesc {
-        self.qtable.borrow_mut().alloc(Box::new(queue))
+    /// Allocates a queue of type `T` and returns the associated queue descriptor.
+    pub fn alloc_queue<T: IoQueue>(&self, queue: T) -> QDesc {
+        self.qtable.borrow_mut().alloc::<T>(queue)
     }
 
-    pub fn get_qtable(&self) -> Ref<IoQueueTable<Box<dyn NetworkQueue>>> {
+    /// Returns a reference to the I/O queue table.
+    pub fn get_qtable(&self) -> Ref<IoQueueTable> {
         self.qtable.borrow()
     }
 
-    pub fn get_mut_qtable(&self) -> RefMut<IoQueueTable<Box<dyn NetworkQueue>>> {
+    /// Returns a mutable reference to the I/O queue table.
+    pub fn get_mut_qtable(&self) -> RefMut<IoQueueTable> {
         self.qtable.borrow_mut()
     }
 
-    pub fn free_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Option<T> {
-        if let Some(boxed_queue_ptr) = self.qtable.borrow_mut().free(&qd) {
-            if let Some(queue_ptr) = Self::downcast_queue_ptr::<T>(&boxed_queue_ptr) {
-                return Some(queue_ptr.clone());
-            }
-        }
-        None
-    }
-
-    pub fn get_queue<T: NetworkQueue + Clone>(&self, qd: QDesc) -> Result<T, Fail> {
-        // Hack to clone the queue.
-        match self.qtable.borrow().get(&qd) {
-            Some(boxed_queue_ptr) => match Self::downcast_queue_ptr::<T>(boxed_queue_ptr) {
-                Some(queue_ptr) => Ok(queue_ptr.clone()),
-                None => Err(Fail::new(libc::EBADF, "invalid queue descriptor type")),
-            },
-            None => Err(Fail::new(libc::EBADF, "invalid queue descriptor")),
-        }
-    }
-
-    /// Downcasts a [NetworkQueue] reference to a concrete queue type reference `&T`.
-    pub fn downcast_queue_ptr<T: NetworkQueue + Clone>(boxed_queue_ptr: &Box<dyn NetworkQueue>) -> Option<&T> {
-        // 1. Get reference to queue inside the box.
-        let queue_ptr: &dyn NetworkQueue = boxed_queue_ptr.as_ref();
-        // 2. Cast that reference to a void pointer for downcasting.
-        let void_ptr: &dyn Any = queue_ptr.as_any_ref();
-        // 3. Downcast to concrete type T
-        void_ptr.downcast_ref::<T>()
+    /// Frees the queue associated with [qd] and returns the freed queue.
+    pub fn free_queue<T: IoQueue>(&self, qd: &QDesc) -> Result<T, Fail> {
+        self.qtable.borrow_mut().free(qd)
     }
 }
 
@@ -187,32 +157,6 @@ impl MemoryRuntime for DemiRuntime {}
 
 /// Runtime Trait Implementation for POSIX Runtime
 impl Runtime for DemiRuntime {}
-
-/// IoQueue trait for IoQueueType
-
-/// NetworkQueue trait for IoQueueType
-impl IoQueue for IoQueueType {
-    fn get_qtype(&self) -> QType {
-        self.as_ref().get_qtype()
-    }
-}
-
-impl NetworkQueue for IoQueueType {
-    /// Returns the local address to which the target queue is bound.
-    fn local(&self) -> Option<SocketAddrV4> {
-        self.as_ref().local()
-    }
-
-    /// Returns the remote address to which the target queue is connected to.
-    fn remote(&self) -> Option<SocketAddrV4> {
-        self.as_ref().remote()
-    }
-
-    /// Returns an Any reference that can be cast to the actual queue.
-    fn as_any_ref(&self) -> &dyn Any {
-        self
-    }
-}
 
 //======================================================================================================================
 // Traits

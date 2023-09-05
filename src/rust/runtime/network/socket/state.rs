@@ -156,11 +156,7 @@ impl SocketStateMachine {
 
     /// Given the current state and the operation being executed, this function returns the next state on success and
     fn get_next_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        debug!(
-            "get_next_state(): previous={:?}, current={:?}, transition={:?}",
-            self.previous, self.current, op
-        );
-        match self.current {
+        let next_state: Result<SocketState, Fail> = match self.current {
             SocketState::NotBound => self.not_bound_state(op),
             SocketState::Bound => self.bound_state(op),
             SocketState::Listening => self.listening_state(op),
@@ -169,6 +165,24 @@ impl SocketStateMachine {
             SocketState::Connected => self.connected_state(op),
             SocketState::Closing => self.closing_state(op),
             SocketState::Closed => self.closed_state(op),
+        };
+        match next_state {
+            Ok(state) => {
+                if state != self.current {
+                    debug!(
+                        "get_next_state(): previous={:?}, current={:?}, transition={:?}",
+                        self.previous, self.current, op
+                    );
+                }
+                Ok(state)
+            },
+            Err(e) => {
+                warn!(
+                    "not valid transition: previous={:?}, current={:?}, transition={:?}, error={:?}",
+                    self.previous, self.current, op, e
+                );
+                Err(e)
+            },
         }
     }
 

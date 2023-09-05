@@ -224,6 +224,18 @@ impl IoQueue for CatloopQueue {
     fn get_qtype(&self) -> QType {
         self.qtype
     }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
 }
 
 impl NetworkQueue for CatloopQueue {
@@ -235,10 +247,5 @@ impl NetworkQueue for CatloopQueue {
     /// Returns the remote address to which the target queue is connected to.
     fn remote(&self) -> Option<SocketAddrV4> {
         self.socket.borrow().remote()
-    }
-
-    /// Returns this queue as an Any for dynamic typing
-    fn as_any_ref(&self) -> &dyn Any {
-        self
     }
 }

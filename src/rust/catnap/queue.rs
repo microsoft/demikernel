@@ -351,8 +351,20 @@ impl CatnapQueue {
 //======================================================================================================================
 
 impl IoQueue for CatnapQueue {
-    fn get_qtype(&self) -> QType {
+    fn get_qtype(&self) -> crate::QType {
         self.qtype
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        self
     }
 }
 
@@ -365,9 +377,5 @@ impl NetworkQueue for CatnapQueue {
     /// Returns the remote address to which the target queue is connected to.
     fn remote(&self) -> Option<SocketAddrV4> {
         self.socket.borrow().remote()
-    }
-
-    fn as_any_ref(&self) -> &dyn Any {
-        self
     }
 }
