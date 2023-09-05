@@ -69,7 +69,7 @@ impl CatmemLibOS {
     }
 
     /// Creates a new memory queue.
-    pub fn create_pipe(&self, name: &str) -> Result<QDesc, Fail> {
+    pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::create_pipe");
         trace!("create_pipe() name={:?}", name);
@@ -79,7 +79,7 @@ impl CatmemLibOS {
     }
 
     /// Opens a memory queue.
-    pub fn open_pipe(&self, name: &str) -> Result<QDesc, Fail> {
+    pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::open_pipe");
         trace!("open_pipe() name={:?}", name);
@@ -91,7 +91,7 @@ impl CatmemLibOS {
 
     /// Shutdown a consumer/pop-only queue. Currently, this is basically a no-op but it does cancel pending operations
     /// and free the queue from the IoQueueTable.
-    pub fn shutdown(&self, qd: QDesc) -> Result<(), Fail> {
+    pub fn shutdown(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::shutdown");
         trace!("shutdown() qd={:?}", qd);
@@ -100,7 +100,7 @@ impl CatmemLibOS {
     }
 
     /// Closes a memory queue.
-    pub fn close(&self, qd: QDesc) -> Result<(), Fail> {
+    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::close");
         trace!("close() qd={:?}", qd);
@@ -109,7 +109,7 @@ impl CatmemLibOS {
     }
 
     /// Asynchronously close a socket.
-    pub fn async_close(&self, qd: QDesc) -> Result<QToken, Fail> {
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::async_close");
         trace!("async_close() qd={:?}", qd);
@@ -124,7 +124,7 @@ impl CatmemLibOS {
     }
 
     pub async fn close_coroutine(
-        runtime: DemiRuntime,
+        mut runtime: DemiRuntime,
         queue: CatmemQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -150,7 +150,7 @@ impl CatmemLibOS {
     }
 
     /// Pushes a scatter-gather array to a Push ring. If not a Push ring, then fail.
-    pub fn push(&self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
+    pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::push");
         trace!("push() qd={:?}", qd);
@@ -187,7 +187,7 @@ impl CatmemLibOS {
     }
 
     /// Pops data from a Pop ring. If not a Pop ring, then return an error.
-    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
