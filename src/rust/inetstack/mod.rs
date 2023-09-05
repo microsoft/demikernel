@@ -295,7 +295,7 @@ impl<const N: usize> InetStack<N> {
                     match result {
                         Ok((_, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
                         Err(e) => {
-                            // Is is safe to call expect here because we looked up the queue to schedule this coroutine
+                            // It is safe to call expect here because we looked up the queue to schedule this coroutine
                             // and no other accept coroutine should be able to run due to state machine checks.
                             qtable_ptr
                                 .borrow_mut()
