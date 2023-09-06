@@ -99,6 +99,10 @@ impl<const N: usize> EstablishedSocket<N> {
 
 impl<const N: usize> Drop for EstablishedSocket<N> {
     fn drop(&mut self) {
-        self.background.deschedule();
+        let handle: &TaskHandle = &self.background;
+        match self.cb.scheduler.remove(handle) {
+            Some(_) => debug!("Task (id={:?}) removed.", handle.get_task_id()),
+            None => panic!("Cannot remove the Task (id={:?}).", handle.get_task_id()),
+        }
     }
 }
