@@ -10,7 +10,13 @@ use crate::runtime::{
     queue::IoQueue,
     QType,
 };
-use ::std::any::Any;
+use ::std::{
+    any::Any,
+    mem::{
+        swap,
+        forget,
+    },
+};
 
 //======================================================================================================================
 // Structures
@@ -43,8 +49,11 @@ impl<const N: usize> TcpQueue<N> {
     }
 
     /// Set underlying TCP socket data structure.
-    pub fn set_socket(&mut self, s: Socket<N>) {
-        self.socket = s;
+    pub fn set_socket(&mut self, mut s: Socket<N>) {
+        swap(&mut s, &mut self.socket);
+
+        // Don't run the Socket destructor at this moment.
+        forget(s);
     }
 }
 
