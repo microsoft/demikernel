@@ -69,13 +69,6 @@ impl TaskHandle {
     pub fn get_task_id(&self) -> u64 {
         self.task_id
     }
-
-    /// Removes the task from the scheduler and keeps it from running again.
-    /// This function is deprecated, do not use.
-    /// FIXME: https://github.com/microsoft/demikernel/issues/886
-    pub fn deschedule(&mut self) {
-        self.waker_page_ref.mark_dropped(self.waker_page_offset);
-    }
 }
 
 impl YielderHandle {
