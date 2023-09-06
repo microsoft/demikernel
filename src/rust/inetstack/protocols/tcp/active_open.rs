@@ -330,6 +330,10 @@ impl<const N: usize> ActiveOpenSocket<N> {
 
 impl<const N: usize> Drop for ActiveOpenSocket<N> {
     fn drop(&mut self) {
-        self.handle.deschedule();
+        let handle: &TaskHandle = &self.handle;
+        match self.scheduler.remove(handle) {
+            Some(_) => debug!("Task (id={:?}) removed.", handle.get_task_id()),
+            None => panic!("Cannot remove the Task (id={:?}).", handle.get_task_id()),
+        }
     }
 }
