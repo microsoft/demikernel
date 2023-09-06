@@ -224,8 +224,12 @@ impl<const N: usize> PassiveSocket<N> {
                 local_window_scale, remote_window_scale
             );
 
-            if let Some(mut inflight) = self.inflight.remove(&remote) {
-                inflight.handle.deschedule();
+            if let Some(inflight) = self.inflight.remove(&remote) {
+                let handle: TaskHandle = inflight.handle;
+                match self.scheduler.remove(&handle) {
+                    Some(_) => debug!("Task (id={:?}) removed.", handle.get_task_id()),
+                    None => panic!("Cannot remove the Task (id={:?}).", handle.get_task_id()),
+                }
             }
 
             let cb = ControlBlock::new(
