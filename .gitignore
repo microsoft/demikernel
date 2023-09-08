@@ -18,8 +18,9 @@ bin/
 *.swo
 *.swp
 
-# vscode
+# vscode and visual studio
 .vscode/
+.vs/
 
 # gdb
 .gdb.*

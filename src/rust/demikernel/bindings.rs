@@ -344,20 +344,12 @@ pub extern "C" fn demi_connect(
     }
 
     // Get socket address.
-    let socketaddr: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_connect() failed: {:?}", e);
             return e.errno;
         },
-    };
-
-    let endpoint = match socketaddr {
-        SocketAddr::V4(endpoint) => endpoint,
-        _ => {
-            trace!("demi_connect() failed: {:?}", "communication domain not supported");
-            return libc::ENOTSUP;
-        }
     };
 
     // Issue connect operation.
@@ -431,21 +423,15 @@ pub extern "C" fn demi_pushto(
         return libc::EINVAL;
     }
 
+    let sga: &demi_sgarray_t = unsafe { &*sga };
+
     // Get socket address.
-    let socketaddr: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
+    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_pushto() failed: {:?}", e);
             return e.errno;
         },
-    };
-
-    let endpoint = match socketaddr {
-        SocketAddr::V4(endpoint) => endpoint,
-        _ => {
-            trace!("demi_pushto() failed: {:?}", "communication domain not supported");
-            return libc::ENOTSUP;
-        }
     };
 
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pushto(sockqd.into(), sga, endpoint) {
@@ -825,23 +811,18 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 }
 
 /// Converts a [sockaddr] into a [SocketAddrV4].
-fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
-    // TODO: Change the logic below and rename this function once we support V6 addresses as well.
-    let sin: SockAddrIn = unsafe {
-        let ptr: *const SockAddrIn = saddr.cast::<SockAddrIn>();
-        ptr.read_unaligned()
-    };
-    if sin.sin_family != AF_INET {
-        return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
-    };
-    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
-    let port: u16 = u16::from_be(sin.sin_port);
-    Ok(SocketAddrV4::new(addr, port))
+fn sockaddr_to_socketaddrv4(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddrV4, Fail> {
+    return match sockaddr_to_socketaddr(saddr, size) {
+        Ok(SocketAddr::V4(result)) => Ok(result),
+        Ok(_) => Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
+        Err(e) => Err(e),
+    }
 }
 
 /// Converts a [sockaddr] into a [SocketAddr].
-fn sockaddr_to_socketaddr(saddr: *const sockaddr, slen: Socklen) -> Result<SocketAddr, Fail> {
-    if (slen as usize) < std::mem::size_of::<AddressFamily>() {
+fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddr, Fail> {
+    // Read address family from first two bytes at sockaddr.
+    if (size as usize) < std::mem::size_of::<AddressFamily>() {
         return Err(Fail::new(libc::EINVAL, "bad socket name length"))
     }
 
@@ -850,16 +831,19 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, slen: Socklen) -> Result<Socke
         ptr.read_unaligned()
     };
 
-    let expected_slen = match family {
+    // Validate saddr size.
+    let expected_size = match family {
         AF_INET => std::mem::size_of::<SockAddrIn>(),
         AF_INET6 => std::mem::size_of::<SockAddrIn6>(),
         _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
     };
 
-    if slen as usize != expected_slen {
+    if size as usize != expected_size {
         return Err(Fail::new(libc::EINVAL, "bad socket name length"));
     }
 
+    // Construct SocketAddr, translating network byte order to host byte order for relevant
+    // fields.
     match family {
         AF_INET => {
             let sin: SockAddrIn = unsafe {
@@ -877,9 +861,11 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, slen: Socklen) -> Result<Socke
                 ptr.read_unaligned()
             };
 
+            // IPv6 is encoded as eight hextets, each in network byte order.
+            // From<[u8; 16]> for Ipv6Addr expects network byte order, so no byte swapping
+            // is needed. From<[u16; 8]> for Ipv6Addr swaps byte order.
             let octets = get_addr_from_sock_addr_in6(&sin);
-            let hextets: [u16; 8] = unsafe { std::mem::transmute(octets) };
-            let addr = Ipv6Addr::from(hextets.map(|shrt| u16::from_be(shrt)));
+            let addr = Ipv6Addr::from(octets);
             let port: u16 = u16::from_be(sin.sin6_port);
             let flowinfo = u32::from_be(sin.sin6_flowinfo);
             let scopeid = u32::from_be(get_scope_id_from_sock_addr_in6(&sin));
