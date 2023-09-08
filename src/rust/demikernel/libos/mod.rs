@@ -33,6 +33,7 @@ use crate::{
 use ::std::{
     env,
     net::SocketAddrV4,
+    net::SocketAddr,
     time::{
         Duration,
         Instant,
@@ -156,7 +157,7 @@ impl LibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "bind() is not supported on memory liboses")),

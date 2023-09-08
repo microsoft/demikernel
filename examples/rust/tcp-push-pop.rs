@@ -16,7 +16,10 @@ use ::demikernel::{
 };
 use ::std::{
     env,
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     slice,
     str::FromStr,
 };
@@ -136,7 +139,7 @@ impl TcpServer {
     pub fn run(&mut self, local: SocketAddrV4, fill_char: u8, buffer_size: usize) -> Result<()> {
         let nbytes: usize = buffer_size * 1024;
 
-        if let Err(e) = self.libos.bind(self.sockqd, local) {
+        if let Err(e) = self.libos.bind(self.sockqd, SocketAddr::V4(local)) {
             anyhow::bail!("bind failed: {:?}", e.cause)
         };
 

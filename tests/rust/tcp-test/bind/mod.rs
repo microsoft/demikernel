@@ -12,6 +12,7 @@ use demikernel::{
 };
 use std::net::{
     Ipv4Addr,
+    SocketAddr,
     SocketAddrV4,
 };
 
@@ -67,7 +68,7 @@ fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) ->
     };
 
     // Fail to bind socket.
-    match libos.bind(QDesc::from(0), addr) {
+    match libos.bind(QDesc::from(0), SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::EBADF => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() an address to an invalid queue descriptor should fail"),
@@ -88,7 +89,7 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -
     };
 
     // Bind socket.
-    libos.bind(sockqd, addr)?;
+    libos.bind(sockqd, SocketAddr::V4(addr))?;
 
     // Bind address.
     let addr: SocketAddrV4 = {
@@ -97,7 +98,7 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -
     };
 
     // Fail to bind socket.
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::EINVAL => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() a sockeet multiple times should fail"),
@@ -122,9 +123,9 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Resu
     };
 
     // Bind first socket.
-    libos.bind(sockqd1, addr)?;
+    libos.bind(sockqd1, SocketAddr::V4(addr))?;
 
-    match libos.bind(sockqd2, addr) {
+    match libos.bind(sockqd2, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::EADDRINUSE => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() the same address to two sockets should fail"),
@@ -146,7 +147,7 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
 
         // Bind socket.
         let addr: SocketAddrV4 = SocketAddrV4::new(*local, port);
-        match libos.bind(sockqd, addr) {
+        match libos.bind(sockqd, SocketAddr::V4(addr)) {
             Ok(()) => (),
             Err(e) if e.errno == libc::EADDRINUSE => (),
             Err(e) => anyhow::bail!("bind() failed with {}", e),
@@ -169,7 +170,7 @@ fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::ENOTSUP => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() to the wildcard address port should fail"),
@@ -194,7 +195,7 @@ fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/189
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::ENOTSUP => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() to the wildcard address should fail"),
@@ -217,7 +218,7 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
     // FIXME: https://github.com/demikernel/demikernel/issues/189
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::ENOTSUP => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() to the wildcard address port should fail"),
@@ -242,7 +243,7 @@ fn bind_to_non_local_address(libos: &mut LibOS) -> Result<()> {
     };
 
     // Fail to bind socket.
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::EADDRNOTAVAIL => (),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() a non-local address should fail"),
@@ -269,7 +270,7 @@ fn bind_to_closed_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
     libos.close(sockqd)?;
 
     // Fail to bind socket.
-    match libos.bind(sockqd, addr) {
+    match libos.bind(sockqd, SocketAddr::V4(addr)) {
         Err(e) if e.errno == libc::EBADF => Ok(()),
         Err(e) => anyhow::bail!("bind() failed with {}", e),
         Ok(()) => anyhow::bail!("bind() a closed socket should fail"),

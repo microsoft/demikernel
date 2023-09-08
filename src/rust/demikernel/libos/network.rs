@@ -18,7 +18,10 @@ use crate::{
     },
     scheduler::TaskHandle,
 };
-use ::std::net::SocketAddrV4;
+use ::std::net::{
+    SocketAddrV4,
+    SocketAddr,
+};
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
@@ -77,7 +80,7 @@ impl NetworkLibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.bind(sockqd, local),

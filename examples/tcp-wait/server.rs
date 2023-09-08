@@ -21,7 +21,10 @@ use ::std::{
         HashMap,
         HashSet,
     },
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
 };
 
 //======================================================================================================================
@@ -73,7 +76,7 @@ impl TcpServer {
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind to local address.
-        libos.bind(sockqd, local)?;
+        libos.bind(sockqd, SocketAddr::V4(local))?;
 
         println!("Listening to: {:?}", local);
 

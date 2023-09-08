@@ -13,7 +13,10 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
@@ -68,7 +71,7 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
 fn wait_after_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
 
@@ -146,7 +149,7 @@ fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) 
 fn wait_after_async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
 
@@ -259,7 +262,7 @@ fn wait_on_invalid_queue_token_returns_einval(libos: &mut LibOS) -> Result<()> {
 fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
     let mut accepted_completed: bool = false;
