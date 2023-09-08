@@ -26,7 +26,10 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4
+    },
     str::FromStr,
     time::{
         Duration,
@@ -122,7 +125,7 @@ impl Application {
     /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
-        let local: SocketAddrV4 = args.get_local();
+        let local: SocketAddr = SocketAddr::V4(args.get_local());
 
         // Create TCP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {

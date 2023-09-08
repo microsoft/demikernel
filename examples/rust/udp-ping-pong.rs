@@ -19,7 +19,10 @@ use ::demikernel::{
 };
 use ::std::{
     env,
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     slice,
     str::FromStr,
 };
@@ -129,7 +132,7 @@ impl UdpServer {
     }
 
     pub fn run(&mut self, local: SocketAddrV4, remote: SocketAddrV4, fill_char: u8) -> Result<()> {
-        if let Err(e) = self.libos.bind(self.sockqd, local) {
+        if let Err(e) = self.libos.bind(self.sockqd, SocketAddr::V4(local)) {
             anyhow::bail!("bind failed: {:?}", e)
         };
 
@@ -228,7 +231,7 @@ impl UdpClient {
     ) -> Result<()> {
         let mut qts: Vec<QToken> = Vec::new();
 
-        if let Err(e) = self.libos.bind(self.sockqd, local) {
+        if let Err(e) = self.libos.bind(self.sockqd, SocketAddr::V4(local)) {
             anyhow::bail!("bind failed: {:?}", e)
         };
 

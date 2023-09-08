@@ -23,7 +23,10 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     str::FromStr,
     time::{
         Duration,
@@ -128,7 +131,7 @@ impl Application {
         };
 
         // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, SocketAddr::V4(local)) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.

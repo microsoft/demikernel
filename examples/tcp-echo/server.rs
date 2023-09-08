@@ -21,7 +21,10 @@ use std::{
         HashMap,
         HashSet,
     },
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     time::{
         Duration,
         Instant,
@@ -69,7 +72,7 @@ impl TcpEchoServer {
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind the socket to a local address.
-        if let Err(e) = libos.bind(sockqd, local) {
+        if let Err(e) = libos.bind(sockqd, SocketAddr::V4(local)) {
             println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);

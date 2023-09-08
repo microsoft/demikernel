@@ -13,7 +13,10 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
@@ -159,7 +162,7 @@ fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
 
     // Succeed to close socket.
     let qt: QToken = libos.async_close(sockqd)?;
@@ -176,7 +179,7 @@ fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<(
 fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create a listening socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
     libos.listen(sockqd, 16)?;
 
     // Succeed to close socket.

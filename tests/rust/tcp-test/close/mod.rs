@@ -10,7 +10,10 @@ use ::demikernel::{
     LibOS,
     QDesc,
 };
-use ::std::net::SocketAddrV4;
+use ::std::net::{
+    SocketAddr,
+    SocketAddrV4,
+};
 
 //======================================================================================================================
 // Constants
@@ -86,7 +89,7 @@ fn close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 fn close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
 
     // Succeed to close socket.
     libos.close(sockqd)?;
@@ -98,7 +101,7 @@ fn close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
 fn close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
     // Create a listening socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, *local)?;
+    libos.bind(sockqd, SocketAddr::V4(*local))?;
     libos.listen(sockqd, 16)?;
 
     // Succeed to close socket.

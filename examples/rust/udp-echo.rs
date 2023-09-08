@@ -27,6 +27,7 @@ use ::std::mem;
 use ::std::{
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
     },
     str::FromStr,
@@ -141,7 +142,7 @@ impl Application {
         };
 
         // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, SocketAddr::V4(local)) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.

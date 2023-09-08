@@ -69,7 +69,10 @@ use ::std::{
         RefCell,
     },
     mem,
-    net::SocketAddrV4,
+    net::{
+        SocketAddrV4,
+        SocketAddr,
+    },
     os::unix::prelude::RawFd,
     pin::Pin,
     rc::Rc,
@@ -154,17 +157,27 @@ impl CatcollarLibOS {
     }
 
     /// Binds a socket to a local endpoint.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
+
+        let localv4 = match local {
+            SocketAddr::V4(sin) => sin,
+            _ => {
+                let cause: String = format!("unsupported address family (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            }
+        };
+
         // Check if we are binding to the wildcard port.
-        if local.port() == 0 {
+        if localv4.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Check whether the address is in use.
-        if self.addr_in_use(local) {
+        if self.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -173,7 +186,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
 
         // Bind underlying socket.
-        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&localv4);
         match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 // Expect is safe here because we already looked up the queue in get_queue_fd().
@@ -181,7 +194,7 @@ impl CatcollarLibOS {
                     .borrow_mut()
                     .get_mut::<CatcollarQueue>(&qd)
                     .expect("queue should exist")
-                    .set_addr(local);
+                    .set_addr(localv4);
                 Ok(())
             },
             _ => {

@@ -63,6 +63,7 @@ use ::std::{
     net::{
         Ipv4Addr,
         SocketAddrV4,
+        SocketAddr,
     },
     pin::Pin,
     rc::Rc,
@@ -141,14 +142,23 @@ impl CatloopLibOS {
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// CatloopQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
+        let localv4 = match local {
+            SocketAddr::V4(sin) => sin,
+            _ => {
+                let cause: String = format!("unsupported address family (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            }
+        };
+
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if local.ip() == &Ipv4Addr::UNSPECIFIED {
+        if localv4.ip() == &Ipv4Addr::UNSPECIFIED {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
@@ -156,36 +166,36 @@ impl CatloopLibOS {
 
         // Check if we are binding to the wildcard port.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if local.port() == 0 {
+        if localv4.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Check if we are binding to a non-local address.
-        if &self.config.local_ipv4_addr() != local.ip() {
+        if &self.config.local_ipv4_addr() != localv4.ip() {
             let cause: String = format!("cannot bind to non-local address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
         }
 
         // Check whether the address is in use.
-        if self.addr_in_use(local) {
+        if self.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
         // Check if this is an ephemeral port.
-        if EphemeralPorts::is_private(local.port()) {
+        if EphemeralPorts::is_private(localv4.port()) {
             // Allocate ephemeral port from the pool, to leave ephemeral port allocator in a consistent state.
-            self.state.borrow_mut().alloc_ephemeral_port(Some(local.port()))?;
+            self.state.borrow_mut().alloc_ephemeral_port(Some(localv4.port()))?;
         }
 
         // Check if queue descriptor is valid.
         let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // Check that the socket associated with the queue is not listening.
-        queue.bind(local)
+        queue.bind(localv4)
     }
 
     /// Sets a CatloopQueue and as a passive one. This function contains the libOS-level

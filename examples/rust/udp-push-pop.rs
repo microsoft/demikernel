@@ -16,7 +16,10 @@ use ::demikernel::{
 };
 use ::std::{
     env,
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     slice,
     str::FromStr,
 };
@@ -133,7 +136,7 @@ impl UdpServer {
     fn run(&mut self, local: SocketAddrV4, fill_char: u8, nsends: usize) -> Result<()> {
         let nreceives: usize = (8 * nsends) / 128;
 
-        match self.libos.bind(self.sockqd, local) {
+        match self.libos.bind(self.sockqd, SocketAddr::V4(local)) {
             Ok(()) => (),
             Err(e) => anyhow::bail!("bind failed: {:?}", e),
         };
@@ -223,7 +226,7 @@ impl UdpClient {
         buffer_size: usize,
         nsends: usize,
     ) -> Result<()> {
-        match self.libos.bind(self.sockqd, local) {
+        match self.libos.bind(self.sockqd, SocketAddr::V4(local)) {
             Ok(()) => (),
             Err(e) => anyhow::bail!("bind failed: {:?}", e),
         };

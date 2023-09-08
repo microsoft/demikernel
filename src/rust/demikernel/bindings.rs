@@ -11,12 +11,21 @@ use crate::{
         LibOS,
     },
     pal::{
-        constants::AF_INET,
+        constants::{
+            AF_INET,
+            AF_INET6,
+        },
         data_structures::{
+            AddressFamily,
             SockAddrIn,
+            SockAddrIn6,
             Socklen,
         },
-        functions::get_addr_from_sock_addr_in,
+        functions::{
+            get_addr_from_sock_addr_in,
+            get_addr_from_sock_addr_in6,
+            get_scope_id_from_sock_addr_in6,
+        }
     },
     runtime::{
         fail::Fail,
@@ -42,7 +51,10 @@ use ::std::{
     mem,
     net::{
         Ipv4Addr,
+        Ipv6Addr,
         SocketAddrV4,
+        SocketAddrV6,
+        SocketAddr,
     },
     ptr,
     slice,
@@ -221,13 +233,8 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: Socklen) ->
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_bind() failed: {:?}", e);
@@ -336,18 +343,21 @@ pub extern "C" fn demi_connect(
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let socketaddr: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_connect() failed: {:?}", e);
             return e.errno;
         },
+    };
+
+    let endpoint = match socketaddr {
+        SocketAddr::V4(endpoint) => endpoint,
+        _ => {
+            trace!("demi_connect() failed: {:?}", "communication domain not supported");
+            return libc::ENOTSUP;
+        }
     };
 
     // Issue connect operation.
@@ -421,20 +431,21 @@ pub extern "C" fn demi_pushto(
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
-    let sga: &demi_sgarray_t = unsafe { &*sga };
-
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let socketaddr: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_pushto() failed: {:?}", e);
             return e.errno;
         },
+    };
+
+    let endpoint = match socketaddr {
+        SocketAddr::V4(endpoint) => endpoint,
+        _ => {
+            trace!("demi_pushto() failed: {:?}", "communication domain not supported");
+            return libc::ENOTSUP;
+        }
     };
 
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pushto(sockqd.into(), sga, endpoint) {
@@ -828,8 +839,58 @@ fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail
     Ok(SocketAddrV4::new(addr, port))
 }
 
+/// Converts a [sockaddr] into a [SocketAddr].
+fn sockaddr_to_socketaddr(saddr: *const sockaddr, slen: Socklen) -> Result<SocketAddr, Fail> {
+    if (slen as usize) < std::mem::size_of::<AddressFamily>() {
+        return Err(Fail::new(libc::EINVAL, "bad socket name length"))
+    }
+
+    let family: AddressFamily = unsafe {
+        let ptr: *const AddressFamily = saddr.cast::<AddressFamily>();
+        ptr.read_unaligned()
+    };
+
+    let expected_slen = match family {
+        AF_INET => std::mem::size_of::<SockAddrIn>(),
+        AF_INET6 => std::mem::size_of::<SockAddrIn6>(),
+        _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
+    };
+
+    if slen as usize != expected_slen {
+        return Err(Fail::new(libc::EINVAL, "bad socket name length"));
+    }
+
+    match family {
+        AF_INET => {
+            let sin: SockAddrIn = unsafe {
+                let ptr: *const SockAddrIn = saddr.cast::<SockAddrIn>();
+                ptr.read_unaligned()
+            };
+
+            let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
+            let port: u16 = u16::from_be(sin.sin_port);
+            Ok(SocketAddr::V4(SocketAddrV4::new(addr, port)))
+        }
+        AF_INET6 => {
+            let sin: SockAddrIn6 = unsafe {
+                let ptr: *const SockAddrIn6 = saddr.cast::<SockAddrIn6>();
+                ptr.read_unaligned()
+            };
+
+            let octets = get_addr_from_sock_addr_in6(&sin);
+            let hextets: [u16; 8] = unsafe { std::mem::transmute(octets) };
+            let addr = Ipv6Addr::from(hextets.map(|shrt| u16::from_be(shrt)));
+            let port: u16 = u16::from_be(sin.sin6_port);
+            let flowinfo = u32::from_be(sin.sin6_flowinfo);
+            let scopeid = u32::from_be(get_scope_id_from_sock_addr_in6(&sin));
+            Ok(SocketAddr::V6(SocketAddrV6::new(addr, port, flowinfo, scopeid)))
+        }
+        _ => unreachable!()
+    }
+}
+
 #[test]
-fn test_sockaddr_to_socketaddrv4() {
+fn test_sockaddr_to_socketaddr() {
     // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
 
     // SocketAddrV4: 127.0.0.1:80
@@ -847,8 +908,8 @@ fn test_sockaddr_to_socketaddrv4() {
         sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
     };
 
-    match sockaddr_to_socketaddrv4(&saddr) {
-        Ok(addr) => {
+    match sockaddr_to_socketaddr(&saddr, std::mem::size_of_val(&saddr) as Socklen) {
+        Ok(SocketAddr::V4(addr)) => {
             assert_eq!(addr.port(), 80);
             assert_eq!(addr.ip(), &Ipv4Addr::new(127, 0, 0, 1));
         },

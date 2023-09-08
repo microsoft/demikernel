@@ -9,10 +9,16 @@ use windows::Win32::Networking::WinSock;
 //==============================================================================
 
 #[cfg(target_os = "windows")]
+pub type AddressFamily = WinSock::ADDRESS_FAMILY;
+
+#[cfg(target_os = "windows")]
 pub type SockAddr = windows::Win32::Networking::WinSock::SOCKADDR;
 
 #[cfg(target_os = "windows")]
 pub type SockAddrIn = WinSock::SOCKADDR_IN;
+
+#[cfg(target_os = "windows")]
+pub type SockAddrIn6 = WinSock::SOCKADDR_IN6;
 
 #[cfg(target_os = "windows")]
 pub type Socklen = i32;
@@ -22,10 +28,16 @@ pub type Socklen = i32;
 //==============================================================================
 
 #[cfg(target_os = "linux")]
+pub type AddressFamily = u16;
+
+#[cfg(target_os = "linux")]
 pub type SockAddr = libc::sockaddr;
 
 #[cfg(target_os = "linux")]
 pub type SockAddrIn = libc::sockaddr_in;
+
+#[cfg(target_os = "linux")]
+pub type SockAddrIn6 = libc::sockaddr_in6;
 
 #[cfg(target_os = "linux")]
 pub type Socklen = libc::socklen_t;

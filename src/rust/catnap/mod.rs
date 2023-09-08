@@ -63,6 +63,7 @@ use ::std::{
     net::{
         Ipv4Addr,
         SocketAddrV4,
+        SocketAddr,
     },
     ops::{
         Deref,
@@ -136,14 +137,24 @@ impl SharedCatnapLibOS {
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedCatnapQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
+        // FIXME: IPv6 support
+        let localv4 = match local {
+            SocketAddr::V4(sin) => sin,
+            _ => {
+                let cause: String = format!("unsupported address family (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            }
+        };
+
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if local.ip() == &Ipv4Addr::UNSPECIFIED {
+        if localv4.ip() == &Ipv4Addr::UNSPECIFIED {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
@@ -151,21 +162,21 @@ impl SharedCatnapLibOS {
 
         // Check if we are binding to the wildcard port.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if local.port() == 0 {
+        if localv4.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Check wether the address is in use.
-        if self.addr_in_use(local) {
+        if self.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
         // Issue bind operation.
-        self.get_shared_queue(&qd)?.bind(local)
+        self.get_shared_queue(&qd)?.bind(localv4)
     }
 
     /// Sets a SharedCatnapQueue and its underlying socket as a passive one. This function contains the libOS-level
