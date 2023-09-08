@@ -6,7 +6,7 @@ use crate::pal::data_structures::{
     SockAddrIn6,
 };
 
-const NUM_OCTETS_IN_IPV4: usize = 16;
+const NUM_OCTETS_IN_IPV6: usize = 16;
 
 #[cfg(feature = "catnip-libos")]
 const NUM_OCTETS_IN_IPV4: usize = 4;
@@ -51,7 +51,7 @@ pub fn get_addr_from_sock_addr_in(sock_addr_in: &SockAddrIn) -> u32 {
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_addr_from_sock_addr_in6(sock_addr_in: &SockAddrIn6) -> [u8; NUM_OCTETS_IN_IPV4] {
+pub fn get_addr_from_sock_addr_in6(sock_addr_in: &SockAddrIn6) -> [u8; NUM_OCTETS_IN_IPV6] {
     unsafe { sock_addr_in.sin6_addr.u.Byte }
 }
 
@@ -105,7 +105,7 @@ pub fn get_addr_from_sock_addr_in(sock_addr_in: &SockAddrIn) -> u32 {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_addr_from_sock_addr_in6(sock_addr_in: &SockAddrIn6) -> [u8; NUM_OCTETS_IN_IPV4] {
+pub fn get_addr_from_sock_addr_in6(sock_addr_in: &SockAddrIn6) -> [u8; NUM_OCTETS_IN_IPV6] {
     sock_addr_in.sin6_addr.s6_addr
 }
 
