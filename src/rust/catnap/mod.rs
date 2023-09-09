@@ -48,6 +48,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        network::unwrap_socketaddr,
         DemiRuntime,
         QDesc,
         QToken,
@@ -143,18 +144,11 @@ impl SharedCatnapLibOS {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // FIXME: IPv6 support
-        let localv4 = match local {
-            SocketAddr::V4(sin) => sin,
-            _ => {
-                let cause: String = format!("unsupported address family (qd={:?})", qd);
-                error!("bind(): {}", cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            }
-        };
+        let local = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if localv4.ip() == &Ipv4Addr::UNSPECIFIED {
+        if local.ip() == &Ipv4Addr::UNSPECIFIED {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
@@ -162,21 +156,21 @@ impl SharedCatnapLibOS {
 
         // Check if we are binding to the wildcard port.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if localv4.port() == 0 {
+        if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Check wether the address is in use.
-        if self.addr_in_use(localv4) {
+        if self.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
         // Issue bind operation.
-        self.get_shared_queue(&qd)?.bind(localv4)
+        self.get_shared_queue(&qd)?.bind(local)
     }
 
     /// Sets a SharedCatnapQueue and its underlying socket as a passive one. This function contains the libOS-level
@@ -246,10 +240,11 @@ impl SharedCatnapLibOS {
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
+        let remote = unwrap_socketaddr(remote)?;
         let me: Self = self.clone();
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Clone the self reference and move into the coroutine.
@@ -386,10 +381,13 @@ impl SharedCatnapLibOS {
     /// Synchronous code to pushto [buf] to [remote] on a SharedCatnapQueue and its underlying POSIX socket. This
     /// function schedules the coroutine that asynchronously runs the pushto and any synchronous multi-queue
     /// functionality after pushto begins.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
+
+        let remote = unwrap_socketaddr(remote)?;
+
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -505,6 +503,8 @@ impl SharedCatnapLibOS {
         trace!("sgafree()");
         self.runtime.free_sgarray(sga)
     }
+
+    /// Unwrap the V4
 
     /// Takes out the result from the [OperationTask] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {

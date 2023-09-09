@@ -13,10 +13,7 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::SocketAddr,
     time::Duration,
 };
 
@@ -41,7 +38,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for async_close() on TCP sockets.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(libos: &mut LibOS, addr: &SocketAddr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(async_close_invalid_queue_descriptor(libos)));
@@ -159,10 +156,10 @@ fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to close a TCP socket that is bound.
-fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, SocketAddr::V4(*local))?;
+    libos.bind(sockqd, *local)?;
 
     // Succeed to close socket.
     let qt: QToken = libos.async_close(sockqd)?;
@@ -176,10 +173,10 @@ fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<(
 }
 
 /// Attempts to close a TCP socket that is listening.
-fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create a listening socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, SocketAddr::V4(*local))?;
+    libos.bind(sockqd, *local)?;
     libos.listen(sockqd, 16)?;
 
     // Succeed to close socket.

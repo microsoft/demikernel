@@ -39,7 +39,7 @@ use crate::{
     },
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     ops::{
         Deref,
         DerefMut,
@@ -128,7 +128,7 @@ impl CatnipLibOS {
         }
     }
 
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);

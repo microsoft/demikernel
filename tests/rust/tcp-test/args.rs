@@ -12,7 +12,10 @@ use clap::{
     Command,
 };
 use std::{
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     str::FromStr,
 };
 
@@ -24,9 +27,9 @@ use std::{
 #[derive(Debug)]
 pub struct ProgramArguments {
     /// Address of local.
-    local: SocketAddrV4,
+    local: SocketAddr,
     /// Address of remote socket.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
 }
 
 impl ProgramArguments {
@@ -54,27 +57,27 @@ impl ProgramArguments {
             .get_matches();
 
         // Address of local socket.
-        let local: SocketAddrV4 = {
+        let local: SocketAddr = SocketAddr::V4({
             let local: &String = matches.get_one::<String>("local").expect("missing address");
             SocketAddrV4::from_str(local)?
-        };
+        });
 
         // Address of remote socket.
-        let remote: SocketAddrV4 = {
+        let remote: SocketAddr = SocketAddr::V4({
             let remote: &String = matches.get_one::<String>("remote").expect("missing address");
             SocketAddrV4::from_str(remote)?
-        };
+        });
 
         Ok(Self { local, remote })
     }
 
     /// Returns the `local` command line argument.
-    pub fn local(&self) -> SocketAddrV4 {
+    pub fn local(&self) -> SocketAddr {
         self.local
     }
 
     /// Returns the `remote` command line argument.
-    pub fn remote(&self) -> SocketAddrV4 {
+    pub fn remote(&self) -> SocketAddr {
         self.remote
     }
 }
