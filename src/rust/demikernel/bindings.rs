@@ -344,7 +344,7 @@ pub extern "C" fn demi_connect(
     }
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr, size) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_connect() failed: {:?}", e);
@@ -426,7 +426,7 @@ pub extern "C" fn demi_pushto(
     let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr, size) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_pushto() failed: {:?}", e);
@@ -807,15 +807,6 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
             None => Err(Fail::new(libc::ENOSYS, "Demikernel is not initialized")),
         },
         Err(_) => Err(Fail::new(libc::EBUSY, "Demikernel is busy")),
-    }
-}
-
-/// Converts a [sockaddr] into a [SocketAddrV4].
-fn sockaddr_to_socketaddrv4(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddrV4, Fail> {
-    return match sockaddr_to_socketaddr(saddr, size) {
-        Ok(SocketAddr::V4(result)) => Ok(result),
-        Ok(_) => Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
-        Err(e) => Err(e),
     }
 }
 

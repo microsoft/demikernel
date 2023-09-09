@@ -44,6 +44,7 @@ use crate::{
                 UdpConfig,
             },
             types::MacAddress,
+            unwrap_socketaddr,
             NetworkRuntime,
         },
         queue::{
@@ -67,6 +68,7 @@ use ::std::{
     cell::RefCell,
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
     },
     pin::Pin,
@@ -221,10 +223,13 @@ impl<const N: usize> InetStack<N> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
+
+        let local = unwrap_socketaddr(local)?;
+
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => self.ipv4.tcp.bind(qd, local),
             Some(QType::UdpSocket) => self.ipv4.udp.do_bind(qd, local),
@@ -334,10 +339,12 @@ impl<const N: usize> InetStack<N> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
+
+        let remote = unwrap_socketaddr(remote)?;
 
         let task: OperationTask = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
@@ -503,7 +510,9 @@ impl<const N: usize> InetStack<N> {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<OperationTask, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddr) -> Result<OperationTask, Fail> {
+        let to = unwrap_socketaddr(to)?;
+
         match self.lookup_qtype(&qd) {
             Some(QType::UdpSocket) => {
                 self.ipv4.udp.do_pushto(qd, buf, to)?;
@@ -518,7 +527,7 @@ impl<const N: usize> InetStack<N> {
 
     /// Pushes raw data to a UDP socket.
     /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("inetstack::pushto2");
         trace!("pushto2(): qd={:?}", qd);

@@ -13,10 +13,7 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::SocketAddr,
     time::Duration,
 };
 
@@ -41,7 +38,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for close() on TCP sockets.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(libos: &mut LibOS, addr: &SocketAddr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(wait_after_close_accepting_socket(libos, addr)));
@@ -68,10 +65,10 @@ pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Resul
 }
 
 // Attempts to close a TCP socket that is accepting and then waits on the qtoken.
-fn wait_after_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn wait_after_close_accepting_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, SocketAddr::V4(*local))?;
+    libos.bind(sockqd, *local)?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
 
@@ -104,7 +101,7 @@ fn wait_after_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) ->
 }
 
 /// Attempts to close a TCP socket that is connecting and then waits on the qtoken.
-fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> {
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt: QToken = libos.connect(sockqd, *remote)?;
@@ -146,10 +143,10 @@ fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) 
 }
 
 // Attempts to close a TCP socket that is accepting and then waits on the queue token.
-fn wait_after_async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn wait_after_async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, SocketAddr::V4(*local))?;
+    libos.bind(sockqd, *local)?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
 
@@ -190,7 +187,7 @@ fn wait_after_async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddr
 }
 
 /// Attempts to close a TCP socket that is connecting and then waits on the queue token.
-fn wait_after_async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+fn wait_after_async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> {
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt: QToken = libos.connect(sockqd, *remote)?;
@@ -259,10 +256,10 @@ fn wait_on_invalid_queue_token_returns_einval(libos: &mut LibOS) -> Result<()> {
 }
 
 // Attempt to wait for an accept() operation to complete after issuing an asynchronous close on a socket.
-fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-    libos.bind(sockqd, SocketAddr::V4(*local))?;
+    libos.bind(sockqd, *local)?;
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
     let mut accepted_completed: bool = false;
@@ -324,7 +321,7 @@ fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAd
 }
 
 // Attempt to wait for a connect() operation to complete complete after asynchronous close on a socket.
-fn wait_for_connect_after_issuing_async_close(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+fn wait_for_connect_after_issuing_async_close(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> {
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt: QToken = libos.connect(sockqd, *remote)?;

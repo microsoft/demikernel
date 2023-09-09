@@ -32,7 +32,6 @@ use crate::{
 };
 use ::std::{
     env,
-    net::SocketAddrV4,
     net::SocketAddr,
     time::{
         Duration,
@@ -193,7 +192,7 @@ impl LibOS {
     }
 
     /// Initiates a connection with a remote TCP socket.
-    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "connect() is not supported on memory liboses")),
@@ -240,7 +239,7 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = match self {
             LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
             LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "pushto() is not supported on memory liboses")),

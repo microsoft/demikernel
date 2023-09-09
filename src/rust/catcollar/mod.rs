@@ -39,6 +39,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
+        network::unwrap_socketaddr,
         queue::{
             downcast_queue_ptr,
             IoQueueTable,
@@ -70,8 +71,8 @@ use ::std::{
     },
     mem,
     net::{
-        SocketAddrV4,
         SocketAddr,
+        SocketAddrV4,
     },
     os::unix::prelude::RawFd,
     pin::Pin,
@@ -160,24 +161,17 @@ impl CatcollarLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        let localv4 = match local {
-            SocketAddr::V4(sin) => sin,
-            _ => {
-                let cause: String = format!("unsupported address family (qd={:?})", qd);
-                error!("bind(): {}", cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            }
-        };
+        let local = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard port.
-        if localv4.port() == 0 {
+        if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Check whether the address is in use.
-        if self.addr_in_use(localv4) {
+        if self.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -186,7 +180,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
 
         // Bind underlying socket.
-        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&localv4);
+        let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&local);
         match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 // Expect is safe here because we already looked up the queue in get_queue_fd().
@@ -194,7 +188,7 @@ impl CatcollarLibOS {
                     .borrow_mut()
                     .get_mut::<CatcollarQueue>(&qd)
                     .expect("queue should exist")
-                    .set_addr(localv4);
+                    .set_addr(local);
                 Ok(())
             },
             _ => {
@@ -308,10 +302,11 @@ impl CatcollarLibOS {
     }
 
     /// Establishes a connection to a remote endpoint.
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
+        let remote = unwrap_socketaddr(remote)?;
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let yielder: Yielder = Yielder::new();
         let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
@@ -517,8 +512,10 @@ impl CatcollarLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
+
+        let remote = unwrap_socketaddr(remote)?;
 
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {

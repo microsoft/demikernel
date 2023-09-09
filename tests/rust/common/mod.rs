@@ -7,15 +7,20 @@ pub mod runtime;
 use ::demikernel::runtime::network::types::MacAddress;
 use ::std::{
     collections::HashMap,
-    net::Ipv4Addr,
+    net::{
+        IpAddr,
+        Ipv4Addr
+    },
 };
 
 // Alice Address
 pub const ALICE_IPV4: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
+pub const ALICE_IP: IpAddr = IpAddr::V4(ALICE_IPV4);
 pub const ALICE_MAC: MacAddress = MacAddress::new([0x12, 0x23, 0x45, 0x67, 0x89, 0xab]);
 
 // Bob Address
 pub const BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
+pub const BOB_IP: IpAddr = IpAddr::V4(BOB_IPV4);
 pub const BOB_MAC: MacAddress = MacAddress::new([0xab, 0x89, 0x67, 0x45, 0x23, 0x12]);
 
 // Port Number used for Tests
