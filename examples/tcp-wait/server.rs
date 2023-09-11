@@ -21,10 +21,7 @@ use ::std::{
         HashMap,
         HashSet,
     },
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::SocketAddr,
 };
 
 //======================================================================================================================
@@ -71,12 +68,12 @@ pub struct TcpServer {
 //======================================================================================================================
 
 impl TcpServer {
-    pub fn new(mut libos: LibOS, local: SocketAddrV4, nclients: usize) -> Result<Self> {
+    pub fn new(mut libos: LibOS, local: SocketAddr, nclients: usize) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind to local address.
-        libos.bind(sockqd, SocketAddr::V4(local))?;
+        libos.bind(sockqd, local)?;
 
         println!("Listening to: {:?}", local);
 

@@ -21,7 +21,7 @@ use std::{
         HashMap,
         HashSet,
     },
-    net::SocketAddrV4,
+    net::SocketAddr,
 };
 
 //======================================================================================================================
@@ -49,7 +49,7 @@ pub struct TcpClient {
     /// Underlying libOS.
     libos: LibOS,
     /// Address of remote peer.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
     /// Open queue descriptors.
     qds: HashSet<QDesc>,
     /// Number of clients that established a connection.
@@ -66,7 +66,7 @@ pub struct TcpClient {
 
 impl TcpClient {
     /// Creates a new TCP client.
-    pub fn new(libos: LibOS, remote: SocketAddrV4, should_async_close: bool) -> Result<Self> {
+    pub fn new(libos: LibOS, remote: SocketAddr, should_async_close: bool) -> Result<Self> {
         println!("Connecting to: {:?}", remote);
         Ok(Self {
             libos,

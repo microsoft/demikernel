@@ -8,14 +8,14 @@ use clap::{
     Command,
 };
 use std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     str::FromStr,
 };
 
 #[derive(Debug)]
 pub struct ProgramArguments {
     /// Socket IPv4 address.
-    addr: SocketAddrV4,
+    addr: SocketAddr,
     /// Peer type.
     peer_type: Option<String>,
     /// Number of clients.
@@ -64,9 +64,9 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        let addr: SocketAddrV4 = {
+        let addr: SocketAddr = {
             let addr: &String = matches.get_one::<String>("addr").expect("missing address");
-            SocketAddrV4::from_str(addr)?
+            SocketAddr::from_str(addr)?
         };
 
         let scenario = matches
@@ -98,7 +98,7 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    pub fn addr(&self) -> SocketAddrV4 {
+    pub fn addr(&self) -> SocketAddr {
         self.addr
     }
 

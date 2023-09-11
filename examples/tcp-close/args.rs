@@ -11,10 +11,7 @@ use clap::{
     ArgMatches,
     Command,
 };
-use std::{
-    net::SocketAddrV4,
-    str::FromStr,
-};
+use std::net::SocketAddr;
 
 //======================================================================================================================
 // Program Arguments
@@ -25,8 +22,8 @@ use std::{
 pub struct ProgramArguments {
     /// Run mode.
     run_mode: String,
-    /// Socket IPv4 address.
-    addr: SocketAddrV4,
+    /// Socket address.
+    addr: SocketAddr,
     /// Number of clients
     nclients: Option<usize>,
     /// Peer type.
@@ -100,9 +97,9 @@ impl ProgramArguments {
             .to_string();
 
         // Socket address.
-        let addr: SocketAddrV4 = {
+        let addr: SocketAddr = {
             let addr: &String = matches.get_one::<String>("addr").expect("missing address");
-            SocketAddrV4::from_str(addr)?
+            addr.parse()?
         };
 
         let mut args: ProgramArguments = Self {
@@ -150,7 +147,7 @@ impl ProgramArguments {
     }
 
     /// Returns the `addr` command line argument.
-    pub fn addr(&self) -> SocketAddrV4 {
+    pub fn addr(&self) -> SocketAddr {
         self.addr
     }
 
