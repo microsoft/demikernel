@@ -23,7 +23,7 @@ use demikernel::{
 };
 use server::TcpEchoServer;
 use std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     str::FromStr,
 };
 
@@ -52,7 +52,7 @@ pub struct ProgramArguments {
     /// Run mode.
     run_mode: Option<String>,
     /// Socket IPv4 address.
-    addr: SocketAddrV4,
+    addr: SocketAddr,
     /// Buffer size (in bytes).
     bufsize: Option<usize>,
     /// Number of requests.
@@ -132,9 +132,9 @@ impl ProgramArguments {
             .get_matches();
 
         // Socket address.
-        let addr: SocketAddrV4 = {
+        let addr: SocketAddr = {
             let addr: &String = matches.get_one::<String>("addr").expect("missing address");
-            SocketAddrV4::from_str(addr)?
+            SocketAddr::from_str(addr)?
         };
 
         // Default arguments.

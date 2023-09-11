@@ -17,7 +17,7 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     slice,
 };
 
@@ -45,7 +45,7 @@ pub struct TcpClient {
     /// Underlying libOS.
     libos: LibOS,
     /// Address of remote peer.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
     /// Number of clients.
     nclients: usize,
     /// Socket queue descriptor.
@@ -57,7 +57,7 @@ pub struct TcpClient {
 //======================================================================================================================
 
 impl TcpClient {
-    pub fn new(libos: LibOS, remote: SocketAddrV4, nclients: usize) -> Result<Self> {
+    pub fn new(libos: LibOS, remote: SocketAddr, nclients: usize) -> Result<Self> {
         println!("Connecting to: {:?}", remote);
         Ok(Self {
             libos,

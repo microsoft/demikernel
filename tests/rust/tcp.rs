@@ -998,7 +998,7 @@ fn tcp_bad_pop() -> Result<()> {
         };
 
         let port: u16 = PORT_BASE;
-        let remote: SocketAddr = SocketAddr::V4(SocketAddrV4::new(ALICE_IPV4, port));
+        let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
 
         // Open connection.
         let sockqd: QDesc = safe_socket(&mut libos)?;

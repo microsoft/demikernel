@@ -123,10 +123,10 @@ fn connect_to_bad_remote(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bad remote address (any localhost port).
-    let remote: SocketAddr = SocketAddr::V4({
+    let remote: SocketAddr = {
         let ipv4: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
-        SocketAddrV4::new(ipv4, 0)
-    });
+        SocketAddr::V4(SocketAddrV4::new(ipv4, 0))
+    };
 
     // Succeed to connect socket.
     let qt: QToken = libos.connect(sockqd, remote)?;
