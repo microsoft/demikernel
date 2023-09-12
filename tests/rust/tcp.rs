@@ -51,8 +51,9 @@ use std::{
     net::{
         IpAddr,
         Ipv4Addr,
+        Ipv6Addr,
         SocketAddr,
-        SocketAddrV4,
+        SocketAddrV6,
     },
     thread::{
         self,
@@ -484,6 +485,50 @@ fn tcp_bad_socket() -> Result<()> {
 
     Ok(())
 }
+
+//======================================================================================================================
+// Bad Bind
+//======================================================================================================================
+
+/// Tests bad calls for `bind()`.
+#[test]
+fn tcp_bad_bind() -> Result<()> {
+    let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+    let mut libos: InetStack<RECEIVE_BATCH_SIZE> = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        Ok(libos) => libos,
+        Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
+    };
+
+    let port: u16 = PORT_BASE;
+    let port2: u16 = PORT_BASE + 1;
+    let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+    let local2: SocketAddr =  SocketAddr::new(ALICE_IP, port2);
+    let localv6: SocketAddr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0));
+
+    // IPv6 unsupported
+    let sockqd: QDesc = safe_socket(&mut libos)?;
+    match libos.bind(sockqd, localv6) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => anyhow::bail!("invalid call to bind should fail with EINVAL"),
+    }
+
+    // Can't re-bind an address
+    let sockqd2: QDesc = safe_socket(&mut libos)?;
+    safe_bind(&mut libos, sockqd, local)?;
+    match libos.bind(sockqd2, local) {
+        Err(e) if e.errno == libc::EADDRINUSE => (),
+        _ => anyhow::bail!("invalid call to bind should fail with EADDRINUSE"),
+    };
+
+    // Can't bind a bound socket
+    match libos.bind(sockqd, local2) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => anyhow::bail!("invalid call to bind should fail with EINVAL"),
+    };
+
+    Ok(())
+}
+
 
 //======================================================================================================================
 // Bad Listen

@@ -10,23 +10,7 @@ use crate::{
         name::LibOSName,
         LibOS,
     },
-    pal::{
-        constants::{
-            AF_INET,
-            AF_INET6,
-        },
-        data_structures::{
-            AddressFamily,
-            SockAddrIn,
-            SockAddrIn6,
-            Socklen,
-        },
-        functions::{
-            get_addr_from_sock_addr_in,
-            get_addr_from_sock_addr_in6,
-            get_scope_id_from_sock_addr_in6,
-        }
-    },
+    pal::data_structures::Socklen,
     runtime::{
         fail::Fail,
         logging,
@@ -48,20 +32,24 @@ use ::libc::{
 use ::std::{
     cell::RefCell,
     ffi::CStr,
+    io,
     mem,
-    net::{
-        Ipv4Addr,
-        Ipv6Addr,
-        SocketAddrV4,
-        SocketAddrV6,
-        SocketAddr,
-    },
+    net::SocketAddr,
     ptr,
     slice,
     time::{
         Duration,
         SystemTime,
     },
+};
+use ::socket2::SockAddr;
+
+#[cfg(test)]
+use ::std::net::{
+        Ipv4Addr,
+        Ipv6Addr,
+        SocketAddrV4,
+        SocketAddrV6,
 };
 
 //======================================================================================================================
@@ -812,57 +800,30 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 
 /// Converts a [sockaddr] into a [SocketAddr].
 fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddr, Fail> {
-    // Read address family from first two bytes at sockaddr.
-    if (size as usize) < std::mem::size_of::<AddressFamily>() {
-        return Err(Fail::new(libc::EINVAL, "bad socket name length"))
-    }
-
-    let family: AddressFamily = unsafe {
-        let ptr: *const AddressFamily = saddr.cast::<AddressFamily>();
-        ptr.read_unaligned()
-    };
-
-    // Validate saddr size.
-    let expected_size = match family {
-        AF_INET => std::mem::size_of::<SockAddrIn>(),
-        AF_INET6 => std::mem::size_of::<SockAddrIn6>(),
-        _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
-    };
-
-    if size as usize != expected_size {
-        return Err(Fail::new(libc::EINVAL, "bad socket name length"));
-    }
-
-    // Construct SocketAddr, translating network byte order to host byte order for relevant
-    // fields.
-    match family {
-        AF_INET => {
-            let sin: SockAddrIn = unsafe {
-                let ptr: *const SockAddrIn = saddr.cast::<SockAddrIn>();
-                ptr.read_unaligned()
-            };
-
-            let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
-            let port: u16 = u16::from_be(sin.sin_port);
-            Ok(SocketAddr::V4(SocketAddrV4::new(addr, port)))
+    let mut init_error: Option<Fail> = None;
+    let addr: SockAddr = unsafe { SockAddr::init(|sockaddr_storage, len| {
+        if size > *len {
+            // Avoid dynamic allocation by Error::new using local variable.
+            init_error = Some(Fail::new(libc::EINVAL, "bad socket name length"));
+            return Err(io::Error::from(io::ErrorKind::Other));
         }
-        AF_INET6 => {
-            let sin: SockAddrIn6 = unsafe {
-                let ptr: *const SockAddrIn6 = saddr.cast::<SockAddrIn6>();
-                ptr.read_unaligned()
-            };
 
-            // IPv6 is encoded as eight hextets, each in network byte order.
-            // From<[u8; 16]> for Ipv6Addr expects network byte order, so no byte swapping
-            // is needed. From<[u16; 8]> for Ipv6Addr swaps byte order.
-            let octets = get_addr_from_sock_addr_in6(&sin);
-            let addr = Ipv6Addr::from(octets);
-            let port: u16 = u16::from_be(sin.sin6_port);
-            let flowinfo = u32::from_be(sin.sin6_flowinfo);
-            let scopeid = u32::from_be(get_scope_id_from_sock_addr_in6(&sin));
-            Ok(SocketAddr::V6(SocketAddrV6::new(addr, port, flowinfo, scopeid)))
+        // sockaddr_storage is zeroed prior to the call, so only copy relevant bytes.
+        ptr::copy_nonoverlapping::<u8>(saddr.cast(), sockaddr_storage.cast(), size as usize);
+        *len = size;
+        Ok(())
+    }) }.map_err(|e| {
+        if e.kind() == io::ErrorKind::Other && init_error.is_some() {
+            init_error.expect("error is set")
+        } else {
+            let message: String = format!("back socket address: {:?}", e);
+            Fail::new(libc::EINVAL, &message)
         }
-        _ => unreachable!()
+    }).map(|(_, addr)| addr)?;
+
+    match addr.as_socket() {
+        Some(addr) => Ok(addr),
+        None => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
     }
 }
 
@@ -870,26 +831,31 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<Socke
 fn test_sockaddr_to_socketaddr() {
     // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
 
-    // SocketAddrV4: 127.0.0.1:80
-    #[cfg(target_os = "linux")]
-    let saddr: crate::pal::data_structures::SockAddr = {
-        sockaddr {
-            sa_family: crate::pal::constants::AF_INET_VALUE as u16,
-            sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        }
-    };
+    const PORT: u16 = 80;
+    const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+    const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
 
-    #[cfg(target_os = "windows")]
-    let saddr: libc::sockaddr = libc::sockaddr {
-        sa_family: crate::pal::constants::AF_INET_VALUE as u16,
-        sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-    };
+    let saddr = SockAddr::from(SADDR);
 
-    match sockaddr_to_socketaddr(&saddr, std::mem::size_of_val(&saddr) as Socklen) {
+    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
         Ok(SocketAddr::V4(addr)) => {
-            assert_eq!(addr.port(), 80);
-            assert_eq!(addr.ip(), &Ipv4Addr::new(127, 0, 0, 1));
+            assert_eq!(addr.port(), PORT);
+            assert_eq!(addr.ip(), &IPADDR);
         },
         _ => panic!("failed to convert"),
     }
+
+    const IPADDRV6: Ipv6Addr = Ipv6Addr::LOCALHOST;
+    const SADDR6: SocketAddrV6 = SocketAddrV6::new(IPADDRV6, PORT, 0, 0);
+
+    let saddr = SockAddr::from(SADDR6);
+
+    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
+    Ok(SocketAddr::V6(addr)) => {
+        assert_eq!(addr.port(), PORT);
+        assert_eq!(addr.ip(), &IPADDRV6);
+    },
+    _ => panic!("failed to convert"),
+}
+
 }
