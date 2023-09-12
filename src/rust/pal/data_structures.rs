@@ -9,9 +9,6 @@ use windows::Win32::Networking::WinSock;
 //==============================================================================
 
 #[cfg(target_os = "windows")]
-pub type AddressFamily = WinSock::ADDRESS_FAMILY;
-
-#[cfg(target_os = "windows")]
 pub type SockAddr = windows::Win32::Networking::WinSock::SOCKADDR;
 
 #[cfg(target_os = "windows")]
@@ -26,9 +23,6 @@ pub type Socklen = i32;
 //==============================================================================
 // Linux data structures
 //==============================================================================
-
-#[cfg(target_os = "linux")]
-pub type AddressFamily = u16;
 
 #[cfg(target_os = "linux")]
 pub type SockAddr = libc::sockaddr;
