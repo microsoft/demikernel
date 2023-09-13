@@ -20,6 +20,12 @@ pub type SockAddrIn6 = WinSock::SOCKADDR_IN6;
 #[cfg(target_os = "windows")]
 pub type Socklen = i32;
 
+#[cfg(target_os = "windows")]
+pub type SockAddrStorage = WinSock::SOCKADDR_STORAGE;
+
+#[cfg(target_os = "windows")]
+pub type AddressFamily = WinSock::ADDRESS_FAMILY;
+
 //==============================================================================
 // Linux data structures
 //==============================================================================
@@ -35,3 +41,9 @@ pub type SockAddrIn6 = libc::sockaddr_in6;
 
 #[cfg(target_os = "linux")]
 pub type Socklen = libc::socklen_t;
+
+#[cfg(target_os = "linux")]
+pub type SockAddrStorage = libc::sockaddr_storage;
+
+#[cfg(target_os = "linux")]
+pub type AddressFamily = libc::sa_family_t;

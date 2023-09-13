@@ -504,8 +504,6 @@ impl SharedCatnapLibOS {
         self.runtime.free_sgarray(sga)
     }
 
-    /// Unwrap the V4
-
     /// Takes out the result from the [OperationTask] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
         #[cfg(feature = "take_result")]
