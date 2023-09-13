@@ -10,7 +10,19 @@ use crate::{
         name::LibOSName,
         LibOS,
     },
-    pal::data_structures::Socklen,
+    pal::{
+        constants::{
+            AF_INET,
+            AF_INET6,
+        },
+        data_structures::{
+            AddressFamily,
+            SockAddrIn,
+            SockAddrIn6,
+            SockAddrStorage,
+            Socklen
+        },
+    },
     runtime::{
         fail::Fail,
         logging,
@@ -32,7 +44,6 @@ use ::libc::{
 use ::std::{
     cell::RefCell,
     ffi::CStr,
-    io,
     mem,
     net::SocketAddr,
     ptr,
@@ -800,43 +811,45 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 
 /// Converts a [sockaddr] into a [SocketAddr].
 fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddr, Fail> {
-    let mut init_error: Option<Fail> = None;
-    let addr: SockAddr = unsafe { SockAddr::init(|sockaddr_storage, len| {
-        if size > *len {
-            // Avoid dynamic allocation by Error::new using local variable.
-            init_error = Some(Fail::new(libc::EINVAL, "bad socket name length"));
-            return Err(io::Error::from(io::ErrorKind::Other));
+    let check_name_len = |len: usize, exact| {
+        if (size as usize) < len || (exact && size as usize != len) {
+            return Err(Fail::new(libc::EINVAL, "bad socket name length"));
         }
-
-        // sockaddr_storage is zeroed prior to the call, so only copy relevant bytes.
-        ptr::copy_nonoverlapping::<u8>(saddr.cast(), sockaddr_storage.cast(), size as usize);
-        *len = size;
         Ok(())
-    }) }.map_err(|e| {
-        if e.kind() == io::ErrorKind::Other && init_error.is_some() {
-            init_error.expect("error is set")
-        } else {
-            let message: String = format!("back socket address: {:?}", e);
-            Fail::new(libc::EINVAL, &message)
-        }
-    }).map(|(_, addr)| addr)?;
+    };
 
-    match addr.as_socket() {
-        Some(addr) => Ok(addr),
+    check_name_len(std::mem::size_of::<AddressFamily>(), false)?;
+
+    let mut storage = std::mem::MaybeUninit::<SockAddrStorage>::zeroed();
+    let storage = unsafe {
+        ptr::copy_nonoverlapping::<u8>(saddr.cast(), storage.as_mut_ptr().cast(), size as usize);
+        storage.assume_init()
+    };
+
+    let expected_len = match storage.ss_family {
+        AF_INET => std::mem::size_of::<SockAddrIn>(),
+        AF_INET6 => std::mem::size_of::<SockAddrIn6>(),
+        _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
+    };
+
+    check_name_len(expected_len, true)?;
+
+    // Note Socket2 uses WinAPI create, so the storage type diverges, hence transmute.
+    let saddr = unsafe{ SockAddr::new(std::mem::transmute(storage), size) };
+
+    match saddr.as_socket() {
+        Some(saddr) => Ok(saddr),
         None => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
     }
 }
 
 #[test]
 fn test_sockaddr_to_socketaddr() {
-    // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
-
+    // Test IPv4 address
     const PORT: u16 = 80;
     const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
     const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
-
     let saddr = SockAddr::from(SADDR);
-
     match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
         Ok(SocketAddr::V4(addr)) => {
             assert_eq!(addr.port(), PORT);
@@ -845,17 +858,34 @@ fn test_sockaddr_to_socketaddr() {
         _ => panic!("failed to convert"),
     }
 
+    // Test IPv6 address
     const IPADDRV6: Ipv6Addr = Ipv6Addr::LOCALHOST;
     const SADDR6: SocketAddrV6 = SocketAddrV6::new(IPADDRV6, PORT, 0, 0);
-
     let saddr = SockAddr::from(SADDR6);
-
     match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
-    Ok(SocketAddr::V6(addr)) => {
-        assert_eq!(addr.port(), PORT);
-        assert_eq!(addr.ip(), &IPADDRV6);
-    },
-    _ => panic!("failed to convert"),
-}
+        Ok(SocketAddr::V6(addr)) => {
+            assert_eq!(addr.port(), PORT);
+            assert_eq!(addr.ip(), &IPADDRV6);
+        },
+        _ => panic!("failed to convert"),
+    }
 
+    // Test invalid socket size
+    let mut storage = unsafe{ std::mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
+    storage.ss_family = AF_INET;
+    match sockaddr_to_socketaddr(std::ptr::addr_of!(storage).cast(), std::mem::size_of::<AddressFamily>() as Socklen) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => panic!("expected sockaddr_to_socketaddr to fail with EINVAL"),
+    };
+
+    // Test invalid address family (using AF_APPLETALK, since it probably won't be supported in future)
+    assert!(saddr.len() as usize <= std::mem::size_of::<SockAddrStorage>());
+    unsafe { std::ptr::copy_nonoverlapping::<u8>(saddr.as_ptr().cast(),
+                                                 ptr::addr_of_mut!(storage).cast(),
+                                                 saddr.len() as usize); }
+    storage.ss_family = unsafe{ std::mem::transmute(5 as u16) };
+    match sockaddr_to_socketaddr(std::ptr::addr_of!(storage).cast(), saddr.len()) {
+        Err(e) if e.errno == libc::ENOTSUP => (),
+        _ => panic!("expected sockaddr_to_socketaddr to fail with ENOTSUP"),
+    };
 }
