@@ -56,7 +56,7 @@ export CARGO_FEATURES := --features=$(LIBOS)-libos
 
 # Switch for DPDK
 ifeq ($(LIBOS),catnip)
-DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5]"`" ] && echo mlx5 || echo mlx4)
+DRIVER ?= $(shell [ ! -z "`lspci | grep -E "ConnectX-[4,5,6]"`" ] && echo mlx5 || echo mlx4)
 CARGO_FEATURES += --features=$(DRIVER)
 endif
 
