@@ -416,7 +416,7 @@ impl CatloopLibOS {
         let queue: CatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
-            let task_name: String = format!("Catloop::connect for qd={:?}", qd);
+            let task_name: String = format!("Catloop::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         let qt: QToken = queue.push(coroutine)?;
@@ -457,7 +457,7 @@ impl CatloopLibOS {
         let queue: CatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
-            let task_name: String = format!("Catloop::connect for qd={:?}", qd);
+            let task_name: String = format!("Catloop::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         let qt: QToken = queue.pop(coroutine)?;
