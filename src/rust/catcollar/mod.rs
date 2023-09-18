@@ -162,7 +162,7 @@ impl CatcollarLibOS {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let local: SockAddrV4 = unwrap_socketaddr(local)?;
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard port.
         if local.port() == 0 {
