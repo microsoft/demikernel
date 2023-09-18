@@ -32,8 +32,10 @@ pub mod types;
 ///
 /// **Brief**
 ///
-/// Since IPv6 is not supported, this method simply unwraps a SocketAddr into a SocketAddrV4
-/// or returns an error indicating the address family is not supported.
+/// Since IPv6 is not supported, this method simply unwraps a SocketAddr into a 
+/// SocketAddrV4 or returns an error indicating the address family is not 
+/// supported. This method should be removed when IPv6 support is added; see 
+/// https://github.com/microsoft/demikernel/issues/935
 ///
 pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
     match addr {

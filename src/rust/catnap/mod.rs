@@ -143,8 +143,8 @@ impl SharedCatnapLibOS {
         timer!("catnap::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        // FIXME: IPv6 support
-        let local = unwrap_socketaddr(local)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
@@ -244,7 +244,9 @@ impl SharedCatnapLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        let remote = unwrap_socketaddr(remote)?;
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let me: Self = self.clone();
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Clone the self reference and move into the coroutine.
@@ -386,7 +388,8 @@ impl SharedCatnapLibOS {
         timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
 
-        let remote = unwrap_socketaddr(remote)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
         if buf.len() == 0 {
