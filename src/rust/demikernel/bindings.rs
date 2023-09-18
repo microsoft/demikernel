@@ -811,31 +811,35 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
 
 /// Converts a [sockaddr] into a [SocketAddr].
 fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddr, Fail> {
-    let check_name_len = |len: usize, exact| {
+    let check_name_len = |len: usize, exact: bool| {
         if (size as usize) < len || (exact && size as usize != len) {
             return Err(Fail::new(libc::EINVAL, "bad socket name length"));
         }
         Ok(())
     };
 
+    // Check that we can read at least the address family from the sockaddr.
     check_name_len(std::mem::size_of::<AddressFamily>(), false)?;
 
+    // Read up to size bytes from saddr into a SockAddrStorage, the type which socket2 can use.
     let mut storage = std::mem::MaybeUninit::<SockAddrStorage>::zeroed();
-    let storage = unsafe {
+    let storage: SockAddrStorage = unsafe {
         ptr::copy_nonoverlapping::<u8>(saddr.cast(), storage.as_mut_ptr().cast(), size as usize);
         storage.assume_init()
     };
 
-    let expected_len = match storage.ss_family {
+    let expected_len: usize = match storage.ss_family {
         AF_INET => std::mem::size_of::<SockAddrIn>(),
         AF_INET6 => std::mem::size_of::<SockAddrIn6>(),
         _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
     };
 
+    // Validate the socket name length is the size of the expected data structure.
     check_name_len(expected_len, true)?;
 
-    // Note Socket2 uses WinAPI create, so the storage type diverges, hence transmute.
-    let saddr = unsafe{ SockAddr::new(std::mem::transmute(storage), size) };
+    // Note Socket2 uses winapi crate versus windows crate used to deduce SockAddrStorage used above. These types have
+    // the same size/layout, hence the use of transmute. This is a no-op on platforms with proper libc support.
+    let saddr: SockAddr = unsafe{ SockAddr::new(std::mem::transmute(storage), size) };
 
     match saddr.as_socket() {
         Some(saddr) => Ok(saddr),

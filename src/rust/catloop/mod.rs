@@ -148,7 +148,8 @@ impl CatloopLibOS {
         timer!("catloop::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        let local = unwrap_socketaddr(local)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
@@ -285,11 +286,14 @@ impl CatloopLibOS {
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
         let queue: CatloopQueue = self.get_queue(&qd)?;
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         // Create connect coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {

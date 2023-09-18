@@ -161,7 +161,8 @@ impl CatcollarLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        let local = unwrap_socketaddr(local)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SockAddrV4 = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard port.
         if local.port() == 0 {
@@ -306,7 +307,8 @@ impl CatcollarLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
-        let remote = unwrap_socketaddr(remote)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let yielder: Yielder = Yielder::new();
         let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
@@ -515,7 +517,8 @@ impl CatcollarLibOS {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        let remote = unwrap_socketaddr(remote)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {

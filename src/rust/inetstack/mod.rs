@@ -228,7 +228,8 @@ impl<const N: usize> InetStack<N> {
         timer!("inetstack::bind");
         trace!("bind(): qd={:?} local={:?}", qd, local);
 
-        let local = unwrap_socketaddr(local)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => self.ipv4.tcp.bind(qd, local),
@@ -344,7 +345,8 @@ impl<const N: usize> InetStack<N> {
         timer!("inetstack::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
 
-        let remote = unwrap_socketaddr(remote)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         let task: OperationTask = match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => {
@@ -511,7 +513,8 @@ impl<const N: usize> InetStack<N> {
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
     pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddr) -> Result<OperationTask, Fail> {
-        let to = unwrap_socketaddr(to)?;
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let to: SocketAddrV4 = unwrap_socketaddr(to)?;
 
         match self.lookup_qtype(&qd) {
             Some(QType::UdpSocket) => {
