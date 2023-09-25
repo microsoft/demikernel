@@ -46,7 +46,7 @@ pub const AF_INET: windows::Win32::Networking::WinSock::ADDRESS_FAMILY = windows
 pub const AF_INET_VALUE: i32 = AF_INET.0 as i32;
 
 #[cfg(target_os = "windows")]
-pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM as i32;
+pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM.0 as i32;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::SOCKADDR_IN;

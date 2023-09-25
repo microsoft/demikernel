@@ -19,7 +19,7 @@ use windows::Win32::Networking::WinSock;
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
 
 #[cfg(target_os = "windows")]
-pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM as i32;
+pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM.0 as i32;
 
 #[cfg(target_os = "linux")]
 pub const AF_INET: i32 = libc::AF_INET;
@@ -136,11 +136,9 @@ fn create_socket_using_unsupported_type(libos: &mut LibOS) -> Result<()> {
     // Invalid socket types in Windows.
     #[cfg(target_os = "windows")]
     let socket_types: Vec<libc::c_int> = vec![
-        // WinSock::SOCK_DGRAM as i32,
-        WinSock::SOCK_RAW as i32,
-        WinSock::SOCK_RDM as i32,
-        WinSock::SOCK_SEQPACKET as i32,
-        // WinSock::SOCK_STREAM as i32,
+        WinSock::SOCK_RAW.0 as i32,
+        WinSock::SOCK_RDM.0 as i32,
+        WinSock::SOCK_SEQPACKET.0 as i32,
     ];
 
     // Attempt to create a TCP socket with all invalid socket types.
