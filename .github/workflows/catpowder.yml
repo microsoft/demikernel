@@ -2,6 +2,9 @@
 # Licensed under the MIT license.
 
 name: Main Catpowder
+concurrency:
+  group: catpowder
+  cancel-in-progress: false
 
 on:
   push:
