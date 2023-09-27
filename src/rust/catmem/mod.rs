@@ -24,12 +24,12 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        DemiRuntime,
         Operation,
         OperationResult,
         OperationTask,
         QDesc,
         QToken,
+        SharedDemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -52,7 +52,7 @@ use crate::timer;
 /// TODO: Add support for bi-directional memory queues.
 /// FIXME: https://github.com/microsoft/demikernel/issues/856
 pub struct CatmemLibOS {
-    runtime: DemiRuntime,
+    runtime: SharedDemiRuntime,
 }
 
 //======================================================================================================================
@@ -62,7 +62,7 @@ pub struct CatmemLibOS {
 /// Associated functions for Catmem LibOS.
 impl CatmemLibOS {
     /// Instantiates a new LibOS.
-    pub fn new(runtime: DemiRuntime) -> Self {
+    pub fn new(runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catmem::new");
         CatmemLibOS { runtime }
@@ -124,7 +124,7 @@ impl CatmemLibOS {
     }
 
     pub async fn close_coroutine(
-        mut runtime: DemiRuntime,
+        mut runtime: SharedDemiRuntime,
         queue: CatmemQueue,
         qd: QDesc,
         yielder: Yielder,
@@ -332,7 +332,7 @@ impl CatmemLibOS {
         Ok(self.runtime.get_qtable().get::<CatmemQueue>(qd)?.clone())
     }
 
-    pub fn get_runtime(&self) -> DemiRuntime {
+    pub fn get_runtime(&self) -> SharedDemiRuntime {
         #[cfg(feature = "profiler")]
         timer!("catmem::get_qtable");
         self.runtime.clone()

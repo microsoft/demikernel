@@ -41,12 +41,12 @@ use crate::{
             demi_qr_value_t,
             demi_qresult_t,
         },
-        DemiRuntime,
         Operation,
         OperationResult,
         OperationTask,
         QDesc,
         QToken,
+        SharedDemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -85,7 +85,7 @@ pub struct CatloopLibOS {
     /// Underlying transport.
     catmem: Rc<RefCell<CatmemLibOS>>,
     /// Underlying coroutine runtime.
-    runtime: DemiRuntime,
+    runtime: SharedDemiRuntime,
     /// Configuration.
     config: Config,
 }
@@ -96,7 +96,7 @@ pub struct CatloopLibOS {
 
 impl CatloopLibOS {
     /// Instantiates a new LibOS.
-    pub fn new(config: &Config, runtime: DemiRuntime) -> Self {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catloop::new");
         Self {
@@ -244,7 +244,7 @@ impl CatloopLibOS {
     /// the accept succeeds or fails.
     async fn accept_coroutine(
         qd: QDesc,
-        mut runtime: DemiRuntime,
+        mut runtime: SharedDemiRuntime,
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
         new_port: u16,
@@ -371,7 +371,7 @@ impl CatloopLibOS {
     /// and the underlying Catmem queue and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     async fn close_coroutine(
-        mut runtime: DemiRuntime,
+        mut runtime: SharedDemiRuntime,
         state: Rc<RefCell<CatloopRuntime>>,
         queue: CatloopQueue,
         qd: QDesc,
@@ -563,7 +563,7 @@ impl CatloopLibOS {
 //======================================================================================================================
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+fn pack_result(rt: &SharedDemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

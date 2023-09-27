@@ -64,7 +64,7 @@ use ::std::{
 //======================================================================================================================
 
 /// Demikernel Runtime
-pub struct DemiRuntimeInner {
+pub struct DemiRuntime {
     /// Scheduler
     scheduler: Scheduler,
     /// Shared IoQueueTable.
@@ -72,7 +72,7 @@ pub struct DemiRuntimeInner {
 }
 
 #[derive(Clone)]
-pub struct DemiRuntime(SharedObject<DemiRuntimeInner>);
+pub struct SharedDemiRuntime(SharedObject<DemiRuntime>);
 
 /// The SharedObject wraps an object that will be shared across coroutines.
 pub struct SharedObject<T>(Rc<T>);
@@ -81,14 +81,14 @@ pub struct SharedObject<T>(Rc<T>);
 // Associate Functions
 //======================================================================================================================
 
-impl DemiRuntime {
+impl SharedDemiRuntime {
     pub fn new() -> Self {
-        Self(SharedObject::new(DemiRuntimeInner::new()))
+        Self(SharedObject::new(DemiRuntime::new()))
     }
 }
 
 /// Associate Functions for POSIX Runtime
-impl DemiRuntimeInner {
+impl DemiRuntime {
     pub fn new() -> Self {
         Self {
             scheduler: Scheduler::default(),
@@ -176,7 +176,7 @@ impl<T> SharedObject<T> {
 //======================================================================================================================
 
 /// Memory Runtime Trait Implementation for POSIX Runtime
-impl MemoryRuntime for DemiRuntimeInner {}
+impl MemoryRuntime for DemiRuntime {}
 
 impl<T> Deref for SharedObject<T> {
     type Target = T;
@@ -199,15 +199,15 @@ impl<T> Clone for SharedObject<T> {
     }
 }
 
-impl Deref for DemiRuntime {
-    type Target = DemiRuntimeInner;
+impl Deref for SharedDemiRuntime {
+    type Target = DemiRuntime;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for DemiRuntime {
+impl DerefMut for SharedDemiRuntime {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

@@ -48,9 +48,9 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        DemiRuntime,
         QDesc,
         QToken,
+        SharedDemiRuntime,
         SharedObject,
     },
     scheduler::{
@@ -84,7 +84,7 @@ use crate::timer;
 /// TODO: Move [qtable] into [runtime] so all state is contained in the PosixRuntime.
 pub struct CatnapLibOS {
     /// Underlying runtime.
-    runtime: DemiRuntime,
+    runtime: SharedDemiRuntime,
 }
 
 #[derive(Clone)]
@@ -95,7 +95,7 @@ pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS>);
 //======================================================================================================================
 
 impl CatnapLibOS {
-    pub fn new(_config: &Config, runtime: DemiRuntime) -> Self {
+    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
         Self { runtime }
     }
 }
@@ -103,7 +103,7 @@ impl CatnapLibOS {
 /// Associate Functions for Catnap LibOS
 impl SharedCatnapLibOS {
     /// Instantiates a Catnap LibOS.
-    pub fn new(_config: &Config, runtime: DemiRuntime) -> Self {
+    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catnap::new");
         Self(SharedObject::new(CatnapLibOS::new(_config, runtime)))
@@ -574,7 +574,7 @@ impl DerefMut for SharedCatnapLibOS {
 //==============================================================================
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(rt: &DemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+fn pack_result(rt: &SharedDemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

@@ -24,9 +24,9 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        DemiRuntime,
         QDesc,
         QToken,
+        SharedDemiRuntime,
     },
     scheduler::TaskHandle,
 };
@@ -86,7 +86,7 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-        let runtime: DemiRuntime = DemiRuntime::new();
+        let runtime: SharedDemiRuntime = SharedDemiRuntime::new();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {

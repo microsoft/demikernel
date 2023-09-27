@@ -26,8 +26,8 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        DemiRuntime,
         OperationResult,
+        SharedDemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -305,7 +305,7 @@ impl Socket {
         if let Some(qd) = catmem_qd {
             let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
             socket.borrow_mut().state.prepare(SocketOp::Closed)?;
-            let runtime: DemiRuntime = socket.borrow().catmem.borrow().get_runtime();
+            let runtime: SharedDemiRuntime = socket.borrow().catmem.borrow().get_runtime();
             match CatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
                 (qd, OperationResult::Close) => {
                     socket.borrow_mut().state.commit();
