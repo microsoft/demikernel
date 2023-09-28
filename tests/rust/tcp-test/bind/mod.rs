@@ -63,7 +63,7 @@ pub fn run(libos: &mut LibOS, local: &IpAddr) -> Vec<(String, String, Result<(),
 /// Attempts to bind an address to an invalid queue_descriptor.
 fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
     // Bind address.
-    let addr: SocketAddr = { 
+    let addr: SocketAddr = {
         let http_port: u16 = 6379;
         SocketAddr::new(*local, http_port)
     };

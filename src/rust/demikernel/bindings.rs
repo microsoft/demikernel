@@ -822,7 +822,7 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<Socke
     check_name_len(mem::size_of::<AddressFamily>(), false)?;
 
     // Read up to size bytes from saddr into a SockAddrStorage, the type which socket2 can use.
-    let mut storage: mem::MaybeUninit<libc::sockaddr_storage> = mem::MaybeUninit::<SockAddrStorage>::zeroed();
+    let mut storage: mem::MaybeUninit<SockAddrStorage> = mem::MaybeUninit::<SockAddrStorage>::zeroed();
     let storage: SockAddrStorage = unsafe {
         ptr::copy_nonoverlapping::<u8>(saddr.cast(), storage.as_mut_ptr().cast(), size as usize);
         storage.assume_init()
