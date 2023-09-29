@@ -11,7 +11,9 @@ use demikernel::{
     QDesc,
 };
 use std::net::{
+    IpAddr,
     Ipv4Addr,
+    SocketAddr,
     SocketAddrV4,
 };
 
@@ -36,7 +38,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Drives integration tests for bind() on TCP sockets.
-pub fn run(libos: &mut LibOS, local: &Ipv4Addr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(libos: &mut LibOS, local: &IpAddr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(
@@ -59,11 +61,11 @@ pub fn run(libos: &mut LibOS, local: &Ipv4Addr) -> Vec<(String, String, Result<(
 }
 
 /// Attempts to bind an address to an invalid queue_descriptor.
-fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let http_port: u16 = 6379;
-        SocketAddrV4::new(*local, http_port)
+        SocketAddr::new(*local, http_port)
     };
 
     // Fail to bind socket.
@@ -77,23 +79,23 @@ fn bind_addr_to_invalid_queue_descriptor(libos: &mut LibOS, local: &Ipv4Addr) ->
 }
 
 /// Attempts to bind multiple addresses to the same socket.
-fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let any_port: u16 = 6739;
-        SocketAddrV4::new(*local, any_port)
+        SocketAddr::new(*local, any_port)
     };
 
     // Bind socket.
     libos.bind(sockqd, addr)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let any_port: u16 = 6780;
-        SocketAddrV4::new(*local, any_port)
+        SocketAddr::new(*local, any_port)
     };
 
     // Fail to bind socket.
@@ -110,15 +112,15 @@ fn bind_multiple_addresses_to_same_socket(libos: &mut LibOS, local: &Ipv4Addr) -
 }
 
 /// Attempts to bind the same address to two sockets.
-fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
     // Create two TCP sockets.
     let sockqd1: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let sockqd2: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let http_port: u16 = 8080;
-        SocketAddrV4::new(*local, http_port)
+        SocketAddr::new(*local, http_port)
     };
 
     // Bind first socket.
@@ -138,14 +140,14 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &Ipv4Addr) -> Resu
 }
 
 /// Attempts to bind to all private ports.
-fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
+fn bind_to_private_ports(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
     // Traverse all ports in the private range.
     for port in 49152..65535 {
         // Create a TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
         // Bind socket.
-        let addr: SocketAddrV4 = SocketAddrV4::new(*local, port);
+        let addr: SocketAddr = SocketAddr::new(*local, port);
         match libos.bind(sockqd, addr) {
             Ok(()) => (),
             Err(e) if e.errno == libc::EADDRINUSE => (),
@@ -160,12 +162,12 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &Ipv4Addr) -> Result<()> {
 }
 
 /// Attempts to bind to the wildcard port.
-fn bind_to_wildcard_port(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_to_wildcard_port(libos: &mut LibOS, ip: &IpAddr) -> Result<()> {
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = SocketAddrV4::new(*ipv4, 0);
+    let addr: SocketAddr = SocketAddr::new(*ip, 0);
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
@@ -187,10 +189,10 @@ fn bind_to_wildcard_address(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = SocketAddr::V4({
         let port: u16 = 8080;
         SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port)
-    };
+    });
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/189
@@ -212,7 +214,7 @@ fn bind_to_wildcard_address_and_port(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
+    let addr: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
 
     // Fail to bind socket.
     // FIXME: https://github.com/demikernel/demikernel/issues/582
@@ -235,10 +237,10 @@ fn bind_to_non_local_address(libos: &mut LibOS) -> Result<()> {
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let ip: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
         let port: u16 = 8080;
-        SocketAddrV4::new(ip, port)
+        SocketAddr::V4(SocketAddrV4::new(ip, port))
     };
 
     // Fail to bind socket.
@@ -255,14 +257,14 @@ fn bind_to_non_local_address(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to bind to a closed socket.
-fn bind_to_closed_socket(libos: &mut LibOS, ipv4: &Ipv4Addr) -> Result<()> {
+fn bind_to_closed_socket(libos: &mut LibOS, ip: &IpAddr) -> Result<()> {
     // Create a TCP socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
     // Bind address.
-    let addr: SocketAddrV4 = {
+    let addr: SocketAddr = {
         let port: u16 = 8080;
-        SocketAddrV4::new(*ipv4, port)
+        SocketAddr::new(*ip, port)
     };
 
     // Close socket.

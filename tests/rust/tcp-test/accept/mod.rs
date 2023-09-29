@@ -13,7 +13,7 @@ use demikernel::{
     QToken,
 };
 use std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     time::Duration,
 };
 
@@ -38,7 +38,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 /// Runs standalone tests.
-pub fn run(libos: &mut LibOS, addr: &SocketAddrV4) -> Vec<(String, String, Result<(), anyhow::Error>)> {
+pub fn run(libos: &mut LibOS, addr: &SocketAddr) -> Vec<(String, String, Result<(), anyhow::Error>)> {
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
 
     crate::collect!(result, crate::test!(accept_invalid_queue_descriptor(libos)));
@@ -83,7 +83,7 @@ fn accept_unbound_socket(libos: &mut LibOS) -> Result<()> {
 }
 
 /// Attempts to accept connections on a TCP socket that is not listening.
-fn accept_active_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn accept_active_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create a bound socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -102,7 +102,7 @@ fn accept_active_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
 }
 
 /// Attempts to accept connections on a TCP socket that is listening.
-fn accept_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn accept_listening_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -139,7 +139,7 @@ fn accept_listening_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 }
 
 /// Attempts to accept connections on a TCP socket that is connecting.
-fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<()> {
+fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> {
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
@@ -185,7 +185,7 @@ fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddrV4) -> Result<
 
 /// Attempts to accept connections on a TCP socket that is already accepting connections.
 /// TODO: Check if this is actually not allowed.
-fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create an accepting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;
@@ -228,7 +228,7 @@ fn accept_accepting_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()
 }
 
 /// Attempts to accept connections on a TCP socket that is closed.
-fn accept_closed_socket(libos: &mut LibOS, local: &SocketAddrV4) -> Result<()> {
+fn accept_closed_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> {
     // Create a closed socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     libos.bind(sockqd, local.to_owned())?;

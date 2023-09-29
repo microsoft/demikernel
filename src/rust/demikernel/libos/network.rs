@@ -18,7 +18,7 @@ use crate::{
     },
     scheduler::TaskHandle,
 };
-use ::std::net::SocketAddrV4;
+use ::std::net::SocketAddr;
 
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
@@ -77,7 +77,7 @@ impl NetworkLibOS {
     }
 
     /// Binds a socket to a local address.
-    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.bind(sockqd, local),
@@ -140,7 +140,7 @@ impl NetworkLibOS {
     }
 
     /// Initiates a connection with a remote TCP peer.
-    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.connect(sockqd, remote),
@@ -203,7 +203,7 @@ impl NetworkLibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
-    pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.pushto(sockqd, sga, to),

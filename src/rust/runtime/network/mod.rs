@@ -5,8 +5,15 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::memory::DemiBuffer;
+use crate::runtime::{
+    Fail,
+    memory::DemiBuffer
+};
 use ::arrayvec::ArrayVec;
+use ::std::net::{
+    SocketAddr,
+    SocketAddrV4
+};
 
 //==============================================================================
 // Exports
@@ -21,6 +28,21 @@ pub mod types;
 //==============================================================================
 // Traits
 //==============================================================================
+
+///
+/// **Brief**
+///
+/// Since IPv6 is not supported, this method simply unwraps a SocketAddr into a 
+/// SocketAddrV4 or returns an error indicating the address family is not 
+/// supported. This method should be removed when IPv6 support is added; see 
+/// https://github.com/microsoft/demikernel/issues/935
+///
+pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
+    match addr {
+        SocketAddr::V4(addr) => Ok(addr),
+        _ => Err(Fail::new(libc::EINVAL, "bad address family"))
+    }
+}
 
 /// Packet Buffer
 pub trait PacketBuf {

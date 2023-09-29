@@ -16,7 +16,7 @@ use ::demikernel::{
 };
 use ::std::{
     env,
-    net::SocketAddrV4,
+    net::SocketAddr,
     slice,
     str::FromStr,
     u8,
@@ -121,7 +121,7 @@ fn accept_and_wait(libos: &mut LibOS, sockqd: QDesc) -> Result<QDesc> {
 //======================================================================================================================
 
 /// Connects to a remote socket and wait for the operation to complete.
-fn connect_and_wait(libos: &mut LibOS, sockqd: QDesc, remote: SocketAddrV4) -> Result<()> {
+fn connect_and_wait(libos: &mut LibOS, sockqd: QDesc, remote: SocketAddr) -> Result<()> {
     let qt: QToken = match libos.connect(sockqd, remote) {
         Ok(qt) => qt,
         Err(e) => anyhow::bail!("connect failed: {:?}", e),
@@ -230,7 +230,7 @@ impl TcpServer {
         });
     }
 
-    pub fn run(&mut self, local: SocketAddrV4, nrounds: usize) -> Result<()> {
+    pub fn run(&mut self, local: SocketAddr, nrounds: usize) -> Result<()> {
         if let Err(e) = self.libos.bind(self.sockqd, local) {
             anyhow::bail!("bind failed: {:?}", e)
         };
@@ -342,7 +342,7 @@ impl TcpClient {
         });
     }
 
-    fn run(&mut self, remote: SocketAddrV4, nrounds: usize) -> Result<()> {
+    fn run(&mut self, remote: SocketAddr, nrounds: usize) -> Result<()> {
         if let Err(e) = connect_and_wait(&mut self.libos, self.sockqd, remote) {
             anyhow::bail!("connect and wait failed: {:?}", e);
         }
@@ -434,7 +434,7 @@ pub fn main() -> Result<()> {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
         };
-        let sockaddr: SocketAddrV4 = SocketAddrV4::from_str(&args[2])?;
+        let sockaddr: SocketAddr = SocketAddr::from_str(&args[2])?;
 
         // Invoke the appropriate peer.
         if args[1] == "--server" {

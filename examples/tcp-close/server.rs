@@ -21,7 +21,7 @@ use std::{
         HashMap,
         HashSet,
     },
-    net::SocketAddrV4,
+    net::SocketAddr,
 };
 
 //======================================================================================================================
@@ -72,7 +72,7 @@ pub struct TcpServer {
 
 impl TcpServer {
     /// Creates a new TCP server.
-    pub fn new(mut libos: LibOS, local: SocketAddrV4, should_async_close: bool) -> Result<Self> {
+    pub fn new(mut libos: LibOS, local: SocketAddr, should_async_close: bool) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 

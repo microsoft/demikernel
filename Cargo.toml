@@ -38,6 +38,7 @@ libc = "0.2.147"
 log = "0.4.20"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
+socket2 = "0.4.7"
 yaml-rust = "0.4.5"
 x86 = "0.52.0"
 
@@ -53,8 +54,6 @@ windows = { version = "0.44.0", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
 ] }
-# Provides the Rust socket API for Windows.
-socket2 = "0.4.7"
 
 #=======================================================================================================================
 # Targets

@@ -39,6 +39,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
+        network::unwrap_socketaddr,
         queue::{
             downcast_queue_ptr,
             IoQueueTable,
@@ -69,7 +70,10 @@ use ::std::{
         RefCell,
     },
     mem,
-    net::SocketAddrV4,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     os::unix::prelude::RawFd,
     pin::Pin,
     rc::Rc,
@@ -154,8 +158,12 @@ impl CatcollarLibOS {
     }
 
     /// Binds a socket to a local endpoint.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
+
         // Check if we are binding to the wildcard port.
         if local.port() == 0 {
             let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
@@ -295,10 +303,12 @@ impl CatcollarLibOS {
     }
 
     /// Establishes a connection to a remote endpoint.
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // Issue connect operation.
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let yielder: Yielder = Yielder::new();
         let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
@@ -504,8 +514,11 @@ impl CatcollarLibOS {
     }
 
     /// Pushes a scatter-gather array to a socket.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         match self.runtime.clone_sgarray(sga) {
             Ok(buf) => {

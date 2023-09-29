@@ -11,12 +11,17 @@ use crate::{
         LibOS,
     },
     pal::{
-        constants::AF_INET,
-        data_structures::{
-            SockAddrIn,
-            Socklen,
+        constants::{
+            AF_INET,
+            AF_INET6,
         },
-        functions::get_addr_from_sock_addr_in,
+        data_structures::{
+            AddressFamily,
+            SockAddrIn,
+            SockAddrIn6,
+            SockAddrStorage,
+            Socklen
+        },
     },
     runtime::{
         fail::Fail,
@@ -40,16 +45,22 @@ use ::std::{
     cell::RefCell,
     ffi::CStr,
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddr,
     ptr,
     slice,
     time::{
         Duration,
         SystemTime,
     },
+};
+use ::socket2::SockAddr;
+
+#[cfg(test)]
+use ::std::net::{
+        Ipv4Addr,
+        Ipv6Addr,
+        SocketAddrV4,
+        SocketAddrV6,
 };
 
 //======================================================================================================================
@@ -221,13 +232,8 @@ pub extern "C" fn demi_bind(qd: c_int, saddr: *const sockaddr, size: Socklen) ->
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_bind() failed: {:?}", e);
@@ -336,13 +342,8 @@ pub extern "C" fn demi_connect(
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_connect() failed: {:?}", e);
@@ -421,15 +422,10 @@ pub extern "C" fn demi_pushto(
         return libc::EINVAL;
     }
 
-    // Check if socket address length is invalid.
-    if size as usize != mem::size_of::<SockAddrIn>() {
-        return libc::EINVAL;
-    }
-
     let sga: &demi_sgarray_t = unsafe { &*sga };
 
     // Get socket address.
-    let endpoint: SocketAddrV4 = match sockaddr_to_socketaddrv4(saddr) {
+    let endpoint: SocketAddr = match sockaddr_to_socketaddr(saddr, size) {
         Ok(endpoint) => endpoint,
         Err(e) => {
             trace!("demi_pushto() failed: {:?}", e);
@@ -813,45 +809,101 @@ fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
     }
 }
 
-/// Converts a [sockaddr] into a [SocketAddrV4].
-fn sockaddr_to_socketaddrv4(saddr: *const sockaddr) -> Result<SocketAddrV4, Fail> {
-    // TODO: Change the logic below and rename this function once we support V6 addresses as well.
-    let sin: SockAddrIn = unsafe {
-        let ptr: *const SockAddrIn = saddr.cast::<SockAddrIn>();
-        ptr.read_unaligned()
+/// Converts a [sockaddr] into a [SocketAddr].
+fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<SocketAddr, Fail> {
+    let check_name_len = |len: usize, exact: bool| {
+        if (size as usize) < len || (exact && size as usize != len) {
+            return Err(Fail::new(libc::EINVAL, "bad socket name length"));
+        }
+        Ok(())
     };
-    if sin.sin_family != AF_INET {
-        return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
+
+    // Check that we can read at least the address family from the sockaddr.
+    check_name_len(mem::size_of::<AddressFamily>(), false)?;
+
+    // Read up to size bytes from saddr into a SockAddrStorage, the type which socket2 can use.
+    let mut storage: mem::MaybeUninit<SockAddrStorage> = mem::MaybeUninit::<SockAddrStorage>::zeroed();
+    let storage: SockAddrStorage = unsafe {
+        ptr::copy_nonoverlapping::<u8>(saddr.cast(), storage.as_mut_ptr().cast(), size as usize);
+        storage.assume_init()
     };
-    let addr: Ipv4Addr = Ipv4Addr::from(u32::from_be(get_addr_from_sock_addr_in(&sin)));
-    let port: u16 = u16::from_be(sin.sin_port);
-    Ok(SocketAddrV4::new(addr, port))
+
+    let expected_len: usize = match storage.ss_family {
+        AF_INET => mem::size_of::<SockAddrIn>(),
+        AF_INET6 => mem::size_of::<SockAddrIn6>(),
+        _ => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
+    };
+
+    // Validate the socket name length is the size of the expected data structure.
+    check_name_len(expected_len, true)?;
+
+    // Note Socket2 uses winapi crate versus windows crate used to deduce SockAddrStorage used above. These types have
+    // the same size/layout, hence the use of transmute. This is a no-op on platforms with proper libc support.
+    let saddr: SockAddr = unsafe{ SockAddr::new(mem::transmute(storage), size) };
+
+    match saddr.as_socket() {
+        Some(saddr) => Ok(saddr),
+        None => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
+    }
 }
 
 #[test]
-fn test_sockaddr_to_socketaddrv4() {
-    // TODO: assign something meaningful to sa_family and check it once we support V6 addresses as well.
-
-    // SocketAddrV4: 127.0.0.1:80
-    #[cfg(target_os = "linux")]
-    let saddr: crate::pal::data_structures::SockAddr = {
-        sockaddr {
-            sa_family: crate::pal::constants::AF_INET_VALUE as u16,
-            sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        }
-    };
-
-    #[cfg(target_os = "windows")]
-    let saddr: libc::sockaddr = libc::sockaddr {
-        sa_family: crate::pal::constants::AF_INET_VALUE as u16,
-        sa_data: [0, 80, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-    };
-
-    match sockaddr_to_socketaddrv4(&saddr) {
-        Ok(addr) => {
-            assert_eq!(addr.port(), 80);
-            assert_eq!(addr.ip(), &Ipv4Addr::new(127, 0, 0, 1));
+fn test_sockaddr_to_socketaddr() {
+    // Test IPv4 address
+    const PORT: u16 = 80;
+    const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+    const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
+    let saddr: SockAddr = SockAddr::from(SADDR);
+    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
+        Ok(SocketAddr::V4(addr)) => {
+            assert_eq!(addr.port(), PORT);
+            assert_eq!(addr.ip(), &IPADDR);
         },
         _ => panic!("failed to convert"),
     }
+
+    // Test IPv6 address
+    const IPADDRV6: Ipv6Addr = Ipv6Addr::LOCALHOST;
+    const SADDR6: SocketAddrV6 = SocketAddrV6::new(IPADDRV6, PORT, 0, 0);
+    let saddr: SockAddr = SockAddr::from(SADDR6);
+    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
+        Ok(SocketAddr::V6(addr)) => {
+            assert_eq!(addr.port(), PORT);
+            assert_eq!(addr.ip(), &IPADDRV6);
+        },
+        _ => panic!("failed to convert"),
+    }
+}
+
+#[test]
+fn test_sockaddr_to_socketaddr_failure() {
+    const PORT: u16 = 80;
+    const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+    const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
+    let saddr: SockAddr = SockAddr::from(SADDR);
+
+    // Test invalid socket size
+    let mut storage = unsafe{ mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
+    storage.ss_family = AF_INET;
+    match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), mem::size_of::<AddressFamily>() as Socklen) {
+        Err(e) if e.errno == libc::EINVAL => (),
+        _ => panic!("expected sockaddr_to_socketaddr to fail with EINVAL"),
+    };
+
+    // NB AF_APPLETALK is not supported consistently between win/linux, so redefine here.
+    #[cfg(target_os = "windows")]
+    const AF_APPLETALK: u16 = windows::Win32::Networking::WinSock::AF_APPLETALK;
+    #[cfg(target_os = "linux")]
+    const AF_APPLETALK: u16 = libc::AF_APPLETALK as u16;
+
+    // Test invalid address family (using AF_APPLETALK, since it probably won't be supported in future)
+    assert!(saddr.len() as usize <= mem::size_of::<SockAddrStorage>());
+    unsafe { ptr::copy_nonoverlapping::<u8>(saddr.as_ptr().cast(),
+                                            ptr::addr_of_mut!(storage).cast(),
+                                            saddr.len() as usize); }
+    storage.ss_family = unsafe{ mem::transmute(AF_APPLETALK) };
+    match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), saddr.len()) {
+        Err(e) if e.errno == libc::ENOTSUP => (),
+        _ => panic!("expected sockaddr_to_socketaddr to fail with ENOTSUP"),
+    };
 }

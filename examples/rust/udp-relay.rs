@@ -23,7 +23,7 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     str::FromStr,
     time::{
         Duration,
@@ -50,10 +50,10 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 /// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Local socket IPv4 address.
-    local: SocketAddrV4,
-    /// Remote socket IPv4 address.
-    remote: SocketAddrV4,
+    /// Local socket address.
+    local: SocketAddr,
+    /// Remote socket address.
+    remote: SocketAddr,
 }
 
 /// Associate functions for Program Arguments
@@ -88,8 +88,8 @@ impl ProgramArguments {
 
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddrV4::from_str(Self::DEFAULT_LOCAL)?,
-            remote: SocketAddrV4::from_str(Self::DEFAULT_REMOTE)?,
+            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
+            remote: SocketAddr::from_str(Self::DEFAULT_REMOTE)?,
         };
 
         // Local address.
@@ -106,24 +106,24 @@ impl ProgramArguments {
     }
 
     /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddrV4 {
+    pub fn get_local(&self) -> SocketAddr {
         self.local
     }
 
     /// Returns the remote endpoint address parameter stored in the target program arguments.
-    pub fn get_remote(&self) -> SocketAddrV4 {
+    pub fn get_remote(&self) -> SocketAddr {
         self.remote
     }
 
     /// Sets the local address and port number parameters in the target program arguments.
     fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddrV4::from_str(addr)?;
+        self.local = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
     /// Sets the remote address and port number parameters in the target program arguments.
     fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote = SocketAddrV4::from_str(addr)?;
+        self.remote = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
@@ -139,7 +139,7 @@ struct Application {
     // Local socket descriptor.
     sockqd: QDesc,
     /// Remote endpoint.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
 }
 
 /// Associated Functions for the Application
@@ -150,8 +150,8 @@ impl Application {
     /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
-        let local: SocketAddrV4 = args.get_local();
-        let remote: SocketAddrV4 = args.get_remote();
+        let local: SocketAddr = args.get_local();
+        let remote: SocketAddr = args.get_remote();
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {

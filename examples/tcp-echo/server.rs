@@ -21,7 +21,7 @@ use std::{
         HashMap,
         HashSet,
     },
-    net::SocketAddrV4,
+    net::SocketAddr,
     time::{
         Duration,
         Instant,
@@ -64,7 +64,7 @@ pub struct TcpEchoServer {
 
 impl TcpEchoServer {
     /// Instantiates a new TCP echo server.
-    pub fn new(mut libos: LibOS, local: SocketAddrV4) -> Result<Self> {
+    pub fn new(mut libos: LibOS, local: SocketAddr) -> Result<Self> {
         // Create a TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 

@@ -27,6 +27,7 @@ use ::std::mem;
 use ::std::{
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
     },
     str::FromStr,
@@ -64,7 +65,7 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 #[derive(Debug)]
 pub struct ProgramArguments {
     /// Local socket IPv4 address.
-    local: SocketAddrV4,
+    local: SocketAddr,
 }
 
 /// Associate functions for Program Arguments
@@ -89,7 +90,7 @@ impl ProgramArguments {
 
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddrV4::from_str(Self::DEFAULT_LOCAL)?,
+            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
         };
 
         // Local address.
@@ -101,13 +102,13 @@ impl ProgramArguments {
     }
 
     /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddrV4 {
+    pub fn get_local(&self) -> SocketAddr {
         self.local
     }
 
     /// Sets the local address and port number parameters in the target program arguments.
     fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddrV4::from_str(addr)?;
+        self.local = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
@@ -132,7 +133,7 @@ impl Application {
     /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
-        let local: SocketAddrV4 = args.get_local();
+        let local: SocketAddr = args.get_local();
 
         // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET_VALUE, SOCK_DGRAM, 0) {
@@ -192,9 +193,9 @@ impl Application {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    let saddr: SocketAddrV4 = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr })
+                    let saddr: SocketAddr = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr })
                     {
-                        Ok(saddr) => saddr,
+                        Ok(saddr) => SocketAddr::V4(saddr),
                         Err(e) => {
                             // If error, free scatter-gather array.
                             if let Err(e) = self.libos.sgafree(sga) {

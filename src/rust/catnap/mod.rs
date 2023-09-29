@@ -48,6 +48,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        network::unwrap_socketaddr,
         QDesc,
         QToken,
         SharedDemiRuntime,
@@ -63,6 +64,7 @@ use ::std::{
     net::{
         Ipv4Addr,
         SocketAddrV4,
+        SocketAddr,
     },
     ops::{
         Deref,
@@ -136,10 +138,13 @@ impl SharedCatnapLibOS {
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedCatnapQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
@@ -235,10 +240,13 @@ impl SharedCatnapLibOS {
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let me: Self = self.clone();
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Clone the self reference and move into the coroutine.
@@ -375,10 +383,14 @@ impl SharedCatnapLibOS {
     /// Synchronous code to pushto [buf] to [remote] on a SharedCatnapQueue and its underlying POSIX socket. This
     /// function schedules the coroutine that asynchronously runs the pushto and any synchronous multi-queue
     /// functionality after pushto begins.
-    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddrV4) -> Result<QToken, Fail> {
+    pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
+
+        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
+
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));

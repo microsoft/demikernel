@@ -23,7 +23,7 @@ use ::demikernel::{
     QToken,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::SocketAddr,
     slice,
     str::FromStr,
     time::{
@@ -52,7 +52,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 #[derive(Debug)]
 pub struct ProgramArguments {
     /// Remote socket IPv4 address.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
     /// Buffer size (in bytes).
     bufsize: usize,
     /// Injection rate (in micro-seconds).
@@ -101,7 +101,7 @@ impl ProgramArguments {
 
         // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            remote: SocketAddrV4::from_str(Self::DEFAULT_REMOTE)?,
+            remote: SocketAddr::from_str(Self::DEFAULT_REMOTE)?,
             bufsize: Self::DEFAULT_BUFSIZE,
             injection_rate: Self::DEFAULT_INJECTION_RATE,
         };
@@ -125,7 +125,7 @@ impl ProgramArguments {
     }
 
     /// Returns the remote endpoint address parameter stored in the target program arguments.
-    pub fn get_remote(&self) -> SocketAddrV4 {
+    pub fn get_remote(&self) -> SocketAddr {
         self.remote
     }
 
@@ -141,7 +141,7 @@ impl ProgramArguments {
 
     /// Sets the remote address and port number parameters in the target program arguments.
     fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote = SocketAddrV4::from_str(addr)?;
+        self.remote = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
@@ -192,7 +192,7 @@ impl Application {
     /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
         // Extract arguments.
-        let remote: SocketAddrV4 = args.get_remote();
+        let remote: SocketAddr = args.get_remote();
         let bufsize: usize = args.get_bufsize();
         let injection_rate: u64 = args.get_injection_rate();
 

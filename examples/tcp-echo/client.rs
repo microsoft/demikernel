@@ -18,7 +18,7 @@ use demikernel::{
 };
 use std::{
     collections::HashMap,
-    net::SocketAddrV4,
+    net::SocketAddr,
     slice,
     time::{
         Duration,
@@ -57,7 +57,7 @@ pub struct TcpEchoClient {
     /// Set of connected clients.
     clients: HashMap<QDesc, (Vec<u8>, usize)>,
     /// Address of remote peer.
-    remote: SocketAddrV4,
+    remote: SocketAddr,
     /// List of pending operations.
     qts: Vec<QToken>,
     /// Reverse lookup table of pending operations.
@@ -70,7 +70,7 @@ pub struct TcpEchoClient {
 
 impl TcpEchoClient {
     /// Instantiates a new TCP echo client.
-    pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddrV4) -> Result<Self> {
+    pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddr) -> Result<Self> {
         return Ok(Self {
             libos,
             bufsize,
