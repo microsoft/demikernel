@@ -8,7 +8,7 @@
 use crate::{
     catmem::{
         queue::CatmemQueue,
-        CatmemLibOS,
+        SharedCatmemLibOS,
     },
     runtime::{
         fail::Fail,
@@ -74,7 +74,7 @@ pub struct Socket {
     /// The state of the socket.
     state: SocketStateMachine,
     /// Underlying Catmem LibOS.
-    catmem: Rc<RefCell<CatmemLibOS>>,
+    catmem: SharedCatmemLibOS,
     /// Underlying shared memory pipe.
     catmem_qd: Option<QDesc>,
     /// The local address to which the socket is bound.
@@ -89,7 +89,7 @@ pub struct Socket {
 
 impl Socket {
     /// Creates a new socket that is not bound to an address.
-    pub fn new(catmem: Rc<RefCell<CatmemLibOS>>) -> Result<Self, Fail> {
+    pub fn new(catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
         Ok(Self {
             state: SocketStateMachine::new_unbound(libc::SOCK_STREAM),
             catmem,
@@ -101,7 +101,7 @@ impl Socket {
 
     /// Allocates a new socket that is bound to [local].
     fn alloc(
-        catmem: Rc<RefCell<CatmemLibOS>>,
+        catmem: SharedCatmemLibOS,
         catmem_qd: QDesc,
         local: Option<SocketAddrV4>,
         remote: Option<SocketAddrV4>,
@@ -122,7 +122,7 @@ impl Socket {
         // Create underlying memory channels.
         let ipv4: &Ipv4Addr = local.ip();
         let port: u16 = local.port();
-        self.catmem_qd = match self.catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port)) {
+        self.catmem_qd = match self.catmem.create_pipe(&format_pipe_str(ipv4, port)) {
             Ok(qd) => {
                 self.state.commit();
                 Some(qd)
@@ -159,7 +159,7 @@ impl Socket {
         yielder: &Yielder,
     ) -> Result<Self, Fail> {
         socket.borrow_mut().state.prepare(SocketOp::Accepted)?;
-        let catmem: Rc<RefCell<CatmemLibOS>> = socket.borrow().catmem.clone();
+        let mut catmem: SharedCatmemLibOS = socket.borrow().catmem.clone();
         let catmem_qd: QDesc = socket
             .borrow()
             .catmem_qd
@@ -167,10 +167,10 @@ impl Socket {
         loop {
             socket.borrow_mut().state.may_accept()?;
             // Grab next request from the control duplex pipe.
-            let new_qd: QDesc = match pop_magic_number(catmem.clone(), catmem_qd, &yielder).await {
+            let new_qd: QDesc = match pop_magic_number(&mut catmem, catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
                 // and sending the port number to the remote.
-                Ok(true) => match create_pipe(catmem.clone(), catmem_qd, &ipv4, new_port, &yielder).await {
+                Ok(true) => match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
                     Ok(new_qd) => new_qd,
                     Err(e) => {
                         socket.borrow_mut().state.rollback();
@@ -189,7 +189,7 @@ impl Socket {
             let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(*ipv4, new_port)));
 
             // Check that the remote has retrieved the port number and responded with a magic number.
-            match pop_magic_number(catmem.clone(), new_qd, &yielder).await {
+            match pop_magic_number(&mut catmem, new_qd, &yielder).await {
                 // Valid response. Connection successfully established, so return new port and pipe to application.
                 Ok(true) => {
                     socket.borrow_mut().state.commit();
@@ -198,7 +198,7 @@ impl Socket {
                 // Invalid response.
                 Ok(false) => {
                     // Clean up newly allocated duplex pipe.
-                    catmem.borrow_mut().close(new_qd)?;
+                    catmem.close(new_qd)?;
                     continue;
                 },
                 // Some error.
@@ -223,12 +223,12 @@ impl Socket {
         socket.borrow_mut().state.prepare(SocketOp::Connected)?;
         let ipv4: &Ipv4Addr = remote.ip();
         let port: u16 = remote.port().into();
-        let catmem: Rc<RefCell<CatmemLibOS>> = socket.borrow().catmem.clone();
+        let mut catmem: SharedCatmemLibOS = socket.borrow().catmem.clone();
 
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
         let result: Result<(QDesc, SocketAddrV4), Fail> = {
-            let new_port: u16 = match get_port(catmem.clone(), ipv4, port, yielder).await {
+            let new_port: u16 = match get_port(&mut catmem, ipv4, port, yielder).await {
                 Ok(new_port) => new_port,
                 Err(e) => {
                     socket.borrow_mut().state.rollback();
@@ -238,7 +238,7 @@ impl Socket {
 
             // Open underlying pipes.
             let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
-            let new_qd: QDesc = match catmem.borrow_mut().open_pipe(&format_pipe_str(ipv4, new_port)) {
+            let new_qd: QDesc = match catmem.open_pipe(&format_pipe_str(ipv4, new_port)) {
                 Ok(new_qd) => new_qd,
                 Err(e) => {
                     socket.borrow_mut().state.rollback();
@@ -246,7 +246,7 @@ impl Socket {
                 },
             };
             // Send an ack to the server over the new pipe.
-            if let Err(e) = send_ack(catmem.clone(), new_qd, &yielder).await {
+            if let Err(e) = send_ack(&mut catmem, new_qd, &yielder).await {
                 socket.borrow_mut().state.rollback();
                 return Err(e);
             }
@@ -274,7 +274,7 @@ impl Socket {
         self.state.commit();
         self.state.prepare(SocketOp::Closed)?;
         if let Some(qd) = self.catmem_qd {
-            match self.catmem.borrow_mut().close(qd) {
+            match self.catmem.close(qd) {
                 Ok(()) => {
                     self.state.commit();
                     return Ok(());
@@ -303,10 +303,10 @@ impl Socket {
         // TODO: Should we assert that we're still in the close state?
         let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
         if let Some(qd) = catmem_qd {
-            let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
+            let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
             socket.borrow_mut().state.prepare(SocketOp::Closed)?;
-            let runtime: SharedDemiRuntime = socket.borrow().catmem.borrow().get_runtime();
-            match CatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
+            let runtime: SharedDemiRuntime = socket.borrow().catmem.get_runtime();
+            match SharedCatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
                 (qd, OperationResult::Close) => {
                     socket.borrow_mut().state.commit();
                     Ok((qd, OperationResult::Close))
@@ -345,8 +345,8 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
-        Ok(CatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
+        let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        Ok(SharedCatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
     }
 
     /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
@@ -370,8 +370,8 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.borrow().get_queue(&qd)?;
-        match CatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
+        let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        match SharedCatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
             (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(socket.borrow().remote(), buf))),
             (qd, result) => Ok((qd, result)),
         }
@@ -418,14 +418,12 @@ impl Socket {
 //   - The completed I/O queue operation associated to the queue token qt
 //   concerns a pop() operation that has completed.
 //   - The payload received from that pop() operation is a valid and legit MAGIC_CONNECT message.
-async fn pop_magic_number(catmem: Rc<RefCell<CatmemLibOS>>, catmem_qd: QDesc, yielder: &Yielder) -> Result<bool, Fail> {
+async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yielder: &Yielder) -> Result<bool, Fail> {
     // Issue pop. Each magic connect represents a separate connection request, so we always bound the pop.
-    let qt: QToken = catmem
-        .borrow_mut()
-        .pop(catmem_qd, Some(mem::size_of_val(&MAGIC_CONNECT)))?;
+    let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of_val(&MAGIC_CONNECT)))?;
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
-        catmem.borrow().from_task_id(qt)?
+        catmem.from_task_id(qt)?
     };
     // Yield until pop completes.
     while !handle.has_completed() {
@@ -434,9 +432,8 @@ async fn pop_magic_number(catmem: Rc<RefCell<CatmemLibOS>>, catmem_qd: QDesc, yi
         }
     }
     // Re-acquire mutable reference.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Retrieve operation result and check if it is what we expect.
-    let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
+    let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
     match qr.qr_opcode {
         // We expect a successful completion for previous pop().
         demi_opcode_t::DEMI_OPC_POP => {},
@@ -462,7 +459,7 @@ async fn pop_magic_number(catmem: Rc<RefCell<CatmemLibOS>>, catmem_qd: QDesc, yi
 
     // Parse and check request.
     let passed: bool = is_magic_connect(&sga);
-    catmem_.free_sgarray(sga)?;
+    catmem.free_sgarray(sga)?;
     if !passed {
         warn!("failed to establish connection (invalid request)");
     }
@@ -472,7 +469,7 @@ async fn pop_magic_number(catmem: Rc<RefCell<CatmemLibOS>>, catmem_qd: QDesc, yi
 
 // Sends the port number to the peer process.
 async fn create_pipe(
-    catmem: Rc<RefCell<CatmemLibOS>>,
+    catmem: &mut SharedCatmemLibOS,
     catmem_qd: QDesc,
     ipv4: &Ipv4Addr,
     port: u16,
@@ -482,19 +479,19 @@ async fn create_pipe(
     // control duplex pipe. This prevents us from running into a race
     // condition were the remote makes progress faster than us and attempts
     // to open the duplex pipe before it is created.
-    let new_qd: QDesc = catmem.borrow_mut().create_pipe(&format_pipe_str(ipv4, port))?;
+    let new_qd: QDesc = catmem.create_pipe(&format_pipe_str(ipv4, port))?;
     // Allocate a scatter-gather array and send the port number to the remote.
-    let sga: demi_sgarray_t = catmem.borrow_mut().alloc_sgarray(mem::size_of_val(&port))?;
+    let sga: demi_sgarray_t = catmem.alloc_sgarray(mem::size_of_val(&port))?;
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
     let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
     slice.copy_from_slice(&port.to_ne_bytes());
 
     // Push the port number.
-    let qt: QToken = catmem.borrow_mut().push(catmem_qd, &sga)?;
+    let qt: QToken = catmem.push(catmem_qd, &sga)?;
     let handle: TaskHandle = {
         // Get the task handle from the task id.
-        catmem.borrow().from_task_id(qt)?
+        catmem.from_task_id(qt)?
     };
 
     // Wait for push to complete.
@@ -503,13 +500,11 @@ async fn create_pipe(
             return Err(e);
         }
     }
-    // Re-acquire mutable reference.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the scatter-gather array.
-    catmem_.free_sgarray(sga)?;
+    catmem.free_sgarray(sga)?;
 
     // Retrieve operation result and check if it is what we expect.
-    let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
+    let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
     match qr.qr_opcode {
         // We expect a successful completion for previous push().
         demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -532,19 +527,19 @@ async fn create_pipe(
 }
 
 async fn send_connection_request(
-    catmem: Rc<RefCell<CatmemLibOS>>,
+    catmem: &mut SharedCatmemLibOS,
     connect_qd: QDesc,
     yielder: &Yielder,
 ) -> Result<(), Fail> {
     // Create a message containing the magic number.
-    let sga: demi_sgarray_t = cook_magic_connect(catmem.clone())?;
+    let sga: demi_sgarray_t = cook_magic_connect(catmem)?;
 
     // Send to server.
-    let qt: QToken = catmem.borrow_mut().push(connect_qd, &sga)?;
+    let qt: QToken = catmem.push(connect_qd, &sga)?;
     trace!("Send connection request qtoken={:?}", qt);
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
-        catmem.borrow().from_task_id(qt)?
+        catmem.from_task_id(qt)?
     };
 
     // Yield until push completes.
@@ -553,12 +548,10 @@ async fn send_connection_request(
             return Err(e);
         }
     }
-    // Re-acquire reference to catmem libos.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the message buffer.
-    catmem_.free_sgarray(sga)?;
+    catmem.free_sgarray(sga)?;
     // Get the result of the push.
-    let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
+    let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
     match qr.qr_opcode {
         // We expect a successful completion for previous push().
         demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -580,16 +573,11 @@ async fn send_connection_request(
     }
 }
 
-async fn get_port(
-    catmem: Rc<RefCell<CatmemLibOS>>,
-    ipv4: &Ipv4Addr,
-    port: u16,
-    yielder: &Yielder,
-) -> Result<u16, Fail> {
+async fn get_port(catmem: &mut SharedCatmemLibOS, ipv4: &Ipv4Addr, port: u16, yielder: &Yielder) -> Result<u16, Fail> {
     // Issue receive operation to wait for connect request ack.
     let size: usize = mem::size_of::<u16>();
     // Open connection to server.
-    let connect_qd: QDesc = match catmem.borrow_mut().open_pipe(&format_pipe_str(ipv4, port)) {
+    let connect_qd: QDesc = match catmem.open_pipe(&format_pipe_str(ipv4, port)) {
         Ok(qd) => qd,
         Err(e) => {
             // Interpose error.
@@ -603,17 +591,17 @@ async fn get_port(
         },
     };
 
-    let qt: QToken = catmem.borrow_mut().pop(connect_qd, Some(size))?;
+    let qt: QToken = catmem.pop(connect_qd, Some(size))?;
     trace!("Read port qtoken={:?}", qt);
 
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
-        catmem.borrow().from_task_id(qt)?
+        catmem.from_task_id(qt)?
     };
 
     loop {
         // Send the connection request to the server.
-        send_connection_request(catmem.clone(), connect_qd, &yielder).await?;
+        send_connection_request(catmem, connect_qd, &yielder).await?;
 
         // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
         if let Err(e) = yielder.yield_times(MAX_ACK_RECEIVED_ATTEMPTS).await {
@@ -623,9 +611,8 @@ async fn get_port(
         // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
         if handle.has_completed() {
             // Re-acquire reference to catmem libos.
-            let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
             // Get the result of the pop.
-            let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
+            let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
             match qr.qr_opcode {
                 // We expect a successful completion for previous pop().
                 demi_opcode_t::DEMI_OPC_POP => {
@@ -634,13 +621,13 @@ async fn get_port(
 
                     // Extract port number.
                     let port: Result<u16, Fail> = extract_port_number(&sga);
-                    catmem_.free_sgarray(sga)?;
+                    catmem.free_sgarray(sga)?;
                     return port;
                 },
                 // We may get some error.
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     // Shut down control duplex pipe as we can open the new pipe now.
-                    catmem_.shutdown(connect_qd)?;
+                    catmem.shutdown(connect_qd)?;
 
                     let cause: String = format!(
                         "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
@@ -661,15 +648,15 @@ async fn get_port(
 }
 
 // Send an ack through a new Catmem pipe.
-async fn send_ack(catmem: Rc<RefCell<CatmemLibOS>>, new_qd: QDesc, yielder: &Yielder) -> Result<(), Fail> {
+async fn send_ack(catmem: &mut SharedCatmemLibOS, new_qd: QDesc, yielder: &Yielder) -> Result<(), Fail> {
     // Create message with magic connect.
-    let sga: demi_sgarray_t = cook_magic_connect(catmem.clone())?;
+    let sga: demi_sgarray_t = cook_magic_connect(catmem)?;
     // Send to server through new pipe.
-    let qt: QToken = catmem.borrow_mut().push(new_qd, &sga)?;
+    let qt: QToken = catmem.push(new_qd, &sga)?;
     trace!("Send ack qtoken={:?}", qt);
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
-        catmem.borrow().from_task_id(qt)?
+        catmem.from_task_id(qt)?
     };
 
     // Yield until push completes.
@@ -678,12 +665,10 @@ async fn send_ack(catmem: Rc<RefCell<CatmemLibOS>>, new_qd: QDesc, yielder: &Yie
             return Err(e);
         }
     }
-    // Re-acquire reference to catmem libos.
-    let mut catmem_: RefMut<CatmemLibOS> = catmem.borrow_mut();
     // Free the message buffer.
-    catmem_.free_sgarray(sga)?;
+    catmem.free_sgarray(sga)?;
     // Retrieve operation result and check if it is what we expect.
-    let qr: demi_qresult_t = catmem_.pack_result(handle, qt)?;
+    let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
 
     match qr.qr_opcode {
         // We expect a successful completion for previous push().
@@ -707,8 +692,8 @@ async fn send_ack(catmem: Rc<RefCell<CatmemLibOS>>, new_qd: QDesc, yielder: &Yie
 }
 
 /// Creates a magic connect message.
-pub fn cook_magic_connect(catmem: Rc<RefCell<CatmemLibOS>>) -> Result<demi_sgarray_t, Fail> {
-    let sga: demi_sgarray_t = catmem.borrow_mut().alloc_sgarray(mem::size_of_val(&MAGIC_CONNECT))?;
+pub fn cook_magic_connect(catmem: &mut SharedCatmemLibOS) -> Result<demi_sgarray_t, Fail> {
+    let sga: demi_sgarray_t = catmem.alloc_sgarray(mem::size_of_val(&MAGIC_CONNECT))?;
 
     let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
     unsafe {

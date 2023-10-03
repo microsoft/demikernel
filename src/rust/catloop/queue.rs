@@ -7,7 +7,7 @@
 
 use crate::{
     catloop::socket::Socket,
-    catmem::CatmemLibOS,
+    catmem::SharedCatmemLibOS,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -52,7 +52,7 @@ pub struct CatloopQueue {
 //======================================================================================================================
 
 impl CatloopQueue {
-    pub fn new(qtype: QType, catmem: Rc<RefCell<CatmemLibOS>>) -> Result<Self, Fail> {
+    pub fn new(qtype: QType, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
         Ok(Self {
             qtype,
             socket: Rc::new(RefCell::new(Socket::new(catmem)?)),
