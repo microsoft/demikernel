@@ -38,7 +38,7 @@ libc = "0.2.147"
 log = "0.4.20"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
-socket2 = "0.4.7"
+socket2 = "0.5.4"
 yaml-rust = "0.4.5"
 x86 = "0.52.0"
 
@@ -50,7 +50,7 @@ dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "5a339766b6f64c
 [target.'cfg(windows)'.dependencies]
 # libc implementation in Rust is quite different for Windows and Linux. This library provides the relevant networking
 # constants and datastructures for Windows.
-windows = { version = "0.44.0", features = [
+windows = { version = "0.51.1", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
 ] }
