@@ -100,11 +100,23 @@ pub struct SharedCatloopLibOS(SharedObject<CatloopLibOS>);
 //======================================================================================================================
 
 impl CatloopLibOS {
+    /// Seed number of ephemeral port allocator.
+    const EPHEMERAL_PORT_SEED: u64 = 12345;
+
     /// Instantiates a new LibOS.
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catloop::new");
-        let mut rng: SmallRng = SmallRng::from_entropy();
+        let mut rng: SmallRng = {
+            #[cfg(debug_assertions)]
+            {
+                SmallRng::seed_from_u64(Self::EPHEMERAL_PORT_SEED)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                SmallRng::from_entropy()
+            }
+        };
         Self {
             ephemeral_ports: EphemeralPorts::new(&mut rng),
             catmem: SharedCatmemLibOS::new(config, runtime.clone()),
