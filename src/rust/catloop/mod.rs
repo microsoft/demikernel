@@ -573,7 +573,7 @@ impl SharedCatloopLibOS {
     }
 
     /// Allocates an ephemeral port. If `port` is `Some(port)` then it tries to allocate `port`.
-    pub fn alloc_ephemeral_port(&mut self, port: Option<u16>) -> Result<Option<u16>, Fail> {
+    fn alloc_ephemeral_port(&mut self, port: Option<u16>) -> Result<Option<u16>, Fail> {
         if let Some(port) = port {
             self.ephemeral_ports.alloc_port(port)?;
             Ok(None)
@@ -583,7 +583,7 @@ impl SharedCatloopLibOS {
     }
 
     /// Releases an ephemeral `port`.
-    pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
+    fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
         self.ephemeral_ports.free(port)
     }
 }
