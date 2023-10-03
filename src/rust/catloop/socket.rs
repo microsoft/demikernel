@@ -7,7 +7,7 @@
 
 use crate::{
     catmem::{
-        queue::CatmemQueue,
+        queue::SharedCatmemQueue,
         SharedCatmemLibOS,
     },
     runtime::{
@@ -303,7 +303,7 @@ impl Socket {
         // TODO: Should we assert that we're still in the close state?
         let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
         if let Some(qd) = catmem_qd {
-            let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+            let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
             socket.borrow_mut().state.prepare(SocketOp::Closed)?;
             let runtime: SharedDemiRuntime = socket.borrow().catmem.get_runtime();
             match SharedCatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
@@ -345,7 +345,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
         Ok(SharedCatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
     }
 
@@ -370,7 +370,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: CatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
         match SharedCatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
             (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(socket.borrow().remote(), buf))),
             (qd, result) => Ok((qd, result)),

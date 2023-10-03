@@ -8,7 +8,7 @@ mod ring;
 // Imports
 //======================================================================================================================
 
-use self::queue::CatmemQueue;
+use self::queue::SharedCatmemQueue;
 use crate::{
     demikernel::config::Config,
     runtime::{
@@ -89,7 +89,9 @@ impl SharedCatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::create_pipe");
         trace!("create_pipe() name={:?}", name);
-        let qd: QDesc = self.runtime.alloc_queue::<CatmemQueue>(CatmemQueue::create(name)?);
+        let qd: QDesc = self
+            .runtime
+            .alloc_queue::<SharedCatmemQueue>(SharedCatmemQueue::create(name)?);
 
         Ok(qd)
     }
@@ -100,7 +102,9 @@ impl SharedCatmemLibOS {
         timer!("catmem::open_pipe");
         trace!("open_pipe() name={:?}", name);
 
-        let qd: QDesc = self.runtime.alloc_queue::<CatmemQueue>(CatmemQueue::open(name)?);
+        let qd: QDesc = self
+            .runtime
+            .alloc_queue::<SharedCatmemQueue>(SharedCatmemQueue::open(name)?);
 
         Ok(qd)
     }
@@ -111,7 +115,7 @@ impl SharedCatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::shutdown");
         trace!("shutdown() qd={:?}", qd);
-        let queue: CatmemQueue = self.runtime.free_queue::<CatmemQueue>(&qd)?;
+        let mut queue: SharedCatmemQueue = self.runtime.free_queue::<SharedCatmemQueue>(&qd)?;
         queue.shutdown()
     }
 
@@ -120,7 +124,7 @@ impl SharedCatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::close");
         trace!("close() qd={:?}", qd);
-        let queue: CatmemQueue = self.runtime.free_queue::<CatmemQueue>(&qd)?;
+        let mut queue: SharedCatmemQueue = self.runtime.free_queue::<SharedCatmemQueue>(&qd)?;
         queue.close()
     }
 
@@ -129,19 +133,23 @@ impl SharedCatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::async_close");
         trace!("async_close() qd={:?}", qd);
-        let queue: CatmemQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> =
-                Box::pin(Self::close_coroutine(self.runtime.clone(), queue.clone(), qd, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
+                self.runtime.clone(),
+                self.get_queue(&qd)?,
+                qd,
+                yielder,
+            ));
             let task_name: String = format!("catmem::async_close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        Ok(queue.async_close(coroutine)?)
+        queue.async_close(coroutine)
     }
 
     pub async fn close_coroutine(
         mut runtime: SharedDemiRuntime,
-        queue: CatmemQueue,
+        mut queue: SharedCatmemQueue,
         qd: QDesc,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
@@ -154,7 +162,9 @@ impl SharedCatmemLibOS {
                 // be eventually released.
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                runtime.free_queue::<CatmemQueue>(&qd).expect("queue should exist");
+                runtime
+                    .free_queue::<SharedCatmemQueue>(&qd)
+                    .expect("queue should exist");
                 (qd, OperationResult::Close)
             },
             // Operation failed, thus warn and return an error.
@@ -179,10 +189,10 @@ impl SharedCatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let queue: CatmemQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, self.get_queue(&qd)?, buf, yielder));
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
@@ -191,7 +201,7 @@ impl SharedCatmemLibOS {
 
     pub async fn push_coroutine(
         qd: QDesc,
-        queue: CatmemQueue,
+        mut queue: SharedCatmemQueue,
         buf: DemiBuffer,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
@@ -211,10 +221,10 @@ impl SharedCatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let queue: CatmemQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, self.get_queue(&qd)?, size, yielder));
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
@@ -223,7 +233,7 @@ impl SharedCatmemLibOS {
 
     pub async fn pop_coroutine(
         qd: QDesc,
-        queue: CatmemQueue,
+        mut queue: SharedCatmemQueue,
         size: Option<usize>,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
@@ -257,7 +267,7 @@ impl SharedCatmemLibOS {
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
         match self.get_queue(&qd) {
-            Ok(queue) => queue.remove_pending_op(&handle),
+            Ok(mut queue) => queue.remove_pending_op(&handle),
             Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
         }
 
@@ -342,10 +352,10 @@ impl SharedCatmemLibOS {
         self.runtime.poll()
     }
 
-    pub fn get_queue(&self, qd: &QDesc) -> Result<CatmemQueue, Fail> {
+    pub fn get_queue(&self, qd: &QDesc) -> Result<SharedCatmemQueue, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catmem::get_queue");
-        Ok(self.runtime.get_qtable().get::<CatmemQueue>(qd)?.clone())
+        Ok(self.runtime.get_qtable().get::<SharedCatmemQueue>(qd)?.clone())
     }
 
     pub fn get_runtime(&self) -> SharedDemiRuntime {
@@ -377,7 +387,7 @@ impl Drop for CatmemLibOS {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
         for boxed_queue in self.runtime.get_mut_qtable().drain() {
-            if let Ok(catmem_queue) = downcast_queue::<CatmemQueue>(boxed_queue) {
+            if let Ok(mut catmem_queue) = downcast_queue::<SharedCatmemQueue>(boxed_queue) {
                 if let Err(e) = catmem_queue.close() {
                     error!("push_eof() failed: {:?}", e);
                     warn!("leaking shared memory region");
