@@ -2,6 +2,9 @@
 # Licensed under the MIT license.
 
 name: Main Catnap
+concurrency:
+  group: catnap
+  cancel-in-progress: false
 
 on:
   push:
