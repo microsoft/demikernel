@@ -18,7 +18,7 @@ use self::{
     runtime::CatloopRuntime,
 };
 use crate::{
-    catmem::CatmemLibOS,
+    catmem::SharedCatmemLibOS,
     demi_sgarray_t,
     demikernel::config::Config,
     inetstack::protocols::ip::EphemeralPorts,
@@ -63,8 +63,8 @@ use ::std::{
     mem,
     net::{
         Ipv4Addr,
-        SocketAddrV4,
         SocketAddr,
+        SocketAddrV4,
     },
     pin::Pin,
     rc::Rc,
@@ -85,7 +85,7 @@ pub struct CatloopLibOS {
     /// Catloop state.
     state: Rc<RefCell<CatloopRuntime>>,
     /// Underlying transport.
-    catmem: Rc<RefCell<CatmemLibOS>>,
+    catmem: SharedCatmemLibOS,
     /// Underlying coroutine runtime.
     runtime: SharedDemiRuntime,
     /// Configuration.
@@ -103,7 +103,7 @@ impl CatloopLibOS {
         timer!("catloop::new");
         Self {
             state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
-            catmem: Rc::new(RefCell::<CatmemLibOS>::new(CatmemLibOS::new(runtime.clone()))),
+            catmem: SharedCatmemLibOS::new(config, runtime.clone()),
             runtime,
             config: config.clone(),
         }

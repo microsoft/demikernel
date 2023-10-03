@@ -45,7 +45,7 @@ use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::CatloopLibOS;
 #[cfg(feature = "catmem-libos")]
-use crate::catmem::CatmemLibOS;
+use crate::catmem::SharedCatmemLibOS;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::SharedCatnapLibOS;
 #[cfg(feature = "catnip-libos")]
@@ -101,7 +101,9 @@ impl LibOS {
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
             #[cfg(feature = "catmem-libos")]
-            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem(CatmemLibOS::new(runtime.clone()))),
+            LibOSName::Catmem => {
+                Self::MemoryLibOS(MemoryLibOS::Catmem(SharedCatmemLibOS::new(&config, runtime.clone())))
+            },
             #[cfg(feature = "catloop-libos")]
             LibOSName::Catloop => {
                 Self::NetworkLibOS(NetworkLibOS::Catloop(CatloopLibOS::new(&config, runtime.clone())))

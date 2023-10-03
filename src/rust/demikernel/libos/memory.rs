@@ -19,7 +19,7 @@ use crate::{
 };
 
 #[cfg(feature = "catmem-libos")]
-use crate::catmem::CatmemLibOS;
+use crate::catmem::SharedCatmemLibOS;
 
 //======================================================================================================================
 // Structures
@@ -28,7 +28,7 @@ use crate::catmem::CatmemLibOS;
 /// Associated functions for Memory LibOSes.
 pub enum MemoryLibOS {
     #[cfg(feature = "catmem-libos")]
-    Catmem(CatmemLibOS),
+    Catmem(SharedCatmemLibOS),
 }
 
 //======================================================================================================================
