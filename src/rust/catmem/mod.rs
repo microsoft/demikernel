@@ -352,12 +352,6 @@ impl SharedCatmemLibOS {
         timer!("catmem::get_queue");
         Ok(self.runtime.get_qtable().get::<SharedCatmemQueue>(qd)?.clone())
     }
-
-    pub fn get_runtime(&self) -> SharedDemiRuntime {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::get_qtable");
-        self.runtime.clone()
-    }
 }
 
 //======================================================================================================================
