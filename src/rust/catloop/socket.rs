@@ -693,7 +693,7 @@ fn extract_port_number(sga: &demi_sgarray_t) -> Result<u16, Fail> {
 }
 
 /// Checks for a magic connect message.
-pub fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
+fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
     if len == mem::size_of_val(&MAGIC_CONNECT) {
         let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
