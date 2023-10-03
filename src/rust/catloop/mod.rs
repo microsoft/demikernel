@@ -48,6 +48,7 @@ use crate::{
         QDesc,
         QToken,
         SharedDemiRuntime,
+        SharedObject,
     },
     scheduler::{
         TaskHandle,
@@ -65,6 +66,10 @@ use ::std::{
         Ipv4Addr,
         SocketAddr,
         SocketAddrV4,
+    },
+    ops::{
+        Deref,
+        DerefMut,
     },
     pin::Pin,
     rc::Rc,
@@ -92,6 +97,9 @@ pub struct CatloopLibOS {
     config: Config,
 }
 
+#[derive(Clone)]
+pub struct SharedCatloopLibOS(SharedObject<CatloopLibOS>);
+
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
@@ -107,6 +115,14 @@ impl CatloopLibOS {
             runtime,
             config: config.clone(),
         }
+    }
+}
+
+impl SharedCatloopLibOS {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
+        #[cfg(feature = "profiler")]
+        timer!("sharedcatloop::new");
+        Self(SharedObject::new(CatloopLibOS::new(config, runtime)))
     }
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a CatloopQueue that
@@ -135,9 +151,10 @@ impl CatloopLibOS {
         };
 
         // Create fake socket.
+        let catmem: SharedCatmemLibOS = self.catmem.clone();
         let qd: QDesc = self
             .runtime
-            .alloc_queue::<CatloopQueue>(CatloopQueue::new(qtype, self.catmem.clone())?);
+            .alloc_queue::<CatloopQueue>(CatloopQueue::new(qtype, catmem)?);
         Ok(qd)
     }
 
@@ -563,6 +580,24 @@ impl CatloopLibOS {
 
     fn get_queue(&self, qd: &QDesc) -> Result<CatloopQueue, Fail> {
         Ok(self.runtime.get_qtable().get::<CatloopQueue>(qd)?.clone())
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Deref for SharedCatloopLibOS {
+    type Target = CatloopLibOS;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedCatloopLibOS {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }
 

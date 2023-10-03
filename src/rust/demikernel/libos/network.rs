@@ -23,7 +23,7 @@ use ::std::net::SocketAddr;
 #[cfg(feature = "catcollar-libos")]
 use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
-use crate::catloop::CatloopLibOS;
+use crate::catloop::SharedCatloopLibOS;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::SharedCatnapLibOS;
 #[cfg(feature = "catnip-libos")]
@@ -46,7 +46,7 @@ pub enum NetworkLibOS {
     #[cfg(feature = "catnip-libos")]
     Catnip(CatnipLibOS),
     #[cfg(feature = "catloop-libos")]
-    Catloop(CatloopLibOS),
+    Catloop(SharedCatloopLibOS),
 }
 
 //======================================================================================================================
