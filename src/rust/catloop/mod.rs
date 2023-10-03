@@ -6,17 +6,13 @@
 //======================================================================================================================
 
 mod queue;
-mod runtime;
 mod socket;
 
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use self::{
-    queue::CatloopQueue,
-    runtime::CatloopRuntime,
-};
+use self::queue::CatloopQueue;
 use crate::{
     catmem::SharedCatmemLibOS,
     demi_sgarray_t,
@@ -56,11 +52,11 @@ use crate::{
     },
     QType,
 };
+use ::rand::{
+    prelude::SmallRng,
+    SeedableRng,
+};
 use ::std::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
     mem,
     net::{
         Ipv4Addr,
@@ -72,7 +68,6 @@ use ::std::{
         DerefMut,
     },
     pin::Pin,
-    rc::Rc,
 };
 
 #[cfg(feature = "profiler")]
@@ -87,8 +82,8 @@ use crate::timer;
 /// functionality necessary to run the Catloop libOS. All state is kept in the [state], while [runtime] holds the
 /// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instance.
 pub struct CatloopLibOS {
-    /// Catloop state.
-    state: Rc<RefCell<CatloopRuntime>>,
+    /// Ephemeral port allocator.
+    ephemeral_ports: EphemeralPorts,
     /// Underlying transport.
     catmem: SharedCatmemLibOS,
     /// Underlying coroutine runtime.
@@ -109,8 +104,9 @@ impl CatloopLibOS {
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catloop::new");
+        let mut rng: SmallRng = SmallRng::from_entropy();
         Self {
-            state: Rc::new(RefCell::<CatloopRuntime>::new(CatloopRuntime::new())),
+            ephemeral_ports: EphemeralPorts::new(&mut rng),
             catmem: SharedCatmemLibOS::new(config, runtime.clone()),
             runtime,
             config: config.clone(),
@@ -200,7 +196,7 @@ impl SharedCatloopLibOS {
         // Check if this is an ephemeral port.
         if EphemeralPorts::is_private(local.port()) {
             // Allocate ephemeral port from the pool, to leave ephemeral port allocator in a consistent state.
-            self.state.borrow_mut().alloc_ephemeral_port(Some(local.port()))?;
+            self.alloc_ephemeral_port(Some(local.port()))?;
         }
 
         // Check if queue descriptor is valid.
@@ -234,50 +230,38 @@ impl SharedCatloopLibOS {
         timer!("catloop::accept");
         trace!("accept() qd={:?}", qd);
 
-        // Keep a reference to this for later.
-        let queue: CatloopQueue = self.get_queue(&qd)?;
-        let new_port: u16 = match self.state.borrow_mut().alloc_ephemeral_port(None) {
+        // Allocate ephemeral port.
+        let new_port: u16 = match self.alloc_ephemeral_port(None) {
             Ok(new_port) => new_port.unwrap(),
             Err(e) => return Err(e),
         };
-
+        let queue: CatloopQueue = self.get_queue(&qd)?;
         // Create coroutine to run this accept.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Asynchronous accept code.
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(
-                qd,
-                self.runtime.clone(),
-                self.state.clone(),
-                queue.clone(),
-                new_port,
-                yielder,
-            ));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd, new_port, yielder));
             // Insert async coroutine into the scheduler.
             let task_name: String = format!("Catloop::accept for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        let qt: QToken = queue.accept(coroutine)?;
-
-        Ok(qt)
+        queue.accept(coroutine)
     }
 
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
     /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
-    async fn accept_coroutine(
-        qd: QDesc,
-        mut runtime: SharedDemiRuntime,
-        state: Rc<RefCell<CatloopRuntime>>,
-        queue: CatloopQueue,
-        new_port: u16,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    async fn accept_coroutine(mut self, qd: QDesc, new_port: u16, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let queue: CatloopQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
         // Wait for the accept to complete.
         let result: Result<CatloopQueue, Fail> = queue.do_accept(new_port, &yielder).await;
         // Handle result: if successful, borrow the state to update state.
         match result {
             Ok(new_queue) => {
-                let new_qd: QDesc = runtime.alloc_queue::<CatloopQueue>(new_queue);
+                let new_qd: QDesc = self.runtime.alloc_queue::<CatloopQueue>(new_queue);
                 let new_addr: SocketAddrV4 = SocketAddrV4::new(
                     *queue
                         .local()
@@ -289,7 +273,7 @@ impl SharedCatloopLibOS {
             },
             Err(e) => {
                 // Rollback the port allocation.
-                if state.borrow_mut().free_ephemeral_port(new_port).is_err() {
+                if self.free_ephemeral_port(new_port).is_err() {
                     // We fail if and only if we attempted to free a port that was not allocated.
                     // This is unexpected, but if it happens, issue a warning and keep going,
                     // otherwise we would leave the queue in a dangling state.
@@ -307,31 +291,30 @@ impl SharedCatloopLibOS {
         #[cfg(feature = "profiler")]
         timer!("catloop::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
-        let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
+        let queue: CatloopQueue = self.get_queue(&qd)?;
 
         // Create connect coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, queue.clone(), remote, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, remote, yielder));
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        let qt: QToken = queue.connect(coroutine)?;
-
-        Ok(qt)
+        queue.connect(coroutine)
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
     /// asynchronously to connect a queue and performs any necessary multi-queue operations at the libOS-level after
     /// the connect succeeds or fails.
-    async fn connect_coroutine(
-        qd: QDesc,
-        queue: CatloopQueue,
-        remote: SocketAddrV4,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    async fn connect_coroutine(self, qd: QDesc, remote: SocketAddrV4, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let queue: CatloopQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+
         // Wait for connect operation to complete.
         match queue.do_connect(remote, &yielder).await {
             Ok(()) => (qd, OperationResult::Connect),
@@ -351,7 +334,7 @@ impl SharedCatloopLibOS {
         queue.close()?;
         if let Some(addr) = queue.local() {
             if EphemeralPorts::is_private(addr.port()) {
-                if self.state.borrow_mut().free_ephemeral_port(addr.port()).is_err() {
+                if self.free_ephemeral_port(addr.port()).is_err() {
                     // We fail if and only if we attempted to free a port that was not allocated.
                     // This is unexpected, but if it happens, issue a warning and keep going,
                     // otherwise we would leave the queue in a dangling state.
@@ -378,13 +361,7 @@ impl SharedCatloopLibOS {
 
         // Note that this coroutine is only inserted if we do not allocate a Catmem coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
-                self.runtime.clone(),
-                self.state.clone(),
-                queue.clone(),
-                qd,
-                yielder,
-            ));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
             let task_name: String = format!("Catloop::close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
@@ -395,19 +372,18 @@ impl SharedCatloopLibOS {
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
     /// and the underlying Catmem queue and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
-    async fn close_coroutine(
-        mut runtime: SharedDemiRuntime,
-        state: Rc<RefCell<CatloopRuntime>>,
-        queue: CatloopQueue,
-        qd: QDesc,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let queue: CatloopQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+
         match queue.do_close(yielder).await {
             Ok((_, OperationResult::Close)) => {
-                let mut state: RefMut<CatloopRuntime> = state.borrow_mut();
                 if let Some(addr) = queue.local() {
                     if EphemeralPorts::is_private(addr.port()) {
-                        if state.free_ephemeral_port(addr.port()).is_err() {
+                        if self.free_ephemeral_port(addr.port()).is_err() {
                             // We fail if and only if we attempted to free a port that was not allocated.
                             // This is unexpected, but if it happens, issue a warning and keep going,
                             // otherwise we would leave the queue in a dangling state.
@@ -417,7 +393,9 @@ impl SharedCatloopLibOS {
                 }
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                runtime.free_queue::<CatloopQueue>(&qd).expect("queue should exist");
+                self.runtime
+                    .free_queue::<CatloopQueue>(&qd)
+                    .expect("queue should exist");
                 (qd, OperationResult::Close)
             },
             Ok((_, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
@@ -580,6 +558,21 @@ impl SharedCatloopLibOS {
 
     fn get_queue(&self, qd: &QDesc) -> Result<CatloopQueue, Fail> {
         Ok(self.runtime.get_qtable().get::<CatloopQueue>(qd)?.clone())
+    }
+
+    /// Allocates an ephemeral port. If `port` is `Some(port)` then it tries to allocate `port`.
+    pub fn alloc_ephemeral_port(&mut self, port: Option<u16>) -> Result<Option<u16>, Fail> {
+        if let Some(port) = port {
+            self.ephemeral_ports.alloc_port(port)?;
+            Ok(None)
+        } else {
+            Ok(Some(self.ephemeral_ports.alloc_any()?))
+        }
+    }
+
+    /// Releases an ephemeral `port`.
+    pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
+        self.ephemeral_ports.free(port)
     }
 }
 
