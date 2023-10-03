@@ -10,6 +10,7 @@ mod ring;
 
 use self::queue::CatmemQueue;
 use crate::{
+    demikernel::config::Config,
     runtime::{
         fail::Fail,
         limits,
@@ -30,6 +31,7 @@ use crate::{
         QDesc,
         QToken,
         SharedDemiRuntime,
+        SharedObject,
     },
     scheduler::{
         TaskHandle,
@@ -38,6 +40,10 @@ use crate::{
 };
 use ::std::{
     mem,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     pin::Pin,
 };
 
@@ -55,17 +61,27 @@ pub struct CatmemLibOS {
     runtime: SharedDemiRuntime,
 }
 
+#[derive(Clone)]
+pub struct SharedCatmemLibOS(SharedObject<CatmemLibOS>);
+
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
 /// Associated functions for Catmem LibOS.
 impl CatmemLibOS {
-    /// Instantiates a new LibOS.
     pub fn new(runtime: SharedDemiRuntime) -> Self {
+        Self { runtime }
+    }
+}
+
+/// Associate Functions for the shared Catmem LibOS
+impl SharedCatmemLibOS {
+    /// Instantiates a shared Catmem LibOS.
+    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catmem::new");
-        CatmemLibOS { runtime }
+        Self(SharedObject::new(CatmemLibOS::new(runtime)))
     }
 
     /// Creates a new memory queue.
@@ -342,6 +358,20 @@ impl CatmemLibOS {
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
+
+impl Deref for SharedCatmemLibOS {
+    type Target = CatmemLibOS;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedCatmemLibOS {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
 
 impl Drop for CatmemLibOS {
     // Releases all sockets allocated by Catnap.
