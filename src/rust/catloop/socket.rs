@@ -418,7 +418,7 @@ async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yiel
                 "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
                 qr.qr_qd, qt, qr.qr_ret
             );
-            error!("poll(): {:?}", &cause);
+            error!("pop_magic_number(): {:?}", &cause);
             return Err(Fail::new(qr.qr_ret as i32, &cause));
         },
         // We do not expect anything else.
@@ -436,7 +436,7 @@ async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yiel
     let passed: bool = is_magic_connect(&sga);
     catmem.free_sgarray(sga)?;
     if !passed {
-        warn!("failed to establish connection (invalid request)");
+        warn!("pop_magic_number(): failed to establish connection (invalid request)");
     }
 
     Ok(passed)
@@ -489,7 +489,7 @@ async fn create_pipe(
                 "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
                 qr.qr_qd, qt, qr.qr_ret
             );
-            error!("connect(): {:?}", &cause);
+            error!("create_pipe(): {:?}", &cause);
             Err(Fail::new(qr.qr_ret as i32, &cause))
         },
         // We do not expect anything else.
@@ -654,7 +654,7 @@ async fn send_ack(catmem: &mut SharedCatmemLibOS, new_qd: QDesc, yielder: &Yield
                 "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
                 qr.qr_qd, qt, qr.qr_ret
             );
-            error!("send_ack: {:?}", &cause);
+            error!("send_ack(): {:?}", &cause);
             Err(Fail::new(qr.qr_ret as i32, &cause))
         },
         // We do not expect anything else.
@@ -684,7 +684,7 @@ fn extract_port_number(sga: &demi_sgarray_t) -> Result<u16, Fail> {
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
     if len != 2 {
         let e: Fail = Fail::new(libc::EAGAIN, "handshake failed");
-        error!("failed to establish connection ({:?})", e);
+        error!("extract_port_number(): failed to establish connection ({:?})", e);
         return Err(e);
     }
     let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
@@ -693,7 +693,7 @@ fn extract_port_number(sga: &demi_sgarray_t) -> Result<u16, Fail> {
 }
 
 /// Checks for a magic connect message.
-pub fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
+fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
     if len == mem::size_of_val(&MAGIC_CONNECT) {
         let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
