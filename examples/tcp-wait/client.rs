@@ -85,6 +85,7 @@ impl TcpClient {
             match self.libos.wait(push_qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
                 _ => anyhow::bail!("wait() should succeed with push() after async_close()"),
             }
         }
@@ -149,6 +150,7 @@ impl TcpClient {
             match self.libos.wait(push_qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
                 _ => anyhow::bail!("wait() should not succeed with push() after close()"),
             }
         }
@@ -187,6 +189,7 @@ impl TcpClient {
                     }
                 },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
                 Ok(_) => anyhow::bail!("wait() should not succeed with pop() after close()"),
                 Err(_) => anyhow::bail!("wait() should not fail"),
             }
@@ -206,6 +209,7 @@ impl TcpClient {
             match self.libos.wait(push_qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
                 _ => anyhow::bail!("wait() should succeed with push() after issuing async_close()"),
             }
 

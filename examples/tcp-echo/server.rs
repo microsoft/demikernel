@@ -172,9 +172,12 @@ impl TcpEchoServer {
         let errno: i64 = qr.qr_ret;
 
         // Check if client has reset the connection.
-        if errno == libc::ECONNRESET as i64 || errno == libc::ECANCELED as i64 {
+        if errno == libc::ECONNRESET as i64 || errno == libc::ECANCELED as i64 || errno == libc::EBADF as i64 {
             if errno == libc::ECONNRESET as i64 {
                 println!("INFO: client reset connection (qd={:?})", qd);
+            }
+            if errno == libc::EBADF as i64 {
+                println!("INFO: client terminated connection (qd={:?})", qd);
             } else {
                 println!(
                     "INFO: operation cancelled, resetting connection (qd={:?}, qt={:?})",
