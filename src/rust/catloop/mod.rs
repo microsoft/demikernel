@@ -12,7 +12,7 @@ mod socket;
 // Imports
 //======================================================================================================================
 
-use self::queue::CatloopQueue;
+use self::queue::SharedCatloopQueue;
 use crate::{
     catmem::SharedCatmemLibOS,
     demi_sgarray_t,
@@ -133,7 +133,7 @@ impl SharedCatloopLibOS {
         Self(SharedObject::new(CatloopLibOS::new(config, runtime)))
     }
 
-    /// Creates a socket. This function contains the libOS-level functionality needed to create a CatloopQueue that
+    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatloopQueue that
     /// wraps the underlying Catmem queue.
     pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
@@ -162,12 +162,12 @@ impl SharedCatloopLibOS {
         let catmem: SharedCatmemLibOS = self.catmem.clone();
         let qd: QDesc = self
             .runtime
-            .alloc_queue::<CatloopQueue>(CatloopQueue::new(qtype, catmem)?);
+            .alloc_queue::<SharedCatloopQueue>(SharedCatloopQueue::new(qtype, catmem)?);
         Ok(qd)
     }
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
-    /// CatloopQueue to a local address.
+    /// SharedCatloopQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::bind");
@@ -212,14 +212,14 @@ impl SharedCatloopLibOS {
         }
 
         // Check if queue descriptor is valid.
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
 
         // Check that the socket associated with the queue is not listening.
         queue.bind(local)
     }
 
-    /// Sets a CatloopQueue and as a passive one. This function contains the libOS-level
-    /// functionality to move the CatloopQueue into a listening state.
+    /// Sets a SharedCatloopQueue and as a passive one. This function contains the libOS-level
+    /// functionality to move the SharedCatloopQueue into a listening state.
     // FIXME: https://github.com/demikernel/demikernel/issues/697
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
@@ -230,7 +230,7 @@ impl SharedCatloopLibOS {
         debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Check if the queue descriptor is registered in the sockets table.
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         queue.listen()
     }
 
@@ -247,7 +247,7 @@ impl SharedCatloopLibOS {
             Ok(new_port) => new_port.unwrap(),
             Err(e) => return Err(e),
         };
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         // Create coroutine to run this accept.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Asynchronous accept code.
@@ -264,16 +264,16 @@ impl SharedCatloopLibOS {
     /// the accept succeeds or fails.
     async fn accept_coroutine(mut self, qd: QDesc, new_port: u16, yielder: Yielder) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
-        let queue: CatloopQueue = match self.get_queue(&qd) {
+        let mut queue: SharedCatloopQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for the accept to complete.
-        let result: Result<CatloopQueue, Fail> = queue.do_accept(new_port, &yielder).await;
+        let result: Result<SharedCatloopQueue, Fail> = queue.do_accept(new_port, &yielder).await;
         // Handle result: if successful, borrow the state to update state.
         match result {
             Ok(new_queue) => {
-                let new_qd: QDesc = self.runtime.alloc_queue::<CatloopQueue>(new_queue);
+                let new_qd: QDesc = self.runtime.alloc_queue::<SharedCatloopQueue>(new_queue);
                 let new_addr: SocketAddrV4 = SocketAddrV4::new(
                     *queue
                         .local()
@@ -306,7 +306,7 @@ impl SharedCatloopLibOS {
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
 
         // Create connect coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -322,7 +322,7 @@ impl SharedCatloopLibOS {
     /// the connect succeeds or fails.
     async fn connect_coroutine(self, qd: QDesc, remote: SocketAddrV4, yielder: Yielder) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
-        let queue: CatloopQueue = match self.get_queue(&qd) {
+        let mut queue: SharedCatloopQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -337,12 +337,12 @@ impl SharedCatloopLibOS {
         }
     }
 
-    /// Synchronously closes a CatloopQueue and its underlying Catmem queues.
+    /// Synchronously closes a SharedCatloopQueue and its underlying Catmem queues.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::close");
         trace!("close() qd={:?}", qd);
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         queue.close()?;
         if let Some(addr) = queue.local() {
             if EphemeralPorts::is_private(addr.port()) {
@@ -356,7 +356,7 @@ impl SharedCatloopLibOS {
         }
         // Expect is safe here because we looked up the queue to close it.
         self.runtime
-            .free_queue::<CatloopQueue>(&qd)
+            .free_queue::<SharedCatloopQueue>(&qd)
             .expect("queue should exist");
 
         Ok(())
@@ -369,7 +369,7 @@ impl SharedCatloopLibOS {
         timer!("catloop::async_close");
         trace!("async_close() qd={:?}", qd);
 
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
 
         // Note that this coroutine is only inserted if we do not allocate a Catmem coroutine.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -378,7 +378,7 @@ impl SharedCatloopLibOS {
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        Ok(queue.async_close(coroutine)?)
+        queue.async_close(coroutine)
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
@@ -386,7 +386,7 @@ impl SharedCatloopLibOS {
     /// the close succeeds or fails.
     async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
-        let queue: CatloopQueue = match self.get_queue(&qd) {
+        let mut queue: SharedCatloopQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -406,7 +406,7 @@ impl SharedCatloopLibOS {
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
                 self.runtime
-                    .free_queue::<CatloopQueue>(&qd)
+                    .free_queue::<SharedCatloopQueue>(&qd)
                     .expect("queue should exist");
                 (qd, OperationResult::Close)
             },
@@ -428,24 +428,23 @@ impl SharedCatloopLibOS {
             error!("push(): {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
         }
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, queue.clone(), buf, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
             let task_name: String = format!("Catloop::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        let qt: QToken = queue.push(coroutine)?;
-
-        Ok(qt)
+        queue.push(coroutine)
     }
 
     /// Asynchronous code to push to a Catloop queue.
-    async fn push_coroutine(
-        qd: QDesc,
-        queue: CatloopQueue,
-        buf: DemiBuffer,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let mut queue: SharedCatloopQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+        // Wait for push to complete.
         match queue.do_push(buf, yielder).await {
             // Reminder to translate the queue descriptor from Catmem to Catloop
             Ok((_, OperationResult::Push)) => (qd, OperationResult::Push),
@@ -469,9 +468,9 @@ impl SharedCatloopLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let queue: CatloopQueue = self.get_queue(&qd)?;
+        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, queue.clone(), size, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
             let task_name: String = format!("Catloop::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
@@ -481,12 +480,12 @@ impl SharedCatloopLibOS {
     }
 
     /// Coroutine to pop from a Catloop queue.
-    async fn pop_coroutine(
-        qd: QDesc,
-        queue: CatloopQueue,
-        size: Option<usize>,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let mut queue: SharedCatloopQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
         match queue.do_pop(size, yielder).await {
             Ok((_, OperationResult::Pop(addr, buf))) => (qd, OperationResult::Pop(addr, buf)),
             Ok((_catmem_qd, OperationResult::Failed(e))) => (qd, OperationResult::Failed(e)),
@@ -547,7 +546,7 @@ impl SharedCatloopLibOS {
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
         match self.get_queue(&qd) {
-            Ok(queue) => queue.remove_pending_op(&handle),
+            Ok(mut queue) => queue.remove_pending_op(&handle),
             Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
         };
 
@@ -558,7 +557,7 @@ impl SharedCatloopLibOS {
         #[cfg(feature = "profiler")]
         timer!("catloop::addr_in_use");
         for (_, queue) in self.runtime.get_qtable().get_values() {
-            if let Ok(catloop_queue) = downcast_queue_ptr::<CatloopQueue>(queue) {
+            if let Ok(catloop_queue) = downcast_queue_ptr::<SharedCatloopQueue>(queue) {
                 match catloop_queue.local() {
                     Some(addr) if addr == local => return true,
                     _ => continue,
@@ -568,8 +567,8 @@ impl SharedCatloopLibOS {
         false
     }
 
-    fn get_queue(&self, qd: &QDesc) -> Result<CatloopQueue, Fail> {
-        Ok(self.runtime.get_qtable().get::<CatloopQueue>(qd)?.clone())
+    fn get_queue(&self, qd: &QDesc) -> Result<SharedCatloopQueue, Fail> {
+        Ok(self.runtime.get_qtable().get::<SharedCatloopQueue>(qd)?.clone())
     }
 
     /// Allocates an ephemeral port. If `port` is `Some(port)` then it tries to allocate `port`.

@@ -35,16 +35,11 @@ use crate::{
     },
 };
 use ::std::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
     mem,
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    rc::Rc,
     slice,
 };
 
@@ -152,20 +147,12 @@ impl Socket {
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
-    pub async fn do_accept(
-        socket: Rc<RefCell<Self>>,
-        ipv4: &Ipv4Addr,
-        new_port: u16,
-        yielder: &Yielder,
-    ) -> Result<Self, Fail> {
-        socket.borrow_mut().state.prepare(SocketOp::Accepted)?;
-        let mut catmem: SharedCatmemLibOS = socket.borrow().catmem.clone();
-        let catmem_qd: QDesc = socket
-            .borrow()
-            .catmem_qd
-            .expect("Must be a catmem queue in this state.");
+    pub async fn do_accept(&mut self, ipv4: Ipv4Addr, new_port: u16, yielder: &Yielder) -> Result<Self, Fail> {
+        self.state.prepare(SocketOp::Accepted)?;
+        let mut catmem: SharedCatmemLibOS = self.catmem.clone();
+        let catmem_qd: QDesc = self.catmem_qd.expect("Must be a catmem queue in this state.");
         loop {
-            socket.borrow_mut().state.may_accept()?;
+            self.state.may_accept()?;
             // Grab next request from the control duplex pipe.
             let new_qd: QDesc = match pop_magic_number(&mut catmem, catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
@@ -173,7 +160,7 @@ impl Socket {
                 Ok(true) => match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
                     Ok(new_qd) => new_qd,
                     Err(e) => {
-                        socket.borrow_mut().state.rollback();
+                        self.state.rollback();
                         return Err(e);
                     },
                 },
@@ -181,18 +168,18 @@ impl Socket {
                 Ok(false) => continue,
                 // Some error.
                 Err(e) => {
-                    socket.borrow_mut().state.rollback();
+                    self.state.rollback();
                     return Err(e);
                 },
             };
 
-            let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(*ipv4, new_port)));
+            let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(ipv4, new_port)));
 
             // Check that the remote has retrieved the port number and responded with a magic number.
             match pop_magic_number(&mut catmem, new_qd, &yielder).await {
                 // Valid response. Connection successfully established, so return new port and pipe to application.
                 Ok(true) => {
-                    socket.borrow_mut().state.commit();
+                    self.state.commit();
                     return Ok(new_socket);
                 },
                 // Invalid response.
@@ -203,7 +190,7 @@ impl Socket {
                 },
                 // Some error.
                 Err(e) => {
-                    socket.borrow_mut().state.rollback();
+                    self.state.rollback();
                     return Err(e);
                 },
             };
@@ -219,11 +206,11 @@ impl Socket {
     }
 
     /// Connects this socket to [remote].
-    pub async fn do_connect(socket: Rc<RefCell<Self>>, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
-        socket.borrow_mut().state.prepare(SocketOp::Connected)?;
+    pub async fn do_connect(&mut self, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
+        self.state.prepare(SocketOp::Connected)?;
         let ipv4: &Ipv4Addr = remote.ip();
         let port: u16 = remote.port().into();
-        let mut catmem: SharedCatmemLibOS = socket.borrow().catmem.clone();
+        let mut catmem: SharedCatmemLibOS = self.catmem.clone();
 
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
@@ -231,7 +218,7 @@ impl Socket {
             let new_port: u16 = match get_port(&mut catmem, ipv4, port, yielder).await {
                 Ok(new_port) => new_port,
                 Err(e) => {
-                    socket.borrow_mut().state.rollback();
+                    self.state.rollback();
                     return Err(e);
                 },
             };
@@ -241,13 +228,13 @@ impl Socket {
             let new_qd: QDesc = match catmem.open_pipe(&format_pipe_str(ipv4, new_port)) {
                 Ok(new_qd) => new_qd,
                 Err(e) => {
-                    socket.borrow_mut().state.rollback();
+                    self.state.rollback();
                     return Err(e);
                 },
             };
             // Send an ack to the server over the new pipe.
             if let Err(e) = send_ack(&mut catmem, new_qd, &yielder).await {
-                socket.borrow_mut().state.rollback();
+                self.state.rollback();
                 return Err(e);
             }
             Ok((new_qd, remote))
@@ -255,14 +242,13 @@ impl Socket {
 
         match result {
             Ok((new_qd, remote)) => {
-                let mut socket: RefMut<Socket> = socket.borrow_mut();
-                socket.state.commit();
-                socket.catmem_qd = Some(new_qd);
-                socket.remote = Some(remote);
+                self.state.commit();
+                self.catmem_qd = Some(new_qd);
+                self.remote = Some(remote);
                 Ok(())
             },
             Err(e) => {
-                socket.borrow_mut().state.rollback();
+                self.state.rollback();
                 Err(e)
             },
         }
@@ -299,21 +285,21 @@ impl Socket {
     }
 
     /// Closes `socket`.
-    pub async fn do_close(socket: Rc<RefCell<Self>>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+    pub async fn do_close(&mut self, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
         // TODO: Should we assert that we're still in the close state?
-        let catmem_qd: Option<QDesc> = socket.borrow().catmem_qd;
+        let catmem_qd: Option<QDesc> = self.catmem_qd;
         if let Some(qd) = catmem_qd {
-            let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
-            socket.borrow_mut().state.prepare(SocketOp::Closed)?;
-            let runtime: SharedDemiRuntime = socket.borrow().catmem.get_runtime();
+            let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
+            self.state.prepare(SocketOp::Closed)?;
+            let runtime: SharedDemiRuntime = self.catmem.get_runtime();
             match SharedCatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
                 (qd, OperationResult::Close) => {
-                    socket.borrow_mut().state.commit();
+                    self.state.commit();
                     Ok((qd, OperationResult::Close))
                 },
                 (qd, OperationResult::Failed(e)) => {
                     // Where to revert to?
-                    socket.borrow_mut().state.rollback();
+                    self.state.rollback();
                     Ok((qd, OperationResult::Failed(e)))
                 },
                 _ => panic!("Should not return anything other than close or fail"),
@@ -335,17 +321,13 @@ impl Socket {
     }
 
     /// Asynchronous code for pushing to the underlying Catmem transport.
-    pub async fn do_push(
-        socket: Rc<RefCell<Self>>,
-        buf: DemiBuffer,
-        yielder: Yielder,
-    ) -> Result<(QDesc, OperationResult), Fail> {
-        socket.borrow().state.may_push()?;
+    pub async fn do_push(&mut self, buf: DemiBuffer, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        self.state.may_push()?;
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
         Ok(SharedCatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
     }
 
@@ -360,19 +342,15 @@ impl Socket {
     }
 
     /// Asynchronous code for popping from the underlying Catmem transport.
-    pub async fn do_pop(
-        socket: Rc<RefCell<Self>>,
-        size: Option<usize>,
-        yielder: Yielder,
-    ) -> Result<(QDesc, OperationResult), Fail> {
-        socket.borrow().state.may_pop()?;
+    pub async fn do_pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
+        self.state.may_pop()?;
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = socket.borrow().catmem_qd.expect("socket should be connected");
-        let queue: SharedCatmemQueue = socket.borrow().catmem.get_queue(&qd)?;
+        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
         match SharedCatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
-            (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(socket.borrow().remote(), buf))),
+            (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(self.remote(), buf))),
             (qd, result) => Ok((qd, result)),
         }
     }
