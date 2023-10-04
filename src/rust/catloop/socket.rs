@@ -181,8 +181,13 @@ impl Socket {
                 // Invalid response.
                 Ok(false) => {
                     // Clean up newly allocated duplex pipe.
-                    catmem.close(new_qd)?;
-                    continue;
+                    match catmem.close(new_qd) {
+                        Ok(()) => continue,
+                        Err(e) => {
+                            self.state.rollback();
+                            return Err(e);
+                        },
+                    }
                 },
                 // Some error.
                 Err(e) => {
