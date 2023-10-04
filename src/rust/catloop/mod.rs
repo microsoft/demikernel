@@ -133,8 +133,8 @@ impl SharedCatloopLibOS {
         Self(SharedObject::new(CatloopLibOS::new(config, runtime)))
     }
 
-    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatloopQueue that
-    /// wraps the underlying Catmem queue.
+    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatloopQueue
+    /// that wraps the underlying Catmem queue.
     pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::socket");

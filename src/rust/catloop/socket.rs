@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::{
-        queue::SharedCatmemQueue,
-        SharedCatmemLibOS,
-    },
+    catmem::SharedCatmemLibOS,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -27,7 +24,6 @@ use crate::{
             demi_sgarray_t,
         },
         OperationResult,
-        SharedDemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -289,10 +285,8 @@ impl Socket {
         // TODO: Should we assert that we're still in the close state?
         let catmem_qd: Option<QDesc> = self.catmem_qd;
         if let Some(qd) = catmem_qd {
-            let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
             self.state.prepare(SocketOp::Closed)?;
-            let runtime: SharedDemiRuntime = self.catmem.get_runtime();
-            match SharedCatmemLibOS::close_coroutine(runtime, queue, qd, yielder).await {
+            match self.catmem.clone().close_coroutine(qd, yielder).await {
                 (qd, OperationResult::Close) => {
                     self.state.commit();
                     Ok((qd, OperationResult::Close))
@@ -327,8 +321,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
-        Ok(SharedCatmemLibOS::push_coroutine(qd, queue, buf, yielder).await)
+        Ok(self.catmem.clone().push_coroutine(qd, buf, yielder).await)
     }
 
     /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
@@ -348,8 +341,7 @@ impl Socket {
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        let queue: SharedCatmemQueue = self.catmem.get_queue(&qd)?;
-        match SharedCatmemLibOS::pop_coroutine(qd, queue, size, yielder).await {
+        match self.catmem.clone().pop_coroutine(qd, size, yielder).await {
             (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(self.remote(), buf))),
             (qd, result) => Ok((qd, result)),
         }

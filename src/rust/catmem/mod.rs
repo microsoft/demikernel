@@ -54,9 +54,7 @@ use crate::timer;
 // Structures
 //======================================================================================================================
 
-/// A LibOS that exposes a uni-directional memory queue.
-/// TODO: Add support for bi-directional memory queues.
-/// FIXME: https://github.com/microsoft/demikernel/issues/856
+/// A LibOS that exposes bi-directional memory queues.
 pub struct CatmemLibOS {
     runtime: SharedDemiRuntime,
 }
@@ -135,24 +133,20 @@ impl SharedCatmemLibOS {
         trace!("async_close() qd={:?}", qd);
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(
-                self.runtime.clone(),
-                self.get_queue(&qd)?,
-                qd,
-                yielder,
-            ));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
             let task_name: String = format!("catmem::async_close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         queue.async_close(coroutine)
     }
 
-    pub async fn close_coroutine(
-        mut runtime: SharedDemiRuntime,
-        mut queue: SharedCatmemQueue,
-        qd: QDesc,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    pub async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+
         // Wait for close operation to complete.
         match queue.do_async_close(yielder).await {
             // Operation completed successfully, thus free resources.
@@ -162,7 +156,7 @@ impl SharedCatmemLibOS {
                 // be eventually released.
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                runtime
+                self.runtime
                     .free_queue::<SharedCatmemQueue>(&qd)
                     .expect("queue should exist");
                 (qd, OperationResult::Close)
@@ -192,19 +186,19 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(qd, self.get_queue(&qd)?, buf, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         queue.push(coroutine)
     }
 
-    pub async fn push_coroutine(
-        qd: QDesc,
-        mut queue: SharedCatmemQueue,
-        buf: DemiBuffer,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
         // Handle result.
         match queue.do_push(buf, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
@@ -224,19 +218,20 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         // Issue pop operation.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(qd, self.get_queue(&qd)?, size, yielder));
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
         queue.pop(coroutine)
     }
 
-    pub async fn pop_coroutine(
-        qd: QDesc,
-        mut queue: SharedCatmemQueue,
-        size: Option<usize>,
-        yielder: Yielder,
-    ) -> (QDesc, OperationResult) {
+    pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {
+        // Make sure the queue still exists.
+        let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
+            Ok(queue) => queue,
+            Err(e) => return (qd, OperationResult::Failed(e)),
+        };
+
         // Wait for pop to complete.
         let (buf, _) = match queue.do_pop(size, yielder).await {
             Ok(result) => result,
@@ -356,12 +351,6 @@ impl SharedCatmemLibOS {
         #[cfg(feature = "profiler")]
         timer!("catmem::get_queue");
         Ok(self.runtime.get_qtable().get::<SharedCatmemQueue>(qd)?.clone())
-    }
-
-    pub fn get_runtime(&self) -> SharedDemiRuntime {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::get_qtable");
-        self.runtime.clone()
     }
 }
 
