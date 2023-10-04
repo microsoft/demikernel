@@ -7,6 +7,7 @@
 
 use crate::{
     catmem::SharedCatmemLibOS,
+    pal,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -72,6 +73,10 @@ pub struct Socket {
     local: Option<SocketAddrV4>,
     /// The remote address to which the socket is connected.
     remote: Option<SocketAddrV4>,
+    /// Maximum backlog length for passive sockets.
+    backlog: usize,
+    /// Pending connect requests for passive sockets.
+    pending: usize,
 }
 
 //======================================================================================================================
@@ -87,6 +92,8 @@ impl Socket {
             catmem_qd: None,
             local: None,
             remote: None,
+            backlog: 1,
+            pending: 0,
         })
     }
 
@@ -103,6 +110,8 @@ impl Socket {
             catmem_qd: Some(catmem_qd),
             local,
             remote,
+            backlog: 1,
+            pending: 0,
         }
     }
 
@@ -128,8 +137,12 @@ impl Socket {
     }
 
     /// Enables this socket to accept incoming connections.
-    pub fn listen(&mut self) -> Result<(), Fail> {
+    pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
+        // We just assert backlog here, because it was previously checked at PDPIX layer.
+        debug_assert!((backlog > 0) && (backlog <= pal::constants::SOMAXCONN as usize));
+
         self.state.prepare(SocketOp::Listen)?;
+        self.backlog = backlog;
         self.state.commit();
         Ok(())
     }
@@ -149,16 +162,34 @@ impl Socket {
         let catmem_qd: QDesc = self.catmem_qd.expect("Must be a catmem queue in this state.");
         loop {
             self.state.may_accept()?;
+
+            // Check if backlog is full.
+            if self.pending == self.backlog {
+                // It is, thus just log a debug message, pending requests will still be queued anyways.
+                let cause: String = format!(
+                    "backlog is full (backlog={:?}), pending={:?}",
+                    self.backlog, self.pending
+                );
+                debug!("do_accept(): {:?}", &cause);
+            }
+
             // Grab next request from the control duplex pipe.
             let new_qd: QDesc = match pop_magic_number(&mut catmem, catmem_qd, &yielder).await {
                 // Received a valid magic number so create the new connection. This involves create the new duplex pipe
                 // and sending the port number to the remote.
-                Ok(true) => match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
-                    Ok(new_qd) => new_qd,
-                    Err(e) => {
-                        self.state.rollback();
-                        return Err(e);
-                    },
+                Ok(true) => {
+                    // Increment the number of pending connection requests, as we need to process it.
+                    self.pending += 1;
+                    match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
+                        Ok(new_qd) => new_qd,
+                        Err(e) => {
+                            // We are done serving this connection, so decrement the number of pending connection requests.
+                            self.pending -= 1;
+
+                            self.state.rollback();
+                            return Err(e);
+                        },
+                    }
                 },
                 // Invalid request.
                 Ok(false) => continue,
@@ -170,9 +201,13 @@ impl Socket {
             };
 
             let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(ipv4, new_port)));
+            let result: Result<bool, Fail> = pop_magic_number(&mut catmem, new_qd, &yielder).await;
+
+            // We are done serving this connection, so decrement the number of pending connection requests.
+            self.pending -= 1;
 
             // Check that the remote has retrieved the port number and responded with a magic number.
-            match pop_magic_number(&mut catmem, new_qd, &yielder).await {
+            match result {
                 // Valid response. Connection successfully established, so return new port and pipe to application.
                 Ok(true) => {
                     self.state.commit();
