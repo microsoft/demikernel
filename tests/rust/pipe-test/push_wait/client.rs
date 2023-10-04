@@ -82,6 +82,7 @@ impl PipeClient {
         // Wait for operation to complete.
         if !push_completed {
             match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => Ok(()),
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
                     Ok(())
                 },
@@ -133,6 +134,7 @@ impl PipeClient {
         // Wait for push() operation to complete.
         if !push_completed {
             match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(_) => anyhow::bail!("wait() should complete successfully or fail with ECANCELED"),
