@@ -220,7 +220,6 @@ impl SharedCatloopLibOS {
 
     /// Sets a SharedCatloopQueue and as a passive one. This function contains the libOS-level
     /// functionality to move the SharedCatloopQueue into a listening state.
-    // FIXME: https://github.com/demikernel/demikernel/issues/697
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::listen");
@@ -231,7 +230,7 @@ impl SharedCatloopLibOS {
 
         // Check if the queue descriptor is registered in the sockets table.
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
-        queue.listen()
+        queue.listen(backlog)
     }
 
     /// Synchronous cross-queue code to start accepting a connection. This function schedules the asynchronous

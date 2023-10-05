@@ -8,6 +8,7 @@
 use crate::{
     catloop::socket::Socket,
     catmem::SharedCatmemLibOS,
+    pal,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -103,8 +104,11 @@ impl SharedCatloopQueue {
     }
 
     /// Sets the target queue to listen for incoming connections.
-    pub fn listen(&mut self) -> Result<(), Fail> {
-        self.socket.listen()
+    pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
+        // We just assert backlog here, because it was previously checked at PDPIX layer.
+        debug_assert!((backlog > 0) && (backlog <= pal::constants::SOMAXCONN as usize));
+
+        self.socket.listen(backlog)
     }
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
