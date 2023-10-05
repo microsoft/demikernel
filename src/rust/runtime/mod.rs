@@ -163,6 +163,22 @@ impl DemiRuntime {
     pub fn get_shared_queue<T: IoQueue + Clone>(&self, qd: &QDesc) -> Result<T, Fail> {
         Ok(self.qtable.get::<T>(qd)?.clone())
     }
+
+    /// Checks if an operation should be retried based on the error code `err`.
+    pub fn should_retry(errno: i32) -> bool {
+        #[cfg(target_os = "linux")]
+        if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
+        {
+            return true;
+        }
+
+        #[cfg(target_os = "windows")]
+        if errno == WSAEWOULDBLOCK.0 || errno == WSAEINPROGRESS.0 || errno == WSAEALREADY.0 {
+            return true;
+        }
+
+        false
+    }
 }
 
 impl<T> SharedObject<T> {

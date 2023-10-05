@@ -58,6 +58,7 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
+        DemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -285,7 +286,7 @@ impl CatcollarLibOS {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
                     // Operation in progress.
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("accept(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -343,7 +344,7 @@ impl CatcollarLibOS {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
                     // Operation in progress.
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("connect(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -427,7 +428,7 @@ impl CatcollarLibOS {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
 
                     // Operation was interrupted, retry?
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("close(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -489,7 +490,7 @@ impl CatcollarLibOS {
                 Ok((None, size)) if size < 0 => {
                     let errno: i32 = -size;
                     // Operation in progress.
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("push(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -577,7 +578,7 @@ impl CatcollarLibOS {
                 Ok((None, size)) if size < 0 => {
                     let errno: i32 = -size;
                     // Operation in progress.
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("pushto(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -656,7 +657,7 @@ impl CatcollarLibOS {
                 // Operation not completed, thus parse errno to find out what happened.
                 Ok((None, size)) if size < 0 => {
                     let errno: i32 = -size;
-                    if retry_errno(errno) {
+                    if DemiRuntime::should_retry(errno) {
                         if let Err(e) = yielder.yield_once().await {
                             let message: String = format!("pop(): operation canceled (err={:?})", e);
                             error!("{}", message);
@@ -823,9 +824,4 @@ fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64)
             }
         },
     }
-}
-
-/// Check whether `errno` indicates that we should retry.
-pub fn retry_errno(errno: i32) -> bool {
-    errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
 }

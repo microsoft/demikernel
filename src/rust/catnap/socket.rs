@@ -18,6 +18,7 @@ use crate::{
             operation::SocketOp,
             state::SocketStateMachine,
         },
+        DemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -326,7 +327,7 @@ impl Socket {
                 _ => {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
                     let message: String = format!("try_accept(): operation failed (errno={:?})", errno);
-                    if !retry_errno(errno) {
+                    if !DemiRuntime::should_retry(errno) {
                         error!("{}", message);
                     }
                     Err(Fail::new(errno, &message))
@@ -410,7 +411,7 @@ impl Socket {
                 _ => {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
                     let message: String = format!("try_connect(): operation failed (errno={:?})", errno);
-                    if !retry_errno(errno) {
+                    if !DemiRuntime::should_retry(errno) {
                         error!("{}", message);
                     }
                     Err(Fail::new(errno, &message))
@@ -554,7 +555,7 @@ impl Socket {
                 _ => {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
                     let message: String = format!("try_push(): operation failed (errno={:?})", errno);
-                    if !retry_errno(errno) {
+                    if !DemiRuntime::should_retry(errno) {
                         error!("{}", message);
                     }
                     Err(Fail::new(errno, &message))
@@ -622,7 +623,7 @@ impl Socket {
                 _ => {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };
                     let message: String = format!("try_pop(): operation failed (errno={:?})", errno);
-                    if !retry_errno(errno) {
+                    if !DemiRuntime::should_retry(errno) {
                         error!("{}", message);
                     }
                     Err(Fail::new(errno, &message))
@@ -691,23 +692,4 @@ impl Socket {
             },
         }
     }
-}
-
-//======================================================================================================================
-// Standalone Functions
-//======================================================================================================================
-
-/// Check whether `errno` indicates that we should retry.
-pub fn retry_errno(errno: i32) -> bool {
-    #[cfg(target_os = "linux")]
-    if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY {
-        return true;
-    }
-
-    #[cfg(target_os = "windows")]
-    if errno == WSAEWOULDBLOCK.0 || errno == WSAEINPROGRESS.0 || errno == WSAEALREADY.0 {
-        return true;
-    }
-
-    return false;
 }
