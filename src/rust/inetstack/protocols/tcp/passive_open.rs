@@ -45,7 +45,6 @@ use crate::{
 };
 use ::libc::{
     EBADMSG,
-    ECONNREFUSED,
     ETIMEDOUT,
 };
 use ::std::{
@@ -258,8 +257,14 @@ impl<const N: usize> PassiveSocket<N> {
         }
         debug!("Received SYN: {:?}", header);
         if inflight_len + self.ready.borrow().len() >= self.max_backlog {
-            // TODO: Should we send a RST here?
-            return Err(Fail::new(ECONNREFUSED, "connection refused"));
+            let cause: String = format!(
+                "backlog full (inflight={}, ready={}, backlog={})",
+                inflight_len,
+                self.ready.borrow().len(),
+                self.max_backlog
+            );
+            error!("receive(): {:?}", &cause);
+            return Err(Fail::new(libc::ECONNREFUSED, &cause));
         }
         let local_isn = self.isn_generator.generate(&self.local, &remote);
         let remote_isn = header.seq_num;
