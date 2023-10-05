@@ -168,6 +168,13 @@ impl ConcurrentRingBuffer {
             // 0. The header describes just the length of the payload.
             let old: usize = self.write_header(push_offset, len);
             debug_assert_eq!(old, 0);
+            trace!(
+                "try_push() len={:?} push_offset={:?} pop_offset={:?}",
+                len,
+                peek(self.push_offset),
+                peek(self.pop_offset)
+            );
+
             Ok(len)
         } else {
             Err(Fail::new(libc::EAGAIN, "No space in the ring buffer"))
@@ -213,7 +220,7 @@ impl ConcurrentRingBuffer {
             },
         };
 
-        // Push first part of buffer. If longer than the capacity of the ring, wrap around.
+        // Pop first part of buffer.
         let first_offset: usize = pop_offset + HEADER_SIZE;
         let first_len: usize = if pop_offset + pop_len + HEADER_SIZE > self.capacity() {
             self.capacity() - first_offset
@@ -236,6 +243,12 @@ impl ConcurrentRingBuffer {
 
         // Move to next buffer.
         self.release_space(pop_offset, pop_len);
+        trace!(
+            "try_push() len={:?} push_offset={:?} pop_offset={:?}",
+            len,
+            peek(self.push_offset),
+            peek(self.pop_offset)
+        );
         Ok(pop_len)
     }
 
@@ -284,7 +297,6 @@ impl ConcurrentRingBuffer {
         let len_: usize = align_header(len + HEADER_SIZE);
         let push_offset: usize = peek(self.push_offset);
         let pop_offset: usize = peek(self.pop_offset);
-        debug!("push = {:?} pop = {:?}", push_offset, pop_offset);
 
         if len_ > self.available_space(push_offset, pop_offset) {
             return None;
@@ -307,7 +319,7 @@ impl ConcurrentRingBuffer {
         #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::release_space");
         let len_: usize = align_header(len + HEADER_SIZE);
-        let new_offset: usize = current_offset + len_ % self.capacity();
+        let new_offset: usize = (current_offset + len_) % self.capacity();
         // Ensure that the old pop_offset was what we expected. Panic if it is not.
         check_and_set(self.pop_offset, current_offset, new_offset).unwrap();
     }

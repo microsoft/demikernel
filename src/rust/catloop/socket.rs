@@ -715,16 +715,24 @@ pub fn cook_magic_connect(catmem: &mut SharedCatmemLibOS) -> Result<demi_sgarray
 
 /// Extracts port number from connect request ack message.
 fn extract_port_number(sga: &demi_sgarray_t) -> Result<u16, Fail> {
-    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-    if len != 2 {
-        let e: Fail = Fail::new(libc::EAGAIN, "handshake failed");
-        error!("extract_port_number(): failed to establish connection ({:?})", e);
-        return Err(e);
+    match sga.sga_segs[0].sgaseg_len as usize {
+        len if len == 0 => {
+            let cause: String = format!("server closed connection");
+            error!("extract_port_number(): {:?}", &cause);
+            Err(Fail::new(libc::EBADF, &cause))
+        },
+        len if len == 2 => {
+            let data_ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+            let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(data_ptr, len) };
+            let array: [u8; 2] = [slice[0], slice[1]];
+            Ok(u16::from_ne_bytes(array))
+        },
+        len => {
+            let cause: String = format!("server sent invalid port number (len={:?})", len);
+            error!("extract_port_number(): {:?}", &cause);
+            Err(Fail::new(libc::EBADMSG, &cause))
+        },
     }
-    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-    let array: [u8; 2] = [slice[0], slice[1]];
-    Ok(u16::from_ne_bytes(array))
 }
 
 /// Checks for a magic connect message.
