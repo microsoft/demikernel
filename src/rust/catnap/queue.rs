@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catnap::socket::{
-        retry_errno,
-        Socket,
-    },
+    catnap::socket::Socket,
     pal::constants::{
         SOCK_DGRAM,
         SOCK_STREAM,
@@ -23,6 +20,7 @@ use crate::{
             NetworkQueue,
             QType,
         },
+        DemiRuntime,
         QToken,
         SharedObject,
     },
@@ -124,7 +122,7 @@ impl SharedCatnapQueue {
                         pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
                     })))
                 },
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
                     // Operation in progress. Check if cancelled.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
@@ -164,7 +162,7 @@ impl SharedCatnapQueue {
         loop {
             match self.socket.try_connect(remote) {
                 Ok(r) => return Ok(r),
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
                     // Operation in progress. Check if cancelled.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
@@ -213,7 +211,7 @@ impl SharedCatnapQueue {
                     self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
                     return Ok(());
                 },
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
                     // Operation in progress. Check if cancelled.
                     if let Err(e) = yielder.yield_once().await {
                         self.socket.rollback();
@@ -254,7 +252,7 @@ impl SharedCatnapQueue {
                     // Operation in progress. Check if cancelled.
                     yielder.yield_once().await?;
                 },
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
                     // Operation in progress. Check if cancelled.
                     yielder.yield_once().await?;
                 },
@@ -286,7 +284,7 @@ impl SharedCatnapQueue {
         loop {
             match self.socket.try_pop(&mut buf, size) {
                 Ok(addr) => return Ok((addr, buf.clone())),
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => {
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
                     // Operation in progress. Check if cancelled.
                     yielder.yield_once().await?;
                 },

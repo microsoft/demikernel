@@ -10,7 +10,10 @@ use crate::{
         raw_array,
         ring::Ring,
     },
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        DemiRuntime,
+    },
 };
 use ::core::{
     alloc::Layout,
@@ -179,7 +182,7 @@ impl ConcurrentRingBuffer {
         loop {
             match self.try_push(buf) {
                 Ok(len) => return Some(len),
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => continue,
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => continue,
                 Err(e) => return None,
             }
         }
@@ -245,7 +248,7 @@ impl ConcurrentRingBuffer {
         loop {
             match self.try_pop(buf) {
                 Ok(len) => return Some(len),
-                Err(Fail { errno, cause: _ }) if retry_errno(errno) => continue,
+                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => continue,
                 Err(e) => return None,
             }
         }
@@ -429,11 +432,6 @@ fn align_header(offset: usize) -> usize {
         0 => offset,
         x => offset - x + HEADER_SIZE,
     }
-}
-
-/// Check whether `errno` indicates that we should retry.
-pub fn retry_errno(errno: i32) -> bool {
-    errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
 }
 
 //======================================================================================================================
