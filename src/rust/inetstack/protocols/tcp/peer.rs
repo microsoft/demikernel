@@ -630,7 +630,16 @@ impl<const N: usize> Inner<N> {
             },
             Socket::Listening(socket) => {
                 debug!("Routing to passive connection: {:?}", local);
-                return socket.receive(ip_hdr, &tcp_hdr);
+                match socket.receive(ip_hdr, &tcp_hdr) {
+                    Ok(()) => return Ok(()),
+                    // Connection was refused, send a RST packet to the remote peer.
+                    Err(e) if e.errno == libc::ECONNREFUSED => {
+                        debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
+                        self.send_rst(&local, &remote)?;
+                        return Ok(());
+                    },
+                    Err(e) => return Err(e),
+                }
             },
             Socket::Inactive(_) => (),
             Socket::Closing(socket) => {
@@ -646,7 +655,7 @@ impl<const N: usize> Inner<N> {
         Ok(())
     }
 
-    fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
+    pub fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
         // TODO: Make this work pending on ARP resolution if needed.
         let remote_link_addr = self
             .arp
