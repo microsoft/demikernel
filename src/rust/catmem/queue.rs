@@ -15,6 +15,7 @@ use crate::{
         limits,
         memory::DemiBuffer,
         queue::IoQueue,
+        DemiRuntime,
         QToken,
         QType,
         SharedObject,
@@ -163,49 +164,30 @@ impl SharedCatmemQueue {
     pub async fn do_pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(DemiBuffer, bool), Fail> {
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
-        let mut index: usize = 0;
         let eof: bool = loop {
-            let (byte, eof): (Option<u8>, bool) = self.ring.try_pop()?;
-            if eof {
-                self.ring.prepare_close()?;
-                self.ring.commit();
-            }
-            match (byte, eof) {
-                (Some(byte), eof) => {
+            match self.ring.try_pop(&mut buf) {
+                Ok((len, eof)) => {
                     if eof {
-                        // If eof, then trim everything that we have received so far and return.
-                        buf.trim(size - index)
-                            .expect("cannot trim more bytes than the buffer has");
-                        break true;
+                        self.ring.prepare_close()?;
+                        self.ring.commit();
+                        buf.trim(size).expect("should be able to trim to a zero-length buffer");
                     } else {
-                        // If not eof, add byte to buffer.
-                        buf[index] = byte;
-                        index += 1;
-
-                        // Check if we read enough bytes.
-                        if index >= size {
-                            // If so, trim buffer to length.
-                            buf.trim(size - index)
-                                .expect("cannot trim more bytes than the buffer has");
-                            break false;
-                        }
+                        buf.trim(size - len)
+                            .expect("should be able to trim down to only read bytes");
+                    }
+                    break eof;
+                },
+                Err(e) if DemiRuntime::should_retry(e.errno) => {
+                    // Operation in progress. Check if cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
                     }
                 },
-                (None, _) => {
-                    if index > 0 {
-                        buf.trim(size - index)
-                            .expect("cannot trim more bytes than the buffer has");
-                        break false;
-                    } else {
-                        // Operation in progress. Check if cancelled.
-                        match yielder.yield_once().await {
-                            Ok(()) => continue,
-                            Err(cause) => return Err(cause),
-                        }
-                    }
-                },
+                Err(e) => return Err(e),
             }
         };
+
         trace!("data read ({:?}/{:?} bytes, eof={:?})", buf.len(), size, eof);
         Ok((buf, eof))
     }
@@ -221,24 +203,31 @@ impl SharedCatmemQueue {
 
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
     /// this function returns an error.
-    pub async fn do_push(&mut self, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
-        for byte in &buf[..] {
-            loop {
-                let push_result: bool = self.ring.try_push(byte)?;
-                match push_result {
-                    true => break,
-                    false => {
-                        // Operation not completed. Check if it was cancelled.
-                        match yielder.yield_once().await {
-                            Ok(()) => continue,
-                            Err(cause) => return Err(cause),
-                        }
-                    },
-                }
+    pub async fn do_push(&mut self, mut buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+        loop {
+            match self.ring.try_push(&buf) {
+                Ok(len) if len == buf.len() => {
+                    trace!("data written ({:?}/{:?} bytes)", buf.len(), buf.len());
+                    return Ok(());
+                },
+                Ok(len) if len < buf.len() => {
+                    buf.adjust(len).expect("should be able to split remaining bytes");
+                    continue;
+                },
+                Ok(len) => unreachable!(
+                    "should not be possible to write more than in the buffer (len={:?})",
+                    len
+                ),
+                Err(e) if DemiRuntime::should_retry(e.errno) => {
+                    // Operation not completed. Check if it was cancelled.
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(cause) => return Err(cause),
+                    }
+                },
+                Err(e) => return Err(e),
             }
         }
-        trace!("data written ({:?}/{:?} bytes)", buf.len(), buf.len());
-        Ok(())
     }
 
     /// Generic function for spawning a control-path coroutine on [self].

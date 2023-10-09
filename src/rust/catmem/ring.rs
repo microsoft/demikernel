@@ -7,7 +7,7 @@
 
 use crate::{
     collections::{
-        ring::RingBuffer,
+        concurrent_ring::ConcurrentRingBuffer,
         shared_ring::SharedRingBuffer,
     },
     runtime::{
@@ -17,15 +17,21 @@ use crate::{
             state::RingStateMachine,
         },
     },
-    scheduler::Mutex,
 };
+use ::std::ptr::copy;
 
 //======================================================================================================================
 // Constants
 //======================================================================================================================
 
-/// End of file signal.
-const EOF: u16 = (1 & 0xff) << 8;
+/// Header size for messages.
+const HEADER_SIZE: usize = 4;
+
+// Header for End of file (EoF) messages.
+const EOF_MESSAGE_HEADER: [u8; HEADER_SIZE] = [0xD, 0xE, 0xA, 0xD];
+
+/// Header for regular messages.
+const REGULAR_MESSAGE_HEADER: [u8; HEADER_SIZE] = [0xB, 0xE, 0xE, 0xF];
 
 /// Capacity of the ring buffer, in bytes.
 /// This does not correspond to the effective number of bytes that may be stored in the ring buffer due to layout and
@@ -42,13 +48,11 @@ pub const MAX_RETRIES_PUSH_EOF: u32 = 16;
 /// An endpoint for a unidirectional queue built on a shared ring buffer
 pub struct Ring {
     /// Underlying buffer used for sending data.
-    push_buf: SharedRingBuffer<RingBuffer<u16>>,
+    push_buf: SharedRingBuffer<ConcurrentRingBuffer>,
     /// Underlying buffer used for receiving data.
-    pop_buf: SharedRingBuffer<RingBuffer<u16>>,
+    pop_buf: SharedRingBuffer<ConcurrentRingBuffer>,
     /// Indicates whether the ring is open or closed.
     state_machine: RingStateMachine,
-    /// Mutex to ensure single-threaded access to this ring.
-    mutex: Mutex,
 }
 
 //======================================================================================================================
@@ -66,7 +70,6 @@ impl Ring {
             push_buf: SharedRingBuffer::create(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             pop_buf: SharedRingBuffer::create(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
-            mutex: Mutex::new(),
         })
     }
 
@@ -80,48 +83,54 @@ impl Ring {
             push_buf: SharedRingBuffer::open(&format!("{}:rx", name), RING_BUFFER_CAPACITY)?,
             pop_buf: SharedRingBuffer::open(&format!("{}:tx", name), RING_BUFFER_CAPACITY)?,
             state_machine: RingStateMachine::new(),
-            mutex: Mutex::new(),
         })
     }
 
     /// Try to pop a byte from the shared memory ring. If successful, return the byte and whether the eof flag is set,
     /// otherwise return None for a retry.
-    pub fn try_pop(&mut self) -> Result<(Option<u8>, bool), Fail> {
+    pub fn try_pop(&mut self, buf: &mut [u8]) -> Result<(usize, bool), Fail> {
         self.state_machine.may_pop()?;
 
-        if !self.mutex.try_lock() {
-            let cause: String = format!("could not lock ring buffer to pop byte");
-            warn!("try_pop(): {}", &cause);
-            return Ok((None, false));
-        }
-        let out: Option<u16> = self.pop_buf.try_dequeue();
-        assert_eq!(self.mutex.unlock().is_ok(), true);
-        if let Some(bytes) = out {
-            let (high, low): (u8, u8) = (((bytes >> 8) & 0xff) as u8, (bytes & 0xff) as u8);
-            Ok((Some(low), high != 0))
+        let mut msg: Vec<u8> = vec![0; buf.len() + HEADER_SIZE];
+        // Read data from the ring buffer.
+        let msg_len: usize = self.pop_buf.try_pop(&mut msg)? - HEADER_SIZE;
+
+        // Check how many bytes were read.
+        if msg_len > 0 {
+            // We read some bytes. This should be a regular message,
+            // thus copy it to the buffer.
+
+            // Ensure that the message header is valid.
+            debug_assert_eq!(REGULAR_MESSAGE_HEADER, msg[0..HEADER_SIZE]);
+
+            // Copy the message to the buffer.
+            unsafe {
+                let buf_ptr: *mut u8 = buf.as_mut_ptr();
+                let msg_ptr: *const u8 = msg.as_ptr();
+                copy(msg_ptr.add(HEADER_SIZE), buf_ptr, msg_len);
+            };
+
+            Ok((msg_len, false))
         } else {
-            Ok((None, false))
+            // We read no bytes. This should be an EoF message.
+
+            // Ensure that the message header is what we expect.
+            debug_assert_eq!(EOF_MESSAGE_HEADER, msg[0..HEADER_SIZE]);
+
+            Ok((0, true))
         }
     }
 
     /// Try to send a byte through the shared memory ring. If there is no space or another thread is writing to this
     /// ring, return [false], otherwise, return [true] if successfully enqueued.
-    pub fn try_push(&mut self, byte: &u8) -> Result<bool, Fail> {
+    pub fn try_push(&mut self, buf: &[u8]) -> Result<usize, Fail> {
         self.state_machine.may_push()?;
+        // Write the header.
+        let mut msg: Vec<u8> = REGULAR_MESSAGE_HEADER.to_vec();
+        msg.append(&mut buf.to_vec());
 
-        let x: u16 = (*byte & 0xff) as u16;
-        // Try to lock the ring buffer.
-        if !self.mutex.try_lock() {
-            let cause: String = format!("could not lock ring buffer to push byte");
-            warn!("try_push(): {}", &cause);
-            return Ok(false);
-        }
-        // Write to the ring buffer.
-        let result: Result<(), u16> = self.push_buf.try_enqueue(x);
-        // Unlock the ring buffer.
-        assert_eq!(self.mutex.unlock().is_ok(), true);
-        // Return result.
-        Ok(result.is_ok())
+        // Write data to the ring buffer.
+        Ok(self.push_buf.try_push(&msg)? - HEADER_SIZE)
     }
 
     /// Closes the target ring.
@@ -142,19 +151,16 @@ impl Ring {
     /// Try to send an eof through the shared memory ring. If success, this queue is now closed, otherwise, return
     /// EAGAIN and retry.
     pub fn try_close(&mut self) -> Result<(), Fail> {
-        // Try to lock the ring buffer.
-        if !self.mutex.try_lock() {
-            let cause: String = format!("could not lock ring buffer to push EOF");
-            error!("try_close(): {}", &cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
-
-        let result: Result<(), u16> = self.push_buf.try_enqueue(EOF);
-        assert_eq!(self.mutex.unlock().is_ok(), true);
-
-        match result {
-            Ok(()) => Ok(()),
-            Err(_) => Err(Fail::new(libc::EAGAIN, "Could not push EOF")),
+        match self.push_buf.try_push(&EOF_MESSAGE_HEADER) {
+            Ok(len) => {
+                debug_assert_eq!(len, HEADER_SIZE);
+                Ok(())
+            },
+            Err(_) => {
+                let cause: String = format!("failed to push EoF");
+                error!("try_close(): {:?}", &cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
+            },
         }
     }
 
