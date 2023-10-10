@@ -31,7 +31,13 @@ use crate::{
         Yielder,
     },
 };
+use ::rand::{
+    rngs::SmallRng,
+    RngCore,
+    SeedableRng,
+};
 use ::std::{
+    collections::HashSet,
     mem,
     net::{
         Ipv4Addr,
@@ -47,15 +53,8 @@ use ::std::{
 /// Maximum number of connection attempts.
 /// This was chosen arbitrarily.
 const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
-
-/// Magic payload used to identify connect requests.  It must be a single
-/// byte to ensure atomicity while keeping the connection establishment
-/// protocol. The rationale for this lies on the fact that a pipe in Catmem
-/// LibOS operates atomically on bytes. If we used a longer byte sequence,
-/// we would need to introduce additional logic to make sure that
-/// concurrent processes would not be enabled to establish a connection, if
-/// they sent connection bytes in an interleaved, but legit order.
-pub const MAGIC_CONNECT: u8 = 0x1b;
+/// Seed number for generating request IDs.
+const REQUEST_ID_SEED: u64 = 95;
 
 //======================================================================================================================
 // Structures
@@ -76,8 +75,14 @@ pub struct Socket {
     /// Maximum backlog length for passive sockets.
     backlog: usize,
     /// Pending connect requests for passive sockets.
-    pending: usize,
+    pending_request_ids: HashSet<RequestId>,
+    /// Random number generator for request ids.
+    rng: SmallRng,
 }
+
+/// Unique identifier for a request.
+#[derive(Hash, Eq, PartialEq, Copy, Clone)]
+pub struct RequestId(u64);
 
 //======================================================================================================================
 // Associated Functions
@@ -93,7 +98,11 @@ impl Socket {
             local: None,
             remote: None,
             backlog: 1,
-            pending: 0,
+            pending_request_ids: HashSet::<RequestId>::new(),
+            #[cfg(debug_assertions)]
+            rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
+            #[cfg(not(debug_assertions))]
+            rng: SmallRng::from_entropy(),
         })
     }
 
@@ -111,7 +120,11 @@ impl Socket {
             local,
             remote,
             backlog: 1,
-            pending: 0,
+            pending_request_ids: HashSet::<RequestId>::new(),
+            #[cfg(debug_assertions)]
+            rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
+            #[cfg(not(debug_assertions))]
+            rng: SmallRng::from_entropy(),
         }
     }
 
@@ -164,35 +177,35 @@ impl Socket {
             self.state.may_accept()?;
 
             // Check if backlog is full.
-            if self.pending == self.backlog {
+            if self.pending_request_ids.len() >= self.backlog {
                 // It is, thus just log a debug message, pending requests will still be queued anyways.
                 let cause: String = format!(
                     "backlog is full (backlog={:?}), pending={:?}",
-                    self.backlog, self.pending
+                    self.backlog,
+                    self.pending_request_ids.len()
                 );
                 debug!("do_accept(): {:?}", &cause);
             }
 
             // Grab next request from the control duplex pipe.
-            let new_qd: QDesc = match pop_magic_number(&mut catmem, catmem_qd, &yielder).await {
-                // Received a valid magic number so create the new connection. This involves create the new duplex pipe
+            let new_qd: QDesc = match pop_request_id(&mut catmem, catmem_qd, &yielder).await {
+                // Received a request id so create the new connection. This involves create the new duplex pipe
                 // and sending the port number to the remote.
-                Ok(true) => {
-                    // Increment the number of pending connection requests, as we need to process it.
-                    self.pending += 1;
-                    match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
-                        Ok(new_qd) => new_qd,
-                        Err(e) => {
-                            // We are done serving this connection, so decrement the number of pending connection requests.
-                            self.pending -= 1;
-
-                            self.state.rollback();
-                            return Err(e);
-                        },
+                Ok(request_id) => {
+                    if self.pending_request_ids.contains(&request_id) {
+                        debug!("do_accept(): duplicate request (request_id={:?})", request_id.0);
+                        continue;
+                    } else {
+                        self.pending_request_ids.insert(request_id);
+                        match create_pipe(&mut catmem, catmem_qd, &ipv4, new_port, &yielder).await {
+                            Ok(new_qd) => new_qd,
+                            Err(e) => {
+                                self.state.rollback();
+                                return Err(e);
+                            },
+                        }
                     }
                 },
-                // Invalid request.
-                Ok(false) => continue,
                 // Some error.
                 Err(e) => {
                     self.state.rollback();
@@ -201,32 +214,23 @@ impl Socket {
             };
 
             let new_socket: Self = Self::alloc(catmem.clone(), new_qd, None, Some(SocketAddrV4::new(ipv4, new_port)));
-            let result: Result<bool, Fail> = pop_magic_number(&mut catmem, new_qd, &yielder).await;
+            let result: Result<RequestId, Fail> = pop_request_id(&mut catmem, new_qd, &yielder).await;
 
-            // We are done serving this connection, so decrement the number of pending connection requests.
-            self.pending -= 1;
-
-            // Check that the remote has retrieved the port number and responded with a magic number.
+            // Check that the remote has retrieved the port number and responded with a valid request id.
             match result {
                 // Valid response. Connection successfully established, so return new port and pipe to application.
-                Ok(true) => {
+                Ok(request_id) => {
+                    // If we've never seen this before, something has gone very wrong.
+                    assert!(self.pending_request_ids.contains(&request_id));
+                    self.pending_request_ids.remove(&request_id);
                     self.state.commit();
                     return Ok(new_socket);
-                },
-                // Invalid response.
-                Ok(false) => {
-                    // Clean up newly allocated duplex pipe.
-                    match catmem.close(new_qd) {
-                        Ok(()) => continue,
-                        Err(e) => {
-                            self.state.rollback();
-                            return Err(e);
-                        },
-                    }
                 },
                 // Some error.
                 Err(e) => {
                     self.state.rollback();
+                    // Clean up newly allocated duplex pipe.
+                    catmem.close(new_qd)?;
                     return Err(e);
                 },
             };
@@ -247,11 +251,12 @@ impl Socket {
         let ipv4: &Ipv4Addr = remote.ip();
         let port: u16 = remote.port().into();
         let mut catmem: SharedCatmemLibOS = self.catmem.clone();
+        let request_id: RequestId = RequestId(self.rng.next_u64());
 
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
         let result: Result<(QDesc, SocketAddrV4), Fail> = {
-            let new_port: u16 = match get_port(&mut catmem, ipv4, port, yielder).await {
+            let new_port: u16 = match get_port(&mut catmem, ipv4, port, &request_id, yielder).await {
                 Ok(new_port) => new_port,
                 Err(e) => {
                     self.state.rollback();
@@ -269,7 +274,7 @@ impl Socket {
                 },
             };
             // Send an ack to the server over the new pipe.
-            if let Err(e) = send_ack(&mut catmem, new_qd, &yielder).await {
+            if let Err(e) = send_ack(&mut catmem, new_qd, &request_id, &yielder).await {
                 self.state.rollback();
                 return Err(e);
             }
@@ -424,13 +429,14 @@ impl Socket {
 // Standalone Functions
 //======================================================================================================================
 
-// Gets the next connection request and checks if it is valid by ensuring the following:
-//   - The completed I/O queue operation associated to the queue token qt
-//   concerns a pop() operation that has completed.
-//   - The payload received from that pop() operation is a valid and legit MAGIC_CONNECT message.
-async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yielder: &Yielder) -> Result<bool, Fail> {
-    // Issue pop. Each magic connect represents a separate connection request, so we always bound the pop.
-    let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of_val(&MAGIC_CONNECT)))?;
+/// Gets the next connection request.
+async fn pop_request_id(
+    catmem: &mut SharedCatmemLibOS,
+    catmem_qd: QDesc,
+    yielder: &Yielder,
+) -> Result<RequestId, Fail> {
+    // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
+    let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
         catmem.from_task_id(qt)?
@@ -453,7 +459,7 @@ async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yiel
                 "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
                 qr.qr_qd, qt, qr.qr_ret
             );
-            error!("pop_magic_number(): {:?}", &cause);
+            error!("pop_request_id(): {:?}", &cause);
             return Err(Fail::new(qr.qr_ret as i32, &cause));
         },
         // We do not expect anything else.
@@ -468,13 +474,9 @@ async fn pop_magic_number(catmem: &mut SharedCatmemLibOS, catmem_qd: QDesc, yiel
     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
 
     // Parse and check request.
-    let passed: bool = is_magic_connect(&sga);
+    let result: Result<RequestId, Fail> = get_connect_id(&sga);
     catmem.free_sgarray(sga)?;
-    if !passed {
-        warn!("pop_magic_number(): failed to establish connection (invalid request)");
-    }
-
-    Ok(passed)
+    result
 }
 
 // Sends the port number to the peer process.
@@ -539,10 +541,11 @@ async fn create_pipe(
 async fn send_connection_request(
     catmem: &mut SharedCatmemLibOS,
     connect_qd: QDesc,
+    request_id: &RequestId,
     yielder: &Yielder,
 ) -> Result<(), Fail> {
     // Create a message containing the magic number.
-    let sga: demi_sgarray_t = cook_magic_connect(catmem)?;
+    let sga: demi_sgarray_t = send_connect_id(catmem, request_id)?;
 
     // Send to server.
     let qt: QToken = catmem.push(connect_qd, &sga)?;
@@ -583,7 +586,13 @@ async fn send_connection_request(
     }
 }
 
-async fn get_port(catmem: &mut SharedCatmemLibOS, ipv4: &Ipv4Addr, port: u16, yielder: &Yielder) -> Result<u16, Fail> {
+async fn get_port(
+    catmem: &mut SharedCatmemLibOS,
+    ipv4: &Ipv4Addr,
+    port: u16,
+    request_id: &RequestId,
+    yielder: &Yielder,
+) -> Result<u16, Fail> {
     // Issue receive operation to wait for connect request ack.
     let size: usize = mem::size_of::<u16>();
     // Open connection to server.
@@ -611,16 +620,19 @@ async fn get_port(catmem: &mut SharedCatmemLibOS, ipv4: &Ipv4Addr, port: u16, yi
 
     loop {
         // Send the connection request to the server.
-        send_connection_request(catmem, connect_qd, &yielder).await?;
+        send_connection_request(catmem, connect_qd, request_id, &yielder).await?;
 
         // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
-        if let Err(e) = yielder.yield_times(MAX_ACK_RECEIVED_ATTEMPTS).await {
-            return Err(e);
+        for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
+            match yielder.yield_once().await {
+                Ok(()) if handle.has_completed() => break,
+                Ok(()) => continue,
+                Err(e) => return Err(e),
+            }
         }
-
         // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
         if handle.has_completed() {
-            // Re-acquire reference to catmem libos.
+            // Re-acquire reference to Catmem libos.
             // Get the result of the pop.
             let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
             match qr.qr_opcode {
@@ -658,9 +670,14 @@ async fn get_port(catmem: &mut SharedCatmemLibOS, ipv4: &Ipv4Addr, port: u16, yi
 }
 
 // Send an ack through a new Catmem pipe.
-async fn send_ack(catmem: &mut SharedCatmemLibOS, new_qd: QDesc, yielder: &Yielder) -> Result<(), Fail> {
+async fn send_ack(
+    catmem: &mut SharedCatmemLibOS,
+    new_qd: QDesc,
+    request_id: &RequestId,
+    yielder: &Yielder,
+) -> Result<(), Fail> {
     // Create message with magic connect.
-    let sga: demi_sgarray_t = cook_magic_connect(catmem)?;
+    let sga: demi_sgarray_t = send_connect_id(catmem, request_id)?;
     // Send to server through new pipe.
     let qt: QToken = catmem.push(new_qd, &sga)?;
     trace!("Send ack qtoken={:?}", qt);
@@ -702,14 +719,12 @@ async fn send_ack(catmem: &mut SharedCatmemLibOS, new_qd: QDesc, yielder: &Yield
 }
 
 /// Creates a magic connect message.
-pub fn cook_magic_connect(catmem: &mut SharedCatmemLibOS) -> Result<demi_sgarray_t, Fail> {
-    let sga: demi_sgarray_t = catmem.alloc_sgarray(mem::size_of_val(&MAGIC_CONNECT))?;
-
-    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+pub fn send_connect_id(catmem: &mut SharedCatmemLibOS, request_id: &RequestId) -> Result<demi_sgarray_t, Fail> {
+    let sga: demi_sgarray_t = catmem.alloc_sgarray(mem::size_of_val(&request_id))?;
+    let ptr: *mut u64 = sga.sga_segs[0].sgaseg_buf as *mut u64;
     unsafe {
-        *ptr = MAGIC_CONNECT;
+        *ptr = request_id.0;
     }
-
     Ok(sga)
 }
 
@@ -736,18 +751,16 @@ fn extract_port_number(sga: &demi_sgarray_t) -> Result<u16, Fail> {
 }
 
 /// Checks for a magic connect message.
-fn is_magic_connect(sga: &demi_sgarray_t) -> bool {
+fn get_connect_id(sga: &demi_sgarray_t) -> Result<RequestId, Fail> {
     let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-    if len == mem::size_of_val(&MAGIC_CONNECT) {
-        let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-        let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-        let bytes = MAGIC_CONNECT.to_ne_bytes();
-        if slice[..] == bytes[..] {
-            return true;
-        }
+    if len == mem::size_of::<RequestId>() {
+        let ptr: *mut u64 = sga.sga_segs[0].sgaseg_buf as *mut u64;
+        Ok(RequestId(unsafe { *ptr }))
+    } else {
+        let cause: String = format!("invalid connect request (len={:?})", len);
+        error!("get_connect_id(): {:?}", &cause);
+        Err(Fail::new(libc::ECONNREFUSED, &cause))
     }
-
-    false
 }
 
 fn format_pipe_str(ip: &Ipv4Addr, port: u16) -> String {
