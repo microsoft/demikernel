@@ -170,31 +170,38 @@ impl<const N: usize> TcpPeer<N> {
         Ok(new_qd)
     }
 
-    pub fn bind(&self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+        // Check if we are binding to the wildcard address.
+        // FIXME: https://github.com/demikernel/demikernel/issues/189
+        if local.ip() == &Ipv4Addr::UNSPECIFIED {
+            let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
+
+        // Check if we are binding to the wildcard port.
+        // FIXME: https://github.com/demikernel/demikernel/issues/582
+        if local.port() == 0 {
+            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        }
+
+        // TODO: Check if we are binding to a non-local address.
+
+        // Check wether the address is in use.
+        if self.addr_in_use(local) {
+            let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
+            error!("bind(): {}", &cause);
+            return Err(Fail::new(libc::EADDRINUSE, &cause));
+        }
+
         let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
 
-        // Check if address is already bound.
-        for (socket_id, _) in &inner.addresses {
-            match socket_id {
-                SocketId::Passive(local) | SocketId::Active(local, _) if *local == addr => {
-                    return Err(Fail::new(libc::EADDRINUSE, "address already in use"))
-                },
-                _ => (),
-            }
-        }
-
         // Check if this is an ephemeral port.
-        if EphemeralPorts::is_private(addr.port()) {
+        if EphemeralPorts::is_private(local.port()) {
             // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            inner.ephemeral_ports.alloc_port(addr.port())?
-        }
-
-        // Check if we have to handle wildcard port binding.
-        if addr.port() == 0 {
-            // Allocate ephemeral port.
-            // TODO: we should free this when closing.
-            let new_port: u16 = inner.ephemeral_ports.alloc_any()?;
-            addr.set_port(new_port);
+            inner.ephemeral_ports.alloc_port(local.port())?
         }
 
         // Issue operation.
@@ -203,7 +210,7 @@ impl<const N: usize> TcpPeer<N> {
             let queue: &mut TcpQueue<N> = qtable.get_mut::<TcpQueue<N>>(&qd)?;
             match queue.get_socket() {
                 Socket::Inactive(None) => {
-                    queue.set_socket(Socket::Inactive(Some(addr)));
+                    queue.set_socket(Socket::Inactive(Some(local)));
                     Ok(())
                 },
                 Socket::Inactive(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
@@ -217,14 +224,14 @@ impl<const N: usize> TcpPeer<N> {
         // Handle return value.
         match ret {
             Ok(x) => {
-                inner.addresses.insert(SocketId::Passive(addr), qd);
+                inner.addresses.insert(SocketId::Passive(local), qd);
                 Ok(x)
             },
             Err(e) => {
                 // Rollback ephemeral port allocation.
-                if EphemeralPorts::is_private(addr.port()) {
-                    if inner.ephemeral_ports.free(addr.port()).is_err() {
-                        warn!("bind(): leaking ephemeral port (port={})", addr.port());
+                if EphemeralPorts::is_private(local.port()) {
+                    if inner.ephemeral_ports.free(local.port()).is_err() {
+                        warn!("bind(): leaking ephemeral port (port={})", local.port());
                     }
                 }
                 Err(e)
