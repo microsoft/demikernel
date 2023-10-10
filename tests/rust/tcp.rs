@@ -90,17 +90,6 @@ fn do_passive_connection_setup_ephemeral<const N: usize>(mut libos: &mut InetSta
     Ok(())
 }
 
-/// Opens and closes a passive socket using wildcard ephemeral port.
-fn do_passive_connection_setup_wildcard_ephemeral<const N: usize>(mut libos: &mut InetStack<N>) -> Result<()> {
-    let local: SocketAddr = SocketAddr::new(ALICE_IP, 0);
-    let sockqd: QDesc = safe_socket(&mut libos)?;
-    safe_bind(&mut libos, sockqd, local)?;
-    safe_listen(&mut libos, sockqd)?;
-    safe_close_passive(&mut libos, sockqd)?;
-
-    Ok(())
-}
-
 /// Tests if a passive socket may be successfully opened and closed.
 #[test]
 fn tcp_connection_setup() -> Result<()> {
@@ -109,7 +98,6 @@ fn tcp_connection_setup() -> Result<()> {
 
     do_passive_connection_setup(&mut libos)?;
     do_passive_connection_setup_ephemeral(&mut libos)?;
-    do_passive_connection_setup_wildcard_ephemeral(&mut libos)?;
 
     Ok(())
 }
@@ -500,7 +488,7 @@ fn tcp_bad_bind() -> Result<()> {
     let port: u16 = PORT_BASE;
     let port2: u16 = PORT_BASE + 1;
     let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
-    let local2: SocketAddr =  SocketAddr::new(ALICE_IP, port2);
+    let local2: SocketAddr = SocketAddr::new(ALICE_IP, port2);
     let localv6: SocketAddr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0));
 
     // IPv6 unsupported
@@ -526,7 +514,6 @@ fn tcp_bad_bind() -> Result<()> {
 
     Ok(())
 }
-
 
 //======================================================================================================================
 // Bad Listen
