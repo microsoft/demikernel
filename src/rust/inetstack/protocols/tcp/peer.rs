@@ -560,6 +560,18 @@ impl<const N: usize> TcpPeer<N> {
             _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
         }
     }
+
+    /// Checks if the given `local` address is in use.
+    fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+        let inner: Ref<Inner<N>> = self.inner.borrow();
+        for (socket_id, _) in &inner.addresses {
+            match socket_id {
+                SocketId::Passive(addr) | SocketId::Active(addr, _) if *addr == local => return true,
+                _ => continue,
+            }
+        }
+        false
+    }
 }
 
 impl<const N: usize> Inner<N> {
