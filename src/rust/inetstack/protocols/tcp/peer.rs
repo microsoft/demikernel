@@ -615,26 +615,36 @@ impl<const N: usize> Inner<N> {
         }
     }
 
+    /// Processes an incoming TCP segment.
     fn receive(&self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        let (mut tcp_hdr, data) = TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
+        let (mut tcp_hdr, data): (TcpHeader, DemiBuffer) =
+            TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
-        let local = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
-        let remote = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
+        let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
+        let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
 
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
-            return Err(Fail::new(libc::EINVAL, "invalid address type"));
+            let cause: String = format!("invalid remote address (remote={})", remote.ip());
+            error!("receive(): {}", &cause);
+            return Err(Fail::new(libc::EBADMSG, &cause));
         }
 
-        // grab the queue descriptor based on the incoming.
+        // Retrieve the queue descriptor based on the incoming segment.
         let &qd: &QDesc = match self.addresses.get(&SocketId::Active(local, remote)) {
             Some(qdesc) => qdesc,
             None => match self.addresses.get(&SocketId::Passive(local)) {
                 Some(qdesc) => qdesc,
-                None => return Err(Fail::new(libc::EBADF, "Socket not bound")),
+                None => {
+                    let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
+                    error!("receive(): {}", &cause);
+                    return Err(Fail::new(libc::EBADF, &cause));
+                },
             },
         };
-        // look up the queue metadata based on queue descriptor.
-        let mut qtable = self.qtable.borrow_mut();
+
+        // Dispatch to further processing depending on the socket state.
+        // It is safe to call expect() here because qd must be on the queue table.
+        let mut qtable: RefMut<IoQueueTable> = self.qtable.borrow_mut();
         let queue: &mut TcpQueue<N> = qtable.get_mut::<TcpQueue<N>>(&qd).expect("bad queue descriptor");
         match queue.get_mut_socket() {
             Socket::Established(socket) => {
@@ -651,31 +661,53 @@ impl<const N: usize> Inner<N> {
                 debug!("Routing to passive connection: {:?}", local);
                 match socket.receive(ip_hdr, &tcp_hdr) {
                     Ok(()) => return Ok(()),
-                    // Connection was refused, send a RST packet to the remote peer.
+                    // Connection was refused.
                     Err(e) if e.errno == libc::ECONNREFUSED => {
-                        debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
-                        self.send_rst(&local, &remote)?;
-                        return Ok(());
+                        // Fall through and send a RST segment back.
                     },
                     Err(e) => return Err(e),
                 }
             },
-            Socket::Inactive(_) => (),
+            // The segment is for an inactive connection.
+            Socket::Inactive(_) => {
+                debug!("Routing to inactive connection: {:?}", local);
+                // Fall through and send a RST segment back.
+            },
             Socket::Closing(socket) => {
                 debug!("Routing to closing connection: {:?}", socket.endpoints());
                 socket.receive(&mut tcp_hdr, data);
                 return Ok(());
             },
+        }
+
+        // Generate the RST segment accordingly to the ACK field.
+        // If the incoming segment has an ACK field, the reset takes its
+        // sequence number from the ACK field of the segment, otherwise the
+        // reset has sequence number zero and the ACK field is set to the sum
+        // of the sequence number and segment length of the incoming segment.
+        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
+        let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
+            (tcp_hdr.ack_num, None)
+        } else {
+            (
+                SeqNumber::from(0),
+                Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
+            )
         };
 
-        // The packet isn't for an open port; send a RST segment.
-        debug!("Sending RST for {:?}, {:?}", local, remote);
-        self.send_rst(&local, &remote)?;
+        debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
+        self.send_rst(&local, &remote, seq_num, ack_num)?;
         Ok(())
     }
 
     /// Sends a RST segment from `local` to `remote`.
-    fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
+    fn send_rst(
+        &self,
+        local: &SocketAddrV4,
+        remote: &SocketAddrV4,
+        seq_num: SeqNumber,
+        ack_num: Option<SeqNumber>,
+    ) -> Result<(), Fail> {
         // Query link address for destination.
         let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
             Some(link_addr) => link_addr,
@@ -692,6 +724,11 @@ impl<const N: usize> Inner<N> {
         let segment: TcpSegment = {
             let mut tcp_hdr: TcpHeader = TcpHeader::new(local.port(), remote.port());
             tcp_hdr.rst = true;
+            tcp_hdr.seq_num = seq_num;
+            if let Some(ack_num) = ack_num {
+                tcp_hdr.ack = true;
+                tcp_hdr.ack_num = ack_num;
+            }
             TcpSegment {
                 ethernet2_hdr: Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
                 ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
