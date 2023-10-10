@@ -621,10 +621,13 @@ async fn get_port(
         send_connection_request(catmem, connect_qd, request_id, &yielder).await?;
 
         // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
-        if let Err(e) = yielder.yield_times(MAX_ACK_RECEIVED_ATTEMPTS).await {
-            return Err(e);
+        for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
+            match yielder.yield_once().await {
+                Ok(()) if handle.has_completed() => break,
+                Ok(()) => continue,
+                Err(e) => return Err(e),
+            }
         }
-
         // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
         if handle.has_completed() {
             // Re-acquire reference to catmem libos.
