@@ -53,7 +53,8 @@ use ::std::{
 /// Maximum number of connection attempts.
 /// This was chosen arbitrarily.
 const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
-const SEED: u64 = 95;
+/// Seed number for generating request IDs.
+const REQUEST_ID_SEED: u64 = 95;
 
 //======================================================================================================================
 // Structures
@@ -79,6 +80,7 @@ pub struct Socket {
     rng: SmallRng,
 }
 
+/// Unique identifier for a request.
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct RequestId(u64);
 
@@ -98,7 +100,7 @@ impl Socket {
             backlog: 1,
             pending_request_ids: HashSet::<RequestId>::new(),
             #[cfg(debug_assertions)]
-            rng: SmallRng::seed_from_u64(SEED),
+            rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
         })
@@ -120,7 +122,7 @@ impl Socket {
             backlog: 1,
             pending_request_ids: HashSet::<RequestId>::new(),
             #[cfg(debug_assertions)]
-            rng: SmallRng::seed_from_u64(SEED),
+            rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
         }
@@ -191,7 +193,7 @@ impl Socket {
                 // and sending the port number to the remote.
                 Ok(request_id) => {
                     if self.pending_request_ids.contains(&request_id) {
-                        debug!("Duplicate request from client id={:?}", request_id.0);
+                        debug!("do_accept(): duplicate request (request_id={:?})", request_id.0);
                         continue;
                     } else {
                         self.pending_request_ids.insert(request_id);
@@ -427,14 +429,14 @@ impl Socket {
 // Standalone Functions
 //======================================================================================================================
 
-// Gets the next connection request.
+/// Gets the next connection request.
 async fn pop_request_id(
     catmem: &mut SharedCatmemLibOS,
     catmem_qd: QDesc,
     yielder: &Yielder,
 ) -> Result<RequestId, Fail> {
     // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
-    let qt: QToken = catmem.pop(catmem_qd, None)?;
+    let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
     let handle: TaskHandle = {
         // Get scheduler handle from the task id.
         catmem.from_task_id(qt)?
@@ -457,7 +459,7 @@ async fn pop_request_id(
                 "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
                 qr.qr_qd, qt, qr.qr_ret
             );
-            error!("pop_magic_number(): {:?}", &cause);
+            error!("pop_request_id(): {:?}", &cause);
             return Err(Fail::new(qr.qr_ret as i32, &cause));
         },
         // We do not expect anything else.
@@ -630,7 +632,7 @@ async fn get_port(
         }
         // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
         if handle.has_completed() {
-            // Re-acquire reference to catmem libos.
+            // Re-acquire reference to Catmem libos.
             // Get the result of the pop.
             let qr: demi_qresult_t = catmem.pack_result(handle, qt)?;
             match qr.qr_opcode {
@@ -755,7 +757,9 @@ fn get_connect_id(sga: &demi_sgarray_t) -> Result<RequestId, Fail> {
         let ptr: *mut u64 = sga.sga_segs[0].sgaseg_buf as *mut u64;
         Ok(RequestId(unsafe { *ptr }))
     } else {
-        Err(Fail::new(libc::EINVAL, "Not a valid connect request"))
+        let cause: String = format!("invalid connect request (len={:?})", len);
+        error!("get_connect_id(): {:?}", &cause);
+        Err(Fail::new(libc::ECONNREFUSED, &cause))
     }
 }
 
