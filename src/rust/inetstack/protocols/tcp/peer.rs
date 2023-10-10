@@ -655,24 +655,36 @@ impl<const N: usize> Inner<N> {
         Ok(())
     }
 
-    pub fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
-        // TODO: Make this work pending on ARP resolution if needed.
-        let remote_link_addr = self
-            .arp
-            .try_query(remote.ip().clone())
-            .ok_or(Fail::new(libc::EINVAL, "detination not in ARP cache"))?;
-
-        let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
-        tcp_hdr.rst = true;
-
-        let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
-            tcp_hdr,
-            data: None,
-            tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
+    /// Sends a RST segment from `local` to `remote`.
+    fn send_rst(&self, local: &SocketAddrV4, remote: &SocketAddrV4) -> Result<(), Fail> {
+        // Query link address for destination.
+        let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
+            Some(link_addr) => link_addr,
+            None => {
+                // ARP query is unlikely to fail, but if it does, don't send the RST segment,
+                // and return an error to server side.
+                let cause: String = format!("missing ARP entry (remote={})", remote.ip());
+                error!("send_rst(): {}", &cause);
+                return Err(Fail::new(libc::EHOSTUNREACH, &cause));
+            },
         };
-        self.rt.transmit(Box::new(segment));
+
+        // Create a RST segment.
+        let segment: TcpSegment = {
+            let mut tcp_hdr: TcpHeader = TcpHeader::new(local.port(), remote.port());
+            tcp_hdr.rst = true;
+            TcpSegment {
+                ethernet2_hdr: Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
+                ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+                tcp_hdr,
+                data: None,
+                tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
+            }
+        };
+
+        // Send it.
+        let pkt: Box<TcpSegment> = Box::new(segment);
+        self.rt.transmit(pkt);
 
         Ok(())
     }
