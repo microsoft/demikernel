@@ -18,7 +18,6 @@ use crate::{
             operation::SocketOp,
             state::SocketStateMachine,
         },
-        DemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -28,13 +27,16 @@ use crate::{
 use ::std::net::SocketAddrV4;
 
 #[cfg(target_os = "linux")]
-use crate::pal::{
-    data_structures::{
-        SockAddr,
-        SockAddrIn,
-        Socklen,
+use crate::{
+    pal::{
+        data_structures::{
+            SockAddr,
+            SockAddrIn,
+            Socklen,
+        },
+        linux,
     },
-    linux,
+    runtime::DemiRuntime,
 };
 
 #[cfg(target_os = "linux")]
