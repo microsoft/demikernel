@@ -9,10 +9,7 @@ use crate::{
             SockAddr,
             SockAddrIn,
         },
-        functions::{
-            create_sin_addr,
-            create_sin_zero,
-        },
+        functions::create_sin_addr,
     },
     runtime::{
         memory::MemoryRuntime,
@@ -46,7 +43,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                     sin_family: AF_INET,
                     sin_port: addr.port().into(),
                     sin_addr: create_sin_addr(&addr.ip().octets()),
-                    sin_zero: create_sin_zero(),
+                    sin_zero: [0; 8],
                 }
             };
             let qr_value: demi_qr_value_t = demi_qr_value_t {
@@ -78,7 +75,7 @@ pub fn pack_result(rt: Rc<DPDKRuntime>, result: OperationResult, qd: QDesc, qt: 
                             sin_family: AF_INET,
                             sin_port: endpoint.port().into(),
                             sin_addr: create_sin_addr(&endpoint.ip().octets()),
-                            sin_zero: create_sin_zero(),
+                            sin_zero: [0; 8],
                         }
                     };
                     sga.sga_addr = unsafe { mem::transmute::<SockAddrIn, SockAddr>(saddr) };
