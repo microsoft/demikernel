@@ -4,12 +4,6 @@
 #[cfg(feature = "catnip-libos")]
 const NUM_OCTETS_IN_IPV4: usize = 4;
 
-#[cfg(feature = "catnip-libos")]
-const NUM_SIN_ZERO_BYTES: usize = 8;
-
-#[cfg(all(feature = "catnip-libos", target_os = "windows"))]
-use windows::Win32::Foundation::CHAR;
-
 #[cfg(all(feature = "catnip-libos", target_os = "windows"))]
 use windows::Win32::Networking::WinSock::IN_ADDR;
 
@@ -31,11 +25,6 @@ pub fn create_sin_addr(octets: &[u8; NUM_OCTETS_IN_IPV4]) -> IN_ADDR {
             S_addr: u32::from_ne_bytes(*octets),
         }),
     }
-}
-
-#[cfg(all(feature = "catnip-libos", target_os = "windows"))]
-pub fn create_sin_zero() -> [CHAR; NUM_SIN_ZERO_BYTES] {
-    [CHAR(0); 8]
 }
 
 #[cfg(target_os = "windows")]
@@ -70,9 +59,4 @@ pub fn create_sin_addr(octets: &[u8; NUM_OCTETS_IN_IPV4]) -> in_addr {
         // Always create a big-endian u32 from the given 4 bytes (in big-endian order), regardless of architecture.
         s_addr: u32::from_ne_bytes(*octets),
     }
-}
-
-#[cfg(all(feature = "catnip-libos", target_os = "linux"))]
-pub fn create_sin_zero() -> [u8; NUM_SIN_ZERO_BYTES] {
-    [0; 8]
 }
