@@ -14,58 +14,52 @@ use crate::{
             PopFuture,
             PushFuture,
         },
-        udp::UdpPeer,
+        udp::SharedUdpPeer,
         Peer,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::types::MacAddress,
-        queue::{
-            IoQueueTable,
-            Operation,
+        network::{
+            types::MacAddress,
+            NetworkRuntime,
         },
         timer::TimerRc,
         QDesc,
+        SharedDemiRuntime,
     },
-    scheduler::scheduler::Scheduler,
 };
 use ::libc::EBADMSG;
 use ::std::{
-    cell::RefCell,
     collections::HashMap,
     future::Future,
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    pin::Pin,
-    rc::Rc,
     time::Duration,
 };
 
 use super::TestRuntime;
 
 pub struct Engine<const N: usize> {
-    pub rt: Rc<TestRuntime>,
+    pub transport: SharedTestRuntime,
     pub clock: TimerRc,
     pub arp: ArpPeer<N>,
     pub ipv4: Peer<N>,
-    pub qtable: Rc<RefCell<IoQueueTable>>,
+    pub runtime: SharedDemiRuntime,
 }
 
 impl<const N: usize> Engine<N> {
-    pub fn new(rt: TestRuntime, scheduler: Scheduler, clock: TimerRc) -> Result<Self, Fail> {
-        let rt = Rc::new(rt);
-        let link_addr = rt.link_addr;
-        let ipv4_addr = rt.ipv4_addr;
-        let arp_options = rt.arp_options.clone();
-        let udp_config = rt.udp_config.clone();
-        let tcp_config = rt.tcp_config.clone();
-        let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
-        let arp = ArpPeer::new(
-            rt.clone(),
-            scheduler.clone(),
+    pub fn new(transport: SharedTestRuntime, runtime: SharedDemiRuntime, clock: TimerRc) -> Result<Self, Fail> {
+        let link_addr = transport.link_addr;
+        let ipv4_addr = transport.ipv4_addr;
+        let arp_options = transport.arp_options.clone();
+        let udp_config = transport.udp_config.clone();
+        let tcp_config = transport.tcp_config.clone();
+        let arp = SharedArpPeer::new(
+            runtime.clone(),
+            transport.clone(),
             clock.clone(),
             link_addr,
             ipv4_addr,
@@ -73,9 +67,8 @@ impl<const N: usize> Engine<N> {
         )?;
         let rng_seed: [u8; 32] = [0; 32];
         let ipv4 = Peer::new(
-            rt.clone(),
-            scheduler.clone(),
-            qtable.clone(),
+            runtime.clone(),
+            transport.clone(),
             clock.clone(),
             link_addr,
             ipv4_addr,
@@ -85,11 +78,11 @@ impl<const N: usize> Engine<N> {
             rng_seed,
         )?;
         Ok(Engine {
-            rt,
+            transport,
             clock,
             arp,
             ipv4,
-            qtable,
+            runtime,
         })
     }
 
@@ -115,23 +108,25 @@ impl<const N: usize> Engine<N> {
     }
 
     pub fn udp_pushto(&self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<(), Fail> {
-        self.ipv4.udp.do_pushto(qd, buf, to)
+        let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
+        udp.pushto(qd, buf, to)
     }
 
-    pub fn udp_pop(&mut self, qd: QDesc) -> Pin<Box<Operation>> {
-        Box::pin(UdpPeer::<N>::do_pop(self.qtable.clone(), qd, None))
+    pub fn udp_pop(&self, qd: QDesc) -> Pin<Box<Operation>> {
+        let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
+        Box::pin(async move { udp.pop(qd, None).await })
     }
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
-        self.ipv4.udp.do_socket()
+        self.ipv4.udp.socket()
     }
 
     pub fn udp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
-        self.ipv4.udp.do_bind(socket_fd, endpoint)
+        self.ipv4.udp.bind(socket_fd, endpoint)
     }
 
     pub fn udp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {
-        self.ipv4.udp.do_close(socket_fd)
+        self.ipv4.udp.close(socket_fd)
     }
 
     pub fn tcp_socket(&mut self) -> Result<QDesc, Fail> {

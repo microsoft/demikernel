@@ -55,6 +55,8 @@ pub struct TestRuntime {
     pub clock: TimerRc,
 }
 
+#[derive(Clone)]
+pub struct SharedTestRuntime(pub SharedObject<TestRuntime>);
 //==============================================================================
 // Associate Functions
 //==============================================================================

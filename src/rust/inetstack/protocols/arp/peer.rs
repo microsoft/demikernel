@@ -25,12 +25,9 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        queue::BackgroundTask,
         timer::TimerRc,
-    },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
+        SharedDemiRuntime,
+        SharedObject,
     },
 };
 use ::futures::{
@@ -56,7 +53,10 @@ use ::std::{
     },
     future::Future,
     net::Ipv4Addr,
-    rc::Rc,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     time::Duration,
 };
 
@@ -69,7 +69,7 @@ use ::std::{
 ///
 #[derive(Clone)]
 pub struct ArpPeer<const N: usize> {
-    rt: Rc<dyn NetworkRuntime<N>>,
+    transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
     clock: TimerRc,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -89,8 +89,7 @@ pub struct ArpPeer<const N: usize> {
 
 impl<const N: usize> ArpPeer<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime<N>>,
-        scheduler: Scheduler,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -108,27 +107,42 @@ impl<const N: usize> ArpPeer<N> {
             String::from("Inetstack::arp::background"),
             Box::pin(Self::background(clock.clone(), cache.clone())),
         );
-        let handle: TaskHandle = match scheduler.insert(task) {
-            Some(handle) => handle,
-            None => {
-                return Err(Fail::new(
-                    libc::EAGAIN,
-                    "failed to schedule background co-routine for ARP module",
-                ))
-            },
-        };
-        let peer: ArpPeer<N> = ArpPeer {
-            rt,
+
+        Ok(Self {
+            transport,
             clock,
             local_link_addr,
             local_ipv4_addr,
             cache,
             waiters: Rc::new(RefCell::new(HashMap::default())),
             arp_config,
-            background: Rc::new(handle),
-        };
+        })
+    }
+}
 
-        Ok(peer)
+impl<const N: usize> SharedArpPeer<N> {
+    pub fn new(
+        runtime: SharedDemiRuntime,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
+        clock: TimerRc,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        arp_config: ArpConfig,
+    ) -> Result<Self, Fail> {
+        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer::<N>::new(
+            transport,
+            clock,
+            local_link_addr,
+            local_ipv4_addr,
+            arp_config,
+        )?));
+        let mut peer2: SharedArpPeer<N> = peer.clone();
+        // This is a future returned by the async function.
+        runtime.insert_background_coroutine(
+            "Inetstack::arp::background",
+            Box::pin(async move { peer2.background().await }),
+        )?;
+        Ok(peer.clone())
     }
 
     /// Drops a waiter for a target IP address.
@@ -234,7 +248,7 @@ impl<const N: usize> ArpPeer<N> {
                     ),
                 );
                 debug!("Responding {:?}", reply);
-                self.rt.transmit(Box::new(reply));
+                self.transport.transmit(Box::new(reply));
                 Ok(())
             },
             ArpOperation::Reply => {
@@ -283,9 +297,11 @@ impl<const N: usize> ArpPeer<N> {
             // > The frequency of the ARP request is very close to one per
             // > second, the maximum suggested by [RFC1122].
             let result = {
-                for i in 0..arp_options.get_retry_count() + 1 {
-                    rt.transmit(Box::new(msg.clone()));
-                    let timer = clock.wait(clock.clone(), arp_options.get_request_timeout());
+                for i in 0..self.arp_config.get_retry_count() + 1 {
+                    self.transport.transmit(Box::new(msg.clone()));
+                    let timer = self
+                        .clock
+                        .wait(self.clock.clone(), self.arp_config.get_request_timeout());
 
                     match arp_response.with_timeout(timer).await {
                         Ok(link_addr) => {

@@ -7,7 +7,6 @@
 //!
 //! - https://datatracker.ietf.org/doc/html/rfc768.
 
-pub mod coroutines;
 mod datagram;
 pub mod peer;
 pub mod queue;
@@ -21,5 +20,5 @@ mod tests;
 
 pub use self::{
     datagram::UdpHeader,
-    peer::UdpPeer,
+    peer::SharedUdpPeer,
 };

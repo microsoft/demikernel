@@ -51,6 +51,7 @@ use crate::{
 };
 use ::std::{
     boxed::Box,
+    future::Future,
     ops::{
         Deref,
         DerefMut,
@@ -83,7 +84,9 @@ pub struct SharedDemiRuntime(SharedObject<DemiRuntime>);
 
 /// The SharedObject wraps an object that will be shared across coroutines.
 pub struct SharedObject<T>(Rc<T>);
-
+/// The SharedBox represents a reference to a trait shared across coroutines.
+#[derive(Clone)]
+pub struct SharedBox<T: ?Sized>(SharedObject<Box<T>>);
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
@@ -125,6 +128,23 @@ impl DemiRuntime {
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         OperationTask::from(boxed_task.as_any())
+    }
+
+    /// Inserts the background `coroutine` named `task_name` into the scheduler.
+    pub fn insert_background_coroutine(
+        &mut self,
+        task_name: &str,
+        coroutine: Pin<Box<dyn Future<Output = ()>>>,
+    ) -> Result<TaskHandle, Fail> {
+        let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
+        match self.scheduler.insert(task) {
+            Some(handle) => Ok(handle),
+            None => {
+                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                error!("insert_background_coroutine(): {}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
+            },
+        }
     }
 
     /// Performs a single pool on the underlying scheduler.
@@ -194,6 +214,12 @@ impl<T> SharedObject<T> {
     }
 }
 
+impl<T> SharedBox<T> {
+    pub fn new(boxed_object: Box<T>) -> Self {
+        Self(SharedObject::new(boxed_object))
+    }
+}
+
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
@@ -213,12 +239,6 @@ impl<T> DerefMut for SharedObject<T> {
     fn deref_mut<'a>(&'a mut self) -> &'a mut Self::Target {
         let ptr: *mut T = Rc::as_ptr(&self.0) as *mut T;
         unsafe { &mut *ptr }
-    }
-}
-
-impl<T> Clone for SharedObject<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }
 

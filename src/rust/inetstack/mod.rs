@@ -20,11 +20,11 @@ use crate::{
                 PopFuture,
                 PushFuture,
             },
-            queue::TcpQueue,
+            queue::SharedTcpQueue,
         },
         udp::{
-            queue::UdpQueue,
-            UdpPeer,
+            queue::SharedUdpQueue,
+            SharedUdpPeer,
         },
         Peer,
     },
@@ -58,21 +58,16 @@ use crate::{
         },
         timer::TimerRc,
     },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
-    },
+    scheduler::TaskHandle,
 };
 use ::libc::c_int;
 use ::std::{
-    cell::RefCell,
     net::{
         Ipv4Addr,
         SocketAddr,
         SocketAddrV4,
     },
     pin::Pin,
-    rc::Rc,
     time::Instant,
 };
 
@@ -105,18 +100,17 @@ const MAX_RECV_ITERS: usize = 2;
 pub struct InetStack<const N: usize> {
     arp: ArpPeer<N>,
     ipv4: Peer<N>,
-    qtable: Rc<RefCell<IoQueueTable>>,
-    rt: Rc<dyn NetworkRuntime<N>>,
+    runtime: SharedDemiRuntime,
+    transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
     local_link_addr: MacAddress,
-    scheduler: Scheduler,
     clock: TimerRc,
     ts_iters: usize,
 }
 
 impl<const N: usize> InetStack<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime<N>>,
-        scheduler: Scheduler,
+        runtime: SharedDemiRuntime,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -125,19 +119,16 @@ impl<const N: usize> InetStack<N> {
         rng_seed: [u8; 32],
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
-        let arp: ArpPeer<N> = ArpPeer::new(
-            rt.clone(),
-            scheduler.clone(),
+        let arp: SharedArpPeer<N> = SharedArpPeer::new(
+            runtime.clone(),
+            transport.clone(),
             clock.clone(),
             local_link_addr,
             local_ipv4_addr,
             arp_config,
         )?;
         let ipv4: Peer<N> = Peer::new(
-            rt.clone(),
-            scheduler.clone(),
-            qtable.clone(),
+            runtime.clone(),
             clock.clone(),
             local_link_addr,
             local_ipv4_addr,
@@ -149,10 +140,9 @@ impl<const N: usize> InetStack<N> {
         Ok(Self {
             arp,
             ipv4,
-            qtable,
-            rt,
+            runtime,
+            transport,
             local_link_addr,
-            scheduler,
             clock,
             ts_iters: 0,
         })
@@ -207,7 +197,7 @@ impl<const N: usize> InetStack<N> {
         }
         match socket_type {
             SOCK_STREAM => self.ipv4.tcp.do_socket(),
-            SOCK_DGRAM => self.ipv4.udp.do_socket(),
+            SOCK_DGRAM => self.ipv4.udp.socket(),
             _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
         }
     }
@@ -233,7 +223,7 @@ impl<const N: usize> InetStack<N> {
 
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => self.ipv4.tcp.bind(qd, local),
-            Some(QType::UdpSocket) => self.ipv4.udp.do_bind(qd, local),
+            Some(QType::UdpSocket) => self.ipv4.udp.bind(qd, local),
             Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
             None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
@@ -393,7 +383,7 @@ impl<const N: usize> InetStack<N> {
 
         match self.lookup_qtype(&qd) {
             Some(QType::TcpSocket) => self.ipv4.tcp.do_close(qd),
-            Some(QType::UdpSocket) => self.ipv4.udp.do_close(qd),
+            Some(QType::UdpSocket) => self.ipv4.udp.close(qd),
             Some(_) => Err(Fail::new(libc::EINVAL, "invalid queue type")),
             None => Err(Fail::new(libc::EBADF, "bad queue descriptor")),
         }
@@ -437,14 +427,14 @@ impl<const N: usize> InetStack<N> {
                 (task_id, coroutine)
             },
             Some(QType::UdpSocket) => {
-                self.ipv4.udp.do_close(qd)?;
+                self.ipv4.udp.close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Expect is safe here because we looked up the queue to schedule this coroutine and no
                     // other close coroutine should be able to run due to state machine checks.
                     qtable_ptr
                         .borrow_mut()
-                        .free::<UdpQueue>(&qd)
+                        .free::<SharedUdpQueue<N>>(&qd)
                         .expect("queue should exist");
                     (qd, OperationResult::Close)
                 });
@@ -518,7 +508,7 @@ impl<const N: usize> InetStack<N> {
 
         match self.lookup_qtype(&qd) {
             Some(QType::UdpSocket) => {
-                self.ipv4.udp.do_pushto(qd, buf, to)?;
+                self.ipv4.udp.pushto(qd, buf, to)?;
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Push) });
                 let task_id: String = format!("Inetstack::UDP::pushto for qd={:?}", qd);
                 Ok(OperationTask::new(task_id, coroutine))
@@ -579,7 +569,8 @@ impl<const N: usize> InetStack<N> {
             },
             Some(QType::UdpSocket) => {
                 let task_id: String = format!("Inetstack::UDP::pop for qd={:?}", qd);
-                let coroutine: Pin<Box<Operation>> = Box::pin(UdpPeer::<N>::do_pop(self.qtable.clone(), qd, size));
+                let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
+                let coroutine: Pin<Box<Operation>> = Box::pin(async move { udp.pop(qd, size).await });
                 (task_id, coroutine)
             },
             Some(_) => return Err(Fail::new(libc::EINVAL, "invalid queue type")),

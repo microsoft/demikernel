@@ -10,7 +10,7 @@ use super::{
     established::EstablishedSocket,
     isn_generator::IsnGenerator,
     passive_open::PassiveSocket,
-    queue::TcpQueue,
+    queue::SharedTcpQueue,
 };
 use crate::{
     inetstack::protocols::{
@@ -51,8 +51,10 @@ use crate::{
         queue::IoQueueTable,
         timer::TimerRc,
         QDesc,
+        SharedBox,
+        SharedDemiRuntime,
+        SharedObject,
     },
-    scheduler::scheduler::Scheduler,
 };
 use ::futures::channel::mpsc;
 use ::rand::{
@@ -62,17 +64,15 @@ use ::rand::{
 };
 
 use ::std::{
-    cell::{
-        Ref,
-        RefCell,
-        RefMut,
-    },
     collections::HashMap,
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    rc::Rc,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     task::{
         Context,
         Poll,
@@ -105,37 +105,96 @@ enum SocketId {
 // Structures
 //==============================================================================
 
-pub struct Inner<const N: usize> {
+pub struct TcpPeer<const N: usize> {
+    runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
     ephemeral_ports: EphemeralPorts,
-    // queue descriptor -> per queue metadata
-    qtable: Rc<RefCell<IoQueueTable>>,
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
-    rt: Rc<dyn NetworkRuntime<N>>,
-    scheduler: Scheduler,
+    transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
     clock: TimerRc,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
-    arp: ArpPeer<N>,
-    rng: Rc<RefCell<SmallRng>>,
+    arp: SharedArpPeer<N>,
+    rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct TcpPeer<const N: usize> {
-    pub(super) inner: Rc<RefCell<Inner<N>>>,
-}
+pub struct SharedTcpPeer<const N: usize>(SharedObject<TcpPeer<N>>);
 
 //==============================================================================
 // Associated Functions
 //==============================================================================
 
 impl<const N: usize> TcpPeer<N> {
+    fn new(
+        runtime: SharedDemiRuntime,
+        transport: SharedBox<dyn NetworkRuntime<N>>,
+        clock: TimerRc,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        tcp_config: TcpConfig,
+        arp: SharedArpPeer<N>,
+        rng_seed: [u8; 32],
+    ) -> Self {
+        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
+        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
+        let nonce: u32 = rng.gen();
+        let (tx, _) = mpsc::unbounded();
+        Self {
+            isn_generator: IsnGenerator::new(nonce),
+            ephemeral_ports,
+            runtime,
+            transport,
+            addresses: HashMap::<SocketId, QDesc>::new(),
+            clock,
+            local_link_addr,
+            local_ipv4_addr,
+            tcp_config,
+            arp,
+            rng,
+            dead_socket_tx: tx,
+        }
+    }
+}
+
+impl<const N: usize> SharedTcpPeer<N> {
     pub fn new(
-        rt: Rc<dyn NetworkRuntime<N>>,
-        scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable>>,
+        runtime: SharedDemiRuntime,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
+        clock: TimerRc,
+        local_link_addr: MacAddress,
+        local_ipv4_addr: Ipv4Addr,
+        tcp_config: TcpConfig,
+        arp: SharedArpPeer<N>,
+        rng_seed: [u8; 32],
+    ) -> Self {
+        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
+        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
+        let nonce: u32 = rng.gen();
+        let (tx, _) = mpsc::unbounded();
+        Self {
+            isn_generator: IsnGenerator::new(nonce),
+            ephemeral_ports,
+            runtime,
+            transport,
+            addresses: HashMap::<SocketId, QDesc>::new(),
+            clock,
+            local_link_addr,
+            local_ipv4_addr,
+            tcp_config,
+            arp,
+            rng,
+            dead_socket_tx: tx,
+        }
+    }
+}
+
+impl<const N: usize> SharedTcpPeer<N> {
+    pub fn new(
+        runtime: SharedDemiRuntime,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -143,34 +202,29 @@ impl<const N: usize> TcpPeer<N> {
         arp: ArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let (tx, rx) = mpsc::unbounded();
-        let inner = Rc::new(RefCell::new(Inner::new(
-            rt.clone(),
-            scheduler,
-            qtable.clone(),
+        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer::<N>::new(
+            runtime,
+            transport,
             clock,
             local_link_addr,
             local_ipv4_addr,
             tcp_config,
             arp,
             rng_seed,
-            tx,
-            rx,
-        )));
-        Ok(Self { inner })
+        ))))
     }
 
     /// Opens a TCP socket.
-    pub fn do_socket(&self) -> Result<QDesc, Fail> {
+    pub fn do_socket(&mut self) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("tcp::socket");
-        let inner: Ref<Inner<N>> = self.inner.borrow();
-        let mut qtable: RefMut<IoQueueTable> = inner.qtable.borrow_mut();
-        let new_qd: QDesc = qtable.alloc::<TcpQueue<N>>(TcpQueue::<N>::new());
+        let new_qd: QDesc = self
+            .runtime
+            .alloc_queue::<SharedTcpQueue<N>>(SharedTcpQueue::<N>::new());
         Ok(new_qd)
     }
 
-    pub fn bind(&self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
         if local.ip() == &Ipv4Addr::UNSPECIFIED {
@@ -196,18 +250,15 @@ impl<const N: usize> TcpPeer<N> {
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
-        let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
-
         // Check if this is an ephemeral port.
         if EphemeralPorts::is_private(local.port()) {
             // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            inner.ephemeral_ports.alloc_port(local.port())?
+            self.ephemeral_ports.alloc_port(local.port())?
         }
 
         // Issue operation.
         let ret: Result<(), Fail> = {
-            let mut qtable: RefMut<IoQueueTable> = inner.qtable.borrow_mut();
-            let queue: &mut TcpQueue<N> = qtable.get_mut::<TcpQueue<N>>(&qd)?;
+            let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
             match queue.get_socket() {
                 Socket::Inactive(None) => {
                     queue.set_socket(Socket::Inactive(Some(local)));
@@ -224,13 +275,13 @@ impl<const N: usize> TcpPeer<N> {
         // Handle return value.
         match ret {
             Ok(x) => {
-                inner.addresses.insert(SocketId::Passive(local), qd);
+                self.addresses.insert(SocketId::Passive(local), qd);
                 Ok(x)
             },
             Err(e) => {
                 // Rollback ephemeral port allocation.
                 if EphemeralPorts::is_private(local.port()) {
-                    if inner.ephemeral_ports.free(local.port()).is_err() {
+                    if self.ephemeral_ports.free(local.port()).is_err() {
                         warn!("bind(): leaking ephemeral port (port={})", local.port());
                     }
                 }
@@ -239,24 +290,17 @@ impl<const N: usize> TcpPeer<N> {
         }
     }
 
-    pub fn receive(&self, ip_header: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        self.inner.borrow().receive(ip_header, buf)
-    }
-
     // Marks the target socket as passive.
-    pub fn listen(&self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         // This code borrows a reference to inner, instead of the entire self structure,
         // so we can still borrow self later.
-        let mut inner_: RefMut<Inner<N>> = self.inner.borrow_mut();
-        let inner: &mut Inner<N> = &mut *inner_;
-        let mut qtable: RefMut<IoQueueTable> = inner.qtable.borrow_mut();
         // Get bound address while checking for several issues.
-        let queue: &mut TcpQueue<N> = qtable.get_mut::<TcpQueue<N>>(&qd)?;
+        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
         match queue.get_mut_socket() {
             Socket::Inactive(Some(local)) => {
                 // Check if there isn't a socket listening on this address/port pair.
-                if inner.addresses.contains_key(&SocketId::Passive(*local)) {
-                    if *inner.addresses.get(&SocketId::Passive(*local)).unwrap() != qd {
+                if self.addresses.contains_key(&SocketId::Passive(*local)) {
+                    if *self.addresses.get(&SocketId::Passive(*local)).unwrap() != qd {
                         return Err(Fail::new(
                             libc::EADDRINUSE,
                             "another socket is already listening on the same address/port pair",
@@ -264,19 +308,18 @@ impl<const N: usize> TcpPeer<N> {
                     }
                 }
 
-                let nonce: u32 = inner.rng.borrow_mut().gen();
+                let nonce: u32 = self.rng.gen();
                 let socket = PassiveSocket::new(
                     *local,
                     backlog,
-                    inner.rt.clone(),
-                    inner.scheduler.clone(),
-                    inner.clock.clone(),
-                    inner.tcp_config.clone(),
-                    inner.local_link_addr,
-                    inner.arp.clone(),
+                    self.transport.clone(),
+                    self.clock.clone(),
+                    self.tcp_config.clone(),
+                    self.local_link_addr,
+                    self.arp.clone(),
                     nonce,
                 );
-                inner.addresses.insert(SocketId::Passive(local.clone()), qd);
+                self.addresses.insert(SocketId::Passive(local.clone()), qd);
                 queue.set_socket(Socket::Listening(socket));
                 Ok(())
             },
@@ -292,11 +335,10 @@ impl<const N: usize> TcpPeer<N> {
 
     /// Accepts an incoming connection.
     pub fn do_accept(&self, qd: QDesc) -> (QDesc, AcceptFuture<N>) {
-        let mut inner_: RefMut<Inner<N>> = self.inner.borrow_mut();
-        let inner: &mut Inner<N> = &mut *inner_;
-
-        let new_qd: QDesc = inner.qtable.borrow_mut().alloc::<TcpQueue<N>>(TcpQueue::<N>::new());
-        (new_qd, AcceptFuture::new(qd, new_qd, self.inner.clone()))
+        let new_qd: QDesc = self
+            .runtime
+            .alloc_queue::<SharedTcpQueue<N>>(SharedTcpQueue::<N>::new());
+        (new_qd, AcceptFuture::new(self.clone(), qd, new_qd))
     }
 
     /// Handles an incoming connection.
@@ -306,11 +348,8 @@ impl<const N: usize> TcpPeer<N> {
         new_qd: QDesc,
         ctx: &mut Context,
     ) -> Poll<Result<(QDesc, SocketAddrV4), Fail>> {
-        let mut inner: RefMut<Inner<N>> = self.inner.borrow_mut();
-
         let cb: ControlBlock<N> = {
-            let mut qtable: RefMut<IoQueueTable> = inner.qtable.borrow_mut();
-            let queue: &mut TcpQueue<N> = qtable.get_mut::<TcpQueue<N>>(&qd)?;
+            let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
             match queue.get_mut_socket() {
                 Socket::Listening(socket) => match socket.poll_accept(ctx) {
                     Poll::Pending => return Poll::Pending,
@@ -579,44 +618,13 @@ impl<const N: usize> TcpPeer<N> {
         }
         false
     }
-}
 
-impl<const N: usize> Inner<N> {
-    fn new(
-        rt: Rc<dyn NetworkRuntime<N>>,
-        scheduler: Scheduler,
-        qtable: Rc<RefCell<IoQueueTable>>,
-        clock: TimerRc,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        tcp_config: TcpConfig,
-        arp: ArpPeer<N>,
-        rng_seed: [u8; 32],
-        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-        _dead_socket_rx: mpsc::UnboundedReceiver<QDesc>,
-    ) -> Self {
-        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
-        let nonce: u32 = rng.gen();
-        Self {
-            isn_generator: IsnGenerator::new(nonce),
-            ephemeral_ports,
-            rt: rt,
-            scheduler,
-            qtable: qtable.clone(),
-            addresses: HashMap::<SocketId, QDesc>::new(),
-            clock: clock,
-            local_link_addr: local_link_addr,
-            local_ipv4_addr: local_ipv4_addr,
-            tcp_config: tcp_config,
-            arp: arp,
-            rng: Rc::new(RefCell::new(rng)),
-            dead_socket_tx: dead_socket_tx,
-        }
+    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedTcpQueue> {
+        self.runtime.get_shared_queue::<SharedTcpQueue<N>>(qd)
     }
 
     /// Processes an incoming TCP segment.
-    fn receive(&self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         let (mut tcp_hdr, data): (TcpHeader, DemiBuffer) =
             TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
@@ -701,7 +709,7 @@ impl<const N: usize> Inner<N> {
     }
 
     /// Sends a RST segment from `local` to `remote`.
-    fn send_rst(
+    pub fn send_rst(
         &self,
         local: &SocketAddrV4,
         remote: &SocketAddrV4,
@@ -745,7 +753,7 @@ impl<const N: usize> Inner<N> {
         Ok(())
     }
 
-    pub(super) fn poll_connect_finished(&mut self, qd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
+    pub fn poll_connect_finished(&mut self, qd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
         let mut qtable: RefMut<IoQueueTable> = self.qtable.borrow_mut();
         let result: Result<&mut TcpQueue<N>, Fail> = qtable.get_mut::<TcpQueue<N>>(&qd);
         let queue: &mut TcpQueue<N> = match result {
@@ -773,7 +781,7 @@ impl<const N: usize> Inner<N> {
     }
 
     // TODO: Eventually use context to store the waker for this function in the established socket.
-    pub(super) fn poll_close_finished(&mut self, qd: QDesc, _context: &mut Context) -> Poll<Result<(), Fail>> {
+    pub fn poll_close_finished(&mut self, qd: QDesc, _context: &mut Context) -> Poll<Result<(), Fail>> {
         let mut qtable: RefMut<IoQueueTable> = self.qtable.borrow_mut();
         let sockid: Option<SocketId> = {
             let result: Result<&mut TcpQueue<N>, Fail> = qtable.get_mut::<TcpQueue<N>>(&qd);
@@ -807,5 +815,23 @@ impl<const N: usize> Inner<N> {
             self.addresses.remove(&addr);
         }
         Poll::Ready(Ok(()))
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl<const N: usize> Deref for SharedTcpPeer<N> {
+    type Target = TcpPeer<N>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<const N: usize> DerefMut for SharedTcpPeer<N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }

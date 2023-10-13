@@ -37,10 +37,7 @@ use crate::{
         },
         queue::BackgroundTask,
         timer::TimerRc,
-    },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
+        SharedDemiRuntime,
     },
 };
 use ::libc::{
@@ -72,9 +69,6 @@ struct InflightAccept {
     header_window_size: u16,
     remote_window_scale: Option<u8>,
     mss: usize,
-
-    #[allow(unused)]
-    handle: TaskHandle,
 }
 
 struct ReadySockets<const N: usize> {
@@ -121,13 +115,10 @@ impl<const N: usize> ReadySockets<N> {
 pub struct PassiveSocket<const N: usize> {
     inflight: HashMap<SocketAddrV4, InflightAccept>,
     ready: Rc<RefCell<ReadySockets<N>>>,
-
     max_backlog: usize,
     isn_generator: IsnGenerator,
-
     local: SocketAddrV4,
-    rt: Rc<dyn NetworkRuntime<N>>,
-    scheduler: Scheduler,
+    transport: SharedBox<dyn NetworkRuntime<N>>,
     clock: TimerRc,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
@@ -138,8 +129,8 @@ impl<const N: usize> PassiveSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
-        rt: Rc<dyn NetworkRuntime<N>>,
-        scheduler: Scheduler,
+        runtime: SharedDemiRuntime,
+        transport: SharedObject<Box<dyn NetworkRuntime<N>>>,
         clock: TimerRc,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
