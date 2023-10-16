@@ -22,12 +22,12 @@ use ::arrayvec::ArrayVec;
 /// Network Runtime Trait Implementation for I/O User Ring Runtime
 impl<const N: usize> NetworkRuntime<N> for IoUringRuntime {
     // TODO: Rely on a default implementation for this.
-    fn transmit(&self, _pkt: Box<dyn PacketBuf>) {
+    fn transmit(&mut self, _pkt: Box<dyn PacketBuf>) {
         unreachable!()
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
         unreachable!()
     }
 }

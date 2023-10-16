@@ -1,22 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::peer::{
-    Inner,
-    TcpPeer,
-};
+use super::peer::SharedTcpPeer;
 use crate::runtime::{
     fail::Fail,
     memory::DemiBuffer,
     QDesc,
 };
 use ::std::{
-    cell::RefCell,
     fmt,
     future::Future,
     net::SocketAddrV4,
     pin::Pin,
-    rc::Rc,
     task::{
         Context,
         Poll,
@@ -25,7 +20,7 @@ use ::std::{
 
 pub struct ConnectFuture<const N: usize> {
     pub qd: QDesc,
-    pub inner: Rc<RefCell<Inner<N>>>,
+    pub peer: SharedTcpPeer<N>,
 }
 
 impl<const N: usize> fmt::Debug for ConnectFuture<N> {
@@ -38,8 +33,8 @@ impl<const N: usize> Future for ConnectFuture<N> {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        self_.inner.borrow_mut().poll_connect_finished(self_.qd, context)
+        let mut peer: SharedTcpPeer<N> = self.peer.clone();
+        peer.poll_connect_finished(self.qd, context)
     }
 }
 
@@ -50,14 +45,14 @@ pub struct AcceptFuture<const N: usize> {
     // Pre-booked queue descriptor for incoming connection.
     new_qd: QDesc,
     // Reference to associated inner TCP peer.
-    inner: Rc<RefCell<Inner<N>>>,
+    pub peer: SharedTcpPeer<N>,
 }
 
 /// Associated Functions for Accept Operation Descriptors
 impl<const N: usize> AcceptFuture<N> {
     /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, new_qd: QDesc, inner: Rc<RefCell<Inner<N>>>) -> Self {
-        Self { qd, new_qd, inner }
+    pub fn new(qd: QDesc, new_qd: QDesc, peer: SharedTcpPeer<N>) -> Self {
+        Self { qd, new_qd, peer }
     }
 }
 
@@ -74,12 +69,8 @@ impl<const N: usize> Future for AcceptFuture<N> {
 
     /// Polls the underlying accept operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let self_: &mut AcceptFuture<N> = self.get_mut();
-        // TODO: The following design pattern looks ugly. We should move poll_accept to the inner structure.
-        let peer: TcpPeer<N> = TcpPeer {
-            inner: self_.inner.clone(),
-        };
-        peer.poll_accept(self_.qd, self_.new_qd, context)
+        let mut peer: SharedTcpPeer<N> = self.peer.clone();
+        peer.poll_accept(self.qd, self.new_qd, context)
     }
 }
 
@@ -108,7 +99,7 @@ impl Future for PushFuture {
 pub struct PopFuture<const N: usize> {
     pub qd: QDesc,
     pub size: Option<usize>,
-    pub inner: Rc<RefCell<Inner<N>>>,
+    pub peer: SharedTcpPeer<N>,
 }
 
 impl<const N: usize> fmt::Debug for PopFuture<N> {
@@ -121,18 +112,14 @@ impl<const N: usize> Future for PopFuture<N> {
     type Output = Result<DemiBuffer, Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        let size: Option<usize> = self_.size;
-        let peer = TcpPeer {
-            inner: self_.inner.clone(),
-        };
-        peer.poll_recv(self_.qd, ctx, size)
+        let mut peer: SharedTcpPeer<N> = self.peer.clone();
+        peer.poll_recv(self.qd, ctx, self.size)
     }
 }
 
 pub struct CloseFuture<const N: usize> {
     pub qd: QDesc,
-    pub inner: Rc<RefCell<Inner<N>>>,
+    pub peer: SharedTcpPeer<N>,
 }
 
 impl<const N: usize> fmt::Debug for CloseFuture<N> {
@@ -145,7 +132,7 @@ impl<const N: usize> Future for CloseFuture<N> {
     type Output = Result<(), Fail>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        let self_ = self.get_mut();
-        self_.inner.borrow_mut().poll_close_finished(self_.qd, ctx)
+        let mut peer: SharedTcpPeer<N> = self.peer.clone();
+        peer.poll_close_finished(self.qd, ctx)
     }
 }

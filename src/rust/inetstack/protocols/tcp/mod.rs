@@ -17,7 +17,7 @@ mod tests;
 
 pub use self::{
     established::congestion_control,
-    peer::TcpPeer,
+    peer::SharedTcpPeer,
     segment::{
         MAX_TCP_HEADER_SIZE,
         MIN_TCP_HEADER_SIZE,

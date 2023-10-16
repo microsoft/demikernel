@@ -7,32 +7,26 @@
 
 use ::arrayvec::ArrayVec;
 use ::crossbeam_channel;
-use ::demikernel::{
-    runtime::{
-        memory::DemiBuffer,
-        network::{
-            NetworkRuntime,
-            PacketBuf,
-        },
-        timer::{
-            Timer,
-            TimerRc,
-        },
+use ::demikernel::runtime::{
+    memory::DemiBuffer,
+    network::{
+        NetworkRuntime,
+        PacketBuf,
     },
-    scheduler::scheduler::Scheduler,
+    SharedObject,
 };
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
-    time::Instant,
+use ::std::ops::{
+    Deref,
+    DerefMut,
 };
 
 //==============================================================================
 // Structures
 //==============================================================================
 
-/// Shared Dummy Runtime
-struct SharedDummyRuntime {
+/// Dummy Runtime
+pub struct DummyRuntime {
+    /// Shared Member Fields
     /// Random Number Generator
     /// Incoming Queue of Packets
     incoming: crossbeam_channel::Receiver<DemiBuffer>,
@@ -40,33 +34,23 @@ struct SharedDummyRuntime {
     outgoing: crossbeam_channel::Sender<DemiBuffer>,
 }
 
-/// Dummy Runtime
 #[derive(Clone)]
-pub struct DummyRuntime {
-    /// Shared Member Fields
-    inner: Rc<RefCell<SharedDummyRuntime>>,
-    pub scheduler: Scheduler,
-    pub clock: TimerRc,
-}
+
+/// Shared Dummy Runtime
+pub struct SharedDummyRuntime(SharedObject<DummyRuntime>);
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
 /// Associate Functions for Dummy Runtime
-impl DummyRuntime {
+impl SharedDummyRuntime {
     /// Creates a Dummy Runtime.
     pub fn new(
-        now: Instant,
         incoming: crossbeam_channel::Receiver<DemiBuffer>,
         outgoing: crossbeam_channel::Sender<DemiBuffer>,
     ) -> Self {
-        let inner = SharedDummyRuntime { incoming, outgoing };
-        Self {
-            inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
-            clock: TimerRc(Rc::new(Timer::new(now))),
-        }
+        Self(SharedObject::new(DummyRuntime { incoming, outgoing }))
     }
 }
 
@@ -75,8 +59,8 @@ impl DummyRuntime {
 //==============================================================================
 
 /// Network Runtime Trait Implementation for Dummy Runtime
-impl<const N: usize> NetworkRuntime<N> for DummyRuntime {
-    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
+impl<const N: usize> NetworkRuntime<N> for SharedDummyRuntime {
+    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -89,14 +73,28 @@ impl<const N: usize> NetworkRuntime<N> for DummyRuntime {
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.inner.borrow_mut().outgoing.try_send(buf).unwrap();
+        self.outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
         let mut out = ArrayVec::new();
-        if let Some(buf) = self.inner.borrow_mut().incoming.try_recv().ok() {
+        if let Some(buf) = self.incoming.try_recv().ok() {
             out.push(buf);
         }
         out
+    }
+}
+
+impl Deref for SharedDummyRuntime {
+    type Target = DummyRuntime;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedDummyRuntime {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }

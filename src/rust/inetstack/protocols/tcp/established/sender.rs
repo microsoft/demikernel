@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::ControlBlock;
+use super::SharedControlBlock;
 use crate::{
     inetstack::protocols::tcp::{
         segment::TcpHeader,
@@ -154,10 +154,10 @@ impl<const N: usize> Sender<N> {
 
     // This is the main TCP send routine.
     //
-    pub fn send(&self, buf: DemiBuffer, cb: &ControlBlock<N>) -> Result<(), Fail> {
+    pub fn send(&self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
-        if cb.user_is_done_sending.get() {
+        if cb.user_is_done_sending {
             return Err(Fail::new(EINVAL, "Connection is closing"));
         }
 
@@ -272,7 +272,7 @@ impl<const N: usize> Sender<N> {
     }
 
     /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
-    pub fn retransmit(&self, cb: &ControlBlock<N>) {
+    pub fn retransmit(&self, mut cb: SharedControlBlock<N>) {
         // Check that we have an unacknowledged segment.
         if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
             // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
@@ -304,7 +304,7 @@ impl<const N: usize> Sender<N> {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data(&self, cb: &ControlBlock<N>, bytes_acknowledged: u32, now: Instant) {
+    pub fn remove_acknowledged_data(&self, mut cb: SharedControlBlock<N>, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {

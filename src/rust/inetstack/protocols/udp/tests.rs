@@ -4,7 +4,7 @@
 use crate::{
     inetstack::test_helpers::{
         self,
-        Engine,
+        SharedEngine,
     },
     runtime::{
         memory::DemiBuffer,
@@ -50,7 +50,7 @@ fn udp_bind_udp_close() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = match alice.udp_socket() {
@@ -60,7 +60,7 @@ fn udp_bind_udp_close() -> Result<()> {
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = match bob.udp_socket() {
@@ -88,14 +88,14 @@ fn udp_push_pop() -> Result<()> {
     let mut now: Instant = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -104,12 +104,12 @@ fn udp_push_pop() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-    alice.rt.poll_scheduler();
+    alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    bob.receive(alice.rt.pop_frame()).unwrap();
+    bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -136,14 +136,14 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     let mut now: Instant = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -152,12 +152,12 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-    alice.rt.poll_scheduler();
+    alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    bob.receive(alice.rt.pop_frame()).unwrap();
+    bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -183,14 +183,14 @@ fn udp_ping_pong() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -199,12 +199,12 @@ fn udp_ping_pong() -> Result<()> {
     // Send data to Bob.
     let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-    alice.rt.poll_scheduler();
+    alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    bob.receive(alice.rt.pop_frame()).unwrap();
+    bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
     let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -219,12 +219,12 @@ fn udp_ping_pong() -> Result<()> {
     // Send data to Alice.
     let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
-    bob.rt.poll_scheduler();
+    bob.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Bob.
-    alice.receive(bob.rt.pop_frame()).unwrap();
+    alice.receive(bob.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd);
     let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -260,12 +260,12 @@ fn udp_loop2_bind_udp_close() -> Result<()> {
     let mut now = Instant::now();
 
     // Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
 
     // Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
 
@@ -309,14 +309,14 @@ fn udp_loop2_push_pop() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -326,12 +326,12 @@ fn udp_loop2_push_pop() -> Result<()> {
         // Send data to Bob.
         let buf: DemiBuffer = DemiBuffer::from_slice(&vec![(b % 256) as u8; 32][..]).expect("slice should fit");
         alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-        alice.rt.poll_scheduler();
+        alice.get_test_rig().poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
-        bob.receive(alice.rt.pop_frame()).unwrap();
+        bob.receive(alice.get_test_rig().pop_frame()).unwrap();
         let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
             match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -369,14 +369,14 @@ fn udp_loop2_ping_pong() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -387,12 +387,12 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Send data to Bob.
         let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
         alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-        alice.rt.poll_scheduler();
+        alice.get_test_rig().poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
-        bob.receive(alice.rt.pop_frame()).unwrap();
+        bob.receive(alice.get_test_rig().pop_frame()).unwrap();
         let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
         let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
             match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -407,12 +407,12 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Send data to Alice.
         let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
         bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
-        bob.rt.poll_scheduler();
+        bob.get_test_rig().poll_scheduler();
 
         now += Duration::from_micros(1);
 
         // Receive data from Bob.
-        alice.receive(bob.rt.pop_frame()).unwrap();
+        alice.receive(bob.get_test_rig().pop_frame()).unwrap();
         let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd);
         let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
             match Future::poll(coroutine.as_mut(), &mut ctx) {
@@ -439,7 +439,7 @@ fn udp_bind_address_in_use() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
@@ -462,7 +462,7 @@ fn udp_bind_bad_file_descriptor() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = QDesc::try_from(u32::MAX)?;
@@ -485,7 +485,7 @@ fn udp_udp_close_bad_file_descriptor() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_fd: QDesc = alice.udp_socket()?;
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
@@ -516,14 +516,14 @@ fn udp_pop_not_bound() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     // Bob does not create a socket.
@@ -531,12 +531,12 @@ fn udp_pop_not_bound() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     alice.udp_pushto(alice_fd, buf, bob_addr)?;
-    alice.rt.poll_scheduler();
+    alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    match bob.receive(alice.rt.pop_frame()) {
+    match bob.receive(alice.get_test_rig().pop_frame()) {
         Err(e) if e.errno == ENOTCONN => {},
         _ => anyhow::bail!("receive should have failed"),
     };
@@ -557,14 +557,14 @@ fn udp_push_bad_file_descriptor() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -577,7 +577,7 @@ fn udp_push_bad_file_descriptor() -> Result<()> {
         _ => anyhow::bail!("pushto should have failed"),
     };
 
-    alice.rt.poll_scheduler();
+    alice.get_test_rig().poll_scheduler();
     now += Duration::from_micros(1);
 
     // Close peers.

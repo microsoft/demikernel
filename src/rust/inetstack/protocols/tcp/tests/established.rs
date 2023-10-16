@@ -17,7 +17,7 @@ use crate::{
         },
         test_helpers::{
             self,
-            Engine,
+            SharedEngine,
         },
     },
     runtime::{
@@ -58,8 +58,8 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
 fn send_data<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    receiver: &mut Engine<N>,
-    sender: &mut Engine<N>,
+    receiver: &mut SharedEngine<N>,
+    sender: &mut SharedEngine<N>,
     sender_fd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
@@ -68,20 +68,20 @@ fn send_data<const N: usize>(
 ) -> Result<(DemiBuffer, usize)> {
     trace!(
         "send_data ====> push: {:?} -> {:?}",
-        sender.rt.ipv4_addr,
-        receiver.rt.ipv4_addr
+        sender.get_test_rig().get_ip_addr(),
+        receiver.get_test_rig().get_ip_addr()
     );
 
     // Push data.
     let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
 
-    let bytes: DemiBuffer = sender.rt.pop_frame();
+    let bytes: DemiBuffer = sender.get_test_rig().pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
-        sender.rt.link_addr,
-        receiver.rt.link_addr,
-        sender.rt.ipv4_addr,
-        receiver.rt.ipv4_addr,
+        sender.get_test_rig().get_link_addr(),
+        receiver.get_test_rig().get_link_addr(),
+        sender.get_test_rig().get_ip_addr(),
+        receiver.get_test_rig().get_ip_addr(),
         window_size,
         seq_no,
         ack_num,
@@ -104,15 +104,15 @@ fn send_data<const N: usize>(
 
 fn recv_data<const N: usize>(
     ctx: &mut Context,
-    receiver: &mut Engine<N>,
-    sender: &mut Engine<N>,
+    receiver: &mut SharedEngine<N>,
+    sender: &mut SharedEngine<N>,
     receiver_fd: QDesc,
     bytes: DemiBuffer,
 ) -> Result<()> {
     trace!(
         "recv_data ====> pop: {:?} -> {:?}",
-        sender.rt.ipv4_addr,
-        receiver.rt.ipv4_addr
+        sender.get_test_rig().get_ip_addr(),
+        receiver.get_test_rig().get_ip_addr()
     );
 
     // Pop data.
@@ -135,27 +135,27 @@ fn recv_data<const N: usize>(
 
 fn recv_pure_ack<const N: usize>(
     now: &mut Instant,
-    sender: &mut Engine<N>,
-    receiver: &mut Engine<N>,
+    sender: &mut SharedEngine<N>,
+    receiver: &mut SharedEngine<N>,
     ack_num: SeqNumber,
 ) -> Result<()> {
     trace!(
         "recv_pure_ack ====> ack: {:?} -> {:?}",
-        sender.rt.ipv4_addr,
-        receiver.rt.ipv4_addr
+        sender.get_test_rig().get_ip_addr(),
+        receiver.get_test_rig().get_ip_addr()
     );
 
     advance_clock(Some(sender), Some(receiver), now);
-    sender.rt.poll_scheduler();
+    sender.get_test_rig().poll_scheduler();
 
     // Pop pure ACK
-    if let Some(bytes) = sender.rt.pop_frame_unchecked() {
+    if let Some(bytes) = sender.get_test_rig().pop_frame_unchecked() {
         check_packet_pure_ack(
             bytes.clone(),
-            sender.rt.link_addr,
-            receiver.rt.link_addr,
-            sender.rt.ipv4_addr,
-            receiver.rt.ipv4_addr,
+            sender.get_test_rig().get_link_addr(),
+            receiver.get_test_rig().get_link_addr(),
+            sender.get_test_rig().get_ip_addr(),
+            receiver.get_test_rig().get_ip_addr(),
             ack_num,
         )?;
         match receiver.receive(bytes) {
@@ -172,8 +172,8 @@ fn recv_pure_ack<const N: usize>(
 fn send_recv<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<N>,
-    client: &mut Engine<N>,
+    server: &mut SharedEngine<N>,
+    client: &mut SharedEngine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -209,8 +209,8 @@ fn send_recv<const N: usize>(
 fn send_recv_round<const N: usize>(
     ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<N>,
-    client: &mut Engine<N>,
+    server: &mut SharedEngine<N>,
+    client: &mut SharedEngine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
     window_size: u16,
@@ -249,8 +249,8 @@ fn send_recv_round<const N: usize>(
 fn connection_hangup<const N: usize>(
     _ctx: &mut Context,
     now: &mut Instant,
-    server: &mut Engine<N>,
-    client: &mut Engine<N>,
+    server: &mut SharedEngine<N>,
+    client: &mut SharedEngine<N>,
     server_fd: QDesc,
     client_fd: QDesc,
 ) -> Result<()> {
@@ -258,16 +258,16 @@ fn connection_hangup<const N: usize>(
     if let Err(e) = client.tcp_close(client_fd) {
         anyhow::bail!("client tcp_close returned error: {:?}", e);
     }
-    client.rt.poll_scheduler();
-    let bytes: DemiBuffer = client.rt.pop_frame();
+    client.get_test_rig().poll_scheduler();
+    let bytes: DemiBuffer = client.get_test_rig().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Server -> Client
     if let Err(e) = server.receive(bytes) {
         anyhow::bail!("server receive returned error: {:?}", e);
     }
-    server.rt.poll_scheduler();
-    let bytes: DemiBuffer = server.rt.pop_frame();
+    server.get_test_rig().poll_scheduler();
+    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -280,16 +280,16 @@ fn connection_hangup<const N: usize>(
     if let Err(e) = server.tcp_close(server_fd) {
         anyhow::bail!("server tcp_close returned error: {:?}", e);
     }
-    server.rt.poll_scheduler();
-    let bytes: DemiBuffer = server.rt.pop_frame();
+    server.get_test_rig().poll_scheduler();
+    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // ACK FIN: Client -> Server
     if let Err(e) = client.receive(bytes) {
         anyhow::bail!("client receive (of FIN) returned error {:?}", e);
     }
-    client.rt.poll_scheduler();
-    let bytes: DemiBuffer = client.rt.pop_frame();
+    client.get_test_rig().poll_scheduler();
+    let bytes: DemiBuffer = client.get_test_rig().pop_frame();
     advance_clock(Some(server), Some(client), now);
 
     // Receive ACK FIN
@@ -299,8 +299,8 @@ fn connection_hangup<const N: usize>(
 
     advance_clock(Some(server), Some(client), now);
 
-    client.rt.poll_scheduler();
-    server.rt.poll_scheduler();
+    client.get_test_rig().poll_scheduler();
+    server.get_test_rig().poll_scheduler();
 
     Ok(())
 }
@@ -319,14 +319,15 @@ pub fn test_send_recv_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 =
-        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
-            Some(shift) => shift,
-            None => anyhow::bail!("incorrect receive window"),
-        };
+    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
+    let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
+        .checked_shl(window_scale as u32)
+    {
+        Some(shift) => shift,
+        None => anyhow::bail!("incorrect receive window"),
+    };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
@@ -364,14 +365,15 @@ pub fn test_send_recv_round_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 =
-        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
-            Some(shift) => shift,
-            None => anyhow::bail!("incorrect receive window"),
-        };
+    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
+    let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
+        .checked_shl(window_scale as u32)
+    {
+        Some(shift) => shift,
+        None => anyhow::bail!("incorrect receive window"),
+    };
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
@@ -411,14 +413,15 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-    let window_scale: u8 = client.rt.tcp_config.get_window_scale();
-    let max_window_size: u32 =
-        match (client.rt.tcp_config.get_receive_window_size() as u32).checked_shl(window_scale as u32) {
-            Some(shift) => shift,
-            None => anyhow::bail!("incorrect receive window"),
-        };
+    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
+    let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
+        .checked_shl(window_scale as u32)
+    {
+        Some(shift) => shift,
+        None => anyhow::bail!("incorrect receive window"),
+    };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
@@ -486,8 +489,8 @@ fn test_connect_disconnect() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: Engine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;

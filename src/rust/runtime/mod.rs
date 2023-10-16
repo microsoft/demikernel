@@ -51,6 +51,7 @@ use crate::{
 };
 use ::std::{
     boxed::Box,
+    future::Future,
     ops::{
         Deref,
         DerefMut,
@@ -83,6 +84,7 @@ pub struct SharedDemiRuntime(SharedObject<DemiRuntime>);
 
 /// The SharedObject wraps an object that will be shared across coroutines.
 pub struct SharedObject<T>(Rc<T>);
+pub struct SharedBox<T: ?Sized>(SharedObject<Box<T>>);
 
 //======================================================================================================================
 // Associate Functions
@@ -125,6 +127,23 @@ impl DemiRuntime {
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         OperationTask::from(boxed_task.as_any())
+    }
+
+    /// Inserts the background `coroutine` named `task_name` into the scheduler.
+    pub fn insert_background_coroutine(
+        &mut self,
+        task_name: &str,
+        coroutine: Pin<Box<dyn Future<Output = ()>>>,
+    ) -> Result<TaskHandle, Fail> {
+        let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
+        match self.scheduler.insert(task) {
+            Some(handle) => Ok(handle),
+            None => {
+                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                error!("insert_background_coroutine(): {}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
+            },
+        }
     }
 
     /// Performs a single pool on the underlying scheduler.
@@ -171,6 +190,10 @@ impl DemiRuntime {
         Ok(self.qtable.get::<T>(qd)?.clone())
     }
 
+    pub fn get_queue_type(&self, qd: &QDesc) -> Result<QType, Fail> {
+        self.qtable.get_type(qd)
+    }
+
     /// Checks if an operation should be retried based on the error code `err`.
     pub fn should_retry(errno: i32) -> bool {
         #[cfg(target_os = "linux")]
@@ -191,6 +214,12 @@ impl DemiRuntime {
 impl<T> SharedObject<T> {
     pub fn new(object: T) -> Self {
         Self(Rc::new(object))
+    }
+}
+
+impl<T: ?Sized> SharedBox<T> {
+    pub fn new(boxed_object: Box<T>) -> Self {
+        Self(SharedObject::<Box<T>>::new(boxed_object))
     }
 }
 
@@ -222,6 +251,25 @@ impl<T> Clone for SharedObject<T> {
     }
 }
 
+impl<T: ?Sized> Deref for SharedBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<T: ?Sized> DerefMut for SharedBox<T> {
+    fn deref_mut<'a>(&'a mut self) -> &'a mut Self::Target {
+        self.0.deref_mut().as_mut()
+    }
+}
+
+impl<T: ?Sized> Clone for SharedBox<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 impl Deref for SharedDemiRuntime {
     type Target = DemiRuntime;
 

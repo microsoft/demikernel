@@ -10,16 +10,17 @@ use self::{
     retransmitter::retransmitter,
     sender::sender,
 };
-use super::ControlBlock;
-use crate::runtime::QDesc;
+use crate::{
+    inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
+    runtime::QDesc,
+};
 use ::futures::{
     channel::mpsc,
     FutureExt,
 };
-use ::std::rc::Rc;
 
 pub async fn background<const N: usize>(
-    cb: Rc<ControlBlock<N>>,
+    cb: SharedControlBlock<N>,
     fd: QDesc,
     _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 ) {

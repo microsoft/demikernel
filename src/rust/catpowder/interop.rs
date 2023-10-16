@@ -19,12 +19,9 @@ use crate::{
     },
     OperationResult,
 };
-use ::std::{
-    mem,
-    rc::Rc,
-};
+use ::std::mem;
 
-pub fn pack_result(rt: Rc<LinuxRuntime>, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+pub fn pack_result(rt: &LinuxRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

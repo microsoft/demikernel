@@ -7,4 +7,4 @@ mod peer;
 #[cfg(test)]
 mod tests;
 
-pub use peer::Icmpv4Peer;
+pub use peer::SharedIcmpv4Peer;

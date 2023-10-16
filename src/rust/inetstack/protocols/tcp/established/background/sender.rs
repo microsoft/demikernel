@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::super::{
-    ctrlblk::ControlBlock,
-    sender::UnackedSegment,
-};
 use crate::{
     inetstack::protocols::tcp::{
+        established::{
+            ctrlblk::SharedControlBlock,
+            sender::UnackedSegment,
+        },
         segment::TcpHeader,
         SeqNumber,
     },
@@ -18,18 +18,19 @@ use crate::{
 use ::futures::FutureExt;
 use ::std::{
     cmp,
-    rc::Rc,
     time::Duration,
 };
 
-pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> {
+pub async fn sender<const N: usize>(cb: SharedControlBlock<N>) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.
-        let (unsent_seq, unsent_seq_changed) = cb.get_unsent_seq_no();
+        let cb2 = cb.clone();
+        let (unsent_seq, unsent_seq_changed) = cb2.get_unsent_seq_no();
         futures::pin_mut!(unsent_seq_changed);
 
-        let (send_next, send_next_changed) = cb.get_send_next();
+        let cb3 = cb.clone();
+        let (send_next, send_next_changed) = cb3.get_send_next();
         futures::pin_mut!(send_next_changed);
 
         if send_next == unsent_seq {
@@ -65,7 +66,8 @@ pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> 
 
             let mut header: TcpHeader = cb.tcp_header();
             header.seq_num = send_next;
-            cb.emit(header, Some(buf.clone()), remote_link_addr);
+            let mut cb4 = cb.clone();
+            cb4.emit(header, Some(buf.clone()), remote_link_addr);
 
             // Note that we loop here *forever*, exponentially backing off.
             // TODO: Use the correct PERSIST mode timer here.
@@ -80,7 +82,8 @@ pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> 
                 // Retransmit our window probe.
                 let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = send_next;
-                cb.emit(header, Some(buf.clone()), remote_link_addr);
+                let mut cb4 = cb.clone();
+                cb4.emit(header, Some(buf.clone()), remote_link_addr);
             }
         }
 
@@ -140,14 +143,15 @@ pub async fn sender<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> 
         header.seq_num = send_next;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
-            debug_assert!(cb.user_is_done_sending.get());
+            debug_assert!(cb.user_is_done_sending);
             // Set FIN and adjust sequence number consumption accordingly.
             header.fin = true;
             segment_data_len = 1;
         } else if do_push {
             header.psh = true;
         }
-        cb.emit(header, Some(segment_data.clone()), remote_link_addr);
+        let mut cb4 = cb.clone();
+        cb4.emit(header, Some(segment_data.clone()), remote_link_addr);
 
         // Update SND.NXT.
         cb.modify_send_next(|s| s + SeqNumber::from(segment_data_len));

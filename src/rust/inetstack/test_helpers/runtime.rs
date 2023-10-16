@@ -1,32 +1,34 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    runtime::{
-        logging,
-        memory::DemiBuffer,
-        network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
-            types::MacAddress,
-            NetworkRuntime,
-            PacketBuf,
+use crate::runtime::{
+    logging,
+    memory::DemiBuffer,
+    network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
         },
-        timer::{
-            Timer,
-            TimerRc,
-        },
+        types::MacAddress,
+        NetworkRuntime,
+        PacketBuf,
     },
-    scheduler::scheduler::Scheduler,
+    timer::{
+        Timer,
+        TimerRc,
+    },
+    SharedDemiRuntime,
+    SharedObject,
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
-    cell::RefCell,
     collections::VecDeque,
     net::Ipv4Addr,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     rc::Rc,
     time::Instant,
 };
@@ -35,77 +37,93 @@ use ::std::{
 // Structures
 //==============================================================================
 
-// TODO: Drop inner mutability pattern.
-pub struct Inner {
-    #[allow(unused)]
-    timer: TimerRc,
+pub struct TestRuntime {
+    link_addr: MacAddress,
+    ipv4_addr: Ipv4Addr,
+    arp_config: ArpConfig,
+    udp_config: UdpConfig,
+    tcp_config: TcpConfig,
     incoming: VecDeque<DemiBuffer>,
     outgoing: VecDeque<DemiBuffer>,
+    runtime: SharedDemiRuntime,
+    clock: TimerRc,
 }
 
 #[derive(Clone)]
-pub struct TestRuntime {
-    pub link_addr: MacAddress,
-    pub ipv4_addr: Ipv4Addr,
-    pub arp_options: ArpConfig,
-    pub udp_config: UdpConfig,
-    pub tcp_config: TcpConfig,
-    inner: Rc<RefCell<Inner>>,
-    pub scheduler: Scheduler,
-    pub clock: TimerRc,
-}
+pub struct SharedTestRuntime(SharedObject<TestRuntime>);
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl TestRuntime {
+impl SharedTestRuntime {
     pub fn new(
         now: Instant,
-        arp_options: ArpConfig,
+        arp_config: ArpConfig,
         udp_config: UdpConfig,
         tcp_config: TcpConfig,
         link_addr: MacAddress,
         ipv4_addr: Ipv4Addr,
     ) -> Self {
         logging::initialize();
-
-        let inner = Inner {
-            timer: TimerRc(Rc::new(Timer::new(now))),
-            incoming: VecDeque::new(),
-            outgoing: VecDeque::new(),
-        };
-        Self {
+        Self(SharedObject::<TestRuntime>::new(TestRuntime {
             link_addr,
             ipv4_addr,
-            inner: Rc::new(RefCell::new(inner)),
-            scheduler: Scheduler::default(),
+            incoming: VecDeque::new(),
+            outgoing: VecDeque::new(),
+            runtime: SharedDemiRuntime::new(),
             clock: TimerRc(Rc::new(Timer::new(now))),
-            arp_options,
+            arp_config,
             udp_config,
             tcp_config,
-        }
+        }))
     }
 
-    pub fn pop_frame(&self) -> DemiBuffer {
-        self.inner
-            .borrow_mut()
-            .outgoing
+    pub fn pop_frame(&mut self) -> DemiBuffer {
+        self.outgoing
             .pop_front()
             .expect("pop_front didn't return an outgoing frame")
     }
 
-    pub fn pop_frame_unchecked(&self) -> Option<DemiBuffer> {
-        self.inner.borrow_mut().outgoing.pop_front()
+    pub fn pop_frame_unchecked(&mut self) -> Option<DemiBuffer> {
+        self.outgoing.pop_front()
     }
 
-    pub fn push_frame(&self, buf: DemiBuffer) {
-        self.inner.borrow_mut().incoming.push_back(buf);
+    pub fn push_frame(&mut self, buf: DemiBuffer) {
+        self.incoming.push_back(buf);
     }
 
     pub fn poll_scheduler(&self) {
         // let mut ctx = Context::from_waker(noop_waker_ref());
-        self.scheduler.poll();
+        self.runtime.poll();
+    }
+
+    pub fn get_link_addr(&self) -> MacAddress {
+        self.link_addr
+    }
+
+    pub fn get_ip_addr(&self) -> Ipv4Addr {
+        self.ipv4_addr
+    }
+
+    pub fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    pub fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
+    }
+
+    pub fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
+    }
+
+    pub fn get_clock(&self) -> TimerRc {
+        self.clock.clone()
+    }
+
+    pub fn get_runtime(&self) -> SharedDemiRuntime {
+        self.runtime.clone()
     }
 }
 
@@ -113,8 +131,8 @@ impl TestRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl<const N: usize> NetworkRuntime<N> for TestRuntime {
-    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
+impl<const N: usize> NetworkRuntime<N> for SharedTestRuntime {
+    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -127,14 +145,28 @@ impl<const N: usize> NetworkRuntime<N> for TestRuntime {
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.inner.borrow_mut().outgoing.push_back(buf);
+        self.outgoing.push_back(buf);
     }
 
-    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
         let mut out = ArrayVec::new();
-        if let Some(buf) = self.inner.borrow_mut().incoming.pop_front() {
+        if let Some(buf) = self.incoming.pop_front() {
             out.push(buf);
         }
         out
+    }
+}
+
+impl Deref for SharedTestRuntime {
+    type Target = TestRuntime;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedTestRuntime {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }

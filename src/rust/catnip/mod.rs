@@ -20,7 +20,16 @@ use crate::{
         fail::Fail,
         libdpdk::load_mlx_driver,
         memory::MemoryRuntime,
-        network::consts::RECEIVE_BATCH_SIZE,
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            consts::RECEIVE_BATCH_SIZE,
+            types::MacAddress,
+            NetworkRuntime,
+        },
         timer::{
             Timer,
             TimerRc,
@@ -32,14 +41,16 @@ use crate::{
         OperationResult,
         QDesc,
         QToken,
+        SharedBox,
+        SharedDemiRuntime,
     },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
-    },
+    scheduler::TaskHandle,
 };
 use ::std::{
-    net::SocketAddr,
+    net::{
+        Ipv4Addr,
+        SocketAddr,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -57,9 +68,9 @@ use crate::timer;
 
 /// Catnip LibOS
 pub struct CatnipLibOS {
-    scheduler: Scheduler,
+    runtime: SharedDemiRuntime,
     inetstack: InetStack<RECEIVE_BATCH_SIZE>,
-    rt: Rc<DPDKRuntime>,
+    transport: DPDKRuntime,
 }
 
 //==============================================================================
@@ -68,9 +79,9 @@ pub struct CatnipLibOS {
 
 /// Associate Functions for Catnip LibOS
 impl CatnipLibOS {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         load_mlx_driver();
-        let rt: Rc<DPDKRuntime> = Rc::new(DPDKRuntime::new(
+        let transport: DPDKRuntime = DPDKRuntime::new(
             config.local_ipv4_addr(),
             &config.eal_init_args(),
             config.arp_table(),
@@ -80,27 +91,31 @@ impl CatnipLibOS {
             config.mss(),
             config.tcp_checksum_offload(),
             config.udp_checksum_offload(),
-        ));
+        );
+        let link_addr: MacAddress = transport.get_link_addr();
+        let ip_addr: Ipv4Addr = transport.get_ip_addr();
+        let arp_config: ArpConfig = transport.get_arp_config();
+        let udp_config: UdpConfig = transport.get_udp_config();
+        let tcp_config: TcpConfig = transport.get_tcp_config();
         let now: Instant = Instant::now();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
-        let scheduler: Scheduler = Scheduler::default();
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
-            rt.clone(),
-            scheduler.clone(),
+            runtime.clone(),
+            SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
             clock,
-            rt.link_addr,
-            rt.ipv4_addr,
-            rt.udp_options.clone(),
-            rt.tcp_options.clone(),
+            link_addr,
+            ip_addr,
+            udp_config,
+            tcp_config,
             rng_seed,
-            rt.arp_options.clone(),
+            arp_config,
         )
         .unwrap();
         CatnipLibOS {
+            runtime,
             inetstack,
-            scheduler,
-            rt,
+            transport,
         }
     }
 
@@ -111,16 +126,13 @@ impl CatnipLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
+        match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                let future = self.do_push(qd, buf)?;
-                let handle: TaskHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
+
+                let handle: TaskHandle = self.do_push(qd, buf)?;
                 let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
@@ -132,16 +144,12 @@ impl CatnipLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
+        match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                let future = self.do_pushto(qd, buf, to)?;
-                let handle: TaskHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
+                let handle: TaskHandle = self.do_pushto(qd, buf, to)?;
                 let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
@@ -150,25 +158,22 @@ impl CatnipLibOS {
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.scheduler.from_task_id(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        }
+        self.runtime.from_task_id(qt.into())
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
-        Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
+        Ok(pack_result(&self.transport, r, qd, qt.into()))
     }
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.rt.alloc_sgarray(size)
+        self.transport.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.rt.free_sgarray(sga)
+        self.transport.free_sgarray(sga)
     }
 }
 
