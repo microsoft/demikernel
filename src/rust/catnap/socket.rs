@@ -65,6 +65,7 @@ use socket2::{
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::{
+    WSAEISCONN,
     WSAEALREADY,
     WSAEINPROGRESS,
     WSAEWOULDBLOCK,
@@ -432,14 +433,14 @@ impl Socket {
                     trace!("connection established ({:?})", addr);
                     Ok(())
                 },
-                Err(e) if e.raw_os_error() == Some(WSAEWOULDBLOCK.0) => {
+                Err(e) if e.raw_os_error() == Some(WSAEISCONN.0) => {
                     // Same as OK(_), this happens because establishing a connection may take some time.
                     self.state_machine.commit();
                     trace!("connection established ({:?})", addr);
                     Ok(())
                 },
                 // Operation not ready yet.
-                Err(e) if e.raw_os_error() == Some(WSAEINPROGRESS.0) || e.raw_os_error() == Some(WSAEALREADY.0) => {
+                Err(e) if e.raw_os_error() == Some(WSAEWOULDBLOCK.0) || e.raw_os_error() == Some(WSAEINPROGRESS.0) || e.raw_os_error() == Some(WSAEALREADY.0) => {
                     Err(Fail::new(e.raw_os_error().unwrap_or(0), "operation not ready yet"))
                 },
                 // Operation failed.
