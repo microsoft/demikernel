@@ -300,11 +300,10 @@ impl<const N: usize> UdpPeer<N> {
         let shared_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = {
             let qtable: Ref<IoQueueTable> = qtable_ptr.borrow();
             // Lookup associated receiver-side shared queue.
-            qtable
-                .get::<UdpQueue>(&qd)
-                .expect("queue should exist")
-                .get_recv_queue()
-                .clone()
+            match qtable.get::<UdpQueue>(&qd) {
+                Ok(queue) => queue.get_recv_queue().clone(),
+                Err(e) => return (qd, OperationResult::Failed(e)),
+            }
         };
 
         // Safe to move shared_queue into this coroutine because it can be cloned.
