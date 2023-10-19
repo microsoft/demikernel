@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+pub mod async_queue;
 pub mod intrusive;
 
 cfg_if! {
