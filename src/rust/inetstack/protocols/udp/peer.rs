@@ -6,11 +6,11 @@
 //==============================================================================
 
 use super::{
+    coroutines::udp_pop_coroutine,
     datagram::{
         UdpDatagram,
         UdpHeader,
     },
-    futures::UdpPopFuture,
     queue::{
         SharedQueue,
         SharedQueueSlot,
@@ -40,12 +40,14 @@ use crate::{
         queue::{
             BackgroundTask,
             IoQueueTable,
+            OperationResult,
+            QDesc,
         },
-        QDesc,
     },
     scheduler::{
         Scheduler,
         TaskHandle,
+        Yielder,
     },
 };
 use ::rand::{
@@ -286,13 +288,31 @@ impl<const N: usize> UdpPeer<N> {
     }
 
     /// Pops data from a socket.
-    pub fn do_pop(&self, qd: QDesc, size: Option<usize>) -> UdpPopFuture {
+    pub async fn do_pop(
+        qtable_ptr: Rc<RefCell<IoQueueTable>>,
+        qd: QDesc,
+        size: Option<usize>,
+    ) -> (QDesc, OperationResult) {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
-        let qtable: Ref<IoQueueTable> = self.qtable.borrow();
-        // Lookup associated receiver-side shared queue.
-        let queue: &UdpQueue = qtable.get::<UdpQueue>(&qd).expect("invalid queue descriptor");
-        UdpPopFuture::new(queue.get_recv_queue(), size)
+
+        // Get a reference to the shared queue, then drop the qtable reference.
+        let shared_queue: SharedQueue<SharedQueueSlot<DemiBuffer>> = {
+            let qtable: Ref<IoQueueTable> = qtable_ptr.borrow();
+            // Lookup associated receiver-side shared queue.
+            match qtable.get::<UdpQueue>(&qd) {
+                Ok(queue) => queue.get_recv_queue().clone(),
+                Err(e) => return (qd, OperationResult::Failed(e)),
+            }
+        };
+
+        // Safe to move shared_queue into this coroutine because it can be cloned.
+        let yielder: Yielder = Yielder::new();
+        let result: Result<(SocketAddrV4, DemiBuffer), Fail> = udp_pop_coroutine(shared_queue, size, yielder).await;
+        match result {
+            Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr), buf)),
+            Err(e) => (qd, OperationResult::Failed(e)),
+        }
     }
 
     /// Consumes the payload from a buffer.
