@@ -10,7 +10,6 @@ use crate::runtime::{
 use ::std::{
     fmt,
     future::Future,
-    net::SocketAddrV4,
     pin::Pin,
     task::{
         Context,
@@ -35,42 +34,6 @@ impl<const N: usize> Future for ConnectFuture<N> {
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let mut peer: SharedTcpPeer<N> = self.peer.clone();
         peer.poll_connect_finished(self.qd, context)
-    }
-}
-
-/// Accept Operation Descriptor
-pub struct AcceptFuture<const N: usize> {
-    /// Queue descriptor of listening socket.
-    qd: QDesc,
-    // Pre-booked queue descriptor for incoming connection.
-    new_qd: QDesc,
-    // Reference to associated inner TCP peer.
-    pub peer: SharedTcpPeer<N>,
-}
-
-/// Associated Functions for Accept Operation Descriptors
-impl<const N: usize> AcceptFuture<N> {
-    /// Creates a descriptor for an accept operation.
-    pub fn new(qd: QDesc, new_qd: QDesc, peer: SharedTcpPeer<N>) -> Self {
-        Self { qd, new_qd, peer }
-    }
-}
-
-/// Debug Trait Implementation for Accept Operation Descriptors
-impl<const N: usize> fmt::Debug for AcceptFuture<N> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AcceptFuture({:?})", self.qd)
-    }
-}
-
-/// Future Trait Implementation for Accept Operation Descriptors
-impl<const N: usize> Future for AcceptFuture<N> {
-    type Output = Result<(QDesc, SocketAddrV4), Fail>;
-
-    /// Polls the underlying accept operation.
-    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let mut peer: SharedTcpPeer<N> = self.peer.clone();
-        peer.poll_accept(self.qd, self.new_qd, context)
     }
 }
 

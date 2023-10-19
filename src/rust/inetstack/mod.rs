@@ -14,7 +14,6 @@ use crate::{
         },
         tcp::{
             operations::{
-                AcceptFuture,
                 CloseFuture,
                 ConnectFuture,
                 PopFuture,
@@ -270,24 +269,7 @@ impl<const N: usize> InetStack<N> {
         // Search for target queue descriptor.
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let (new_qd, future): (QDesc, AcceptFuture<N>) = self.ipv4.tcp.accept(qd);
-                let mut runtime = self.runtime.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for accept to complete.
-                    let result: Result<(QDesc, SocketAddrV4), Fail> = future.await;
-                    // Handle result: If unsuccessful, free the new queue descriptor.
-                    match result {
-                        Ok((_, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
-                        Err(e) => {
-                            // It is safe to call expect here because we looked up the queue to schedule this coroutine
-                            // and no other accept coroutine should be able to run due to state machine checks.
-                            runtime
-                                .free_queue::<SharedTcpQueue<N>>(&new_qd)
-                                .expect("queue should have been allocated");
-                            (qd, OperationResult::Failed(e))
-                        },
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.accept(qd);
                 let task_id: String = format!("Inetstack::TCP::accept for qd={:?}", qd);
                 let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 Ok(handle.get_task_id().into())
