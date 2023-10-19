@@ -25,12 +25,10 @@ use crate::runtime::{
     Runtime,
 };
 use ::std::{
-    cell::RefCell,
     collections::HashMap,
     fs,
     net::Ipv4Addr,
     num::ParseIntError,
-    rc::Rc,
     time::Duration,
 };
 
@@ -41,13 +39,13 @@ use ::std::{
 /// Linux Runtime
 #[derive(Clone)]
 pub struct LinuxRuntime {
-    pub tcp_options: TcpConfig,
-    pub udp_options: UdpConfig,
-    pub arp_options: ArpConfig,
-    pub link_addr: MacAddress,
-    pub ipv4_addr: Ipv4Addr,
+    tcp_config: TcpConfig,
+    udp_config: UdpConfig,
+    arp_config: ArpConfig,
+    link_addr: MacAddress,
+    ipv4_addr: Ipv4Addr,
     ifindex: i32,
-    socket: Rc<RefCell<RawSocket>>,
+    socket: RawSocket,
 }
 
 //==============================================================================
@@ -58,7 +56,7 @@ pub struct LinuxRuntime {
 impl LinuxRuntime {
     /// Instantiates a Linux Runtime.
     pub fn new(link_addr: MacAddress, ipv4_addr: Ipv4Addr, ifname: &str, arp: HashMap<Ipv4Addr, MacAddress>) -> Self {
-        let arp_options: ArpConfig = ArpConfig::new(
+        let arp_config: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
             Some(Duration::from_secs(1)),
             Some(2),
@@ -74,13 +72,13 @@ impl LinuxRuntime {
         socket.bind(&sockaddr).expect("could not bind raw socket");
 
         Self {
-            tcp_options: TcpConfig::default(),
-            udp_options: UdpConfig::default(),
-            arp_options,
+            tcp_config: TcpConfig::default(),
+            udp_config: UdpConfig::default(),
+            arp_config,
             link_addr,
             ipv4_addr,
             ifindex,
-            socket: Rc::new(RefCell::new(socket)),
+            socket,
         }
     }
 
@@ -88,6 +86,26 @@ impl LinuxRuntime {
     fn get_ifindex(ifname: &str) -> Result<i32, ParseIntError> {
         let path: String = format!("/sys/class/net/{}/ifindex", ifname);
         fs::read_to_string(path).expect("could not read ifname").trim().parse()
+    }
+
+    pub fn get_link_addr(&self) -> MacAddress {
+        self.link_addr
+    }
+
+    pub fn get_ip_addr(&self) -> Ipv4Addr {
+        self.ipv4_addr
+    }
+
+    pub fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    pub fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
+    }
+
+    pub fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
     }
 }
 

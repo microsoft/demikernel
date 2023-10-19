@@ -97,9 +97,11 @@ impl LibOS {
             #[cfg(feature = "catcollar-libos")]
             LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config))),
             #[cfg(feature = "catpowder-libos")]
-            LibOSName::Catpowder => Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config))),
+            LibOSName::Catpowder => {
+                Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config, runtime.clone())))
+            },
             #[cfg(feature = "catnip-libos")]
-            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config))),
+            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config, runtime.clone()))),
             #[cfg(feature = "catmem-libos")]
             LibOSName::Catmem => {
                 Self::MemoryLibOS(MemoryLibOS::Catmem(SharedCatmemLibOS::new(&config, runtime.clone())))

@@ -33,7 +33,7 @@ use ::std::mem::{
 /// Network Runtime Trait Implementation for Linux Runtime
 impl<const N: usize> NetworkRuntime<N> for LinuxRuntime {
     /// Transmits a single [PacketBuf].
-    fn transmit(&self, pkt: Box<dyn PacketBuf>) {
+    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -50,7 +50,7 @@ impl<const N: usize> NetworkRuntime<N> for LinuxRuntime {
         let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
 
         // Send packet.
-        match self.socket.borrow().sendto(&buf, &dest_sockaddr) {
+        match self.socket.sendto(&buf, &dest_sockaddr) {
             // Operation succeeded.
             Ok(_) => (),
             // Operation failed, drop packet.
@@ -60,7 +60,7 @@ impl<const N: usize> NetworkRuntime<N> for LinuxRuntime {
 
     /// Receives a batch of [DemiBuffer].
     // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
-    fn receive(&self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
         // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
 
         // TODO: change this function to operate directly on DemiBuffer rather than on MaybeUninit<u8>.
@@ -68,7 +68,7 @@ impl<const N: usize> NetworkRuntime<N> for LinuxRuntime {
         // This use-case is an example for MaybeUninit in the docs.
         let mut out: [MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX] =
             [unsafe { MaybeUninit::uninit().assume_init() }; limits::RECVBUF_SIZE_MAX];
-        if let Ok((nbytes, _origin_addr)) = self.socket.borrow().recvfrom(&mut out[..]) {
+        if let Ok((nbytes, _origin_addr)) = self.socket.recvfrom(&mut out[..]) {
             let mut ret: ArrayVec<DemiBuffer, N> = ArrayVec::new();
             unsafe {
                 let bytes: [u8; limits::RECVBUF_SIZE_MAX] =

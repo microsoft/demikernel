@@ -8,4 +8,4 @@ mod peer;
 #[cfg(test)]
 mod tests;
 
-pub use peer::ArpPeer;
+pub use peer::SharedArpPeer;

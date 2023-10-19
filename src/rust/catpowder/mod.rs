@@ -19,7 +19,10 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        network::consts::RECEIVE_BATCH_SIZE,
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+        },
         timer::{
             Timer,
             TimerRc,
@@ -31,11 +34,10 @@ use crate::{
         OperationResult,
         QDesc,
         QToken,
+        SharedBox,
+        SharedDemiRuntime,
     },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
-    },
+    scheduler::TaskHandle,
 };
 use ::std::{
     collections::HashMap,
@@ -57,9 +59,9 @@ use crate::timer;
 
 /// Catpowder LibOS
 pub struct CatpowderLibOS {
-    scheduler: Scheduler,
+    runtime: SharedDemiRuntime,
     inetstack: InetStack<RECEIVE_BATCH_SIZE>,
-    rt: Rc<LinuxRuntime>,
+    transport: LinuxRuntime,
 }
 
 //==============================================================================
@@ -69,33 +71,32 @@ pub struct CatpowderLibOS {
 /// Associate Functions for Catpowder LibOS
 impl CatpowderLibOS {
     /// Instantiates a Catpowder LibOS.
-    pub fn new(config: &Config) -> Self {
-        let rt: Rc<LinuxRuntime> = Rc::new(LinuxRuntime::new(
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
+        let transport: LinuxRuntime = LinuxRuntime::new(
             config.local_link_addr(),
             config.local_ipv4_addr(),
             &config.local_interface_name(),
             HashMap::default(),
-        ));
+        );
         let now: Instant = Instant::now();
-        let scheduler: Scheduler = Scheduler::default();
         let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
-            rt.clone(),
-            scheduler.clone(),
+            runtime.clone(),
+            SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
             clock,
-            rt.link_addr,
-            rt.ipv4_addr,
-            rt.udp_options.clone(),
-            rt.tcp_options.clone(),
+            transport.get_link_addr(),
+            transport.get_ip_addr(),
+            transport.get_udp_config(),
+            transport.get_tcp_config(),
             rng_seed,
-            rt.arp_options.clone(),
+            transport.get_arp_config(),
         )
         .unwrap();
         CatpowderLibOS {
-            scheduler,
+            runtime,
             inetstack,
-            rt,
+            transport,
         }
     }
 
@@ -106,16 +107,12 @@ impl CatpowderLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
+        match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                let future = self.do_push(qd, buf)?;
-                let handle: TaskHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
+                let handle: TaskHandle = self.do_push(qd, buf)?;
                 let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
@@ -127,16 +124,12 @@ impl CatpowderLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnip::pushto");
         trace!("pushto2(): qd={:?}", qd);
-        match self.rt.clone_sgarray(sga) {
+        match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                let future = self.do_pushto(qd, buf, to)?;
-                let handle: TaskHandle = match self.scheduler.insert(future) {
-                    Some(handle) => handle,
-                    None => return Err(Fail::new(libc::EAGAIN, "cannot schedule co-routine")),
-                };
+                let handle: TaskHandle = self.do_pushto(qd, buf, to)?;
                 let qt: QToken = handle.get_task_id().into();
                 Ok(qt)
             },
@@ -145,25 +138,22 @@ impl CatpowderLibOS {
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.scheduler.from_task_id(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        }
+        self.runtime.from_task_id(qt.into())
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
-        Ok(pack_result(self.rt.clone(), r, qd, qt.into()))
+        Ok(pack_result(&self.transport, r, qd, qt.into()))
     }
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.rt.alloc_sgarray(size)
+        self.transport.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.rt.free_sgarray(sga)
+        self.transport.free_sgarray(sga)
     }
 }
 

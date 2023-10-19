@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::ControlBlock;
-use crate::runtime::fail::Fail;
+use crate::{
+    inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
+    runtime::fail::Fail,
+};
 use ::futures::{
     future::{
         self,
@@ -10,15 +12,12 @@ use ::futures::{
     },
     FutureExt,
 };
-use ::std::{
-    rc::Rc,
-    time::{
-        Duration,
-        Instant,
-    },
+use ::std::time::{
+    Duration,
+    Instant,
 };
 
-pub async fn retransmitter<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> {
+pub async fn retransmitter<const N: usize>(cb: SharedControlBlock<N>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();
@@ -56,7 +55,7 @@ pub async fn retransmitter<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!,
                 cb.retransmit();
 
                 // RFC 6298 Section 5.5: Back off the retransmission timer.
-                cb.rto_back_off();
+                cb.clone().rto_back_off();
 
                 // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
                 let rto: Duration = cb.rto();

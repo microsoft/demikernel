@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::ControlBlock;
+use super::SharedControlBlock;
 use crate::runtime::fail::Fail;
 use ::futures::{
     future::{
@@ -10,9 +10,8 @@ use ::futures::{
     },
     FutureExt,
 };
-use ::std::rc::Rc;
 
-pub async fn acknowledger<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, Fail> {
+pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK
@@ -20,7 +19,8 @@ pub async fn acknowledger<const N: usize>(cb: Rc<ControlBlock<N>>) -> Result<!, 
         // - For a stream of full-sized segments, there should be an ack for every other segment.
 
         // TODO: Implement SACKs
-        let (ack_deadline, ack_deadline_changed) = cb.get_ack_deadline();
+        let cb2 = cb.clone();
+        let (ack_deadline, ack_deadline_changed) = cb2.get_ack_deadline();
         futures::pin_mut!(ack_deadline_changed);
 
         let ack_future = match ack_deadline {

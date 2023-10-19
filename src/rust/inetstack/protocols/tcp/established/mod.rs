@@ -8,7 +8,7 @@ mod rto;
 mod sender;
 
 pub use self::ctrlblk::{
-    ControlBlock,
+    SharedControlBlock,
     State,
 };
 
@@ -17,15 +17,14 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        queue::BackgroundTask,
         QDesc,
+        SharedDemiRuntime,
     },
     scheduler::TaskHandle,
 };
 use ::futures::channel::mpsc;
 use ::std::{
     net::SocketAddrV4,
-    rc::Rc,
     task::{
         Context,
         Poll,
@@ -35,7 +34,7 @@ use ::std::{
 
 #[derive(Clone)]
 pub struct EstablishedSocket<const N: usize> {
-    pub cb: Rc<ControlBlock<N>>,
+    pub cb: SharedControlBlock<N>,
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
@@ -43,24 +42,24 @@ pub struct EstablishedSocket<const N: usize> {
 }
 
 impl<const N: usize> EstablishedSocket<N> {
-    pub fn new(cb: ControlBlock<N>, qd: QDesc, dead_socket_tx: mpsc::UnboundedSender<QDesc>) -> Self {
-        let cb = Rc::new(cb);
+    pub fn new(
+        cb: SharedControlBlock<N>,
+        qd: QDesc,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        mut runtime: SharedDemiRuntime,
+    ) -> Result<Self, Fail> {
         // TODO: Maybe add the queue descriptor here.
-        let task: BackgroundTask = BackgroundTask::new(
-            String::from("Inetstack::TCP::established::background"),
+        let handle: TaskHandle = runtime.insert_background_coroutine(
+            "Inetstack::TCP::established::background",
             Box::pin(background::background(cb.clone(), qd, dead_socket_tx)),
-        );
-        let handle: TaskHandle = match cb.scheduler.insert(task) {
-            Some(handle) => handle,
-            None => panic!("failed to insert task in the scheduler"),
-        };
-        Self {
-            cb: cb.clone(),
+        )?;
+        Ok(Self {
+            cb,
             background: handle.clone(),
-        }
+        })
     }
 
-    pub fn receive(&self, header: &mut TcpHeader, data: DemiBuffer) {
+    pub fn receive(&mut self, header: &mut TcpHeader, data: DemiBuffer) {
         self.cb.receive(header, data)
     }
 
@@ -68,11 +67,11 @@ impl<const N: usize> EstablishedSocket<N> {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
+    pub fn poll_recv(&mut self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
         self.cb.poll_recv(ctx, size)
     }
 
-    pub fn close(&self) -> Result<(), Fail> {
+    pub fn close(&mut self) -> Result<(), Fail> {
         self.cb.close()
     }
 

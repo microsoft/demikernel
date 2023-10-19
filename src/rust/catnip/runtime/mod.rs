@@ -96,11 +96,11 @@ macro_rules! expect_zero {
 pub struct DPDKRuntime {
     mm: MemoryManager,
     port_id: u16,
-    pub link_addr: MacAddress,
-    pub ipv4_addr: Ipv4Addr,
-    pub arp_options: ArpConfig,
-    pub tcp_options: TcpConfig,
-    pub udp_options: UdpConfig,
+    link_addr: MacAddress,
+    ipv4_addr: Ipv4Addr,
+    arp_config: ArpConfig,
+    tcp_config: TcpConfig,
+    udp_config: UdpConfig,
 }
 
 //==============================================================================
@@ -129,7 +129,7 @@ impl DPDKRuntime {
         )
         .unwrap();
 
-        let arp_options = ArpConfig::new(
+        let arp_config = ArpConfig::new(
             Some(Duration::from_secs(15)),
             Some(Duration::from_secs(20)),
             Some(5),
@@ -137,7 +137,7 @@ impl DPDKRuntime {
             Some(disable_arp),
         );
 
-        let tcp_options = TcpConfig::new(
+        let tcp_config = TcpConfig::new(
             Some(mss),
             None,
             None,
@@ -148,16 +148,16 @@ impl DPDKRuntime {
             Some(tcp_checksum_offload),
         );
 
-        let udp_options = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
+        let udp_config = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
 
         Self {
             mm,
             port_id,
             link_addr,
             ipv4_addr,
-            arp_options,
-            tcp_options,
-            udp_options,
+            arp_config,
+            tcp_config,
+            udp_config,
         }
     }
 
@@ -365,6 +365,26 @@ impl DPDKRuntime {
         }
 
         Ok(())
+    }
+
+    pub fn get_link_addr(&self) -> MacAddress {
+        self.link_addr
+    }
+
+    pub fn get_ip_addr(&self) -> Ipv4Addr {
+        self.ipv4_addr
+    }
+
+    pub fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    pub fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
+    }
+
+    pub fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
     }
 }
 

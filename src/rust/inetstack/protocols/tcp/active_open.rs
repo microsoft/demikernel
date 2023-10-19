@@ -3,7 +3,7 @@
 
 use crate::{
     inetstack::protocols::{
-        arp::ArpPeer,
+        arp::SharedArpPeer,
         ethernet2::{
             EtherType2,
             Ethernet2Header,
@@ -17,7 +17,7 @@ use crate::{
                     self,
                     CongestionControl,
                 },
-                ControlBlock,
+                SharedControlBlock,
             },
             segment::{
                 TcpHeader,
@@ -34,13 +34,11 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        queue::BackgroundTask,
         timer::TimerRc,
+        SharedBox,
+        SharedDemiRuntime,
     },
-    scheduler::{
-        Scheduler,
-        TaskHandle,
-    },
+    scheduler::TaskHandle,
 };
 use ::libc::{
     ECONNREFUSED,
@@ -61,7 +59,7 @@ use ::std::{
 
 struct ConnectResult<const N: usize> {
     waker: Option<Waker>,
-    result: Option<Result<ControlBlock<N>, Fail>>,
+    result: Option<Result<SharedControlBlock<N>, Fail>>,
 }
 
 pub struct ActiveOpenSocket<const N: usize> {
@@ -69,13 +67,12 @@ pub struct ActiveOpenSocket<const N: usize> {
 
     local: SocketAddrV4,
     remote: SocketAddrV4,
-
-    rt: Rc<dyn NetworkRuntime<N>>,
-    scheduler: Scheduler,
+    runtime: SharedDemiRuntime,
+    transport: SharedBox<dyn NetworkRuntime<N>>,
     clock: TimerRc,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
-    arp: ArpPeer<N>,
+    arp: SharedArpPeer<N>,
 
     #[allow(unused)]
     handle: TaskHandle,
@@ -84,16 +81,16 @@ pub struct ActiveOpenSocket<const N: usize> {
 
 impl<const N: usize> ActiveOpenSocket<N> {
     pub fn new(
-        scheduler: Scheduler,
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime<N>>,
+        mut runtime: SharedDemiRuntime,
+        transport: SharedBox<dyn NetworkRuntime<N>>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         clock: TimerRc,
-        arp: ArpPeer<N>,
-    ) -> Self {
+        arp: SharedArpPeer<N>,
+    ) -> Result<Self, Fail> {
         let result = ConnectResult {
             waker: None,
             result: None,
@@ -104,38 +101,33 @@ impl<const N: usize> ActiveOpenSocket<N> {
             local_isn,
             local,
             remote,
-            rt.clone(),
+            transport.clone(),
             clock.clone(),
             local_link_addr,
             tcp_config.clone(),
             arp.clone(),
             result.clone(),
         );
-        let task: BackgroundTask =
-            BackgroundTask::new(String::from("Inetstack::TCP::activeopen::background"), Box::pin(future));
-
-        let handle: TaskHandle = match scheduler.insert(task) {
-            Some(handle) => handle,
-            None => panic!("failed to insert task in the scheduler"),
-        };
+        let handle: TaskHandle =
+            runtime.insert_background_coroutine("Inetstack::TCP::activeopen::background", Box::pin(future))?;
 
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
-        Self {
+        Ok(Self {
             local_isn,
             local,
             remote,
-            rt,
-            scheduler: scheduler.clone(),
+            runtime,
+            transport,
             clock,
             local_link_addr,
             tcp_config,
             arp,
             handle,
             result,
-        }
+        })
     }
 
-    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<ControlBlock<N>, Fail>> {
+    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<SharedControlBlock<N>, Fail>> {
         let mut r = self.result.borrow_mut();
         match r.result.take() {
             None => {
@@ -146,7 +138,7 @@ impl<const N: usize> ActiveOpenSocket<N> {
         }
     }
 
-    fn set_result(&mut self, result: Result<ControlBlock<N>, Fail>) {
+    fn set_result(&mut self, result: Result<SharedControlBlock<N>, Fail>) {
         let mut r = self.result.borrow_mut();
         if let Some(w) = r.waker.take() {
             w.wake()
@@ -196,7 +188,7 @@ impl<const N: usize> ActiveOpenSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.rt.transmit(Box::new(segment));
+        self.transport.transmit(Box::new(segment));
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -240,11 +232,11 @@ impl<const N: usize> ActiveOpenSocket<N> {
             local_window_scale, remote_window_scale
         );
 
-        let cb = ControlBlock::new(
+        let cb = SharedControlBlock::new(
             self.local,
             self.remote,
-            self.rt.clone(),
-            self.scheduler.clone(),
+            self.runtime.clone(),
+            self.transport.clone(),
             self.clock.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
@@ -267,11 +259,11 @@ impl<const N: usize> ActiveOpenSocket<N> {
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        rt: Rc<dyn NetworkRuntime<N>>,
+        mut transport: SharedBox<dyn NetworkRuntime<N>>,
         clock: TimerRc,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: ArpPeer<N>,
+        mut arp: SharedArpPeer<N>,
         result: Rc<RefCell<ConnectResult<N>>>,
     ) -> impl Future<Output = ()> {
         let handshake_retries: usize = tcp_config.get_handshake_retries();
@@ -307,7 +299,7 @@ impl<const N: usize> ActiveOpenSocket<N> {
                     data: None,
                     tx_checksum_offload: tcp_config.get_rx_checksum_offload(),
                 };
-                rt.transmit(Box::new(segment));
+                transport.transmit(Box::new(segment));
                 clock.wait(clock.clone(), handshake_timeout).await;
             }
             let mut r = result.borrow_mut();
