@@ -10,7 +10,6 @@ use crate::{
                 Ethernet2Header,
             },
             tcp::operations::{
-                AcceptFuture,
                 ConnectFuture,
                 PopFuture,
                 PushFuture,
@@ -151,9 +150,8 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&mut self, fd: QDesc) -> AcceptFuture<N> {
-        let (_, future) = self.ipv4.tcp.accept(fd);
-        future
+    pub fn tcp_accept(&self, fd: QDesc) -> Pin<Box<Operation>> {
+        self.ipv4.tcp.accept(fd)
     }
 
     pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> PushFuture {

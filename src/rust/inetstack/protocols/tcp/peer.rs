@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use super::{
-    active_open::ActiveOpenSocket,
+    active_open::SharedActiveOpenSocket,
     established::EstablishedSocket,
     isn_generator::IsnGenerator,
     passive_open::SharedPassiveSocket,
@@ -27,9 +27,7 @@ use crate::{
         tcp::{
             established::SharedControlBlock,
             operations::{
-                AcceptFuture,
                 CloseFuture,
-                ConnectFuture,
                 PopFuture,
                 PushFuture,
             },
@@ -49,11 +47,14 @@ use crate::{
             NetworkRuntime,
         },
         timer::TimerRc,
+        Operation,
+        OperationResult,
         QDesc,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
+    scheduler::Yielder,
 };
 use ::futures::channel::mpsc;
 use ::rand::{
@@ -72,6 +73,7 @@ use ::std::{
         Deref,
         DerefMut,
     },
+    pin::Pin,
     task::{
         Context,
         Poll,
@@ -82,14 +84,14 @@ use ::std::{
 #[cfg(feature = "profiler")]
 use crate::timer;
 
-//==============================================================================
+//======================================================================================================================
 // Enumerations
-//==============================================================================
+//======================================================================================================================
 
 pub enum Socket<const N: usize> {
     Inactive(Option<SocketAddrV4>),
     Listening(SharedPassiveSocket<N>),
-    Connecting(ActiveOpenSocket<N>),
+    Connecting(SharedActiveOpenSocket<N>),
     Established(EstablishedSocket<N>),
     Closing(EstablishedSocket<N>),
 }
@@ -100,9 +102,9 @@ enum SocketId {
     Passive(SocketAddrV4),
 }
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 pub struct TcpPeer<const N: usize> {
     runtime: SharedDemiRuntime,
@@ -123,9 +125,9 @@ pub struct TcpPeer<const N: usize> {
 #[derive(Clone)]
 pub struct SharedTcpPeer<const N: usize>(SharedObject<TcpPeer<N>>);
 
-//==============================================================================
+//======================================================================================================================
 // Associated Functions
-//==============================================================================
+//======================================================================================================================
 
 impl<const N: usize> TcpPeer<N> {
     fn new(
@@ -302,65 +304,64 @@ impl<const N: usize> SharedTcpPeer<N> {
         }
     }
 
-    /// Accepts an incoming connection.
-    pub fn accept(&mut self, qd: QDesc) -> (QDesc, AcceptFuture<N>) {
-        let new_qd: QDesc = self
-            .runtime
-            .alloc_queue::<SharedTcpQueue<N>>(SharedTcpQueue::<N>::new());
-        (new_qd, AcceptFuture::new(qd, new_qd, self.clone()))
+    /// Sets up the coroutine for accepting a new connection.
+    pub fn accept(&self, qd: QDesc) -> Pin<Box<Operation>> {
+        let yielder: Yielder = Yielder::new();
+        let peer: Self = self.clone();
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match peer.accept_coroutine(qd, yielder).await {
+                Ok((new_qd, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
     }
 
-    /// Handles an incoming connection.
-    pub fn poll_accept(
-        &mut self,
-        qd: QDesc,
-        new_qd: QDesc,
-        ctx: &mut Context,
-    ) -> Poll<Result<(QDesc, SocketAddrV4), Fail>> {
-        let cb: SharedControlBlock<N> = {
-            let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-            match queue.get_mut_socket() {
-                Socket::Listening(socket) => match socket.poll_accept(ctx) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(result) => match result {
-                        Ok(cb) => cb,
-                        Err(err) => {
-                            // The new queue should have been allocated before this coroutine was scheduled.
-                            self.runtime
-                                .free_queue::<SharedTcpQueue<N>>(&new_qd)
-                                .expect("queue should exist");
-                            return Poll::Ready(Err(err));
-                        },
-                    },
-                },
-                _ => return Poll::Ready(Err(Fail::new(libc::EOPNOTSUPP, "socket not listening"))),
-            }
+    /// Coroutine to asynchronously accept an incoming connection.
+    pub async fn accept_coroutine(mut self, qd: QDesc, yielder: Yielder) -> Result<(QDesc, SocketAddrV4), Fail> {
+        // Create queue structure.
+        let mut new_queue: SharedTcpQueue<N> = SharedTcpQueue::<N>::new();
+        // Wait for a new connection on the listening socket.
+        let cb: SharedControlBlock<N> = match self.get_shared_queue(&qd)?.get_mut_socket() {
+            Socket::Listening(socket) => socket.accept(yielder).await?,
+            _ => return Err(Fail::new(libc::EOPNOTSUPP, "socket not listening")),
         };
-
+        // Insert queue into queue table and get new queue descriptor.
+        let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue<N>>(new_queue.clone());
+        // Set up established socket data structure.
         let established: EstablishedSocket<N> =
-            match EstablishedSocket::new(cb, new_qd, self.dead_socket_tx.clone(), self.runtime.clone()) {
-                Ok(socket) => socket,
-                Err(e) => return Poll::Ready(Err(e)),
-            };
+            EstablishedSocket::new(cb, new_qd, self.dead_socket_tx.clone(), self.runtime.clone())?;
         let local: SocketAddrV4 = established.cb.get_local();
         let remote: SocketAddrV4 = established.cb.get_remote();
-        {
-            // This queue should have been allocated before the coroutine was scheduled.
-            let mut new_queue: SharedTcpQueue<N> =
-                self.get_shared_queue(&new_qd).expect("Should have been pre-allocated");
-            new_queue.set_socket(Socket::Established(established));
-        }
+        // Set the socket in the new queue to established
+        new_queue.set_socket(Socket::Established(established));
+        // Insert new connection into the backmap of addresses to queues.
         if self.addresses.insert(SocketId::Active(local, remote), new_qd).is_some() {
             panic!("duplicate queue descriptor in established sockets table");
         }
         // TODO: Reset the connection if the following following check fails, instead of panicking.
-        Poll::Ready(Ok((new_qd, remote)))
+        Ok((new_qd, remote))
     }
 
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<ConnectFuture<N>, Fail> {
+    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Pin<Box<Operation>> {
+        let yielder: Yielder = Yielder::new();
+        let peer: Self = self.clone();
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match peer.connect_coroutine(qd, remote, yielder).await {
+                Ok(()) => (qd, OperationResult::Connect),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
+    }
+
+    pub async fn connect_coroutine(mut self, qd: QDesc, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
         // Get local address bound to socket.
         let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-        match queue.get_socket() {
+
+        let (socket, local): (SharedActiveOpenSocket<N>, SocketAddrV4) = match queue.get_socket() {
             Socket::Inactive(local_socket) => {
                 let local: SocketAddrV4 = match local_socket {
                     Some(local) => local.clone(),
@@ -370,31 +371,40 @@ impl<const N: usize> SharedTcpPeer<N> {
                         SocketAddrV4::new(self.local_ipv4_addr, local_port)
                     },
                 };
-
                 // Create active socket.
                 let local_isn: SeqNumber = self.isn_generator.generate(&local, &remote);
-                let socket: ActiveOpenSocket<N> = ActiveOpenSocket::new(
-                    local_isn,
+                (
+                    SharedActiveOpenSocket::new(
+                        local_isn,
+                        local,
+                        remote,
+                        self.runtime.clone(),
+                        self.transport.clone(),
+                        self.tcp_config.clone(),
+                        self.local_link_addr,
+                        self.clock.clone(),
+                        self.arp.clone(),
+                    )?,
                     local,
-                    remote,
-                    self.runtime.clone(),
-                    self.transport.clone(),
-                    self.tcp_config.clone(),
-                    self.local_link_addr,
-                    self.clock.clone(),
-                    self.arp.clone(),
-                )?;
-
-                // Update socket state.
-                queue.set_socket(Socket::Connecting(socket));
-                self.addresses.insert(SocketId::Active(local, remote.clone()), qd)
+                )
             },
             Socket::Listening(_) => return Err(Fail::new(libc::EOPNOTSUPP, "socket is listening")),
             Socket::Connecting(_) => return Err(Fail::new(libc::EALREADY, "socket is connecting")),
             Socket::Established(_) => return Err(Fail::new(libc::EISCONN, "socket is connected")),
             Socket::Closing(_) => return Err(Fail::new(libc::EINVAL, "socket is closed")),
         };
-        Ok(ConnectFuture { qd, peer: self.clone() })
+        // Update socket state.
+        queue.set_socket(Socket::Connecting(socket.clone()));
+        self.addresses.insert(SocketId::Active(local, remote.clone()), qd);
+        let cb: SharedControlBlock<N> = socket.get_result(yielder).await?;
+        let new_socket = Socket::Established(EstablishedSocket::new(
+            cb,
+            qd,
+            self.dead_socket_tx.clone(),
+            self.runtime.clone(),
+        )?);
+        queue.set_socket(new_socket);
+        Ok(())
     }
 
     pub fn poll_recv(&mut self, qd: QDesc, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
@@ -690,35 +700,6 @@ impl<const N: usize> SharedTcpPeer<N> {
         self.transport.transmit(pkt);
 
         Ok(())
-    }
-
-    pub fn poll_connect_finished(&mut self, qd: QDesc, context: &mut Context) -> Poll<Result<(), Fail>> {
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return Poll::Ready(Err(e)),
-        };
-        match queue.get_mut_socket() {
-            Socket::Connecting(socket) => {
-                let result: Result<SharedControlBlock<N>, Fail> = match socket.poll_result(context) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(r) => r,
-                };
-                match result {
-                    Ok(cb) => {
-                        let new_socket = Socket::Established(
-                            match EstablishedSocket::new(cb, qd, self.dead_socket_tx.clone(), self.runtime.clone()) {
-                                Ok(socket) => socket,
-                                Err(e) => return Poll::Ready(Err(e)),
-                            },
-                        );
-                        queue.set_socket(new_socket);
-                        Poll::Ready(Ok(()))
-                    },
-                    Err(fail) => Poll::Ready(Err(fail)),
-                }
-            },
-            _ => Poll::Ready(Err(Fail::new(libc::EAGAIN, "socket not connecting"))),
-        }
     }
 
     // TODO: Eventually use context to store the waker for this function in the established socket.

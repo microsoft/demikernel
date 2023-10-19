@@ -1,12 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use super::{
     constants::FALLBACK_MSS,
     established::SharedControlBlock,
     isn_generator::IsnGenerator,
 };
 use crate::{
+    collections::async_queue::AsyncQueue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -40,7 +45,10 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::TaskHandle,
+    scheduler::{
+        TaskHandle,
+        Yielder,
+    },
 };
 use ::libc::{
     EBADMSG,
@@ -50,7 +58,6 @@ use ::std::{
     collections::{
         HashMap,
         HashSet,
-        VecDeque,
     },
     convert::TryInto,
     net::SocketAddrV4,
@@ -58,13 +65,12 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    task::{
-        Context,
-        Poll,
-        Waker,
-    },
     time::Duration,
 };
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 struct InflightAccept {
     local_isn: SeqNumber,
@@ -75,40 +81,28 @@ struct InflightAccept {
     handle: TaskHandle,
 }
 
+#[derive(Default)]
 struct ReadySockets<const N: usize> {
-    ready: VecDeque<Result<SharedControlBlock<N>, Fail>>,
+    ready: AsyncQueue<Result<SharedControlBlock<N>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
-    waker: Option<Waker>,
 }
 
 impl<const N: usize> ReadySockets<N> {
     fn push_ok(&mut self, cb: SharedControlBlock<N>) {
         assert!(self.endpoints.insert(cb.get_remote()));
-        self.ready.push_back(Ok(cb));
-        if let Some(w) = self.waker.take() {
-            w.wake()
-        }
+        self.ready.push(Ok(cb))
     }
 
     fn push_err(&mut self, err: Fail) {
-        self.ready.push_back(Err(err));
-        if let Some(w) = self.waker.take() {
-            w.wake()
-        }
+        self.ready.push(Err(err));
     }
 
-    fn poll(&mut self, ctx: &mut Context) -> Poll<Result<SharedControlBlock<N>, Fail>> {
-        let r = match self.ready.pop_front() {
-            Some(r) => r,
-            None => {
-                self.waker.replace(ctx.waker().clone());
-                return Poll::Pending;
-            },
-        };
-        if let Ok(ref cb) = r {
+    async fn pop(&mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
+        let result: Result<SharedControlBlock<N>, Fail> = self.ready.pop(yielder).await?;
+        if let Ok(ref cb) = result {
             assert!(self.endpoints.remove(&cb.get_remote()));
         }
-        Poll::Ready(r)
+        result
     }
 
     fn len(&self) -> usize {
@@ -133,6 +127,10 @@ pub struct PassiveSocket<const N: usize> {
 #[derive(Clone)]
 pub struct SharedPassiveSocket<const N: usize>(SharedObject<PassiveSocket<N>>);
 
+//======================================================================================================================
+// Associated Function
+//======================================================================================================================
+
 impl<const N: usize> SharedPassiveSocket<N> {
     pub fn new(
         local: SocketAddrV4,
@@ -145,14 +143,9 @@ impl<const N: usize> SharedPassiveSocket<N> {
         arp: SharedArpPeer<N>,
         nonce: u32,
     ) -> Self {
-        let ready = ReadySockets {
-            ready: VecDeque::new(),
-            endpoints: HashSet::new(),
-            waker: None,
-        };
         Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket::<N> {
             inflight: HashMap::new(),
-            ready,
+            ready: ReadySockets::<N>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
@@ -170,8 +163,8 @@ impl<const N: usize> SharedPassiveSocket<N> {
         self.local
     }
 
-    pub fn poll_accept(&mut self, ctx: &mut Context) -> Poll<Result<SharedControlBlock<N>, Fail>> {
-        self.ready.poll(ctx)
+    pub async fn accept(&mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
+        self.ready.pop(yielder).await
     }
 
     pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {

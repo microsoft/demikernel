@@ -10,10 +10,7 @@ use crate::{
             },
             ipv4::Ipv4Header,
             tcp::{
-                operations::{
-                    AcceptFuture,
-                    ConnectFuture,
-                },
+                operations::ConnectFuture,
                 segment::{
                     TcpHeader,
                     TcpSegment,
@@ -33,6 +30,7 @@ use crate::{
             types::MacAddress,
             PacketBuf,
         },
+        Operation,
         QDesc,
     },
 };
@@ -123,7 +121,7 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: Pin<Box<Operation>> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -191,7 +189,7 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: Pin<Box<Operation>> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -259,7 +257,7 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: Pin<Box<Operation>> = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
@@ -370,7 +368,7 @@ fn connection_setup_listen_syn_sent<const N: usize>(
 fn connection_setup_closed_listen<const N: usize>(
     server: &mut SharedEngine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<AcceptFuture<N>> {
+) -> Result<Pin<Box<Operation>>> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = match server.tcp_socket() {
         Ok(fd) => fd,
@@ -382,12 +380,12 @@ fn connection_setup_closed_listen<const N: usize>(
     if let Err(e) = server.tcp_listen(socket_fd, 1) {
         anyhow::bail!("server listen returned an error: {:?}", e);
     }
-    let accept_future: AcceptFuture<N> = server.tcp_accept(socket_fd);
+    let coroutine: Pin<Box<Operation>> = server.tcp_accept(socket_fd);
 
     // LISTEN state.
     server.get_test_rig().poll_scheduler();
 
-    Ok(accept_future)
+    Ok(coroutine)
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
@@ -525,7 +523,7 @@ pub fn connection_setup<const N: usize>(
     listen_addr: SocketAddrV4,
 ) -> Result<((QDesc, SocketAddrV4), QDesc)> {
     // Server: LISTEN state at T(0).
-    let mut accept_future: AcceptFuture<N> = connection_setup_closed_listen(server, listen_addr)?;
+    let mut coroutine: Pin<Box<Operation>> = connection_setup_closed_listen(server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
@@ -581,8 +579,8 @@ pub fn connection_setup<const N: usize>(
     // Server: ESTABLISHED at T(4).
     connection_setup_sync_rcvd_established(server, bytes)?;
 
-    let (server_fd, addr) = match Future::poll(Pin::new(&mut accept_future), ctx) {
-        Poll::Ready(Ok(server_fd)) => server_fd,
+    let (server_fd, addr) = match Future::poll(coroutine.as_mut(), ctx) {
+        Poll::Ready((_, crate::OperationResult::Accept((server_fd, addr)))) => (server_fd, addr),
         _ => anyhow::bail!("accept should have completed"),
     };
     match Future::poll(Pin::new(&mut connect_future), ctx) {
