@@ -330,7 +330,7 @@ pub fn test_send_recv_loop() -> Result<()> {
     };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
@@ -375,7 +375,7 @@ pub fn test_send_recv_round_loop() -> Result<()> {
         None => anyhow::bail!("incorrect receive window"),
     };
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
@@ -424,7 +424,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     };
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     let bufsize: u32 = 64;
@@ -493,7 +493,7 @@ fn test_connect_disconnect() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
+        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
     connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd)?;
