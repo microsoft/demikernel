@@ -23,8 +23,11 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::consts::RECEIVE_BATCH_SIZE,
+        Operation,
+        OperationResult,
         QDesc,
     },
+    scheduler::TaskHandle,
 };
 use ::anyhow::Result;
 use ::futures::task::noop_waker_ref;
@@ -74,6 +77,7 @@ fn send_data<const N: usize>(
 
     // Push data.
     let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
+    sender.get_test_rig().poll_scheduler();
 
     let bytes: DemiBuffer = sender.get_test_rig().pop_frame();
     let bufsize: usize = check_packet_data(
@@ -103,7 +107,6 @@ fn send_data<const N: usize>(
 //=============================================================================
 
 fn recv_data<const N: usize>(
-    ctx: &mut Context,
     receiver: &mut SharedEngine<N>,
     sender: &mut SharedEngine<N>,
     receiver_fd: QDesc,
@@ -116,14 +119,27 @@ fn recv_data<const N: usize>(
     );
 
     // Pop data.
-    let mut pop_future = receiver.tcp_pop(receiver_fd);
+    let pop_coroutine: Pin<Box<Operation>> = receiver.tcp_pop(receiver_fd);
+    let handle: TaskHandle = receiver
+        .get_test_rig()
+        .get_runtime()
+        .insert_coroutine("test::recv_data::pop_coroutine", pop_coroutine)?;
+
     if let Err(e) = receiver.receive(bytes) {
         anyhow::bail!("receive returned error: {:?}", e);
     }
 
+    // Poll the coroutine.
+    receiver.get_test_rig().poll_scheduler();
+
     // Pop completes
-    match Future::poll(Pin::new(&mut pop_future), ctx) {
-        Poll::Ready(Ok(_)) => {
+    match receiver
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine(&handle)
+        .get_result()
+    {
+        Some((_, OperationResult::Pop(_, _))) => {
             trace!("recv_data ====> pop completed");
             Ok(())
         },
@@ -196,7 +212,7 @@ fn send_recv<const N: usize>(
     )?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes)?;
+    recv_data(server, client, server_fd, bytes)?;
 
     // Pop pure ACK.
     recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32))?;
@@ -222,7 +238,7 @@ fn send_recv_round<const N: usize>(
         send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes)?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone())?;
+    recv_data(server, client, server_fd, bytes.clone())?;
 
     // Push Data: Server -> Client
     let bytes: DemiBuffer = cook_buffer(bufsize, None);
@@ -239,7 +255,7 @@ fn send_recv_round<const N: usize>(
     )?;
 
     // Pop data.
-    recv_data(ctx, client, server, client_fd, bytes.clone())?;
+    recv_data(client, server, client_fd, bytes.clone())?;
 
     Ok(())
 }
@@ -454,7 +470,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
         // Pop data oftentimes.
         if rand::random() {
             if let Some(bytes) = inflight.pop_front() {
-                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
+                recv_data(&mut server, &mut client, server_fd, bytes.clone())?;
                 recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
             }
         }
@@ -466,7 +482,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     // Pop inflight packets.
     while let Some(bytes) = inflight.pop_front() {
         // Pop data.
-        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
+        recv_data(&mut server, &mut client, server_fd, bytes.clone())?;
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
         // Recv pure ack (should also account for piggybacked ack).

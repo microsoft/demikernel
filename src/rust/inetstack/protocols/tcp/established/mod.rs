@@ -20,15 +20,14 @@ use crate::{
         QDesc,
         SharedDemiRuntime,
     },
-    scheduler::TaskHandle,
+    scheduler::{
+        TaskHandle,
+        Yielder,
+    },
 };
 use ::futures::channel::mpsc;
 use ::std::{
     net::SocketAddrV4,
-    task::{
-        Context,
-        Poll,
-    },
     time::Duration,
 };
 
@@ -67,16 +66,12 @@ impl<const N: usize> EstablishedSocket<N> {
         self.cb.send(buf)
     }
 
-    pub fn poll_recv(&mut self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
-        self.cb.poll_recv(ctx, size)
+    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+        self.cb.pop(size, yielder).await
     }
 
     pub fn close(&mut self) -> Result<(), Fail> {
         self.cb.close()
-    }
-
-    pub fn poll_close(&self) -> Poll<Result<(), Fail>> {
-        self.cb.poll_close()
     }
 
     pub fn remote_mss(&self) -> usize {

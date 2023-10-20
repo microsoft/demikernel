@@ -9,10 +9,7 @@ use crate::{
                 EtherType2,
                 Ethernet2Header,
             },
-            tcp::operations::{
-                PopFuture,
-                PushFuture,
-            },
+            tcp::operations::PushFuture,
             udp::SharedUdpPeer,
             Peer,
         },
@@ -157,7 +154,7 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> PopFuture<N> {
+    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> Pin<Box<Operation>> {
         self.ipv4.tcp.pop(socket_fd, None)
     }
 

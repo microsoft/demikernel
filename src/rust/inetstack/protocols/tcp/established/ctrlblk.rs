@@ -13,6 +13,7 @@ use super::{
     },
 };
 use crate::{
+    collections::async_queue::AsyncQueue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -46,6 +47,7 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
+    scheduler::Yielder,
 };
 use ::std::{
     collections::VecDeque,
@@ -54,11 +56,6 @@ use ::std::{
     ops::{
         Deref,
         DerefMut,
-    },
-    task::{
-        Context,
-        Poll,
-        Waker,
     },
     time::{
         Duration,
@@ -115,7 +112,7 @@ struct Receiver {
     pub receive_next: SeqNumber,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
-    recv_queue: VecDeque<DemiBuffer>,
+    recv_queue: AsyncQueue<DemiBuffer>,
 }
 
 impl Receiver {
@@ -123,36 +120,31 @@ impl Receiver {
         Self {
             reader_next,
             receive_next,
-            recv_queue: VecDeque::with_capacity(RECV_QUEUE_SZ),
+            recv_queue: AsyncQueue::with_capacity(RECV_QUEUE_SZ),
         }
     }
 
-    pub fn pop(&mut self, size: Option<usize>) -> Result<Option<DemiBuffer>, Fail> {
-        // Check if the receive queue is empty.
-        if self.recv_queue.is_empty() {
-            return Ok(None);
-        }
-
+    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
-            let buf: &mut DemiBuffer = self.recv_queue.front_mut().expect("receive queue cannot be empty");
+            let mut buf: DemiBuffer = self.recv_queue.pop(yielder).await?;
             // Split the buffer if it's too big.
             if buf.len() > size {
                 buf.split_front(size)?
             } else {
-                self.recv_queue.pop_front().expect("receive queue cannot be empty")
+                buf
             }
         } else {
-            self.recv_queue.pop_front().expect("receive queue cannot be empty")
+            self.recv_queue.pop(yielder).await?
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);
 
-        Ok(Some(buf))
+        Ok(buf)
     }
 
     pub fn push(&mut self, buf: DemiBuffer) {
         let buf_len: u32 = buf.len() as u32;
-        self.recv_queue.push_back(buf);
+        self.recv_queue.push(buf);
         self.receive_next = self.receive_next + SeqNumber::from(buf_len as u32);
     }
 }
@@ -194,8 +186,6 @@ pub struct ControlBlock<const N: usize> {
     // This is the number of bits to shift to convert to/from the scaled value, and has a maximum value of 14.
     // TODO: Keep this as a u8?
     window_scale: u32,
-
-    waker: Option<Waker>,
 
     // Queue of out-of-order segments.  This is where we hold onto data that we've received (because it was within our
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
@@ -266,7 +256,6 @@ impl<const N: usize> SharedControlBlock<N> {
             ack_deadline: WatchedValue::new(None),
             receive_buffer_size: receiver_window_size,
             window_scale: receiver_window_scale,
-            waker: None,
             out_of_order: VecDeque::new(),
             out_of_order_fin: Option::None,
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
@@ -752,9 +741,6 @@ impl<const N: usize> SharedControlBlock<N> {
             // Push empty buffer.
             // TODO: set err bit and wake
             self.receiver.push(DemiBuffer::new(0));
-            if let Some(w) = self.waker.take() {
-                w.wake()
-            }
 
             // Since we consumed the FIN we ACK immediately rather than opportunistically.
             // TODO: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
@@ -807,18 +793,6 @@ impl<const N: usize> SharedControlBlock<N> {
         self.user_is_done_sending = true;
 
         Ok(())
-    }
-
-    /// Handle moving the connection to the closed state.
-    ///
-    /// This function runs the TCP state machine once it has either sent or received a FIN. This function is only for
-    /// closing estabilished connections.
-    ///
-    pub fn poll_close(&self) -> Poll<Result<(), Fail>> {
-        // TODO: Retry FIN if not successful.
-        // TODO: Check if we have reached the CLOSED state, otherwise continue polling.
-        // For now, just immediately return with ok.
-        Poll::Ready(Ok(()))
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
@@ -931,7 +905,7 @@ impl<const N: usize> SharedControlBlock<N> {
         hdr_window_size
     }
 
-    pub fn poll_recv(&mut self, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
+    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
         // TODO: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
@@ -939,19 +913,7 @@ impl<const N: usize> SharedControlBlock<N> {
         //  if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
         // But that will think data is available to be read once we've received a FIN, because FINs consume sequence
         // number space.  Now we call is_empty() on the receive queue instead.
-        if self.receiver.recv_queue.is_empty() {
-            self.waker = Some(ctx.waker().clone());
-            return Poll::Pending;
-        }
-
-        match self.receiver.pop(size) {
-            Ok(Some(segment)) => Poll::Ready(Ok(segment)),
-            Ok(None) => {
-                warn!("poll_recv(): polling empty receive queue (ignoring spurious wake up)");
-                Poll::Pending
-            },
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.receiver.pop(size, yielder).await
     }
 
     // This routine remembers that we have received an out-of-order FIN.
@@ -1080,6 +1042,7 @@ impl<const N: usize> SharedControlBlock<N> {
 
         // Push the new segment data onto the end of the receive queue.
         let mut recv_next: SeqNumber = recv_next + SeqNumber::from(buf.len() as u32);
+        // This inserts the segment and wakes a waiting pop coroutine.
         self.receiver.push(buf);
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
@@ -1093,6 +1056,7 @@ impl<const N: usize> SharedControlBlock<N> {
                     debug!("Recovering out-of-order packet at {}", recv_next);
                     if let Some(temp) = self.out_of_order.pop_front() {
                         recv_next = recv_next + SeqNumber::from(temp.1.len() as u32);
+                        // This inserts the segment and wakes a waiting pop coroutine.
                         self.receiver.push(temp.1);
                         added_out_of_order = true;
                     }
@@ -1110,13 +1074,6 @@ impl<const N: usize> SharedControlBlock<N> {
         // Anyhow that recent change removes the need for the following two lines:
         // Update our receive sequence number (i.e. RCV.NXT) appropriately.
         // self.receive_next.set(recv_next);
-
-        // This appears to be checking if something is waiting on the receive queue, and if so, wakes that thing up.
-        // Note: unlike updating receive_next (see above comment) we only do this once (i.e. outside the while loop).
-        // TODO: Verify that this is the right place and time to do this.
-        if let Some(w) = self.waker.take() {
-            w.wake()
-        }
 
         // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
         // TODO: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
