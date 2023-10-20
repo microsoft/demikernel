@@ -59,23 +59,3 @@ impl<const N: usize> Future for PopFuture<N> {
         peer.poll_recv(self.qd, ctx, self.size)
     }
 }
-
-pub struct CloseFuture<const N: usize> {
-    pub qd: QDesc,
-    pub peer: SharedTcpPeer<N>,
-}
-
-impl<const N: usize> fmt::Debug for CloseFuture<N> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CloseFuture({:?})", self.qd)
-    }
-}
-
-impl<const N: usize> Future for CloseFuture<N> {
-    type Output = Result<(), Fail>;
-
-    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
-        let mut peer: SharedTcpPeer<N> = self.peer.clone();
-        peer.poll_close_finished(self.qd, ctx)
-    }
-}
