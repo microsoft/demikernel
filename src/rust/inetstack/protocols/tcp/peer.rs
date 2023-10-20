@@ -27,7 +27,6 @@ use crate::{
         tcp::{
             established::SharedControlBlock,
             operations::{
-                CloseFuture,
                 PopFuture,
                 PushFuture,
             },
@@ -497,7 +496,20 @@ impl<const N: usize> SharedTcpPeer<N> {
     }
 
     /// Closes a TCP socket.
-    pub fn async_close(&self, qd: QDesc) -> Result<CloseFuture<N>, Fail> {
+    pub fn async_close(&self, qd: QDesc) -> Pin<Box<Operation>> {
+        let yielder: Yielder = Yielder::new();
+        let peer: Self = self.clone();
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match peer.close_coroutine(qd, yielder).await {
+                Ok(()) => (qd, OperationResult::Close),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
+    }
+
+    pub async fn close_coroutine(mut self, qd: QDesc, _: Yielder) -> Result<(), Fail> {
         let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
         match queue.get_mut_socket() {
             // Closing an active socket.
@@ -507,9 +519,10 @@ impl<const N: usize> SharedTcpPeer<N> {
                 // Move socket to closing state
                 // Only using a clone here because we need to read and write the socket.
                 self.get_shared_queue(&qd)?.set_socket(Socket::Closing(socket.clone()));
+                // TODO: Wait for the close protocol to finish here.
             },
             // Closing an unbound socket.
-            Socket::Inactive(_) => (),
+            Socket::Inactive(_) => {},
             // Closing a listening socket.
             Socket::Listening(_) => {
                 // TODO: Remove this address from the addresses table
@@ -530,8 +543,11 @@ impl<const N: usize> SharedTcpPeer<N> {
                 return Err(Fail::new(libc::ENOTSUP, &cause));
             },
         };
-        // Schedule a co-routine to all of the cleanup
-        Ok(CloseFuture { qd, peer: self.clone() })
+        // Free the queue.
+        self.runtime
+            .free_queue::<SharedTcpQueue<N>>(&qd)
+            .expect("queue should exist");
+        Ok(())
     }
 
     pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {

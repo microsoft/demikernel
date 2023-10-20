@@ -12,13 +12,9 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        tcp::{
-            operations::{
-                CloseFuture,
-                PopFuture,
-                PushFuture,
-            },
-            queue::SharedTcpQueue,
+        tcp::operations::{
+            PopFuture,
+            PushFuture,
         },
         udp::{
             queue::SharedUdpQueue,
@@ -348,28 +344,13 @@ impl<const N: usize> InetStack<N> {
 
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: CloseFuture<N> = self.ipv4.tcp.async_close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
-                let mut runtime: SharedDemiRuntime = self.runtime.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    let result: Result<(), Fail> = future.await;
-                    match result {
-                        Ok(()) => {
-                            // Expect is safe here because we looked up the queue to schedule this coroutine and no
-                            // other close coroutine should be able to run due to state machine checks.
-                            runtime
-                                .free_queue::<SharedTcpQueue<N>>(&qd)
-                                .expect("queue should exist");
-                            (qd, OperationResult::Close)
-                        },
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.async_close(qd);
                 (task_id, coroutine)
             },
             QType::UdpSocket => {
                 self.ipv4.udp.close(qd)?;
-                let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
+                let task_id: String = format!("Inetstack::UDP::close for qd={:?}", qd);
                 let mut runtime: SharedDemiRuntime = self.runtime.clone();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Expect is safe here because we looked up the queue to schedule this coroutine and no
