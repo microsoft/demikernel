@@ -15,7 +15,6 @@ use crate::{
         tcp::{
             operations::{
                 CloseFuture,
-                ConnectFuture,
                 PopFuture,
                 PushFuture,
             },
@@ -299,27 +298,15 @@ impl<const N: usize> InetStack<N> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
-        let handle: TaskHandle = match self.runtime.get_queue_type(&qd)? {
+        match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: ConnectFuture<N> = self.ipv4.tcp.connect(qd, remote)?;
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for connect to complete.
-                    let result: Result<(), Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(()) => (qd, OperationResult::Connect),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.connect(qd, remote);
                 let task_id: String = format!("Inetstack::TCP::connect for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id.as_str(), coroutine)
+                let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
+                Ok(handle.get_task_id().into())
             },
-            _ => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }?;
-
-        let qt: QToken = handle.get_task_id().into();
-        trace!("connect() qt={:?}", qt);
-        Ok(qt)
+            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        }
     }
 
     ///

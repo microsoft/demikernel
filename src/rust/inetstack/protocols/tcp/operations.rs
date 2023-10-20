@@ -17,26 +17,6 @@ use ::std::{
     },
 };
 
-pub struct ConnectFuture<const N: usize> {
-    pub qd: QDesc,
-    pub peer: SharedTcpPeer<N>,
-}
-
-impl<const N: usize> fmt::Debug for ConnectFuture<N> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ConnectFuture({:?})", self.qd)
-    }
-}
-
-impl<const N: usize> Future for ConnectFuture<N> {
-    type Output = Result<(), Fail>;
-
-    fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
-        let mut peer: SharedTcpPeer<N> = self.peer.clone();
-        peer.poll_connect_finished(self.qd, context)
-    }
-}
-
 pub struct PushFuture {
     pub qd: QDesc,
     pub err: Option<Fail>,

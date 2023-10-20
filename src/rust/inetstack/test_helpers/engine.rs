@@ -10,7 +10,6 @@ use crate::{
                 Ethernet2Header,
             },
             tcp::operations::{
-                ConnectFuture,
                 PopFuture,
                 PushFuture,
             },
@@ -142,8 +141,8 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.socket()
     }
 
-    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> ConnectFuture<N> {
-        self.ipv4.tcp.connect(socket_fd, remote_endpoint).unwrap()
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> Pin<Box<Operation>> {
+        self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
     pub fn tcp_bind(&mut self, socket_fd: QDesc, endpoint: SocketAddrV4) -> Result<(), Fail> {
