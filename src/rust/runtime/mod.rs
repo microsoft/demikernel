@@ -146,6 +146,19 @@ impl DemiRuntime {
         }
     }
 
+    /// Removes the background `coroutine` associated with `handle`. Since background coroutines do not return a result
+    /// there is no need to cast it.
+    pub fn remove_background_coroutine(&mut self, handle: &TaskHandle) -> Result<(), Fail> {
+        match self.scheduler.remove(handle) {
+            Some(_) => Ok(()),
+            None => {
+                let cause: String = format!("cannot remove coroutine (task_id={:?})", &handle.get_task_id());
+                error!("remove_background_coroutine(): {}", cause);
+                Err(Fail::new(libc::ESRCH, &cause))
+            },
+        }
+    }
+
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&self) {
         self.scheduler.poll()

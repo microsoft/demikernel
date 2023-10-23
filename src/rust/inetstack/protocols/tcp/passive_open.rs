@@ -67,6 +67,7 @@ use ::std::{
     },
     time::Duration,
 };
+use core::panic;
 
 //======================================================================================================================
 // Structures
@@ -214,8 +215,10 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 local_window_scale, remote_window_scale
             );
 
-            if let Some(mut inflight) = self.inflight.remove(&remote) {
-                inflight.handle.deschedule();
+            if let Some(inflight) = self.inflight.remove(&remote) {
+                if let Err(e) = self.runtime.remove_background_coroutine(&inflight.handle) {
+                    panic!("Failed to remove inflight accept (error={:?})", e);
+                }
             }
 
             let cb = SharedControlBlock::new(
