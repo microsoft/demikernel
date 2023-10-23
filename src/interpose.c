@@ -24,10 +24,10 @@
         type ret = -1;                                                                                                 \
         static bool reentrant = false;                                                                                 \
                                                                                                                        \
-        init();                                                                                                        \
-                                                                                                                       \
         if ((!initialized) || (reentrant))                                                                             \
             return (fn_libc(__VA_ARGS__));                                                                             \
+                                                                                                                       \
+        init();                                                                                                        \
                                                                                                                        \
         int last_errno = errno;                                                                                        \
                                                                                                                        \
