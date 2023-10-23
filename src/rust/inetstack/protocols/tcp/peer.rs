@@ -26,7 +26,6 @@ use crate::{
         ipv4::Ipv4Header,
         tcp::{
             established::SharedControlBlock,
-            operations::PushFuture,
             segment::{
                 TcpHeader,
                 TcpSegment,
@@ -400,12 +399,22 @@ impl<const N: usize> SharedTcpPeer<N> {
     }
 
     /// TODO: Should probably check for valid queue descriptor before we schedule the future
-    pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> PushFuture {
-        let err: Option<Fail> = match self.send(qd, buf) {
-            Ok(()) => None,
-            Err(e) => Some(e),
+    pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> Pin<Box<Operation>> {
+        let result: Result<(), Fail> = match self.get_shared_queue(&qd) {
+            Ok(queue) => match queue.get_socket() {
+                Socket::Established(ref socket) => socket.send(buf),
+                _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            Err(e) => Err(e),
         };
-        PushFuture { qd, err }
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match result {
+                Ok(()) => (qd, OperationResult::Push),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
     }
 
     /// TODO: Should probably check for valid queue descriptor before we schedule the future
@@ -432,14 +441,6 @@ impl<const N: usize> SharedTcpPeer<N> {
             Socket::Connecting(_) => Err(Fail::new(libc::EINPROGRESS, "socket connecting")),
             Socket::Inactive(_) => Err(Fail::new(libc::EBADF, "socket inactive")),
             Socket::Listening(_) => Err(Fail::new(libc::ENOTCONN, "socket listening")),
-        }
-    }
-
-    fn send(&self, qd: QDesc, buf: DemiBuffer) -> Result<(), Fail> {
-        let queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-        match queue.get_socket() {
-            Socket::Established(ref socket) => socket.send(buf),
-            _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
         }
     }
 

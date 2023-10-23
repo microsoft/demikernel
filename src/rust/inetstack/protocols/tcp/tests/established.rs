@@ -4,7 +4,6 @@
 use crate::{
     inetstack::{
         protocols::tcp::{
-            operations::PushFuture,
             tests::{
                 check_packet_data,
                 check_packet_pure_ack,
@@ -30,17 +29,11 @@ use crate::{
     scheduler::TaskHandle,
 };
 use ::anyhow::Result;
-use ::futures::task::noop_waker_ref;
 use ::rand;
 use ::std::{
     collections::VecDeque,
-    future::Future,
     net::SocketAddrV4,
     pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
     time::Instant,
 };
 
@@ -59,7 +52,6 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
 //=============================================================================
 
 fn send_data<const N: usize>(
-    ctx: &mut Context,
     now: &mut Instant,
     receiver: &mut SharedEngine<N>,
     sender: &mut SharedEngine<N>,
@@ -76,7 +68,12 @@ fn send_data<const N: usize>(
     );
 
     // Push data.
-    let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
+    let push_coroutine: Pin<Box<Operation>> = sender.tcp_push(sender_fd, bytes);
+    let handle: TaskHandle = sender
+        .get_test_rig()
+        .get_runtime()
+        .insert_coroutine("test::send_data::push_coroutine", push_coroutine)?;
+
     sender.get_test_rig().poll_scheduler();
 
     let bytes: DemiBuffer = sender.get_test_rig().pop_frame();
@@ -94,13 +91,18 @@ fn send_data<const N: usize>(
     advance_clock(Some(receiver), Some(sender), now);
 
     // Push completes.
-    match Future::poll(Pin::new(&mut push_future), ctx) {
-        Poll::Ready(Ok(())) => {
+    match sender
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine(&handle)
+        .get_result()
+    {
+        Some((_, OperationResult::Push)) => {
             trace!("send_data ====> push completed");
-
             Ok((bytes, bufsize))
         },
-        _ => anyhow::bail!("push should have completed successfully"),
+        Some((_, result)) => anyhow::bail!("push did not complete successfully: {:?}", result),
+        None => anyhow::bail!("push should have completed"),
     }
 }
 
@@ -143,7 +145,8 @@ fn recv_data<const N: usize>(
             trace!("recv_data ====> pop completed");
             Ok(())
         },
-        _ => anyhow::bail!("pop should have completed"),
+        Some((_, result)) => anyhow::bail!("pop did not complete successfully: {:?}", result),
+        None => anyhow::bail!("pop should have completed"),
     }
 }
 
@@ -166,6 +169,7 @@ fn recv_pure_ack<const N: usize>(
 
     // Pop pure ACK
     if let Some(bytes) = sender.get_test_rig().pop_frame_unchecked() {
+        trace!("received pure ack!");
         check_packet_pure_ack(
             bytes.clone(),
             sender.get_test_rig().get_link_addr(),
@@ -186,7 +190,6 @@ fn recv_pure_ack<const N: usize>(
 //=============================================================================
 
 fn send_recv<const N: usize>(
-    ctx: &mut Context,
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
@@ -199,17 +202,8 @@ fn send_recv<const N: usize>(
     let bufsize: usize = bytes.len();
 
     // Push data.
-    let (bytes, _): (DemiBuffer, usize) = send_data(
-        ctx,
-        now,
-        server,
-        client,
-        client_fd,
-        window_size,
-        seq_no,
-        None,
-        bytes.clone(),
-    )?;
+    let (bytes, _): (DemiBuffer, usize) =
+        send_data(now, server, client, client_fd, window_size, seq_no, None, bytes.clone())?;
 
     // Pop data.
     recv_data(server, client, server_fd, bytes)?;
@@ -223,7 +217,6 @@ fn send_recv<const N: usize>(
 //=============================================================================
 
 fn send_recv_round<const N: usize>(
-    ctx: &mut Context,
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
@@ -235,7 +228,7 @@ fn send_recv_round<const N: usize>(
 ) -> Result<()> {
     // Push Data: Client -> Server
     let (bytes, bufsize): (DemiBuffer, usize) =
-        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes)?;
+        send_data(now, server, client, client_fd, window_size, seq_no, None, bytes)?;
 
     // Pop data.
     recv_data(server, client, server_fd, bytes.clone())?;
@@ -243,7 +236,6 @@ fn send_recv_round<const N: usize>(
     // Push Data: Server -> Client
     let bytes: DemiBuffer = cook_buffer(bufsize, None);
     let (bytes, _): (DemiBuffer, usize) = send_data(
-        ctx,
         now,
         client,
         server,
@@ -263,7 +255,6 @@ fn send_recv_round<const N: usize>(
 //=============================================================================
 
 fn connection_hangup<const N: usize>(
-    _ctx: &mut Context,
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
@@ -327,7 +318,6 @@ fn connection_hangup<const N: usize>(
 /// pure ACKs to the sender.
 #[test]
 pub fn test_send_recv_loop() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -354,7 +344,6 @@ pub fn test_send_recv_loop() -> Result<()> {
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv(
-            &mut ctx,
             &mut now,
             &mut server,
             &mut client,
@@ -373,7 +362,6 @@ pub fn test_send_recv_loop() -> Result<()> {
 
 #[test]
 pub fn test_send_recv_round_loop() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -399,7 +387,6 @@ pub fn test_send_recv_round_loop() -> Result<()> {
 
     for i in 0..((max_window_size + 1) / bufsize) {
         send_recv_round(
-            &mut ctx,
             &mut now,
             &mut server,
             &mut client,
@@ -421,7 +408,6 @@ pub fn test_send_recv_round_loop() -> Result<()> {
 /// the sender side to trigger the RTO calculation logic.
 #[test]
 pub fn test_send_recv_with_delay() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -452,7 +438,6 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     for _ in 0..((max_window_size + 1) / bufsize) {
         // Push data.
         let (bytes, _): (DemiBuffer, usize) = send_data(
-            &mut ctx,
             &mut now,
             &mut server,
             &mut client,
@@ -497,7 +482,6 @@ pub fn test_send_recv_with_delay() -> Result<()> {
 
 #[test]
 fn test_connect_disconnect() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -512,7 +496,7 @@ fn test_connect_disconnect() -> Result<()> {
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
-    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd)?;
+    connection_hangup(&mut now, &mut server, &mut client, server_fd, client_fd)?;
 
     Ok(())
 }

@@ -12,7 +12,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        tcp::operations::PushFuture,
         udp::{
             queue::SharedUdpQueue,
             SharedUdpPeer,
@@ -373,16 +372,7 @@ impl<const N: usize> InetStack<N> {
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<TaskHandle, Fail> {
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: PushFuture = self.ipv4.tcp.push(qd, buf);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for push to complete.
-                    let result: Result<(), Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(()) => (qd, OperationResult::Push),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.push(qd, buf);
                 let task_id: String = format!("Inetstack::TCP::push for qd={:?}", qd);
                 self.runtime.insert_coroutine(task_id.as_str(), coroutine)
             },
