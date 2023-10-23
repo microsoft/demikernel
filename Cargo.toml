@@ -38,7 +38,7 @@ libc = "0.2.149"
 log = "0.4.20"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
-socket2 = "0.5.4"
+socket2 = "0.5.5"
 yaml-rust = "0.4.5"
 x86 = "0.52.0"
 
