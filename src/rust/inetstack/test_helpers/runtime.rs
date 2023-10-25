@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::runtime::{
     logging,
     memory::DemiBuffer,
@@ -33,9 +37,9 @@ use ::std::{
     time::Instant,
 };
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 pub struct TestRuntime {
     link_addr: MacAddress,
@@ -52,9 +56,9 @@ pub struct TestRuntime {
 #[derive(Clone)]
 pub struct SharedTestRuntime(SharedObject<TestRuntime>);
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 impl SharedTestRuntime {
     pub fn new(
@@ -79,50 +83,67 @@ impl SharedTestRuntime {
         }))
     }
 
+    /// Remove a fixed number of frames from the runtime's outgoing queue.
+    pub fn pop_frames(&mut self, num_frames: usize) -> VecDeque<DemiBuffer> {
+        let length: usize = self.outgoing.len();
+        self.outgoing.split_off(length - num_frames)
+    }
+
+    pub fn pop_all_frames(&mut self) -> VecDeque<DemiBuffer> {
+        self.outgoing.split_off(0)
+    }
+
+    /// Remove a single frame from the runtime's outgoing queue. The queue should not be empty.
     pub fn pop_frame(&mut self) -> DemiBuffer {
-        debug!("outgoing size: {:?}", self.outgoing.len());
-        self.outgoing
-            .pop_front()
-            .expect("pop_front didn't return an outgoing frame")
+        self.pop_frames(1).pop_front().expect("should be at least one frame")
     }
 
+    /// Remove a single frame from the runtime's outgoing queue if it is not empty.
     pub fn pop_frame_unchecked(&mut self) -> Option<DemiBuffer> {
-        debug!("outgoing size unchecked: {:?}", self.outgoing.len());
-        self.outgoing.pop_front()
+        self.pop_frames(1).pop_front()
     }
 
+    /// Add a frame to the runtime's incoming queue.
     pub fn push_frame(&mut self, buf: DemiBuffer) {
         self.incoming.push_back(buf);
     }
 
+    /// Poll the runtime's scheduler for one iteration.
     pub fn poll_scheduler(&self) {
         self.runtime.poll();
     }
 
+    /// Get the link address assigned to the runtime.
     pub fn get_link_addr(&self) -> MacAddress {
         self.link_addr
     }
 
+    /// Get the ip address assigned to the runtime.
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4_addr
     }
 
+    /// Get the arp configuration options for the runtime.
     pub fn get_arp_config(&self) -> ArpConfig {
         self.arp_config.clone()
     }
 
+    /// Get the udp configuration options for the runtime.
     pub fn get_udp_config(&self) -> UdpConfig {
         self.udp_config.clone()
     }
 
+    /// Get the tcp configuration options for the runtime.
     pub fn get_tcp_config(&self) -> TcpConfig {
         self.tcp_config.clone()
     }
 
+    /// Get the runtime's clock.
     pub fn get_clock(&self) -> TimerRc {
         self.clock.clone()
     }
 
+    /// Get the underlying DemiRuntime.
     pub fn get_runtime(&self) -> SharedDemiRuntime {
         self.runtime.clone()
     }
@@ -158,6 +179,10 @@ impl<const N: usize> NetworkRuntime<N> for SharedTestRuntime {
         out
     }
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
 
 impl Deref for SharedTestRuntime {
     type Target = TestRuntime;

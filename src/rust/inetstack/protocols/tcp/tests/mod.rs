@@ -1,8 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Exports
+//======================================================================================================================
+
 pub mod established;
 pub mod setup;
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
 
 use crate::{
     inetstack::protocols::{
@@ -24,9 +32,11 @@ use crate::{
 use ::anyhow::Result;
 use ::std::net::Ipv4Addr;
 
-//=============================================================================
+//======================================================================================================================
+// Standalone Functions
+//======================================================================================================================
 
-/// Checks for a data packet.
+/// Checks for a data packet. Returns the data size and whether it is a retransmitted packet.
 pub fn check_packet_data(
     bytes: DemiBuffer,
     eth2_src_addr: MacAddress,
@@ -36,7 +46,7 @@ pub fn check_packet_data(
     window_size: u16,
     seq_num: SeqNumber,
     ack_num: Option<SeqNumber>,
-) -> Result<usize> {
+) -> Result<(usize, bool)> {
     let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes).unwrap();
     crate::ensure_eq!(eth2_header.src_addr(), eth2_src_addr);
     crate::ensure_eq!(eth2_header.dst_addr(), eth2_dst_addr);
@@ -47,13 +57,18 @@ pub fn check_packet_data(
     let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, false).unwrap();
     crate::ensure_neq!(tcp_payload.len(), 0);
     crate::ensure_eq!(tcp_header.window_size, window_size);
-    crate::ensure_eq!(tcp_header.seq_num, seq_num);
     if let Some(ack_num) = ack_num {
         crate::ensure_eq!(tcp_header.ack, true);
         crate::ensure_eq!(tcp_header.ack_num, ack_num);
     }
 
-    Ok(tcp_payload.len())
+    if tcp_header.seq_num == seq_num {
+        Ok((tcp_payload.len(), false))
+    } else if tcp_header.seq_num < seq_num {
+        Ok((tcp_payload.len(), true))
+    } else {
+        anyhow::bail!("Sequence number is out of order");
+    }
 }
 
 //=============================================================================
