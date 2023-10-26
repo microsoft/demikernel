@@ -32,8 +32,6 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 /// own size. We rely on these two properties to distribute raw pointers to the
 /// scheduler, so that it may cast back a raw pointer and operate on a specific
 /// future whenever needed.
-///
-/// TODO: use the unused space in this structure to something useful.
 #[repr(align(64))]
 pub struct WakerPage {
     /// Reference count for the page.
@@ -42,10 +40,6 @@ pub struct WakerPage {
     notified: Waker64,
     /// Flags whether or not a given future has completed.
     completed: Waker64,
-    /// Flags whether or not a given future has ben dropped.
-    dropped: Waker64,
-    /// Padding required to make the structure 64-byte big.
-    _unused: [u8; 32],
 }
 
 //==============================================================================
@@ -67,7 +61,6 @@ impl WakerPage {
         // futures would lead us to poll them after completion.
         let mut notified = self.notified.swap(0);
         notified &= !self.completed.load();
-        notified &= !self.dropped.load();
         notified
     }
 
@@ -83,40 +76,20 @@ impl WakerPage {
         self.completed.fetch_or(1 << ix);
     }
 
-    /// Sets the dropped flag for the `ix` future in the target [WakerPage].
-    pub fn mark_dropped(&self, ix: usize) {
-        debug_assert!(ix < WAKER_BIT_LENGTH);
-        self.dropped.fetch_or(1 << ix);
-    }
-
-    /// Takes out dropped flags in the target [WakerPage].
-    /// Dropped flags are reset after this operation.
-    pub fn take_dropped(&self) -> u64 {
-        self.dropped.swap(0)
-    }
-
-    /// Queries whether or not the dropped flag for the `ix` future in the target [WakerPage] is set.
-    pub fn was_dropped(&self, ix: usize) -> bool {
-        debug_assert!(ix < WAKER_BIT_LENGTH);
-        self.dropped.load() & (1 << ix) != 0
-    }
-
     /// Resets all flags in the target [WakerPage].
     /// The reference count for the target page is reset to one.
     pub fn reset(&mut self) {
         self.refcount.swap(1);
         self.notified.swap(0);
         self.completed.swap(0);
-        self.dropped.swap(0);
     }
 
     /// Initialize flags for the `ix` future in the target [WakerPage].
-    /// Notification and dropped flags are reset after this operation.
+    /// Notification and completed flags are reset after this operation.
     pub fn initialize(&self, ix: usize) {
         debug_assert!(ix < WAKER_BIT_LENGTH);
         self.notified.fetch_or(1 << ix);
         self.completed.fetch_and(!(1 << ix));
-        self.dropped.fetch_and(!(1 << ix));
     }
 
     /// Clears flags for the `ix` future in the target [WakerPage]
@@ -126,7 +99,6 @@ impl WakerPage {
         let mask: u64 = !(1 << ix);
         self.notified.fetch_and(mask);
         self.completed.fetch_and(mask);
-        self.dropped.fetch_and(mask);
     }
 
     /// Increments the reference count of the target [WakerPage].
@@ -160,8 +132,6 @@ impl Default for WakerPage {
             refcount: Waker64::new(1),
             notified: Waker64::new(0),
             completed: Waker64::new(0),
-            dropped: Waker64::new(0),
-            _unused: Default::default(),
         }
     }
 }
@@ -204,17 +174,6 @@ mod tests {
     }
 
     #[bench]
-    fn bench_mark_dropped(b: &mut Bencher) {
-        let pg: WakerPage = WakerPage::default();
-        let x: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
-
-        b.iter(|| {
-            let ix: usize = black_box(x);
-            pg.mark_dropped(ix);
-        });
-    }
-
-    #[bench]
     fn bench_mark_completed(b: &mut Bencher) {
         let pg: WakerPage = WakerPage::default();
         let x: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
@@ -237,22 +196,6 @@ mod tests {
 
         b.iter(|| {
             let x: u64 = pg.take_notified();
-            black_box(x);
-        });
-    }
-
-    #[bench]
-    fn bench_take_dropped(b: &mut Bencher) {
-        let pg: WakerPage = WakerPage::default();
-
-        // Initialize 8 random bits.
-        for _ in 0..8 {
-            let ix: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
-            pg.initialize(ix);
-        }
-
-        b.iter(|| {
-            let x: u64 = pg.take_dropped();
             black_box(x);
         });
     }

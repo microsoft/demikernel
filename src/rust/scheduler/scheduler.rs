@@ -96,10 +96,6 @@ impl Scheduler {
             let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
             (&waker_page_refs[waker_page_index], waker_page_offset)
         };
-        assert!(
-            !waker_page_ref.was_dropped(waker_page_offset),
-            "Task was previously dropped"
-        );
         waker_page_ref.clear(waker_page_offset);
         if let Some(task) = self.tasks.borrow_mut().remove_unpin(pin_slab_index) {
             trace!(
@@ -212,9 +208,8 @@ impl Scheduler {
     pub fn poll(&self) {
         let num_waker_pages = self.get_num_waker_pages();
         for waker_page_index in 0..num_waker_pages {
-            let (notified_offsets, dropped_offsets) = self.get_offsets_for_ready_tasks(waker_page_index);
+            let notified_offsets: u64 = self.get_offsets_for_ready_tasks(waker_page_index);
             self.poll_notified_tasks(waker_page_index, notified_offsets);
-            self.remove_dropped_tasks(waker_page_index, dropped_offsets);
         }
     }
 
@@ -223,13 +218,10 @@ impl Scheduler {
         waker_page_refs.len()
     }
 
-    fn get_offsets_for_ready_tasks(&self, waker_page_index: usize) -> (u64, u64) {
-        let (notified_offsets, dropped_offsets): (u64, u64) = {
-            let mut waker_page_refs: RefMut<Vec<WakerPageRef>> = self.waker_page_refs.borrow_mut();
-            let waker_page_ref: &mut WakerPageRef = &mut waker_page_refs[waker_page_index];
-            (waker_page_ref.take_notified(), waker_page_ref.take_dropped())
-        };
-        (notified_offsets, dropped_offsets)
+    fn get_offsets_for_ready_tasks(&self, waker_page_index: usize) -> u64 {
+        let mut waker_page_refs: RefMut<Vec<WakerPageRef>> = self.waker_page_refs.borrow_mut();
+        let waker_page_ref: &mut WakerPageRef = &mut waker_page_refs[waker_page_index];
+        waker_page_ref.take_notified()
     }
 
     fn poll_notified_tasks(&self, waker_page_index: usize, notified_offsets: u64) {
@@ -258,35 +250,6 @@ impl Scheduler {
                 let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
                 waker_page_refs[waker_page_index].mark_completed(waker_page_offset)
             }
-        }
-    }
-
-    // This function is deprecated, do not use.
-    // FIXME: https://github.com/microsoft/demikernel/issues/884
-    fn remove_dropped_tasks(&self, waker_page_index: usize, dropped_offsets: u64) {
-        for waker_page_offset in BitIter::from(dropped_offsets) {
-            let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
-            let mut tasks: RefMut<PinSlab<Box<dyn Task>>> = self.tasks.borrow_mut();
-            match tasks.remove(pin_slab_index) {
-                Some(true) => {
-                    let mut task_ids: RefMut<HashMap<u64, usize>> = self.task_ids.borrow_mut();
-                    let len_before_removing: usize = task_ids.len();
-                    task_ids.retain(|_, v| *v != pin_slab_index);
-                    // If there is more than one task id pointing at the offset, something has gone very wrong.
-                    assert_eq!(
-                        task_ids.len(),
-                        len_before_removing - 1,
-                        "There should never been more than one task id pointing at an offset!"
-                    );
-                    let waker_page_refs: Ref<Vec<WakerPageRef>> = self.waker_page_refs.borrow();
-                    waker_page_refs[waker_page_index].clear(waker_page_offset);
-                },
-                Some(false) => warn!(
-                    "poll(): cannot remove a task that does not exist (pin_slab_index={})",
-                    pin_slab_index
-                ),
-                None => warn!("poll(): failed to remove task (pin_slab_index={})", pin_slab_index),
-            };
         }
     }
 
