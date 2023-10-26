@@ -230,6 +230,8 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             None,
         );
         self.result.set(Ok(cb));
+        let handle: TaskHandle = self.handle.take().expect("We should have allocated a background task");
+        self.runtime.remove_background_coroutine(&handle);
     }
 
     async fn background(mut self) {
@@ -283,14 +285,6 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
-
-impl<const N: usize> Drop for ActiveOpenSocket<N> {
-    fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            self.runtime.remove_coroutine(&handle);
-        }
-    }
-}
 
 impl<const N: usize> Deref for SharedActiveOpenSocket<N> {
     type Target = ActiveOpenSocket<N>;

@@ -214,8 +214,8 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 local_window_scale, remote_window_scale
             );
 
-            if let Some(mut inflight) = self.inflight.remove(&remote) {
-                inflight.handle.deschedule();
+            if let Some(inflight) = self.inflight.remove(&remote) {
+                self.runtime.remove_background_coroutine(&inflight.handle);
             }
 
             let cb = SharedControlBlock::new(

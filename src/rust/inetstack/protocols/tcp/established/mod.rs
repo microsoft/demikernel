@@ -34,6 +34,7 @@ use ::std::{
 #[derive(Clone)]
 pub struct EstablishedSocket<const N: usize> {
     pub cb: SharedControlBlock<N>,
+    runtime: SharedDemiRuntime,
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
@@ -55,6 +56,7 @@ impl<const N: usize> EstablishedSocket<N> {
         Ok(Self {
             cb,
             background: handle.clone(),
+            runtime: runtime.clone(),
         })
     }
 
@@ -93,6 +95,6 @@ impl<const N: usize> EstablishedSocket<N> {
 
 impl<const N: usize> Drop for EstablishedSocket<N> {
     fn drop(&mut self) {
-        self.background.deschedule();
+        self.runtime.remove_background_coroutine(&self.background);
     }
 }

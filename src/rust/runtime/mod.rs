@@ -146,6 +146,16 @@ impl DemiRuntime {
         }
     }
 
+    /// Removes the background `coroutine` associated with `handle`. Since background coroutines do not return a result
+    /// there is no need to cast it.
+    pub fn remove_background_coroutine(&mut self, handle: &TaskHandle) {
+        // 1. Remove Task from scheduler.
+        let _: Box<dyn Task> = self
+            .scheduler
+            .remove(handle)
+            .expect("Removing task that does not exist (either was previously removed or never inserted");
+    }
+
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&self) {
         self.scheduler.poll()
