@@ -26,10 +26,6 @@ use crate::{
         ipv4::Ipv4Header,
         tcp::{
             established::SharedControlBlock,
-            operations::{
-                PopFuture,
-                PushFuture,
-            },
             segment::{
                 TcpHeader,
                 TcpSegment,
@@ -73,10 +69,6 @@ use ::std::{
         DerefMut,
     },
     pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
     time::Duration,
 };
 
@@ -406,44 +398,49 @@ impl<const N: usize> SharedTcpPeer<N> {
         Ok(())
     }
 
-    pub fn poll_recv(&mut self, qd: QDesc, ctx: &mut Context, size: Option<usize>) -> Poll<Result<DemiBuffer, Fail>> {
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return Poll::Ready(Err(e)),
+    /// TODO: Should probably check for valid queue descriptor before we schedule the future
+    pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> Pin<Box<Operation>> {
+        let result: Result<(), Fail> = match self.get_shared_queue(&qd) {
+            Ok(queue) => match queue.get_socket() {
+                Socket::Established(ref socket) => socket.send(buf),
+                _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            },
+            Err(e) => Err(e),
         };
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match result {
+                Ok(()) => (qd, OperationResult::Push),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
+    }
+
+    /// TODO: Should probably check for valid queue descriptor before we schedule the future
+    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> Pin<Box<Operation>> {
+        let yielder: Yielder = Yielder::new();
+        let peer: Self = self.clone();
+        Box::pin(async move {
+            // Wait for accept to complete.
+            // Handle result: If unsuccessful, free the new queue descriptor.
+            match peer.pop_coroutine(qd, size, yielder).await {
+                Ok(buf) => (qd, OperationResult::Pop(None, buf)),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        })
+    }
+
+    pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+        // Get local address bound to socket.
+        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
 
         match queue.get_mut_socket() {
-            Socket::Established(ref mut socket) => socket.poll_recv(ctx, size),
-            Socket::Closing(ref mut socket) => socket.poll_recv(ctx, size),
-            Socket::Connecting(_) => Poll::Ready(Err(Fail::new(libc::EINPROGRESS, "socket connecting"))),
-            Socket::Inactive(_) => Poll::Ready(Err(Fail::new(libc::EBADF, "socket inactive"))),
-            Socket::Listening(_) => Poll::Ready(Err(Fail::new(libc::ENOTCONN, "socket listening"))),
-        }
-    }
-
-    /// TODO: Should probably check for valid queue descriptor before we schedule the future
-    pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> PushFuture {
-        let err: Option<Fail> = match self.send(qd, buf) {
-            Ok(()) => None,
-            Err(e) => Some(e),
-        };
-        PushFuture { qd, err }
-    }
-
-    /// TODO: Should probably check for valid queue descriptor before we schedule the future
-    pub fn pop(&self, qd: QDesc, size: Option<usize>) -> PopFuture<N> {
-        PopFuture {
-            qd,
-            size,
-            peer: self.clone(),
-        }
-    }
-
-    fn send(&self, qd: QDesc, buf: DemiBuffer) -> Result<(), Fail> {
-        let queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-        match queue.get_socket() {
-            Socket::Established(ref socket) => socket.send(buf),
-            _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            Socket::Established(socket) => socket.pop(size, yielder).await,
+            Socket::Closing(_) => Err(Fail::new(libc::EBADF, "socket closing")),
+            Socket::Connecting(_) => Err(Fail::new(libc::EINPROGRESS, "socket connecting")),
+            Socket::Inactive(_) => Err(Fail::new(libc::EBADF, "socket inactive")),
+            Socket::Listening(_) => Err(Fail::new(libc::ENOTCONN, "socket listening")),
         }
     }
 
@@ -520,9 +517,16 @@ impl<const N: usize> SharedTcpPeer<N> {
                 // Only using a clone here because we need to read and write the socket.
                 self.get_shared_queue(&qd)?.set_socket(Socket::Closing(socket.clone()));
                 // TODO: Wait for the close protocol to finish here.
+                // Remove address from backmap.
+                self.addresses
+                    .remove(&SocketId::Active(socket.endpoints().0, socket.endpoints().1));
             },
             // Closing an unbound socket.
-            Socket::Inactive(_) => {},
+            Socket::Inactive(None) => {},
+            Socket::Inactive(Some(addr)) => {
+                // Remove address from backmap.
+                self.addresses.remove(&SocketId::Passive(addr.clone()));
+            },
             // Closing a listening socket.
             Socket::Listening(_) => {
                 // TODO: Remove this address from the addresses table
@@ -547,6 +551,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         self.runtime
             .free_queue::<SharedTcpQueue<N>>(&qd)
             .expect("queue should exist");
+
         Ok(())
     }
 
@@ -716,43 +721,6 @@ impl<const N: usize> SharedTcpPeer<N> {
         self.transport.transmit(pkt);
 
         Ok(())
-    }
-
-    // TODO: Eventually use context to store the waker for this function in the established socket.
-    pub fn poll_close_finished(&mut self, qd: QDesc, _context: &mut Context) -> Poll<Result<(), Fail>> {
-        let sockid: Option<SocketId> = {
-            let queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
-                Ok(queue) => queue,
-                Err(e) => return Poll::Ready(Err(e)),
-            };
-            match queue.get_socket() {
-                // Closing an active socket.
-                Socket::Closing(socket) => match socket.poll_close() {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(_) => Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)),
-                },
-                // Closing an unbound socket.
-                Socket::Inactive(None) => None,
-                // Closing a bound socket.
-                Socket::Inactive(Some(addr)) => Some(SocketId::Passive(addr.clone())),
-                // Closing a listening socket.
-                Socket::Listening(_) => unimplemented!("Do not support async close for listening sockets yet"),
-                // Closing a connecting socket.
-                Socket::Connecting(_) => unimplemented!("Do not support async close for listening sockets yet"),
-                // Closing a closing socket.
-                Socket::Established(_) => unreachable!("Should have moved this socket to closing already!"),
-            }
-        };
-
-        // Remove queue from qtable
-        self.runtime
-            .free_queue::<SharedTcpQueue<N>>(&qd)
-            .expect("queue should exist");
-        // Remove address from addresses backmap
-        if let Some(addr) = sockid {
-            self.addresses.remove(&addr);
-        }
-        Poll::Ready(Ok(()))
     }
 }
 

@@ -12,10 +12,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        tcp::operations::{
-            PopFuture,
-            PushFuture,
-        },
         udp::{
             queue::SharedUdpQueue,
             SharedUdpPeer,
@@ -376,16 +372,7 @@ impl<const N: usize> InetStack<N> {
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<TaskHandle, Fail> {
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: PushFuture = self.ipv4.tcp.push(qd, buf);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for push to complete.
-                    let result: Result<(), Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(()) => (qd, OperationResult::Push),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.push(qd, buf);
                 let task_id: String = format!("Inetstack::TCP::push for qd={:?}", qd);
                 self.runtime.insert_coroutine(task_id.as_str(), coroutine)
             },
@@ -463,16 +450,7 @@ impl<const N: usize> InetStack<N> {
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
                 let task_id: String = format!("Inetstack::TCP::pop for qd={:?}", qd);
-                let future: PopFuture<N> = self.ipv4.tcp.pop(qd, size);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for pop to complete.
-                    let result: Result<DemiBuffer, Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(buf) => (qd, OperationResult::Pop(None, buf)),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.pop(qd, size);
                 (task_id, coroutine)
             },
             QType::UdpSocket => {

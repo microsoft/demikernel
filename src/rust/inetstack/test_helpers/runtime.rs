@@ -86,6 +86,7 @@ impl SharedTestRuntime {
     }
 
     pub fn pop_frame_unchecked(&mut self) -> Option<DemiBuffer> {
+        debug!("outgoing size unchecked: {:?}", self.outgoing.len());
         self.outgoing.pop_front()
     }
 
@@ -94,7 +95,6 @@ impl SharedTestRuntime {
     }
 
     pub fn poll_scheduler(&self) {
-        // let mut ctx = Context::from_waker(noop_waker_ref());
         self.runtime.poll();
     }
 
@@ -135,6 +135,7 @@ impl<const N: usize> NetworkRuntime<N> for SharedTestRuntime {
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
+        debug!("transmit frame: {:?} body: {:?}", self.outgoing.len(), body_size);
 
         // The packet header and body must fit into whatever physical media we're transmitting over.
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.

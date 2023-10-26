@@ -30,6 +30,13 @@ pub struct AsyncQueue<T> {
 //======================================================================================================================
 
 impl<T> AsyncQueue<T> {
+    pub fn with_capacity(size: usize) -> Self {
+        Self {
+            queue: VecDeque::<T>::with_capacity(size),
+            waiters: VecDeque::<YielderHandle>::new(),
+        }
+    }
+
     pub fn push(&mut self, item: T) {
         self.queue.push_back(item);
         if let Some(mut handle) = self.waiters.pop_front() {

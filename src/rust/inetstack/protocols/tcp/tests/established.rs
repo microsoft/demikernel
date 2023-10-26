@@ -4,7 +4,6 @@
 use crate::{
     inetstack::{
         protocols::tcp::{
-            operations::PushFuture,
             tests::{
                 check_packet_data,
                 check_packet_pure_ack,
@@ -23,6 +22,9 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::consts::RECEIVE_BATCH_SIZE,
+        Operation,
+        OperationResult,
+        OperationTask,
         QDesc,
     },
 };
@@ -60,7 +62,7 @@ fn send_data<const N: usize>(
     now: &mut Instant,
     receiver: &mut SharedEngine<N>,
     sender: &mut SharedEngine<N>,
-    sender_fd: QDesc,
+    sender_qd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     ack_num: Option<SeqNumber>,
@@ -73,8 +75,8 @@ fn send_data<const N: usize>(
     );
 
     // Push data.
-    let mut push_future: PushFuture = sender.tcp_push(sender_fd, bytes);
-
+    let push_coroutine: Pin<Box<Operation>> = sender.tcp_push(sender_qd, bytes);
+    let mut task: OperationTask = OperationTask::new(format!("test::send_data::push_coroutine"), push_coroutine);
     let bytes: DemiBuffer = sender.get_test_rig().pop_frame();
     let bufsize: usize = check_packet_data(
         bytes.clone(),
@@ -90,11 +92,14 @@ fn send_data<const N: usize>(
     advance_clock(Some(receiver), Some(sender), now);
 
     // Push completes.
-    match Future::poll(Pin::new(&mut push_future), ctx) {
-        Poll::Ready(Ok(())) => {
-            trace!("send_data ====> push completed");
-
-            Ok((bytes, bufsize))
+    match Future::poll(Pin::new(&mut task), ctx) {
+        Poll::Ready(()) => match task.get_result().expect("coroutine should have completed") {
+            (qd, OperationResult::Push) => {
+                trace!("send_data ====> push completed");
+                assert_eq!(sender_qd, qd);
+                Ok((bytes, bufsize))
+            },
+            (_, _) => anyhow::bail!("coroutine should have returned push"),
         },
         _ => anyhow::bail!("push should have completed successfully"),
     }
@@ -106,7 +111,7 @@ fn recv_data<const N: usize>(
     ctx: &mut Context,
     receiver: &mut SharedEngine<N>,
     sender: &mut SharedEngine<N>,
-    receiver_fd: QDesc,
+    receiver_qd: QDesc,
     bytes: DemiBuffer,
 ) -> Result<()> {
     trace!(
@@ -116,16 +121,23 @@ fn recv_data<const N: usize>(
     );
 
     // Pop data.
-    let mut pop_future = receiver.tcp_pop(receiver_fd);
+    let pop_coroutine: Pin<Box<Operation>> = receiver.tcp_pop(receiver_qd);
+    let mut task: OperationTask = OperationTask::new(format!("test::recv_data::pop_coroutine"), pop_coroutine);
+
     if let Err(e) = receiver.receive(bytes) {
         anyhow::bail!("receive returned error: {:?}", e);
     }
 
     // Pop completes
-    match Future::poll(Pin::new(&mut pop_future), ctx) {
-        Poll::Ready(Ok(_)) => {
-            trace!("recv_data ====> pop completed");
-            Ok(())
+    // Push completes.
+    match Future::poll(Pin::new(&mut task), ctx) {
+        Poll::Ready(()) => match task.get_result().expect("coroutine should have completed") {
+            (qd, OperationResult::Pop(_, _)) => {
+                trace!("send_data ====> push completed");
+                assert_eq!(receiver_qd, qd);
+                Ok(())
+            },
+            (_, _) => anyhow::bail!("coroutine should have returned pop"),
         },
         _ => anyhow::bail!("pop should have completed"),
     }
@@ -174,8 +186,8 @@ fn send_recv<const N: usize>(
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
-    server_fd: QDesc,
-    client_fd: QDesc,
+    server_qd: QDesc,
+    client_qd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     bytes: DemiBuffer,
@@ -188,7 +200,7 @@ fn send_recv<const N: usize>(
         now,
         server,
         client,
-        client_fd,
+        client_qd,
         window_size,
         seq_no,
         None,
@@ -196,7 +208,7 @@ fn send_recv<const N: usize>(
     )?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes)?;
+    recv_data(ctx, server, client, server_qd, bytes)?;
 
     // Pop pure ACK.
     recv_pure_ack(now, server, client, seq_no + SeqNumber::from(bufsize as u32))?;
@@ -211,18 +223,18 @@ fn send_recv_round<const N: usize>(
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
-    server_fd: QDesc,
-    client_fd: QDesc,
+    server_qd: QDesc,
+    client_qd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
     bytes: DemiBuffer,
 ) -> Result<()> {
     // Push Data: Client -> Server
     let (bytes, bufsize): (DemiBuffer, usize) =
-        send_data(ctx, now, server, client, client_fd, window_size, seq_no, None, bytes)?;
+        send_data(ctx, now, server, client, client_qd, window_size, seq_no, None, bytes)?;
 
     // Pop data.
-    recv_data(ctx, server, client, server_fd, bytes.clone())?;
+    recv_data(ctx, server, client, server_qd, bytes.clone())?;
 
     // Push Data: Server -> Client
     let bytes: DemiBuffer = cook_buffer(bufsize, None);
@@ -231,7 +243,7 @@ fn send_recv_round<const N: usize>(
         now,
         client,
         server,
-        server_fd,
+        server_qd,
         window_size,
         seq_no,
         Some(seq_no + SeqNumber::from(bufsize as u32)),
@@ -239,7 +251,7 @@ fn send_recv_round<const N: usize>(
     )?;
 
     // Pop data.
-    recv_data(ctx, client, server, client_fd, bytes.clone())?;
+    recv_data(ctx, client, server, client_qd, bytes.clone())?;
 
     Ok(())
 }
@@ -251,11 +263,11 @@ fn connection_hangup<const N: usize>(
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
-    server_fd: QDesc,
-    client_fd: QDesc,
+    server_qd: QDesc,
+    client_qd: QDesc,
 ) -> Result<()> {
     // Send FIN: Client -> Server
-    if let Err(e) = client.tcp_close(client_fd) {
+    if let Err(e) = client.tcp_close(client_qd) {
         anyhow::bail!("client tcp_close returned error: {:?}", e);
     }
     client.get_test_rig().poll_scheduler();
@@ -277,7 +289,7 @@ fn connection_hangup<const N: usize>(
     advance_clock(Some(server), Some(client), now);
 
     // Send FIN: Server -> Client
-    if let Err(e) = server.tcp_close(server_fd) {
+    if let Err(e) = server.tcp_close(server_qd) {
         anyhow::bail!("server tcp_close returned error: {:?}", e);
     }
     server.get_test_rig().poll_scheduler();
@@ -329,7 +341,7 @@ pub fn test_send_recv_loop() -> Result<()> {
         None => anyhow::bail!("incorrect receive window"),
     };
 
-    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
+    let ((server_qd, addr), client_qd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
@@ -342,8 +354,8 @@ pub fn test_send_recv_loop() -> Result<()> {
             &mut now,
             &mut server,
             &mut client,
-            server_fd,
-            client_fd,
+            server_qd,
+            client_qd,
             max_window_size as u16,
             SeqNumber::from(1 + i * bufsize),
             buf.clone(),
@@ -374,7 +386,7 @@ pub fn test_send_recv_round_loop() -> Result<()> {
         Some(shift) => shift,
         None => anyhow::bail!("incorrect receive window"),
     };
-    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
+    let ((server_qd, addr), client_qd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
@@ -387,8 +399,8 @@ pub fn test_send_recv_round_loop() -> Result<()> {
             &mut now,
             &mut server,
             &mut client,
-            server_fd,
-            client_fd,
+            server_qd,
+            client_qd,
             max_window_size as u16,
             SeqNumber::from(1 + i * bufsize),
             buf.clone(),
@@ -423,7 +435,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
         None => anyhow::bail!("incorrect receive window"),
     };
 
-    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
+    let ((server_qd, addr), client_qd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
@@ -440,7 +452,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
             &mut now,
             &mut server,
             &mut client,
-            client_fd,
+            client_qd,
             max_window_size as u16,
             seq_no,
             None,
@@ -454,7 +466,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
         // Pop data oftentimes.
         if rand::random() {
             if let Some(bytes) = inflight.pop_front() {
-                recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
+                recv_data(&mut ctx, &mut server, &mut client, server_qd, bytes.clone())?;
                 recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
             }
         }
@@ -466,7 +478,7 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     // Pop inflight packets.
     while let Some(bytes) = inflight.pop_front() {
         // Pop data.
-        recv_data(&mut ctx, &mut server, &mut client, server_fd, bytes.clone())?;
+        recv_data(&mut ctx, &mut server, &mut client, server_qd, bytes.clone())?;
         recv_seq_no = recv_seq_no + SeqNumber::from(bufsize as u32);
 
         // Recv pure ack (should also account for piggybacked ack).
@@ -492,11 +504,11 @@ fn test_connect_disconnect() -> Result<()> {
     let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
-    let ((server_fd, addr), client_fd): ((QDesc, SocketAddrV4), QDesc) =
+    let ((server_qd, addr), client_qd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
     crate::ensure_eq!(addr.ip(), &test_helpers::ALICE_IPV4);
 
-    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_fd, client_fd)?;
+    connection_hangup(&mut ctx, &mut now, &mut server, &mut client, server_qd, client_qd)?;
 
     Ok(())
 }
