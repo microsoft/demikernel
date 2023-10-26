@@ -33,6 +33,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
+        network::unwrap_socketaddr,
         queue::{
             downcast_queue,
             downcast_queue_ptr,
@@ -48,7 +49,6 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        network::unwrap_socketaddr,
         QDesc,
         QToken,
         SharedDemiRuntime,
@@ -63,8 +63,8 @@ use ::std::{
     mem,
     net::{
         Ipv4Addr,
-        SocketAddrV4,
         SocketAddr,
+        SocketAddrV4,
     },
     ops::{
         Deref,
@@ -472,7 +472,7 @@ impl SharedCatnapLibOS {
         }
     }
 
-    pub fn poll(&self) {
+    pub fn poll(&mut self) {
         #[cfg(feature = "profiler")]
         timer!("catnap::poll");
         self.runtime.poll()

@@ -12,8 +12,8 @@ mod runtime;
 pub use self::{
     queue::CatcollarQueue,
     runtime::{
-        IoUringRuntime,
         RequestId,
+        SharedIoUringRuntime,
     },
 };
 
@@ -89,7 +89,7 @@ pub struct CatcollarLibOS {
     /// Table of queue descriptors.
     qtable: Rc<RefCell<IoQueueTable>>, // TODO: Move this into runtime module.
     /// Underlying runtime.
-    runtime: IoUringRuntime,
+    runtime: SharedIoUringRuntime,
 }
 
 //======================================================================================================================
@@ -101,7 +101,7 @@ impl CatcollarLibOS {
     /// Instantiates a Catcollar LibOS.
     pub fn new(_config: &Config) -> Self {
         let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
-        let runtime: IoUringRuntime = IoUringRuntime::new();
+        let runtime: SharedIoUringRuntime = SharedIoUringRuntime::default();
         Self { qtable, runtime }
     }
 
@@ -465,7 +465,7 @@ impl CatcollarLibOS {
     }
 
     async fn push_coroutine(
-        rt: IoUringRuntime,
+        rt: SharedIoUringRuntime,
         qd: QDesc,
         fd: RawFd,
         buf: DemiBuffer,
@@ -477,7 +477,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_push(mut rt: IoUringRuntime, fd: RawFd, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    async fn do_push(mut rt: SharedIoUringRuntime, fd: RawFd, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
         let request_id: RequestId = rt.push(fd, buf.clone())?;
         loop {
             match rt.peek(request_id) {
@@ -546,7 +546,7 @@ impl CatcollarLibOS {
     }
 
     async fn pushto_coroutine(
-        rt: IoUringRuntime,
+        rt: SharedIoUringRuntime,
         qd: QDesc,
         fd: RawFd,
         remote: SocketAddrV4,
@@ -560,7 +560,7 @@ impl CatcollarLibOS {
     }
 
     async fn do_pushto(
-        mut rt: IoUringRuntime,
+        mut rt: SharedIoUringRuntime,
         fd: RawFd,
         remote: SocketAddrV4,
         buf: DemiBuffer,
@@ -624,7 +624,7 @@ impl CatcollarLibOS {
     }
 
     async fn pop_coroutine(
-        rt: IoUringRuntime,
+        rt: SharedIoUringRuntime,
         qd: QDesc,
         fd: RawFd,
         buf: DemiBuffer,
@@ -638,7 +638,7 @@ impl CatcollarLibOS {
     }
 
     async fn do_pop(
-        mut rt: IoUringRuntime,
+        mut rt: SharedIoUringRuntime,
         fd: RawFd,
         buf: DemiBuffer,
         yielder: Yielder,
@@ -681,7 +681,7 @@ impl CatcollarLibOS {
         }
     }
 
-    pub fn poll(&self) {
+    pub fn poll(&mut self) {
         self.runtime.scheduler.poll()
     }
 
@@ -749,7 +749,7 @@ impl CatcollarLibOS {
 //======================================================================================================================
 
 /// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(rt: &IoUringRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+fn pack_result(rt: &SharedIoUringRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

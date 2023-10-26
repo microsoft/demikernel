@@ -108,8 +108,7 @@ impl SharedTestRuntime {
         self.incoming.push_back(buf);
     }
 
-    /// Poll the runtime's scheduler for one iteration.
-    pub fn poll_scheduler(&self) {
+    pub fn poll_scheduler(&mut self) {
         self.runtime.poll();
     }
 
