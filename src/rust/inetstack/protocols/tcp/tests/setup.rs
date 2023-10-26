@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
     inetstack::{
         protocols::{
@@ -10,10 +14,6 @@ use crate::{
             },
             ipv4::Ipv4Header,
             tcp::{
-                operations::{
-                    AcceptFuture,
-                    ConnectFuture,
-                },
                 segment::{
                     TcpHeader,
                     TcpSegment,
@@ -33,38 +33,33 @@ use crate::{
             types::MacAddress,
             PacketBuf,
         },
+        Operation,
+        OperationResult,
         QDesc,
     },
+    scheduler::TaskHandle,
 };
 use ::anyhow::Result;
-use ::futures::task::noop_waker_ref;
-use ::libc::{
-    EBADMSG,
-    ETIMEDOUT,
-};
+use ::libc::EBADMSG;
 use ::std::{
-    future::Future,
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
     pin::Pin,
-    task::{
-        Context,
-        Poll,
-    },
     time::{
         Duration,
         Instant,
     },
 };
 
-//=============================================================================
+//======================================================================================================================
+// Tests
+//======================================================================================================================
 
-//tests connection timeout.
+/// Tests connection timeout.
 #[test]
 fn test_connection_timeout() -> Result<()> {
-    let mut ctx: Context = Context::from_waker(noop_waker_ref());
     let mut now: Instant = Instant::now();
 
     // Connection parameters
@@ -80,7 +75,7 @@ fn test_connection_timeout() -> Result<()> {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, mut connect_future, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
+    let (_, connect_handle, bytes): (QDesc, TaskHandle, DemiBuffer) =
         connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
@@ -100,18 +95,20 @@ fn test_connection_timeout() -> Result<()> {
         client.get_test_rig().poll_scheduler();
     }
 
-    match Future::poll(Pin::new(&mut connect_future), &mut ctx) {
-        Poll::Ready(Err(error)) if error.errno == ETIMEDOUT => Ok(()),
+    match client
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine(&connect_handle)
+        .get_result()
+    {
+        None => Ok(()),
         _ => anyhow::bail!("connect should have timed out"),
     }
 }
 
-//=============================================================================
-
 /// Refuse a connection.
 #[test]
 fn test_refuse_connection_early_rst() -> Result<()> {
-    let _ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -123,14 +120,13 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
-        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -174,12 +170,9 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     }
 }
 
-//=============================================================================
-
 /// Refuse a connection.
 #[test]
 fn test_refuse_connection_early_ack() -> Result<()> {
-    let _ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -191,14 +184,13 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
-        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -242,12 +234,9 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     }
 }
 
-//=============================================================================
-
 /// Tests connection refuse due to missing syn.
 #[test]
 fn test_refuse_connection_missing_syn() -> Result<()> {
-    let _ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Connection parameters
@@ -259,14 +248,13 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: AcceptFuture<RECEIVE_BATCH_SIZE> = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, ConnectFuture<RECEIVE_BATCH_SIZE>, DemiBuffer) =
-        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -320,7 +308,28 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     }
 }
 
-//=============================================================================
+/// Tests basic 3-way connection setup.
+#[test]
+fn test_good_connect() -> Result<()> {
+    let mut now = Instant::now();
+
+    // Connection parameters
+    let listen_port: u16 = 80;
+    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
+
+    // Setup peers.
+    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+
+    let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
+        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
+
+    Ok(())
+}
+
+//======================================================================================================================
+// Standalone Functions
+//======================================================================================================================
 
 /// Extracts headers of a TCP packet.
 fn extract_headers(bytes: DemiBuffer) -> Result<(Ethernet2Header, Ipv4Header, TcpHeader)> {
@@ -330,8 +339,6 @@ fn extract_headers(bytes: DemiBuffer) -> Result<(Ethernet2Header, Ipv4Header, Tc
 
     return Ok((eth2_header, ipv4_header, tcp_header));
 }
-
-//=============================================================================
 
 /// Serializes a TCP segment.
 fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
@@ -345,32 +352,36 @@ fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
     Ok(buf)
 }
 
-//=============================================================================
-
 /// Triggers LISTEN -> SYN_SENT state transition.
 fn connection_setup_listen_syn_sent<const N: usize>(
     client: &mut SharedEngine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<(QDesc, ConnectFuture<N>, DemiBuffer)> {
+) -> Result<(QDesc, TaskHandle, DemiBuffer)> {
     // Issue CONNECT operation.
     let client_fd: QDesc = match client.tcp_socket() {
         Ok(fd) => fd,
         Err(e) => anyhow::bail!("client tcp socket returned error: {:?}", e),
     };
-    let connect_future: ConnectFuture<N> = client.tcp_connect(client_fd, listen_addr);
+    let connect_coroutine: Pin<Box<Operation>> = client.tcp_connect(client_fd, listen_addr);
+    let connect_handle: TaskHandle = client
+        .get_test_rig()
+        .get_runtime()
+        .insert_coroutine("test::connection_setup_listen_syn_sent()", connect_coroutine)?;
 
     // SYN_SENT state.
     client.get_test_rig().poll_scheduler();
+    client.get_test_rig().poll_scheduler();
+
     let bytes: DemiBuffer = client.get_test_rig().pop_frame();
 
-    Ok((client_fd, connect_future, bytes))
+    Ok((client_fd, connect_handle, bytes))
 }
 
 /// Triggers CLOSED -> LISTEN state transition.
 fn connection_setup_closed_listen<const N: usize>(
     server: &mut SharedEngine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<AcceptFuture<N>> {
+) -> Result<TaskHandle> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = match server.tcp_socket() {
         Ok(fd) => fd,
@@ -382,12 +393,15 @@ fn connection_setup_closed_listen<const N: usize>(
     if let Err(e) = server.tcp_listen(socket_fd, 1) {
         anyhow::bail!("server listen returned an error: {:?}", e);
     }
-    let accept_future: AcceptFuture<N> = server.tcp_accept(socket_fd);
-
+    let accept_coroutine: Pin<Box<Operation>> = server.tcp_accept(socket_fd);
+    let accept_handle: TaskHandle = server.get_test_rig().get_runtime().insert_coroutine(
+        "test::connection_setup_closed_listen::accept_coroutine",
+        accept_coroutine,
+    )?;
     // LISTEN state.
     server.get_test_rig().poll_scheduler();
 
-    Ok(accept_future)
+    Ok(accept_handle)
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
@@ -517,7 +531,6 @@ pub fn advance_clock<const N: usize>(
 
 /// Runs 3-way connection setup.
 pub fn connection_setup<const N: usize>(
-    ctx: &mut Context,
     now: &mut Instant,
     server: &mut SharedEngine<N>,
     client: &mut SharedEngine<N>,
@@ -525,13 +538,13 @@ pub fn connection_setup<const N: usize>(
     listen_addr: SocketAddrV4,
 ) -> Result<((QDesc, SocketAddrV4), QDesc)> {
     // Server: LISTEN state at T(0).
-    let mut accept_future: AcceptFuture<N> = connection_setup_closed_listen(server, listen_addr)?;
+    let accept_handle: TaskHandle = connection_setup_closed_listen(server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, mut connect_future, mut bytes): (QDesc, ConnectFuture<N>, DemiBuffer) =
+    let (client_fd, connect_handle, mut bytes): (QDesc, TaskHandle, DemiBuffer) =
         connection_setup_listen_syn_sent(client, listen_addr)?;
 
     // Sanity check packet.
@@ -581,34 +594,24 @@ pub fn connection_setup<const N: usize>(
     // Server: ESTABLISHED at T(4).
     connection_setup_sync_rcvd_established(server, bytes)?;
 
-    let (server_fd, addr) = match Future::poll(Pin::new(&mut accept_future), ctx) {
-        Poll::Ready(Ok(server_fd)) => server_fd,
+    let (server_fd, addr): (QDesc, SocketAddrV4) = match server
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine(&accept_handle)
+        .get_result()
+    {
+        Some((_, crate::OperationResult::Accept((server_fd, addr)))) => (server_fd, addr),
         _ => anyhow::bail!("accept should have completed"),
     };
-    match Future::poll(Pin::new(&mut connect_future), ctx) {
-        Poll::Ready(Ok(())) => {},
+    match client
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine(&connect_handle)
+        .get_result()
+    {
+        Some((_, OperationResult::Connect)) => {},
         _ => anyhow::bail!("connect should have completed"),
     };
 
     Ok(((server_fd, addr), client_fd))
-}
-
-/// Tests basic 3-way connection setup.
-#[test]
-fn test_good_connect() -> Result<()> {
-    let mut ctx = Context::from_waker(noop_waker_ref());
-    let mut now = Instant::now();
-
-    // Connection parameters
-    let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
-
-    // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-
-    let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut ctx, &mut now, &mut server, &mut client, listen_port, listen_addr)?;
-
-    Ok(())
 }

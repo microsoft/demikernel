@@ -12,16 +12,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        tcp::{
-            operations::{
-                AcceptFuture,
-                CloseFuture,
-                ConnectFuture,
-                PopFuture,
-                PushFuture,
-            },
-            queue::SharedTcpQueue,
-        },
         udp::{
             queue::SharedUdpQueue,
             SharedUdpPeer,
@@ -270,24 +260,7 @@ impl<const N: usize> InetStack<N> {
         // Search for target queue descriptor.
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let (new_qd, future): (QDesc, AcceptFuture<N>) = self.ipv4.tcp.accept(qd);
-                let mut runtime = self.runtime.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for accept to complete.
-                    let result: Result<(QDesc, SocketAddrV4), Fail> = future.await;
-                    // Handle result: If unsuccessful, free the new queue descriptor.
-                    match result {
-                        Ok((_, addr)) => (qd, OperationResult::Accept((new_qd, addr))),
-                        Err(e) => {
-                            // It is safe to call expect here because we looked up the queue to schedule this coroutine
-                            // and no other accept coroutine should be able to run due to state machine checks.
-                            runtime
-                                .free_queue::<SharedTcpQueue<N>>(&new_qd)
-                                .expect("queue should have been allocated");
-                            (qd, OperationResult::Failed(e))
-                        },
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.accept(qd);
                 let task_id: String = format!("Inetstack::TCP::accept for qd={:?}", qd);
                 let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 Ok(handle.get_task_id().into())
@@ -317,27 +290,15 @@ impl<const N: usize> InetStack<N> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
-        let handle: TaskHandle = match self.runtime.get_queue_type(&qd)? {
+        match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: ConnectFuture<N> = self.ipv4.tcp.connect(qd, remote)?;
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for connect to complete.
-                    let result: Result<(), Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(()) => (qd, OperationResult::Connect),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.connect(qd, remote);
                 let task_id: String = format!("Inetstack::TCP::connect for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id.as_str(), coroutine)
+                let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
+                Ok(handle.get_task_id().into())
             },
-            _ => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }?;
-
-        let qt: QToken = handle.get_task_id().into();
-        trace!("connect() qt={:?}", qt);
-        Ok(qt)
+            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        }
     }
 
     ///
@@ -379,28 +340,13 @@ impl<const N: usize> InetStack<N> {
 
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: CloseFuture<N> = self.ipv4.tcp.async_close(qd)?;
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
-                let mut runtime: SharedDemiRuntime = self.runtime.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    let result: Result<(), Fail> = future.await;
-                    match result {
-                        Ok(()) => {
-                            // Expect is safe here because we looked up the queue to schedule this coroutine and no
-                            // other close coroutine should be able to run due to state machine checks.
-                            runtime
-                                .free_queue::<SharedTcpQueue<N>>(&qd)
-                                .expect("queue should exist");
-                            (qd, OperationResult::Close)
-                        },
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.async_close(qd);
                 (task_id, coroutine)
             },
             QType::UdpSocket => {
                 self.ipv4.udp.close(qd)?;
-                let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
+                let task_id: String = format!("Inetstack::UDP::close for qd={:?}", qd);
                 let mut runtime: SharedDemiRuntime = self.runtime.clone();
                 let coroutine: Pin<Box<Operation>> = Box::pin(async move {
                     // Expect is safe here because we looked up the queue to schedule this coroutine and no
@@ -426,16 +372,7 @@ impl<const N: usize> InetStack<N> {
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<TaskHandle, Fail> {
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let future: PushFuture = self.ipv4.tcp.push(qd, buf);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for push to complete.
-                    let result: Result<(), Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(()) => (qd, OperationResult::Push),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.push(qd, buf);
                 let task_id: String = format!("Inetstack::TCP::push for qd={:?}", qd);
                 self.runtime.insert_coroutine(task_id.as_str(), coroutine)
             },
@@ -513,16 +450,7 @@ impl<const N: usize> InetStack<N> {
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
                 let task_id: String = format!("Inetstack::TCP::pop for qd={:?}", qd);
-                let future: PopFuture<N> = self.ipv4.tcp.pop(qd, size);
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Wait for pop to complete.
-                    let result: Result<DemiBuffer, Fail> = future.await;
-                    // Handle result.
-                    match result {
-                        Ok(buf) => (qd, OperationResult::Pop(None, buf)),
-                        Err(e) => (qd, OperationResult::Failed(e)),
-                    }
-                });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.pop(qd, size);
                 (task_id, coroutine)
             },
             QType::UdpSocket => {

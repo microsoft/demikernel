@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
+    collections::async_value::AsyncValue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -37,30 +42,29 @@ use crate::{
         timer::TimerRc,
         SharedBox,
         SharedDemiRuntime,
+        SharedObject,
     },
-    scheduler::TaskHandle,
+    scheduler::{
+        TaskHandle,
+        Yielder,
+    },
 };
 use ::libc::{
     ECONNREFUSED,
     ETIMEDOUT,
 };
 use ::std::{
-    cell::RefCell,
     convert::TryInto,
-    future::Future,
     net::SocketAddrV4,
-    rc::Rc,
-    task::{
-        Context,
-        Poll,
-        Waker,
+    ops::{
+        Deref,
+        DerefMut,
     },
 };
 
-struct ConnectResult<const N: usize> {
-    waker: Option<Waker>,
-    result: Option<Result<SharedControlBlock<N>, Fail>>,
-}
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 pub struct ActiveOpenSocket<const N: usize> {
     local_isn: SeqNumber,
@@ -73,13 +77,18 @@ pub struct ActiveOpenSocket<const N: usize> {
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
-
-    #[allow(unused)]
-    handle: TaskHandle,
-    result: Rc<RefCell<ConnectResult<N>>>,
+    result: AsyncValue<Result<SharedControlBlock<N>, Fail>>,
+    handle: Option<TaskHandle>,
 }
 
-impl<const N: usize> ActiveOpenSocket<N> {
+#[derive(Clone)]
+pub struct SharedActiveOpenSocket<const N: usize>(SharedObject<ActiveOpenSocket<N>>);
+
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
+
+impl<const N: usize> SharedActiveOpenSocket<N> {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
@@ -91,59 +100,27 @@ impl<const N: usize> ActiveOpenSocket<N> {
         clock: TimerRc,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
-        let result = ConnectResult {
-            waker: None,
-            result: None,
-        };
-        let result = Rc::new(RefCell::new(result));
-
-        let future = Self::background(
+        let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
             local_isn,
             local,
             remote,
-            transport.clone(),
-            clock.clone(),
-            local_link_addr,
-            tcp_config.clone(),
-            arp.clone(),
-            result.clone(),
-        );
-        let handle: TaskHandle =
-            runtime.insert_background_coroutine("Inetstack::TCP::activeopen::background", Box::pin(future))?;
-
-        // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
-        Ok(Self {
-            local_isn,
-            local,
-            remote,
-            runtime,
+            runtime: runtime.clone(),
             transport,
             clock,
             local_link_addr,
             tcp_config,
             arp,
-            handle,
-            result,
-        })
-    }
+            result: AsyncValue::<Result<SharedControlBlock<N>, Fail>>::default(),
+            handle: None,
+        }));
 
-    pub fn poll_result(&mut self, context: &mut Context) -> Poll<Result<SharedControlBlock<N>, Fail>> {
-        let mut r = self.result.borrow_mut();
-        match r.result.take() {
-            None => {
-                r.waker.replace(context.waker().clone());
-                Poll::Pending
-            },
-            Some(r) => Poll::Ready(r),
-        }
-    }
-
-    fn set_result(&mut self, result: Result<SharedControlBlock<N>, Fail>) {
-        let mut r = self.result.borrow_mut();
-        if let Some(w) = r.waker.take() {
-            w.wake()
-        }
-        r.result.replace(result);
+        let handle: TaskHandle = runtime.insert_background_coroutine(
+            "Inetstack::TCP::activeopen::background",
+            Box::pin(me.clone().background()),
+        )?;
+        me.handle = Some(handle);
+        // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
+        Ok(me)
     }
 
     pub fn receive(&mut self, header: &TcpHeader) {
@@ -156,7 +133,7 @@ impl<const N: usize> ActiveOpenSocket<N> {
 
         // Check if our peer is refusing our connection request.
         if header.rst {
-            self.set_result(Err(Fail::new(ECONNREFUSED, "connection refused")));
+            self.result.set(Err(Fail::new(ECONNREFUSED, "connection refused")));
             return;
         }
 
@@ -252,62 +229,53 @@ impl<const N: usize> ActiveOpenSocket<N> {
             congestion_control::None::new,
             None,
         );
-        self.set_result(Ok(cb));
+        self.result.set(Ok(cb));
+        let handle: TaskHandle = self.handle.take().expect("We should have allocated a background task");
+        if let Err(e) = self.runtime.remove_background_coroutine(&handle) {
+            panic!("Failed to remove active open coroutine (error={:?}", e);
+        }
     }
 
-    fn background(
-        local_isn: SeqNumber,
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
-        mut transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
-        local_link_addr: MacAddress,
-        tcp_config: TcpConfig,
-        mut arp: SharedArpPeer<N>,
-        result: Rc<RefCell<ConnectResult<N>>>,
-    ) -> impl Future<Output = ()> {
-        let handshake_retries: usize = tcp_config.get_handshake_retries();
-        let handshake_timeout = tcp_config.get_handshake_timeout();
+    async fn background(mut self) {
+        let handshake_retries: usize = self.tcp_config.get_handshake_retries();
+        let handshake_timeout = self.tcp_config.get_handshake_timeout();
+        for _ in 0..handshake_retries {
+            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone()).await {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!("ARP query failed: {:?}", e);
+                    continue;
+                },
+            };
 
-        async move {
-            for _ in 0..handshake_retries {
-                let remote_link_addr = match arp.query(remote.ip().clone()).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        warn!("ARP query failed: {:?}", e);
-                        continue;
-                    },
-                };
+            let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
+            tcp_hdr.syn = true;
+            tcp_hdr.seq_num = self.local_isn;
+            tcp_hdr.window_size = self.tcp_config.get_receive_window_size();
 
-                let mut tcp_hdr = TcpHeader::new(local.port(), remote.port());
-                tcp_hdr.syn = true;
-                tcp_hdr.seq_num = local_isn;
-                tcp_hdr.window_size = tcp_config.get_receive_window_size();
+            let mss = self.tcp_config.get_advertised_mss() as u16;
+            tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
+            info!("Advertising MSS: {}", mss);
 
-                let mss = tcp_config.get_advertised_mss() as u16;
-                tcp_hdr.push_option(TcpOptions2::MaximumSegmentSize(mss));
-                info!("Advertising MSS: {}", mss);
+            tcp_hdr.push_option(TcpOptions2::WindowScale(self.tcp_config.get_window_scale()));
+            info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
-                tcp_hdr.push_option(TcpOptions2::WindowScale(tcp_config.get_window_scale()));
-                info!("Advertising window scale: {}", tcp_config.get_window_scale());
-
-                debug!("Sending SYN {:?}", tcp_hdr);
-                let segment = TcpSegment {
-                    ethernet2_hdr: Ethernet2Header::new(remote_link_addr, local_link_addr, EtherType2::Ipv4),
-                    ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
-                    tcp_hdr,
-                    data: None,
-                    tx_checksum_offload: tcp_config.get_rx_checksum_offload(),
-                };
-                transport.transmit(Box::new(segment));
-                clock.wait(clock.clone(), handshake_timeout).await;
-            }
-            let mut r = result.borrow_mut();
-            if let Some(w) = r.waker.take() {
-                w.wake()
-            }
-            r.result.replace(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
+            debug!("Sending SYN {:?}", tcp_hdr);
+            let segment = TcpSegment {
+                ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+                ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+                tcp_hdr,
+                data: None,
+                tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
+            };
+            self.transport.transmit(Box::new(segment));
+            self.clock.wait(self.clock.clone(), handshake_timeout).await;
         }
+        self.result.set(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
+    }
+
+    pub async fn get_result(mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
+        self.result.get(yielder).await?
     }
 
     /// Returns the addresses of the two ends of this connection.
@@ -320,8 +288,16 @@ impl<const N: usize> ActiveOpenSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<const N: usize> Drop for ActiveOpenSocket<N> {
-    fn drop(&mut self) {
-        self.handle.deschedule();
+impl<const N: usize> Deref for SharedActiveOpenSocket<N> {
+    type Target = ActiveOpenSocket<N>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<const N: usize> DerefMut for SharedActiveOpenSocket<N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }
