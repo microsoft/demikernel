@@ -58,6 +58,10 @@ use ::std::{
 };
 
 //==============================================================================
+// Constants
+//==============================================================================
+
+//==============================================================================
 // Structures
 //==============================================================================
 
@@ -109,6 +113,9 @@ impl<const N: usize> ArpPeer<N> {
 }
 
 impl<const N: usize> SharedArpPeer<N> {
+    /// ARP Cleanup timeout.
+    const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+
     pub fn new(
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
@@ -175,7 +182,7 @@ impl<const N: usize> SharedArpPeer<N> {
             }
             let yielder: Yielder = Yielder::new();
 
-            match self.clock.clone().wait(Duration::from_secs(1), yielder).await {
+            match self.clock.clone().wait(Self::ARP_CLEANUP_TIMEOUT, yielder).await {
                 Ok(()) => continue,
                 Err(_) => break,
             }
