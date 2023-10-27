@@ -159,43 +159,6 @@ impl<T> PinSlab<T> {
         Some(entry)
     }
 
-    /// Remove the key from the slab.
-    ///
-    /// If successful, returns `Some(true)` if the entry was removed, `Some(false)` otherwise.
-    /// Removing a key which does not exist has no effect, and `false` will be
-    /// returned. On failure, it returns `None`.
-    ///
-    /// We need to take care that we don't move it, hence we only perform
-    /// operations over pointers below.
-    pub fn remove(&mut self, key: usize) -> Option<bool> {
-        let (slot, offset, len): (usize, usize, usize) = calculate_key(key)?;
-
-        let slot: NonNull<Entry<T>> = match self.slots.get_mut(slot) {
-            Some(slot) => *slot,
-            None => return Some(false),
-        };
-
-        // Safety: all slots are fully allocated and initialized in `new_slot`.
-        // As long as we have access to it, we know that we will only find
-        // initialized entries assuming offset < len.
-        debug_assert!(offset < len);
-        unsafe {
-            let entry: *mut Entry<T> = slot.as_ptr().add(offset);
-
-            match &*entry {
-                Entry::Occupied(..) => (),
-                _ => return Some(false),
-            }
-
-            ptr::drop_in_place(entry);
-            ptr::write(entry, Entry::Vacant(self.next));
-            self.len -= 1;
-            self.next = key;
-        }
-
-        Some(true)
-    }
-
     /// Method to take out an `Unpin` value
     pub fn remove_unpin(&mut self, key: usize) -> Option<T>
     where
@@ -430,8 +393,8 @@ mod tests {
                 None => anyhow::bail!("get_pin_mut() failed"),
             };
             crate::ensure_eq!(expected, **value.as_ref());
-            match slab.remove(key) {
-                Some(contains) => crate::ensure_eq!(contains, true),
+            match slab.remove_unpin(key) {
+                Some(value) => crate::ensure_eq!(*value.as_ref(), expected),
                 None => anyhow::bail!("remove() failed"),
             };
         }
