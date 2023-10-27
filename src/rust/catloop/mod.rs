@@ -531,7 +531,7 @@ impl SharedCatloopLibOS {
     }
 
     /// Polls scheduling queues.
-    pub fn poll(&self) {
+    pub fn poll(&mut self) {
         #[cfg(feature = "profiler")]
         timer!("catloop::poll");
         self.runtime.poll()

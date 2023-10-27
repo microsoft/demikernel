@@ -341,7 +341,7 @@ impl SharedCatmemLibOS {
         Ok(qr)
     }
 
-    pub fn poll(&self) {
+    pub fn poll(&mut self) {
         #[cfg(feature = "profiler")]
         timer!("catmem::poll");
         self.runtime.poll()

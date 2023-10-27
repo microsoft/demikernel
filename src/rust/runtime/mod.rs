@@ -160,7 +160,7 @@ impl DemiRuntime {
     }
 
     /// Performs a single pool on the underlying scheduler.
-    pub fn poll(&self) {
+    pub fn poll(&mut self) {
         self.scheduler.poll()
     }
 
