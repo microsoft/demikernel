@@ -66,7 +66,7 @@ impl SharedTimer {
             if now < entry.expiry {
                 break;
             }
-            let mut entry = self
+            let mut entry: TimerQueueEntry = self
                 .heap
                 .pop()
                 .expect("should have an entry because we were able to peek")
@@ -161,8 +161,8 @@ mod tests {
         let mut ctx = Context::from_waker(noop_waker_ref());
         let mut now = Instant::now();
 
-        let mut timer = SharedTimer::new(now);
-        let timer_ref = timer.clone();
+        let mut timer: SharedTimer = SharedTimer::new(now);
+        let timer_ref: SharedTimer = timer.clone();
         let yielder: Yielder = Yielder::new();
 
         let wait_future1 = timer_ref.wait(Duration::from_secs(2), yielder);
