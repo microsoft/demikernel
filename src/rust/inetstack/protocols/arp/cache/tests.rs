@@ -4,10 +4,9 @@
 use super::*;
 use crate::{
     inetstack::test_helpers,
-    runtime::timer::Timer,
+    runtime::timer::SharedTimer,
 };
 use ::anyhow::Result;
-use ::std::rc::Rc;
 
 /// Tests that an entry of the ARP Cache gets evicted at the right time.
 #[test]
@@ -15,7 +14,7 @@ fn evit_with_default_ttl() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
     let later = now + ttl;
-    let clock = TimerRc(Rc::new(Timer::new(now)));
+    let clock = SharedTimer::new(now);
 
     // Insert an IPv4 address in the ARP Cache.
     let mut cache = ArpCache::new(clock, Some(ttl), None, false);
@@ -37,7 +36,7 @@ fn evit_with_default_ttl() -> Result<()> {
 fn import() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
-    let clock = TimerRc(Rc::new(Timer::new(now)));
+    let clock = SharedTimer::new(now);
 
     // Create an address resolution map.
     let mut map: HashMap<Ipv4Addr, MacAddress> = HashMap::new();
@@ -57,7 +56,7 @@ fn import() -> Result<()> {
 fn export() -> Result<()> {
     let now = Instant::now();
     let ttl = Duration::from_secs(1);
-    let clock = TimerRc(Rc::new(Timer::new(now)));
+    let clock = SharedTimer::new(now);
 
     // Insert an IPv4 address in the ARP Cache.
     let mut cache = ArpCache::new(clock, Some(ttl), None, false);

@@ -23,10 +23,7 @@ use crate::{
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
         },
-        timer::{
-            Timer,
-            TimerRc,
-        },
+        timer::SharedTimer,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -46,7 +43,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    rc::Rc,
     time::Instant,
 };
 
@@ -79,7 +75,7 @@ impl CatpowderLibOS {
             HashMap::default(),
         );
         let now: Instant = Instant::now();
-        let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
+        let clock: SharedTimer = SharedTimer::new(now);
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
             runtime.clone(),

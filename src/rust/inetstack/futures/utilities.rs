@@ -16,13 +16,14 @@ pub trait UtilityMethods: Future + FusedFuture + Unpin {
     /// future finishing or a Timeout error. Whichever happens first.
     async fn with_timeout<Timer>(&mut self, timer: Timer) -> Result<Self::Output, Fail>
     where
-        Timer: Future<Output = ()>,
+        Timer: Future<Output = Result<(), Fail>>,
     {
         futures::select! {
             result = self => Ok(result),
-            _ = timer.fuse() => Err(
-                Fail::new(libc::ETIMEDOUT, "timer expired")
-            )
+            result = timer.fuse() => match result {
+                Ok(()) => Err(Fail::new(libc::ETIMEDOUT, "timer expired")),
+                Err(e) => Err(e),
+            },
         }
     }
 }

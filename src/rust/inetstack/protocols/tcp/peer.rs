@@ -41,7 +41,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         Operation,
         OperationResult,
         QDesc,
@@ -104,7 +104,7 @@ pub struct TcpPeer<const N: usize> {
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: TimerRc,
+    clock: SharedTimer,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
@@ -124,7 +124,7 @@ impl<const N: usize> TcpPeer<N> {
     fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
@@ -156,7 +156,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,

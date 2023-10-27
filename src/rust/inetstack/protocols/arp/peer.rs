@@ -25,11 +25,12 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
+    scheduler::Yielder,
 };
 use ::futures::{
     channel::oneshot::{
@@ -65,7 +66,7 @@ use ::std::{
 ///
 pub struct ArpPeer<const N: usize> {
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: TimerRc,
+    clock: SharedTimer,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
@@ -83,7 +84,7 @@ pub struct SharedArpPeer<const N: usize>(SharedObject<ArpPeer<N>>);
 impl<const N: usize> ArpPeer<N> {
     pub fn new(
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_config: ArpConfig,
@@ -111,7 +112,7 @@ impl<const N: usize> SharedArpPeer<N> {
     pub fn new(
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_config: ArpConfig,
@@ -172,7 +173,12 @@ impl<const N: usize> SharedArpPeer<N> {
                 // TODO: re-enable eviction once TCP/IP stack is fully functional.
                 // cache.clear();
             }
-            self.clock.wait(self.clock.clone(), Duration::from_secs(1)).await;
+            let yielder: Yielder = Yielder::new();
+
+            match self.clock.clone().wait(Duration::from_secs(1), yielder).await {
+                Ok(()) => continue,
+                Err(_) => break,
+            }
         }
     }
 
@@ -276,13 +282,13 @@ impl<const N: usize> SharedArpPeer<N> {
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 self.transport.transmit(Box::new(msg.clone()));
-                let timer = self
-                    .clock
-                    .wait(self.clock.clone(), self.arp_config.get_request_timeout());
+                let yielder: Yielder = Yielder::new();
+                let clock_ref: SharedTimer = self.clock.clone();
+                let timer = clock_ref.wait(self.arp_config.get_request_timeout(), yielder);
 
                 match arp_response.with_timeout(timer).await {
                     Ok(link_addr) => {
-                        debug!("ARP result available ({})", link_addr);
+                        debug!("ARP result available ({:?})", link_addr);
                         return Ok(link_addr);
                     },
                     Err(_) => {

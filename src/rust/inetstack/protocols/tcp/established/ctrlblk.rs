@@ -38,7 +38,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         watched::{
             WatchFuture,
             WatchedValue,
@@ -158,7 +158,7 @@ pub struct ControlBlock<const N: usize> {
     transport: SharedBox<dyn NetworkRuntime<N>>,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
-    pub clock: TimerRc,
+    pub clock: SharedTimer,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
 
@@ -225,7 +225,7 @@ impl<const N: usize> SharedControlBlock<N> {
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
