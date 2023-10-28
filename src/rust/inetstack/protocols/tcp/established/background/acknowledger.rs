@@ -6,6 +6,7 @@ use crate::{
     runtime::{
         fail::Fail,
         timer::SharedTimer,
+        watched::SharedWatchedValue,
     },
     scheduler::Yielder,
 };
@@ -14,6 +15,7 @@ use ::futures::future::{
     Either,
     FutureExt,
 };
+use ::std::time::Instant;
 
 pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
     loop {
@@ -24,12 +26,15 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
 
         // TODO: Implement SACKs
         let cb2 = cb.clone();
-        let (ack_deadline, ack_deadline_changed) = cb2.get_ack_deadline();
+        let mut ack_deadline: SharedWatchedValue<Option<Instant>> = cb2.get_ack_deadline();
+        let deadline: Option<Instant> = ack_deadline.get();
+        let ack_yielder: Yielder = Yielder::new();
+        let ack_deadline_changed = ack_deadline.watch(ack_yielder).fuse();
         futures::pin_mut!(ack_deadline_changed);
 
         let clock_ref: SharedTimer = cb.clock.clone();
         let yielder: Yielder = Yielder::new();
-        let ack_future = match ack_deadline {
+        let ack_future = match deadline {
             Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
             None => Either::Right(future::pending()),
         };

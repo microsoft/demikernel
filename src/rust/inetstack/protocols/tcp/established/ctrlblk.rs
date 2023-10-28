@@ -39,10 +39,7 @@ use crate::{
             NetworkRuntime,
         },
         timer::SharedTimer,
-        watched::{
-            WatchFuture,
-            WatchedValue,
-        },
+        watched::SharedWatchedValue,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -174,7 +171,7 @@ pub struct ControlBlock<const N: usize> {
 
     ack_delay_timeout: Duration,
 
-    ack_deadline: WatchedValue<Option<Instant>>,
+    ack_deadline: SharedWatchedValue<Option<Instant>>,
 
     // This is our receive buffer size, which is also the maximum size of our receive window.
     // Note: The maximum possible advertised window is 1 GiB with window scaling and 64 KiB without.
@@ -209,7 +206,7 @@ pub struct ControlBlock<const N: usize> {
 
     // Current retransmission timer expiration time.
     // TODO: Consider storing this directly in the RtoCalculator.
-    retransmit_deadline: WatchedValue<Option<Instant>>,
+    retransmit_deadline: SharedWatchedValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
     rto_calculator: RtoCalculator,
@@ -253,7 +250,7 @@ impl<const N: usize> SharedControlBlock<N> {
             sender,
             state: State::Established,
             ack_delay_timeout,
-            ack_deadline: WatchedValue::new(None),
+            ack_deadline: SharedWatchedValue::new(None),
             receive_buffer_size: receiver_window_size,
             window_scale: receiver_window_scale,
             out_of_order: VecDeque::new(),
@@ -261,7 +258,7 @@ impl<const N: usize> SharedControlBlock<N> {
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             user_is_done_sending: false,
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
-            retransmit_deadline: WatchedValue::new(None),
+            retransmit_deadline: SharedWatchedValue::new(None),
             rto_calculator: RtoCalculator::new(),
         }))
     }
@@ -279,71 +276,64 @@ impl<const N: usize> SharedControlBlock<N> {
         self.arp.clone()
     }
 
-    pub fn send(&self, buf: DemiBuffer) -> Result<(), Fail> {
-        self.sender.send(buf, self.clone())
+    pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
+        let self_: Self = self.clone();
+        self.sender.send(buf, self_)
     }
 
     pub fn retransmit(&self) {
         self.sender.retransmit(self.clone())
     }
 
-    pub fn congestion_control_watch_retransmit_now_flag(&self) -> (bool, WatchFuture<bool>) {
-        self.cc.watch_retransmit_now_flag()
+    pub fn congestion_control_watch_retransmit_now_flag(&self) -> SharedWatchedValue<bool> {
+        self.cc.get_retransmit_now_flag()
     }
 
-    pub fn congestion_control_on_fast_retransmit(&self) {
+    pub fn congestion_control_on_fast_retransmit(&mut self) {
         self.cc.on_fast_retransmit()
     }
 
-    pub fn congestion_control_on_rto(&self, send_unacknowledged: SeqNumber) {
+    pub fn congestion_control_on_rto(&mut self, send_unacknowledged: SeqNumber) {
         self.cc.on_rto(send_unacknowledged)
     }
 
-    pub fn congestion_control_on_send(&self, rto: Duration, num_sent_bytes: u32) {
+    pub fn congestion_control_on_send(&mut self, rto: Duration, num_sent_bytes: u32) {
         self.cc.on_send(rto, num_sent_bytes)
     }
 
-    pub fn congestion_control_on_cwnd_check_before_send(&self) {
+    pub fn congestion_control_on_cwnd_check_before_send(&mut self) {
         self.cc.on_cwnd_check_before_send()
     }
 
-    pub fn congestion_control_get_cwnd(&self) -> u32 {
+    pub fn congestion_control_get_cwnd(&self) -> SharedWatchedValue<u32> {
         self.cc.get_cwnd()
     }
 
-    pub fn congestion_control_watch_cwnd(&self) -> (u32, WatchFuture<u32>) {
-        self.cc.watch_cwnd()
-    }
-
-    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> u32 {
+    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> SharedWatchedValue<u32> {
         self.cc.get_limited_transmit_cwnd_increase()
-    }
-
-    pub fn congestion_control_watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<u32>) {
-        self.cc.watch_limited_transmit_cwnd_increase()
     }
 
     pub fn get_mss(&self) -> usize {
         self.sender.get_mss()
     }
 
-    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
+    pub fn get_send_window(&self) -> SharedWatchedValue<u32> {
         self.sender.get_send_window()
     }
 
-    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+    pub fn get_send_unacked(&self) -> SharedWatchedValue<SeqNumber> {
         self.sender.get_send_unacked()
     }
 
-    pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+    pub fn get_unsent_seq_no(&self) -> SharedWatchedValue<SeqNumber> {
         self.sender.get_unsent_seq_no()
     }
 
-    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
+    pub fn get_send_next(&self) -> SharedWatchedValue<SeqNumber> {
         self.sender.get_send_next()
     }
 
-    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+    pub fn modify_send_next(&mut self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
         self.sender.modify_send_next(f)
     }
 
@@ -351,12 +341,12 @@ impl<const N: usize> SharedControlBlock<N> {
         self.retransmit_deadline.get()
     }
 
-    pub fn set_retransmit_deadline(&self, when: Option<Instant>) {
+    pub fn set_retransmit_deadline(&mut self, when: Option<Instant>) {
         self.retransmit_deadline.set(when);
     }
 
-    pub fn watch_retransmit_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
-        self.retransmit_deadline.watch()
+    pub fn watch_retransmit_deadline(&self) -> SharedWatchedValue<Option<Instant>> {
+        self.retransmit_deadline.clone()
     }
 
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {
@@ -589,18 +579,15 @@ impl<const N: usize> SharedControlBlock<N> {
         // Start by checking that the ACK acknowledges something new.
         // TODO: Look into removing Watched types.
         //
-        let (send_unacknowledged, _): (SeqNumber, _) = self.sender.get_send_unacked();
-        let (send_next, _): (SeqNumber, _) = self.sender.get_send_next();
+        let send_unacknowledged: SeqNumber = self.sender.get_send_unacked().get();
+        let send_next: SeqNumber = self.sender.get_send_next().get();
 
         // TODO: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
-        self.cc.on_ack_received(
-            self.rto_calculator.rto(),
-            send_unacknowledged,
-            send_next,
-            header.ack_num,
-        );
+        let rto: Duration = self.rto_calculator.rto();
+        self.cc
+            .on_ack_received(rto, send_unacknowledged, send_next, header.ack_num);
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
@@ -755,7 +742,8 @@ impl<const N: usize> SharedControlBlock<N> {
             // TODO: Consider replacing the delayed ACK timer with a simple flag.
             if self.ack_deadline.get().is_none() {
                 // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
-                self.ack_deadline.set(Some(now + self.ack_delay_timeout));
+                let timeout: Duration = self.ack_delay_timeout;
+                self.ack_deadline.set(Some(now + timeout));
             } else {
                 // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
                 self.ack_deadline.set(None);
@@ -814,7 +802,7 @@ impl<const N: usize> SharedControlBlock<N> {
         let mut header: TcpHeader = self.tcp_header();
 
         // TODO: Think about moving this to tcp_header() as well.
-        let (seq_num, _): (SeqNumber, _) = self.get_send_next();
+        let seq_num: SeqNumber = self.get_send_next().get();
         header.seq_num = seq_num;
 
         // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
@@ -878,11 +866,11 @@ impl<const N: usize> SharedControlBlock<N> {
         self.sender.remote_mss()
     }
 
-    pub fn get_ack_deadline(&self) -> (Option<Instant>, WatchFuture<Option<Instant>>) {
-        self.ack_deadline.watch()
+    pub fn get_ack_deadline(&self) -> SharedWatchedValue<Option<Instant>> {
+        self.ack_deadline.clone()
     }
 
-    pub fn set_ack_deadline(&self, when: Option<Instant>) {
+    pub fn set_ack_deadline(&mut self, when: Option<Instant>) {
         self.ack_deadline.set(when);
     }
 
