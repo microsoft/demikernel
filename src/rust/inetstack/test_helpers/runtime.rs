@@ -18,10 +18,7 @@ use crate::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    timer::{
-        Timer,
-        TimerRc,
-    },
+    timer::SharedTimer,
     SharedDemiRuntime,
     SharedObject,
 };
@@ -33,7 +30,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    rc::Rc,
     time::Instant,
 };
 
@@ -50,7 +46,7 @@ pub struct TestRuntime {
     incoming: VecDeque<DemiBuffer>,
     outgoing: VecDeque<DemiBuffer>,
     runtime: SharedDemiRuntime,
-    clock: TimerRc,
+    clock: SharedTimer,
 }
 
 #[derive(Clone)]
@@ -76,7 +72,7 @@ impl SharedTestRuntime {
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
             runtime: SharedDemiRuntime::new(),
-            clock: TimerRc(Rc::new(Timer::new(now))),
+            clock: SharedTimer::new(now),
             arp_config,
             udp_config,
             tcp_config,
@@ -138,7 +134,7 @@ impl SharedTestRuntime {
     }
 
     /// Get the runtime's clock.
-    pub fn get_clock(&self) -> TimerRc {
+    pub fn get_clock(&self) -> SharedTimer {
         self.clock.clone()
     }
 

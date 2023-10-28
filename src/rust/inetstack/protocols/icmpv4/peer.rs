@@ -27,14 +27,12 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::{
-            TimerRc,
-            WaitFuture,
-        },
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
+    scheduler::Yielder,
 };
 use ::futures::{
     channel::{
@@ -111,7 +109,7 @@ pub struct Icmpv4Peer<const N: usize> {
     /// Underlying Network Transport
     transport: SharedBox<dyn NetworkRuntime<N>>,
 
-    clock: TimerRc,
+    clock: SharedTimer,
 
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -137,7 +135,7 @@ impl<const N: usize> Icmpv4Peer<N> {
     /// Creates a new peer for handling ICMP.
     pub fn new(
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: SharedArpPeer<N>,
@@ -165,7 +163,7 @@ impl<const N: usize> SharedIcmpv4Peer<N> {
     pub fn new(
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp: SharedArpPeer<N>,
@@ -302,7 +300,9 @@ impl<const N: usize> SharedIcmpv4Peer<N> {
             assert!(self.requests.insert((id, seq_num), tx).is_none());
             rx
         };
-        let timer: WaitFuture<TimerRc> = self.clock.wait(self.clock.clone(), timeout);
+        let yielder: Yielder = Yielder::new();
+        let clock_ref: SharedTimer = self.clock.clone();
+        let timer = clock_ref.wait(timeout, yielder);
         match rx.fuse().with_timeout(timer).await? {
             // Request completed successfully.
             Ok(_) => Ok(self.clock.now() - t0),

@@ -40,7 +40,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -119,7 +119,7 @@ pub struct PassiveSocket<const N: usize> {
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: TimerRc,
+    clock: SharedTimer,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
     arp: SharedArpPeer<N>,
@@ -138,7 +138,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         max_backlog: usize,
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
@@ -330,7 +330,12 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             self.transport.transmit(Box::new(segment));
-            self.clock.wait(self.clock.clone(), handshake_timeout).await;
+            let clock_ref: SharedTimer = self.clock.clone();
+            let yielder: Yielder = Yielder::new();
+            if let Err(e) = clock_ref.wait(handshake_timeout, yielder).await {
+                self.ready.push_err(e);
+                return;
+            }
         }
         self.ready.push_err(Fail::new(ETIMEDOUT, "handshake timeout"));
     }

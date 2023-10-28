@@ -45,7 +45,7 @@ use crate::{
             QToken,
             QType,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
     },
@@ -94,7 +94,7 @@ pub struct InetStack<const N: usize> {
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
-    clock: TimerRc,
+    clock: SharedTimer,
     ts_iters: usize,
 }
 
@@ -102,7 +102,7 @@ impl<const N: usize> InetStack<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,

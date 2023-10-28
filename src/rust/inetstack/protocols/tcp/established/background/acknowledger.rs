@@ -2,12 +2,16 @@
 // Licensed under the MIT license.
 
 use super::SharedControlBlock;
-use crate::runtime::fail::Fail;
-use ::futures::{
-    future::{
-        self,
-        Either,
+use crate::{
+    runtime::{
+        fail::Fail,
+        timer::SharedTimer,
     },
+    scheduler::Yielder,
+};
+use ::futures::future::{
+    self,
+    Either,
     FutureExt,
 };
 
@@ -23,8 +27,10 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
         let (ack_deadline, ack_deadline_changed) = cb2.get_ack_deadline();
         futures::pin_mut!(ack_deadline_changed);
 
+        let clock_ref: SharedTimer = cb.clock.clone();
+        let yielder: Yielder = Yielder::new();
         let ack_future = match ack_deadline {
-            Some(t) => Either::Left(cb.clock.wait_until(cb.clock.clone(), t).fuse()),
+            Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(ack_future);

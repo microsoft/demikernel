@@ -21,7 +21,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
     },
@@ -46,7 +46,7 @@ impl<const N: usize> Peer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: TimerRc,
+        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,

@@ -21,10 +21,7 @@ use ::demikernel::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::{
-            Timer,
-            TimerRc,
-        },
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
     },
@@ -37,7 +34,6 @@ use demikernel::runtime::network::consts::RECEIVE_BATCH_SIZE;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
-    rc::Rc,
     time::{
         Duration,
         Instant,
@@ -75,7 +71,7 @@ impl DummyLibOS {
         );
         let udp_config: UdpConfig = UdpConfig::default();
         let tcp_config: TcpConfig = TcpConfig::default();
-        let clock: TimerRc = TimerRc(Rc::new(Timer::new(now)));
+        let clock: SharedTimer = SharedTimer::new(now);
         let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();
         InetStack::new(

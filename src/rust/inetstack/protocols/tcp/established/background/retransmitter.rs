@@ -3,13 +3,15 @@
 
 use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
-    runtime::fail::Fail,
-};
-use ::futures::{
-    future::{
-        self,
-        Either,
+    runtime::{
+        fail::Fail,
+        timer::SharedTimer,
     },
+    scheduler::Yielder,
+};
+use ::futures::future::{
+    self,
+    Either,
     FutureExt,
 };
 use ::std::time::{
@@ -22,8 +24,10 @@ pub async fn retransmitter<const N: usize>(cb: SharedControlBlock<N>) -> Result<
         // Pin future for timeout retransmission.
         let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();
         futures::pin_mut!(rtx_deadline_changed);
+        let clock_ref: SharedTimer = cb.clock.clone();
+        let yielder: Yielder = Yielder::new();
         let rtx_future = match rtx_deadline {
-            Some(t) => Either::Left(cb.clock.wait_until(cb.clock.clone(), t).fuse()),
+            Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(rtx_future);

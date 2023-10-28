@@ -13,7 +13,9 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        timer::SharedTimer,
     },
+    scheduler::Yielder,
 };
 use ::futures::FutureExt;
 use ::std::{
@@ -73,9 +75,12 @@ pub async fn sender<const N: usize>(cb: SharedControlBlock<N>) -> Result<!, Fail
             // TODO: Use the correct PERSIST mode timer here.
             let mut timeout: Duration = Duration::from_secs(1);
             loop {
+                let yielder: Yielder = Yielder::new();
+                let clock_ref: SharedTimer = cb.clock.clone();
+
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
-                    _ = cb.clock.wait(cb.clock.clone(), timeout).fuse() => {
+                    _ = clock_ref.wait(timeout, yielder).fuse() => {
                         timeout *= 2;
                     }
                 }

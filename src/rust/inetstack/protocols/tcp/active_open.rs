@@ -39,7 +39,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::TimerRc,
+        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -73,7 +73,7 @@ pub struct ActiveOpenSocket<const N: usize> {
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: TimerRc,
+    clock: SharedTimer,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
@@ -97,7 +97,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         transport: SharedBox<dyn NetworkRuntime<N>>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        clock: TimerRc,
+        clock: SharedTimer,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
         let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
@@ -269,7 +269,12 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             self.transport.transmit(Box::new(segment));
-            self.clock.wait(self.clock.clone(), handshake_timeout).await;
+            let clock_ref: SharedTimer = self.clock.clone();
+            let yielder: Yielder = Yielder::new();
+            if let Err(e) = clock_ref.wait(handshake_timeout, yielder).await {
+                self.result.set(Err(e));
+                return;
+            }
         }
         self.result.set(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
     }
