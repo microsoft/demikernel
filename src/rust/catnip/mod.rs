@@ -11,7 +11,7 @@ pub mod runtime;
 
 use self::{
     interop::pack_result,
-    runtime::DPDKRuntime,
+    runtime::SharedDPDKRuntime,
 };
 use crate::{
     demikernel::config::Config,
@@ -66,7 +66,7 @@ use crate::timer;
 pub struct CatnipLibOS {
     runtime: SharedDemiRuntime,
     inetstack: InetStack<RECEIVE_BATCH_SIZE>,
-    transport: DPDKRuntime,
+    transport: SharedDPDKRuntime,
 }
 
 //==============================================================================
@@ -77,7 +77,7 @@ pub struct CatnipLibOS {
 impl CatnipLibOS {
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         load_mlx_driver();
-        let transport: DPDKRuntime = DPDKRuntime::new(
+        let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(
             config.local_ipv4_addr(),
             &config.eal_init_args(),
             config.arp_table(),

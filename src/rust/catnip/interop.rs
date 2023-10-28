@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    catnip::DPDKRuntime,
+    catnip::SharedDPDKRuntime,
     pal::{
         constants::AF_INET,
         data_structures::{
@@ -25,7 +25,7 @@ use crate::{
 };
 use ::std::mem;
 
-pub fn pack_result(rt: &DPDKRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+pub fn pack_result(rt: &SharedDPDKRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
     match result {
         OperationResult::Connect => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,

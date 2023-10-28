@@ -34,7 +34,6 @@ use ::std::{
         self,
         NonNull,
     },
-    rc::Rc,
 };
 
 //==============================================================================
@@ -48,22 +47,18 @@ pub use super::config::MemoryConfig;
 //==============================================================================
 
 // TODO: Drop this structure.
+
+/// Memory Manager
 #[derive(Debug)]
-pub struct Inner {
+pub struct MemoryManager {
     config: MemoryConfig,
 
     // Used by networking stack for protocol headers + inline bodies. These buffers are only used
     // internally within the network stack.
-    header_pool: Rc<MemoryPool>,
+    header_pool: MemoryPool,
 
     // Large body pool for buffers given to the application for zero-copy.
-    body_pool: Rc<MemoryPool>,
-}
-
-/// Memory Manager
-#[derive(Clone, Debug)]
-pub struct MemoryManager {
-    inner: Rc<Inner>,
+    body_pool: MemoryPool,
 }
 
 //==============================================================================
@@ -74,10 +69,30 @@ pub struct MemoryManager {
 impl MemoryManager {
     /// Instantiates a memory manager.
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
-        let memory_config: MemoryConfig = MemoryConfig::new(None, None, Some(max_body_size), None, None);
+        let config: MemoryConfig = MemoryConfig::new(None, None, Some(max_body_size), None, None);
+        let header_size: usize = ETHERNET2_HEADER_SIZE + (IPV4_HEADER_MAX_SIZE as usize) + MAX_TCP_HEADER_SIZE;
+        let header_mbuf_size: usize = header_size + config.get_inline_body_size();
+
+        // Create memory pool for holding packet headers.
+        let header_pool: MemoryPool = MemoryPool::new(
+            CString::new("header_pool")?,
+            header_mbuf_size,
+            config.get_header_pool_size(),
+            config.get_cache_size(),
+        )?;
+
+        // Create memory pool for holding packet bodies.
+        let body_pool: MemoryPool = MemoryPool::new(
+            CString::new("body_pool")?,
+            config.get_max_body_size(),
+            config.get_body_pool_size(),
+            config.get_cache_size(),
+        )?;
 
         Ok(Self {
-            inner: Rc::new(Inner::new(memory_config)?),
+            config,
+            header_pool,
+            body_pool,
         })
     }
 
@@ -102,14 +117,14 @@ impl MemoryManager {
     /// Allocates a header mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn alloc_header_mbuf(&self) -> Result<DemiBuffer, Fail> {
-        let mbuf_ptr: *mut rte_mbuf = self.inner.header_pool.alloc_mbuf(None)?;
+        let mbuf_ptr: *mut rte_mbuf = self.header_pool.alloc_mbuf(None)?;
         Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
     /// Allocates a body mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn alloc_body_mbuf(&self) -> Result<DemiBuffer, Fail> {
-        let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(None)?;
+        let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(None)?;
         Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
@@ -123,16 +138,15 @@ impl MemoryManager {
         }
 
         // First allocate the underlying DemiBuffer.
-        let buf: DemiBuffer =
-            if size > self.inner.config.get_inline_body_size() && size <= self.inner.config.get_max_body_size() {
-                // Allocate a DPDK-managed buffer.
-                let mbuf_ptr: *mut rte_mbuf = self.inner.body_pool.alloc_mbuf(Some(size))?;
-                // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
-                unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
-            } else {
-                // Allocate a heap-managed buffer.
-                DemiBuffer::new(size as u16)
-            };
+        let buf: DemiBuffer = if size > self.config.get_inline_body_size() && size <= self.config.get_max_body_size() {
+            // Allocate a DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(Some(size))?;
+            // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
+            unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
+        } else {
+            // Allocate a heap-managed buffer.
+            DemiBuffer::new(size as u16)
+        };
 
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
         let data: *const u8 = buf.as_ptr();
@@ -235,36 +249,6 @@ impl MemoryManager {
     /// Returns a raw pointer to the underlying body pool.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn body_pool(&self) -> *mut rte_mempool {
-        self.inner.body_pool.into_raw()
-    }
-}
-
-/// Associated Functions for Memory Managers
-impl Inner {
-    fn new(config: MemoryConfig) -> Result<Self, Error> {
-        let header_size: usize = ETHERNET2_HEADER_SIZE + (IPV4_HEADER_MAX_SIZE as usize) + MAX_TCP_HEADER_SIZE;
-        let header_mbuf_size: usize = header_size + config.get_inline_body_size();
-
-        // Create memory pool for holding packet headers.
-        let header_pool: MemoryPool = MemoryPool::new(
-            CString::new("header_pool")?,
-            header_mbuf_size,
-            config.get_header_pool_size(),
-            config.get_cache_size(),
-        )?;
-
-        // Create memory pool for holding packet bodies.
-        let body_pool: MemoryPool = MemoryPool::new(
-            CString::new("body_pool")?,
-            config.get_max_body_size(),
-            config.get_body_pool_size(),
-            config.get_cache_size(),
-        )?;
-
-        Ok(Self {
-            config,
-            header_pool: Rc::new(header_pool),
-            body_pool: Rc::new(body_pool),
-        })
+        self.body_pool.into_raw()
     }
 }
