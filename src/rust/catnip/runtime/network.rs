@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use super::DPDKRuntime;
+use super::SharedDPDKRuntime;
 use crate::{
     inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE,
     runtime::{
@@ -33,7 +33,7 @@ use crate::timer;
 //==============================================================================
 
 /// Network Runtime Trait Implementation for DPDK Runtime
-impl<const N: usize> NetworkRuntime<N> for DPDKRuntime {
+impl<const N: usize> NetworkRuntime<N> for SharedDPDKRuntime {
     fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just

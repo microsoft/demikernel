@@ -57,7 +57,7 @@ use crate::runtime::{
         },
         types::MacAddress,
     },
-    Runtime,
+    SharedObject,
 };
 use ::anyhow::{
     bail,
@@ -69,6 +69,10 @@ use ::std::{
     ffi::CString,
     mem::MaybeUninit,
     net::Ipv4Addr,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     time::Duration,
 };
 
@@ -92,7 +96,6 @@ macro_rules! expect_zero {
 //==============================================================================
 
 /// DPDK Runtime
-#[derive(Clone)]
 pub struct DPDKRuntime {
     mm: MemoryManager,
     port_id: u16,
@@ -103,12 +106,15 @@ pub struct DPDKRuntime {
     udp_config: UdpConfig,
 }
 
+#[derive(Clone)]
+pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
+
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
 /// Associate Functions for DPDK Runtime
-impl DPDKRuntime {
+impl SharedDPDKRuntime {
     pub fn new(
         ipv4_addr: Ipv4Addr,
         eal_init_args: &[CString],
@@ -119,7 +125,7 @@ impl DPDKRuntime {
         mss: usize,
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
-    ) -> DPDKRuntime {
+    ) -> Self {
         let (mm, port_id, link_addr) = Self::initialize_dpdk(
             eal_init_args,
             use_jumbo_frames,
@@ -150,7 +156,7 @@ impl DPDKRuntime {
 
         let udp_config = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
 
-        Self {
+        Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
             mm,
             port_id,
             link_addr,
@@ -158,7 +164,7 @@ impl DPDKRuntime {
             arp_config,
             tcp_config,
             udp_config,
-        }
+        }))
     }
 
     /// Initializes DPDK.
@@ -392,4 +398,16 @@ impl DPDKRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl Runtime for DPDKRuntime {}
+impl Deref for SharedDPDKRuntime {
+    type Target = DPDKRuntime;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedDPDKRuntime {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
