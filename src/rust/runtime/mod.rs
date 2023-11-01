@@ -107,6 +107,7 @@ impl DemiRuntime {
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
     pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
+        trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
             Some(handle) => Ok(handle),
@@ -126,6 +127,7 @@ impl DemiRuntime {
             .remove(handle)
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
+        trace!("Removing coroutine: {:?}", boxed_task.get_name());
         OperationTask::from(boxed_task.as_any())
     }
 
@@ -135,6 +137,7 @@ impl DemiRuntime {
         task_name: &str,
         coroutine: Pin<Box<dyn Future<Output = ()>>>,
     ) -> Result<TaskHandle, Fail> {
+        trace!("Inserting background coroutine: {:?}", task_name);
         let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
             Some(handle) => Ok(handle),
@@ -150,7 +153,10 @@ impl DemiRuntime {
     /// there is no need to cast it.
     pub fn remove_background_coroutine(&mut self, handle: &TaskHandle) -> Result<(), Fail> {
         match self.scheduler.remove(handle) {
-            Some(_) => Ok(()),
+            Some(boxed_task) => {
+                trace!("Removing background coroutine: {:?}", boxed_task.get_name());
+                Ok(())
+            },
             None => {
                 let cause: String = format!("cannot remove coroutine (task_id={:?})", &handle.get_task_id());
                 error!("remove_background_coroutine(): {}", cause);

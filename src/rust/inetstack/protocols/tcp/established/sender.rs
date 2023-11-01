@@ -10,10 +10,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        watched::{
-            WatchFuture,
-            WatchedValue,
-        },
+        watched::SharedWatchedValue,
     },
 };
 use ::libc::{
@@ -66,22 +63,22 @@ pub struct Sender<const N: usize> {
     //
 
     // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
-    pub send_unacked: WatchedValue<SeqNumber>,
+    pub send_unacked: SharedWatchedValue<SeqNumber>,
 
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: RefCell<VecDeque<UnackedSegment>>,
 
     // Sequence Number of the next data to be sent.  In RFC 793 terms, this is SND.NXT.
-    send_next: WatchedValue<SeqNumber>,
+    send_next: SharedWatchedValue<SeqNumber>,
 
     // This is the send buffer (user data we do not yet have window to send).
     unsent_queue: RefCell<VecDeque<DemiBuffer>>,
 
     // TODO: Remove this as soon as sender.rs is fixed to not use it to tell if there is unsent data.
-    unsent_seq_no: WatchedValue<SeqNumber>,
+    unsent_seq_no: SharedWatchedValue<SeqNumber>,
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
-    send_window: WatchedValue<u32>,
+    send_window: SharedWatchedValue<u32>,
     send_window_last_update_seq: Cell<SeqNumber>, // SND.WL1
     send_window_last_update_ack: Cell<SeqNumber>, // SND.WL2
 
@@ -109,13 +106,13 @@ impl<const N: usize> fmt::Debug for Sender<N> {
 impl<const N: usize> Sender<N> {
     pub fn new(seq_no: SeqNumber, send_window: u32, window_scale: u8, mss: usize) -> Self {
         Self {
-            send_unacked: WatchedValue::new(seq_no),
+            send_unacked: SharedWatchedValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
-            send_next: WatchedValue::new(seq_no),
+            send_next: SharedWatchedValue::new(seq_no),
             unsent_queue: RefCell::new(VecDeque::new()),
-            unsent_seq_no: WatchedValue::new(seq_no),
+            unsent_seq_no: SharedWatchedValue::new(seq_no),
 
-            send_window: WatchedValue::new(send_window),
+            send_window: SharedWatchedValue::new(send_window),
             send_window_last_update_seq: Cell::new(seq_no),
             send_window_last_update_ack: Cell::new(seq_no),
 
@@ -128,24 +125,24 @@ impl<const N: usize> Sender<N> {
         self.mss
     }
 
-    pub fn get_send_window(&self) -> (u32, WatchFuture<u32>) {
-        self.send_window.watch()
+    pub fn get_send_window(&self) -> SharedWatchedValue<u32> {
+        self.send_window.clone()
     }
 
-    pub fn get_send_unacked(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.send_unacked.watch()
+    pub fn get_send_unacked(&self) -> SharedWatchedValue<SeqNumber> {
+        self.send_unacked.clone()
     }
 
-    pub fn get_send_next(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.send_next.watch()
+    pub fn get_send_next(&self) -> SharedWatchedValue<SeqNumber> {
+        self.send_next.clone()
     }
 
-    pub fn modify_send_next(&self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
+    pub fn modify_send_next(&mut self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
         self.send_next.modify(f)
     }
 
-    pub fn get_unsent_seq_no(&self) -> (SeqNumber, WatchFuture<SeqNumber>) {
-        self.unsent_seq_no.watch()
+    pub fn get_unsent_seq_no(&self) -> SharedWatchedValue<SeqNumber> {
+        self.unsent_seq_no.clone()
     }
 
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {
@@ -154,7 +151,7 @@ impl<const N: usize> Sender<N> {
 
     // This is the main TCP send routine.
     //
-    pub fn send(&self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
+    pub fn send(&mut self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         //
         if cb.user_is_done_sending {
@@ -203,10 +200,10 @@ impl<const N: usize> Sender<N> {
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
             cb.congestion_control_on_cwnd_check_before_send();
-            let cwnd: u32 = cb.congestion_control_get_cwnd();
+            let cwnd: SharedWatchedValue<u32> = cb.congestion_control_get_cwnd();
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd: u32 = cwnd + cb.congestion_control_get_limited_transmit_cwnd_increase();
+            let effective_cwnd: u32 = cwnd.get() + cb.congestion_control_get_limited_transmit_cwnd_increase().get();
 
             let win_sz: u32 = self.send_window.get();
 
@@ -394,7 +391,7 @@ impl<const N: usize> Sender<N> {
 
     // Update our send window to the value advertised by our peer.
     //
-    pub fn update_send_window(&self, header: &TcpHeader) {
+    pub fn update_send_window(&mut self, header: &TcpHeader) {
         // Check that the ACK we're using to update the window isn't older than the last one used to update it.
         if self.send_window_last_update_seq.get() < header.seq_num
             || (self.send_window_last_update_seq.get() == header.seq_num

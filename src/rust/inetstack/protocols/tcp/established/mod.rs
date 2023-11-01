@@ -34,6 +34,8 @@ use ::std::{
 #[derive(Clone)]
 pub struct EstablishedSocket<const N: usize> {
     pub cb: SharedControlBlock<N>,
+    // We need this to eventually stop the background task on close.
+    #[allow(unused)]
     runtime: SharedDemiRuntime,
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
@@ -64,7 +66,7 @@ impl<const N: usize> EstablishedSocket<N> {
         self.cb.receive(header, data)
     }
 
-    pub fn send(&self, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         self.cb.send(buf)
     }
 
@@ -93,10 +95,12 @@ impl<const N: usize> EstablishedSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<const N: usize> Drop for EstablishedSocket<N> {
-    fn drop(&mut self) {
-        if let Err(e) = self.runtime.remove_background_coroutine(&self.background) {
-            panic!("Failed to drop established socket (error={})", e);
-        }
-    }
-}
+// TODO: Uncomment this once we have proper resource clean up on asynchronous close.
+// FIXME: https://github.com/microsoft/demikernel/issues/988
+// impl<const N: usize> Drop for EstablishedSocket<N> {
+//     fn drop(&mut self) {
+//         if let Err(e) = self.runtime.remove_background_coroutine(&self.background) {
+//             panic!("Failed to drop established socket (error={})", e);
+//         }
+//     }
+// }

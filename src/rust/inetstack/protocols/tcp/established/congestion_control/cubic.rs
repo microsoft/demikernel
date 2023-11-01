@@ -18,10 +18,7 @@ use super::{
 };
 use crate::{
     inetstack::protocols::tcp::SeqNumber,
-    runtime::watched::{
-        WatchFuture,
-        WatchedValue,
-    },
+    runtime::watched::SharedWatchedValue,
 };
 use ::std::{
     cell::Cell,
@@ -42,7 +39,7 @@ pub struct Cubic {
     pub mss: u32, // Just for convenience, otherwise we have `as u32` or `.try_into().unwrap()` scattered everywhere...
     // Slow Start / Congestion Avoidance State.
     pub ca_start: Cell<Instant>, // The time we started the current congestion avoidance.
-    pub cwnd: WatchedValue<u32>, // Congestion window: Max number of bytes that may be in flight ot prevent congestion.
+    pub cwnd: SharedWatchedValue<u32>, // Congestion window: Max number of bytes that may be in flight ot prevent congestion.
     pub fast_convergence: bool, // Should we employ the fast convergence algorithm (Only recommended if there are multiple CUBIC streams on the same network, in which case we'll cede capacity to new ones faster).
     pub initial_cwnd: u32,      // The initial value of cwnd, which gets used if the connection ever resets.
     pub last_send_time: Cell<Instant>, // The moment at which we last sent data.
@@ -54,12 +51,12 @@ pub struct Cubic {
 
     // Fast Recovery / Fast Retransmit State
     pub duplicate_ack_count: Cell<u32>, // The number of consecutive duplicate ACKs we've received.
-    pub fast_retransmit_now: WatchedValue<bool>, // Flag to cause the retransmitter to retransmit a segment now.
+    pub fast_retransmit_now: SharedWatchedValue<bool>, // Flag to cause the retransmitter to retransmit a segment now.
     pub in_fast_recovery: Cell<bool>,   // Are we currently in the `fast recovery` algorithm.
     pub prev_ack_seq_no: Cell<SeqNumber>, // The previous highest ACK sequence number.
     pub recover: Cell<SeqNumber>, // If we receive dup ACKs with sequence numbers greater than this we'll attempt fast recovery.
 
-    pub limited_transmit_cwnd_increase: WatchedValue<u32>, // The amount by which cwnd should be increased due to the limited transit algorithm.
+    pub limited_transmit_cwnd_increase: SharedWatchedValue<u32>, // The amount by which cwnd should be increased due to the limited transit algorithm.
 }
 
 impl CongestionControl for Cubic {
@@ -79,7 +76,7 @@ impl CongestionControl for Cubic {
             mss,
             // Slow Start / Congestion Avoidance State
             ca_start: Cell::new(Instant::now()), // Record the start time of the congestion avoidance period.
-            cwnd: WatchedValue::new(initial_cwnd),
+            cwnd: SharedWatchedValue::new(initial_cwnd),
             fast_convergence,
             initial_cwnd,
             last_send_time: Cell::new(Instant::now()),
@@ -90,12 +87,12 @@ impl CongestionControl for Cubic {
             last_congestion_was_rto: Cell::new(false),
 
             in_fast_recovery: Cell::new(false),
-            fast_retransmit_now: WatchedValue::new(false),
+            fast_retransmit_now: SharedWatchedValue::new(false),
             recover: Cell::new(seq_no), // Recover set to initial send sequence number according to RFC6582.
             prev_ack_seq_no: Cell::new(seq_no), // RFC6582 doesn't specify the initial value, but this seems sensible.
             duplicate_ack_count: Cell::new(0),
 
-            limited_transmit_cwnd_increase: WatchedValue::new(0),
+            limited_transmit_cwnd_increase: SharedWatchedValue::new(0),
         })
     }
 }
@@ -118,7 +115,7 @@ impl Cubic {
         }
     }
 
-    fn increment_dup_ack_count(&self) -> u32 {
+    fn increment_dup_ack_count(&mut self) -> u32 {
         let duplicate_ack_count: u32 = self.duplicate_ack_count.get() + 1;
         self.duplicate_ack_count.set(duplicate_ack_count);
         if duplicate_ack_count < Self::DUP_ACK_THRESHOLD {
@@ -127,7 +124,7 @@ impl Cubic {
         duplicate_ack_count
     }
 
-    fn on_dup_ack_received(&self, send_next: SeqNumber, ack_seq_no: SeqNumber) {
+    fn on_dup_ack_received(&mut self, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         // Get and increment the duplicate ACK count, and store the updated value.
         let duplicate_ack_count: u32 = self.increment_dup_ack_count();
 
@@ -160,7 +157,7 @@ impl Cubic {
         }
     }
 
-    fn on_ack_received_fast_recovery(&self, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
+    fn on_ack_received_fast_recovery(&mut self, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_outstanding: u32 = (send_next - send_unacked).into();
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         let mss: u32 = self.mss;
@@ -210,7 +207,7 @@ impl Cubic {
         w_max * bc + ((3. * (1. - bc) / (1. + bc)) * t / rtt)
     }
 
-    fn on_ack_received_ss_ca(&self, rto: Duration, send_unacked: SeqNumber, ack_seq_no: SeqNumber) {
+    fn on_ack_received_ss_ca(&mut self, rto: Duration, send_unacked: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         let mss: u32 = self.mss;
         let cwnd: u32 = self.cwnd.get();
@@ -241,7 +238,7 @@ impl Cubic {
         }
     }
 
-    fn on_rto_ss_ca(&self) {
+    fn on_rto_ss_ca(&mut self) {
         let cwnd: u32 = self.cwnd.get();
 
         if self.fast_convergence {
@@ -275,15 +272,11 @@ impl Cubic {
 }
 
 impl SlowStartCongestionAvoidance for Cubic {
-    fn get_cwnd(&self) -> u32 {
-        self.cwnd.get()
+    fn get_cwnd(&self) -> SharedWatchedValue<u32> {
+        self.cwnd.clone()
     }
 
-    fn watch_cwnd(&self) -> (u32, WatchFuture<'_, u32>) {
-        self.cwnd.watch()
-    }
-
-    fn on_cwnd_check_before_send(&self) {
+    fn on_cwnd_check_before_send(&mut self) {
         let long_time_since_send: bool =
             Instant::now().duration_since(self.last_send_time.get()) > self.rtt_at_last_send.get();
         if long_time_since_send {
@@ -293,14 +286,14 @@ impl SlowStartCongestionAvoidance for Cubic {
         }
     }
 
-    fn on_send(&self, rto: Duration, num_bytes_sent: u32) {
+    fn on_send(&mut self, rto: Duration, num_bytes_sent: u32) {
         self.last_send_time.set(Instant::now());
         self.rtt_at_last_send.set(rto);
         self.limited_transmit_cwnd_increase
             .set_without_notify(self.limited_transmit_cwnd_increase.get().saturating_sub(num_bytes_sent));
     }
 
-    fn on_ack_received(&self, rto: Duration, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
+    fn on_ack_received(&mut self, rto: Duration, send_unacked: SeqNumber, send_next: SeqNumber, ack_seq_no: SeqNumber) {
         let bytes_acknowledged: u32 = (ack_seq_no - send_unacked).into();
         if bytes_acknowledged == 0 {
             // ACK is a duplicate
@@ -323,7 +316,7 @@ impl SlowStartCongestionAvoidance for Cubic {
         }
     }
 
-    fn on_rto(&self, send_unacked: SeqNumber) {
+    fn on_rto(&mut self, send_unacked: SeqNumber) {
         // Handle timeout for any of the algorithms we could currently be using.
         self.on_rto_ss_ca();
         self.on_rto_fast_recovery(send_unacked);
@@ -335,15 +328,11 @@ impl FastRetransmitRecovery for Cubic {
         self.duplicate_ack_count.get()
     }
 
-    fn get_retransmit_now_flag(&self) -> bool {
-        self.fast_retransmit_now.get()
+    fn get_retransmit_now_flag(&self) -> SharedWatchedValue<bool> {
+        self.fast_retransmit_now.clone()
     }
 
-    fn watch_retransmit_now_flag(&self) -> (bool, WatchFuture<'_, bool>) {
-        self.fast_retransmit_now.watch()
-    }
-
-    fn on_fast_retransmit(&self) {
+    fn on_fast_retransmit(&mut self) {
         // NOTE: Could we potentially miss FastRetransmit requests with just a flag?
         // I suspect it doesn't matter because we only retransmit on the 3rd repeat ACK precisely...
         // I should really use some other mechanism here just because it would be nicer...
@@ -352,11 +341,7 @@ impl FastRetransmitRecovery for Cubic {
 }
 
 impl LimitedTransmit for Cubic {
-    fn get_limited_transmit_cwnd_increase(&self) -> u32 {
-        self.limited_transmit_cwnd_increase.get()
-    }
-
-    fn watch_limited_transmit_cwnd_increase(&self) -> (u32, WatchFuture<'_, u32>) {
-        self.limited_transmit_cwnd_increase.watch()
+    fn get_limited_transmit_cwnd_increase(&self) -> SharedWatchedValue<u32> {
+        self.limited_transmit_cwnd_increase.clone()
     }
 }

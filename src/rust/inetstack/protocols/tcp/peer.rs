@@ -401,8 +401,8 @@ impl<const N: usize> SharedTcpPeer<N> {
     /// TODO: Should probably check for valid queue descriptor before we schedule the future
     pub fn push(&self, qd: QDesc, buf: DemiBuffer) -> Pin<Box<Operation>> {
         let result: Result<(), Fail> = match self.get_shared_queue(&qd) {
-            Ok(queue) => match queue.get_socket() {
-                Socket::Established(ref socket) => socket.send(buf),
+            Ok(mut queue) => match queue.get_mut_socket() {
+                Socket::Established(socket) => socket.send(buf),
                 _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
             },
             Err(e) => Err(e),

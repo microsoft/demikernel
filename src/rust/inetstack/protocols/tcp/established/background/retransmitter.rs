@@ -6,6 +6,7 @@ use crate::{
     runtime::{
         fail::Fail,
         timer::SharedTimer,
+        watched::SharedWatchedValue,
     },
     scheduler::Yielder,
 };
@@ -19,10 +20,13 @@ use ::std::time::{
     Instant,
 };
 
-pub async fn retransmitter<const N: usize>(cb: SharedControlBlock<N>) -> Result<!, Fail> {
+pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
-        let (rtx_deadline, rtx_deadline_changed) = cb.watch_retransmit_deadline();
+        let mut rtx_deadline_watched: SharedWatchedValue<Option<Instant>> = cb.watch_retransmit_deadline();
+        let rtx_yielder: Yielder = Yielder::new();
+        let rtx_deadline: Option<Instant> = rtx_deadline_watched.get();
+        let rtx_deadline_changed = rtx_deadline_watched.watch(rtx_yielder).fuse();
         futures::pin_mut!(rtx_deadline_changed);
         let clock_ref: SharedTimer = cb.clock.clone();
         let yielder: Yielder = Yielder::new();
@@ -33,7 +37,11 @@ pub async fn retransmitter<const N: usize>(cb: SharedControlBlock<N>) -> Result<
         futures::pin_mut!(rtx_future);
 
         // Pin future for fast retransmission.
-        let (rtx_fast_retransmit, rtx_fast_retransmit_changed) = cb.congestion_control_watch_retransmit_now_flag();
+        let mut rtx_fast_retransmit_watched: SharedWatchedValue<bool> =
+            cb.congestion_control_watch_retransmit_now_flag();
+        let retransmit_yielder: Yielder = Yielder::new();
+        let rtx_fast_retransmit: bool = rtx_fast_retransmit_watched.get();
+        let rtx_fast_retransmit_changed = rtx_fast_retransmit_watched.watch(retransmit_yielder).fuse();
         if rtx_fast_retransmit {
             // Notify congestion control about fast retransmit.
             cb.congestion_control_on_fast_retransmit();
@@ -52,8 +60,8 @@ pub async fn retransmitter<const N: usize>(cb: SharedControlBlock<N>) -> Result<
                 // Notify congestion control about RTO.
                 // TODO: Is this the best place for this?
                 // TODO: Why call into ControlBlock to get SND.UNA when congestion_control_on_rto() has access to it?
-                let (send_unacknowledged, _) = cb.get_send_unacked();
-                cb.congestion_control_on_rto(send_unacknowledged);
+                let send_unacknowledged = cb.get_send_unacked();
+                cb.congestion_control_on_rto(send_unacknowledged.get());
 
                 // RFC 6298 Section 5.4: Retransmit earliest unacknowledged segment.
                 cb.retransmit();
