@@ -12,7 +12,7 @@ use crate::{
         YielderHandle,
     },
 };
-use ::std::collections::VecDeque;
+use ::std::vec::Vec;
 
 //======================================================================================================================
 // Structures
@@ -21,8 +21,8 @@ use ::std::collections::VecDeque;
 /// This data structure implements an unbounded asynchronous queue that is hooked into the Demikernel scheduler. On
 /// pop, if the queue is empty, the coroutine will yield until there is data to be read.
 pub struct AsyncQueue<T> {
-    queue: VecDeque<T>,
-    waiters: VecDeque<YielderHandle>,
+    queue: Vec<T>,
+    waiters: Vec<YielderHandle>,
 }
 
 //======================================================================================================================
@@ -32,26 +32,26 @@ pub struct AsyncQueue<T> {
 impl<T> AsyncQueue<T> {
     pub fn with_capacity(size: usize) -> Self {
         Self {
-            queue: VecDeque::<T>::with_capacity(size),
-            waiters: VecDeque::<YielderHandle>::new(),
+            queue: Vec::<T>::with_capacity(size),
+            waiters: Vec::<YielderHandle>::new(),
         }
     }
 
     pub fn push(&mut self, item: T) {
-        self.queue.push_back(item);
-        if let Some(mut handle) = self.waiters.pop_front() {
+        self.queue.push(item);
+        if let Some(mut handle) = self.waiters.pop() {
             handle.wake_with(Ok(()));
         }
     }
 
     pub async fn pop(&mut self, yielder: Yielder) -> Result<T, Fail> {
-        match self.queue.pop_front() {
+        match self.queue.pop() {
             Some(item) => Ok(item),
             None => {
                 let handle: YielderHandle = yielder.get_handle();
-                self.waiters.push_back(handle);
+                self.waiters.push(handle);
                 match yielder.yield_until_wake().await {
-                    Ok(()) => match self.queue.pop_front() {
+                    Ok(()) => match self.queue.pop() {
                         Some(item) => Ok(item),
                         None => {
                             let cause: &str = "Spurious wake up!";
@@ -73,8 +73,8 @@ impl<T> AsyncQueue<T> {
 impl<T> Default for AsyncQueue<T> {
     fn default() -> Self {
         Self {
-            queue: VecDeque::<T>::new(),
-            waiters: VecDeque::<YielderHandle>::new(),
+            queue: Vec::<T>::new(),
+            waiters: Vec::<YielderHandle>::new(),
         }
     }
 }
