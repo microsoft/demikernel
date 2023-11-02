@@ -71,7 +71,7 @@ impl SharedTestRuntime {
             ipv4_addr,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            runtime: SharedDemiRuntime::new(),
+            runtime: SharedDemiRuntime::default(),
             clock: SharedTimer::new(now),
             arp_config,
             udp_config,

@@ -60,7 +60,7 @@ impl DummyLibOS {
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Result<InetStack<RECEIVE_BATCH_SIZE>, Fail> {
         let now: Instant = Instant::now();
-        let runtime: SharedDemiRuntime = SharedDemiRuntime::new();
+        let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         let transport: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx);
         let arp_config: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
