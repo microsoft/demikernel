@@ -16,7 +16,6 @@ use super::{
 use crate::{
     inetstack::protocols::{
         arp::SharedArpPeer,
-        ip::EphemeralPorts,
         ipv4::Ipv4Header,
     },
     runtime::{
@@ -39,10 +38,6 @@ use crate::{
         TaskHandle,
         Yielder,
     },
-};
-use ::rand::{
-    prelude::SmallRng,
-    SeedableRng,
 };
 use ::std::{
     net::{
@@ -81,8 +76,6 @@ pub struct UdpPeer<const N: usize> {
     transport: SharedBox<dyn NetworkRuntime<N>>,
     /// Underlying ARP peer.
     arp: SharedArpPeer<N>,
-    /// Ephemeral ports.
-    ephemeral_ports: EphemeralPorts,
     /// Queue of unset datagrams. This is shared across fast/slow paths.
     send_queue: SharedQueue<N>,
     /// Local link address.
@@ -111,15 +104,12 @@ impl<const N: usize> UdpPeer<N> {
     pub fn new(
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
         let send_queue: SharedQueue<N> = SharedQueue::<N>::new(SEND_QUEUE_MAX_SIZE);
-        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
 
         let coroutine = Self::background_sender_coroutine(
             local_ipv4_addr,
@@ -134,7 +124,6 @@ impl<const N: usize> UdpPeer<N> {
             runtime,
             transport,
             arp,
-            ephemeral_ports,
             send_queue,
             local_link_addr,
             local_ipv4_addr,
@@ -185,7 +174,6 @@ impl<const N: usize> SharedUdpPeer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        rng_seed: [u8; 32],
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         offload_checksum: bool,
@@ -194,7 +182,6 @@ impl<const N: usize> SharedUdpPeer<N> {
         Ok(Self(SharedObject::<UdpPeer<N>>::new(UdpPeer::<N>::new(
             runtime,
             transport,
-            rng_seed,
             local_link_addr,
             local_ipv4_addr,
             offload_checksum,
@@ -236,13 +223,13 @@ impl<const N: usize> SharedUdpPeer<N> {
         }
 
         // Check if this is an ephemeral port or a wildcard one.
-        if EphemeralPorts::is_private(addr.port()) {
+        if SharedDemiRuntime::is_private_ephemeral_port(addr.port()) {
             // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.ephemeral_ports.alloc_port(addr.port())?
+            self.runtime.reserve_ephemeral_port(addr.port())?
         } else if addr.port() == 0 {
             // Allocate ephemeral port.
             // TODO: we should free this when closing.
-            let new_port: u16 = self.ephemeral_ports.alloc_any()?;
+            let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
             addr.set_port(new_port);
         }
 

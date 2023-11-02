@@ -58,7 +58,6 @@ impl<const N: usize> Peer<N> {
         let udp: SharedUdpPeer<N> = SharedUdpPeer::new(
             runtime.clone(),
             transport.clone(),
-            rng_seed,
             local_link_addr,
             local_ipv4_addr,
             udp_offload_checksum,
