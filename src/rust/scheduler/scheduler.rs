@@ -112,11 +112,10 @@ impl Scheduler {
             None => return None,
         };
         self.tasks.get(pin_slab_index)?;
-        let waker_page_ref: &WakerPageRef = {
-            let (waker_page_index, _) = self.get_waker_page_index_and_offset(pin_slab_index);
-            &self.waker_page_refs[waker_page_index]
+        let (waker_page_ref, waker_page_offset) = {
+            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
+            (&self.waker_page_refs[waker_page_index], waker_page_offset)
         };
-        let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
         Some(TaskHandle::new(task_id, waker_page_ref.clone(), waker_page_offset))
     }
 
