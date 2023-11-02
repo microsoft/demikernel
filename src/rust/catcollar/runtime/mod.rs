@@ -20,14 +20,9 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        Operation,
-        OperationTask,
         SharedObject,
     },
-    scheduler::{
-        scheduler::Scheduler,
-        TaskHandle,
-    },
+    scheduler::scheduler::Scheduler,
 };
 use ::std::{
     collections::{
@@ -40,7 +35,6 @@ use ::std::{
         DerefMut,
     },
     os::unix::prelude::RawFd,
-    pin::Pin,
 };
 
 //==============================================================================
@@ -140,19 +134,6 @@ impl SharedIoUringRuntime {
                     // Something bad has happened.
                     Err(e) => Err(e),
                 }
-            },
-        }
-    }
-
-    /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
-        let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
-            None => {
-                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
-                error!("insert_coroutine(): {}", cause);
-                Err(Fail::new(libc::EAGAIN, &cause))
             },
         }
     }

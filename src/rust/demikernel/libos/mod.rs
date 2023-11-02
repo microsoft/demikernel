@@ -86,7 +86,7 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-        let runtime: SharedDemiRuntime = SharedDemiRuntime::new();
+        let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
@@ -95,7 +95,9 @@ impl LibOS {
                 Self::NetworkLibOS(NetworkLibOS::Catnap(SharedCatnapLibOS::new(&config, runtime.clone())))
             },
             #[cfg(feature = "catcollar-libos")]
-            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config))),
+            LibOSName::Catcollar => {
+                Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config, runtime.clone())))
+            },
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config, runtime.clone())))
