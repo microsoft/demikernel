@@ -78,13 +78,6 @@ impl IoQueueTable {
     /// NOTE: This is intentionally set to be half of FD_SETSIZE (1024) in Linux.
     const BASE_QD: u32 = 500;
 
-    /// Creates an I/O queue descriptors table.
-    pub fn new() -> Self {
-        Self {
-            table: Slab::<Box<dyn IoQueue>>::new(),
-        }
-    }
-
     /// Allocates a new entry in the target I/O queue descriptors table.
     pub fn alloc<T: IoQueue>(&mut self, queue: T) -> QDesc {
         let index: usize = self.table.insert(Box::new(queue));
@@ -246,6 +239,18 @@ pub fn downcast_queue<T: IoQueue>(boxed_queue: Box<dyn IoQueue>) -> Result<T, Fa
 }
 
 //======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl Default for IoQueueTable {
+    fn default() -> Self {
+        Self {
+            table: Slab::<Box<dyn IoQueue>>::new(),
+        }
+    }
+}
+
+//======================================================================================================================
 // Unit Tests
 //======================================================================================================================
 
@@ -286,7 +291,7 @@ mod tests {
 
     #[bench]
     fn bench_alloc_free(b: &mut Bencher) {
-        let mut ioqueue_table: IoQueueTable = IoQueueTable::new();
+        let mut ioqueue_table: IoQueueTable = IoQueueTable::default();
 
         b.iter(|| {
             let qd: QDesc = ioqueue_table.alloc::<TestQueue>(TestQueue {});

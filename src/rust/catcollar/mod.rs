@@ -42,11 +42,9 @@ use crate::{
         network::unwrap_socketaddr,
         queue::{
             downcast_queue_ptr,
-            IoQueueTable,
             NetworkQueue,
             Operation,
             OperationResult,
-            OperationTask,
             QDesc,
             QToken,
             QType,
@@ -59,6 +57,7 @@ use crate::{
             demi_sgarray_t,
         },
         DemiRuntime,
+        SharedDemiRuntime,
     },
     scheduler::{
         TaskHandle,
@@ -66,10 +65,6 @@ use crate::{
     },
 };
 use ::std::{
-    cell::{
-        Ref,
-        RefCell,
-    },
     mem,
     net::{
         SocketAddr,
@@ -77,7 +72,6 @@ use ::std::{
     },
     os::unix::prelude::RawFd,
     pin::Pin,
-    rc::Rc,
 };
 
 //======================================================================================================================
@@ -86,10 +80,10 @@ use ::std::{
 
 /// Catcollar LibOS
 pub struct CatcollarLibOS {
-    /// Table of queue descriptors.
-    qtable: Rc<RefCell<IoQueueTable>>, // TODO: Move this into runtime module.
+    /// Shared DemiRuntime.
+    runtime: SharedDemiRuntime,
     /// Underlying runtime.
-    runtime: SharedIoUringRuntime,
+    transport: SharedIoUringRuntime,
 }
 
 //======================================================================================================================
@@ -99,10 +93,9 @@ pub struct CatcollarLibOS {
 /// Associate Functions for Catcollar LibOS
 impl CatcollarLibOS {
     /// Instantiates a Catcollar LibOS.
-    pub fn new(_config: &Config) -> Self {
-        let qtable: Rc<RefCell<IoQueueTable>> = Rc::new(RefCell::new(IoQueueTable::new()));
-        let runtime: SharedIoUringRuntime = SharedIoUringRuntime::default();
-        Self { qtable, runtime }
+    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
+        let transport: SharedIoUringRuntime = SharedIoUringRuntime::default();
+        Self { runtime, transport }
     }
 
     /// Creates a socket.
@@ -149,7 +142,7 @@ impl CatcollarLibOS {
                 trace!("socket: {:?}, domain: {:?}, typ: {:?}", fd, domain, typ);
                 let mut queue: CatcollarQueue = CatcollarQueue::new(qtype);
                 queue.set_fd(fd);
-                Ok(self.qtable.borrow_mut().alloc::<CatcollarQueue>(queue))
+                Ok(self.runtime.alloc_queue::<CatcollarQueue>(queue))
             },
             _ => {
                 let errno: libc::c_int = unsafe { *libc::__errno_location() };
@@ -186,11 +179,7 @@ impl CatcollarLibOS {
         match unsafe { libc::bind(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
             stats if stats == 0 => {
                 // Expect is safe here because we already looked up the queue in get_queue_fd().
-                self.qtable
-                    .borrow_mut()
-                    .get_mut::<CatcollarQueue>(&qd)
-                    .expect("queue should exist")
-                    .set_addr(local);
+                self.get_shared_queue(&qd).expect("queue should exist").set_addr(local);
                 Ok(())
             },
             _ => {
@@ -226,13 +215,13 @@ impl CatcollarLibOS {
 
         // Issue accept operation.
         let yielder: Yielder = Yielder::new();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(self.qtable.clone(), qd, fd, yielder));
+        let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder));
         let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
         Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
     }
 
     async fn accept_coroutine(
-        qtable: Rc<RefCell<IoQueueTable>>,
+        mut runtime: SharedDemiRuntime,
         qd: QDesc,
         fd: RawFd,
         yielder: Yielder,
@@ -243,7 +232,7 @@ impl CatcollarLibOS {
                 let mut queue: CatcollarQueue = CatcollarQueue::new(QType::TcpSocket);
                 queue.set_addr(addr);
                 queue.set_fd(new_fd);
-                let new_qd: QDesc = qtable.borrow_mut().alloc::<CatcollarQueue>(queue);
+                let new_qd: QDesc = runtime.alloc_queue::<CatcollarQueue>(queue);
                 (qd, OperationResult::Accept((new_qd, addr)))
             },
             Err(e) => (qd, OperationResult::Failed(e)),
@@ -369,9 +358,8 @@ impl CatcollarLibOS {
             stats if stats == 0 => {
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                self.qtable
-                    .borrow_mut()
-                    .free::<CatcollarQueue>(&qd)
+                self.runtime
+                    .free_queue::<CatcollarQueue>(&qd)
                     .expect("queue should exist");
                 Ok(())
             },
@@ -388,13 +376,13 @@ impl CatcollarLibOS {
         trace!("close() qd={:?}", qd);
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let yielder: Yielder = Yielder::new();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(self.qtable.clone(), qd, fd, yielder));
+        let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder));
         let task_id: String = format!("Catcollar::close for qd={:?}", qd);
         Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
     }
 
     async fn close_coroutine(
-        qtable: Rc<RefCell<IoQueueTable>>,
+        mut runtime: SharedDemiRuntime,
         qd: QDesc,
         fd: RawFd,
         yielder: Yielder,
@@ -405,10 +393,7 @@ impl CatcollarLibOS {
             Ok(()) => {
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                qtable
-                    .borrow_mut()
-                    .free::<CatcollarQueue>(&qd)
-                    .expect("queue shouild exist");
+                runtime.free_queue::<CatcollarQueue>(&qd).expect("queue shouild exist");
                 (qd, OperationResult::Close)
             },
             Err(e) => (qd, OperationResult::Failed(e)),
@@ -459,7 +444,8 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         // Issue operation.
         let yielder: Yielder = Yielder::new();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::push_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
+        let coroutine: Pin<Box<Operation>> =
+            Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder));
         let task_id: String = format!("Catcollar::push for qd={:?}", qd);
         Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
     }
@@ -531,7 +517,7 @@ impl CatcollarLibOS {
                 // Issue operation.
                 let yielder: Yielder = Yielder::new();
                 let coroutine: Pin<Box<Operation>> = Box::pin(Self::pushto_coroutine(
-                    self.runtime.clone(),
+                    self.transport.clone(),
                     qd,
                     fd,
                     remote,
@@ -618,7 +604,8 @@ impl CatcollarLibOS {
         // Issue push operation.
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let yielder: Yielder = Yielder::new();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::pop_coroutine(self.runtime.clone(), qd, fd, buf, yielder));
+        let coroutine: Pin<Box<Operation>> =
+            Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder));
         let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
         Ok(self.runtime.insert_coroutine(&task_id, coroutine)?.get_task_id().into())
     }
@@ -682,19 +669,16 @@ impl CatcollarLibOS {
     }
 
     pub fn poll(&mut self) {
-        self.runtime.scheduler.poll()
+        self.runtime.poll()
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.runtime.scheduler.from_task_id(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => return Err(Fail::new(libc::EINVAL, "invalid queue token")),
-        }
+        self.runtime.from_task_id(qt.into())
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-        Ok(pack_result(&self.runtime, r, qd, qt.into()))
+        Ok(pack_result(&self.transport.clone(), r, qd, qt.into()))
     }
 
     /// Allocates a scatter-gather array.
@@ -711,17 +695,18 @@ impl CatcollarLibOS {
 
     /// Takes out the operation result descriptor associated with the target scheduler handle.
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = if let Some(task) = self.runtime.scheduler.remove(&handle) {
-            OperationTask::from(task.as_any())
-        } else {
-            panic!("Removing task that does not exist (either was previously removed or never inserted)");
-        };
+        self.runtime
+            .remove_coroutine(&handle)
+            .get_result()
+            .expect("The coroutine has not finished")
+    }
 
-        task.get_result().expect("The coroutine has not finished")
+    fn get_shared_queue(&self, qd: &QDesc) -> Result<CatcollarQueue, Fail> {
+        Ok(self.runtime.get_shared_queue::<CatcollarQueue>(qd)?.clone())
     }
 
     fn addr_in_use(&self, local: SocketAddrV4) -> bool {
-        for (_, queue) in self.qtable.borrow().get_values() {
+        for (_, queue) in self.runtime.get_qtable().get_values() {
             if let Ok(catcollar_queue) = downcast_queue_ptr::<CatcollarQueue>(queue) {
                 match catcollar_queue.local() {
                     Some(addr) if addr == local => return true,
@@ -733,8 +718,7 @@ impl CatcollarLibOS {
     }
 
     fn get_queue_fd(&self, qd: &QDesc) -> Result<RawFd, Fail> {
-        let qtable: Ref<IoQueueTable> = self.qtable.borrow();
-        match qtable.get::<CatcollarQueue>(&qd)?.get_fd() {
+        match self.get_shared_queue(qd)?.get_fd() {
             Some(fd) => Ok(fd),
             None => {
                 let cause: String = format!("invalid queue descriptor (qd={:?})", qd);

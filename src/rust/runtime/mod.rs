@@ -72,6 +72,7 @@ use windows::Win32::Networking::WinSock::{
 //======================================================================================================================
 
 /// Demikernel Runtime
+#[derive(Default)]
 pub struct DemiRuntime {
     /// Scheduler
     scheduler: Scheduler,
@@ -90,21 +91,26 @@ pub struct SharedBox<T: ?Sized>(SharedObject<Box<T>>);
 // Associate Functions
 //======================================================================================================================
 
-impl SharedDemiRuntime {
-    pub fn new() -> Self {
-        Self(SharedObject::new(DemiRuntime::new()))
+impl DemiRuntime {
+    /// Checks if an operation should be retried based on the error code `err`.
+    pub fn should_retry(errno: i32) -> bool {
+        #[cfg(target_os = "linux")]
+        if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
+        {
+            return true;
+        }
+
+        #[cfg(target_os = "windows")]
+        if errno == WSAEWOULDBLOCK.0 || errno == WSAEINPROGRESS.0 || errno == WSAEALREADY.0 {
+            return true;
+        }
+
+        false
     }
 }
 
 /// Associate Functions for POSIX Runtime
-impl DemiRuntime {
-    pub fn new() -> Self {
-        Self {
-            scheduler: Scheduler::default(),
-            qtable: IoQueueTable::new(),
-        }
-    }
-
+impl SharedDemiRuntime {
     /// Inserts the `coroutine` named `task_name` into the scheduler.
     pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
@@ -212,22 +218,6 @@ impl DemiRuntime {
     pub fn get_queue_type(&self, qd: &QDesc) -> Result<QType, Fail> {
         self.qtable.get_type(qd)
     }
-
-    /// Checks if an operation should be retried based on the error code `err`.
-    pub fn should_retry(errno: i32) -> bool {
-        #[cfg(target_os = "linux")]
-        if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
-        {
-            return true;
-        }
-
-        #[cfg(target_os = "windows")]
-        if errno == WSAEWOULDBLOCK.0 || errno == WSAEINPROGRESS.0 || errno == WSAEALREADY.0 {
-            return true;
-        }
-
-        false
-    }
 }
 
 impl<T> SharedObject<T> {
@@ -247,7 +237,13 @@ impl<T: ?Sized> SharedBox<T> {
 //======================================================================================================================
 
 /// Memory Runtime Trait Implementation for POSIX Runtime
-impl MemoryRuntime for DemiRuntime {}
+impl MemoryRuntime for SharedDemiRuntime {}
+
+impl Default for SharedDemiRuntime {
+    fn default() -> Self {
+        Self(SharedObject::new(DemiRuntime::default()))
+    }
+}
 
 impl<T> Deref for SharedObject<T> {
     type Target = T;
