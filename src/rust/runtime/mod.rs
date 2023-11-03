@@ -38,6 +38,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
+        network::ephemeral::EphemeralPorts,
         queue::{
             IoQueue,
             IoQueueTable,
@@ -78,6 +79,8 @@ pub struct DemiRuntime {
     scheduler: Scheduler,
     /// Shared IoQueueTable.
     qtable: IoQueueTable,
+    /// Shared ephemeral port allocator.
+    ephemeral_ports: EphemeralPorts,
 }
 
 #[derive(Clone)]
@@ -215,8 +218,29 @@ impl SharedDemiRuntime {
         Ok(self.qtable.get::<T>(qd)?.clone())
     }
 
+    /// Returns the type for the queue that matches [qd].
     pub fn get_queue_type(&self, qd: &QDesc) -> Result<QType, Fail> {
         self.qtable.get_type(qd)
+    }
+
+    /// Allocates a port from the shared ephemeral port allocator.
+    pub fn alloc_ephemeral_port(&mut self) -> Result<u16, Fail> {
+        self.ephemeral_ports.alloc()
+    }
+
+    /// Reserves a specific port if it is free.
+    pub fn reserve_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
+        self.ephemeral_ports.reserve(port)
+    }
+
+    /// Frees an ephemeral port.
+    pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
+        self.ephemeral_ports.free(port)
+    }
+
+    /// Checks if a port is private.
+    pub fn is_private_ephemeral_port(port: u16) -> bool {
+        EphemeralPorts::is_private(port)
     }
 }
 

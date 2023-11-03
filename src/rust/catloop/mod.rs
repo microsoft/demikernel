@@ -17,7 +17,6 @@ use crate::{
     catmem::SharedCatmemLibOS,
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::ip::EphemeralPorts,
     pal::{
         constants::SOMAXCONN,
         data_structures::SockAddr,
@@ -52,10 +51,6 @@ use crate::{
     },
     QType,
 };
-use ::rand::{
-    prelude::SmallRng,
-    SeedableRng,
-};
 use ::std::{
     mem,
     net::{
@@ -82,8 +77,6 @@ use crate::timer;
 /// functionality necessary to run the Catloop libOS. All state is kept in the [state], while [runtime] holds the
 /// coroutine scheduler and [catmem] holds a reference to the underlying Catmem libOS instance.
 pub struct CatloopLibOS {
-    /// Ephemeral port allocator.
-    ephemeral_ports: EphemeralPorts,
     /// Underlying transport.
     catmem: SharedCatmemLibOS,
     /// Underlying coroutine runtime.
@@ -100,25 +93,11 @@ pub struct SharedCatloopLibOS(SharedObject<CatloopLibOS>);
 //======================================================================================================================
 
 impl CatloopLibOS {
-    /// Seed number of ephemeral port allocator.
-    const EPHEMERAL_PORT_SEED: u64 = 12345;
-
     /// Instantiates a new LibOS.
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         #[cfg(feature = "profiler")]
         timer!("catloop::new");
-        let mut rng: SmallRng = {
-            #[cfg(debug_assertions)]
-            {
-                SmallRng::seed_from_u64(Self::EPHEMERAL_PORT_SEED)
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                SmallRng::from_entropy()
-            }
-        };
         Self {
-            ephemeral_ports: EphemeralPorts::new(&mut rng),
             catmem: SharedCatmemLibOS::new(config, runtime.clone()),
             runtime,
             config: config.clone(),
@@ -206,9 +185,9 @@ impl SharedCatloopLibOS {
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
         // Check if this is an ephemeral port.
-        if EphemeralPorts::is_private(local.port()) {
+        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
             // Allocate ephemeral port from the pool, to leave ephemeral port allocator in a consistent state.
-            self.alloc_ephemeral_port(Some(local.port()))?;
+            self.runtime.reserve_ephemeral_port(local.port())?;
         }
 
         // Check if queue descriptor is valid.
@@ -242,10 +221,7 @@ impl SharedCatloopLibOS {
         trace!("accept() qd={:?}", qd);
 
         // Allocate ephemeral port.
-        let new_port: u16 = match self.alloc_ephemeral_port(None) {
-            Ok(new_port) => new_port.unwrap(),
-            Err(e) => return Err(e),
-        };
+        let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         // Create coroutine to run this accept.
         let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -284,7 +260,7 @@ impl SharedCatloopLibOS {
             },
             Err(e) => {
                 // Rollback the port allocation.
-                if self.free_ephemeral_port(new_port).is_err() {
+                if self.runtime.free_ephemeral_port(new_port).is_err() {
                     // We fail if and only if we attempted to free a port that was not allocated.
                     // This is unexpected, but if it happens, issue a warning and keep going,
                     // otherwise we would leave the queue in a dangling state.
@@ -344,8 +320,8 @@ impl SharedCatloopLibOS {
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         queue.close()?;
         if let Some(addr) = queue.local() {
-            if EphemeralPorts::is_private(addr.port()) {
-                if self.free_ephemeral_port(addr.port()).is_err() {
+            if SharedDemiRuntime::is_private_ephemeral_port(addr.port()) {
+                if self.runtime.free_ephemeral_port(addr.port()).is_err() {
                     // We fail if and only if we attempted to free a port that was not allocated.
                     // This is unexpected, but if it happens, issue a warning and keep going,
                     // otherwise we would leave the queue in a dangling state.
@@ -393,8 +369,8 @@ impl SharedCatloopLibOS {
         match queue.do_close(yielder).await {
             Ok((_, OperationResult::Close)) => {
                 if let Some(addr) = queue.local() {
-                    if EphemeralPorts::is_private(addr.port()) {
-                        if self.free_ephemeral_port(addr.port()).is_err() {
+                    if SharedDemiRuntime::is_private_ephemeral_port(addr.port()) {
+                        if self.runtime.free_ephemeral_port(addr.port()).is_err() {
                             // We fail if and only if we attempted to free a port that was not allocated.
                             // This is unexpected, but if it happens, issue a warning and keep going,
                             // otherwise we would leave the queue in a dangling state.
@@ -568,21 +544,6 @@ impl SharedCatloopLibOS {
 
     fn get_queue(&self, qd: &QDesc) -> Result<SharedCatloopQueue, Fail> {
         Ok(self.runtime.get_qtable().get::<SharedCatloopQueue>(qd)?.clone())
-    }
-
-    /// Allocates an ephemeral port. If `port` is `Some(port)` then it tries to allocate `port`.
-    fn alloc_ephemeral_port(&mut self, port: Option<u16>) -> Result<Option<u16>, Fail> {
-        if let Some(port) = port {
-            self.ephemeral_ports.alloc_port(port)?;
-            Ok(None)
-        } else {
-            Ok(Some(self.ephemeral_ports.alloc_any()?))
-        }
-    }
-
-    /// Releases an ephemeral `port`.
-    fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        self.ephemeral_ports.free(port)
     }
 }
 

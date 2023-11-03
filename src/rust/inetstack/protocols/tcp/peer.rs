@@ -19,10 +19,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        ip::{
-            EphemeralPorts,
-            IpProtocol,
-        },
+        ip::IpProtocol,
         ipv4::Ipv4Header,
         tcp::{
             established::SharedControlBlock,
@@ -100,7 +97,6 @@ enum SocketId {
 pub struct TcpPeer<const N: usize> {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    ephemeral_ports: EphemeralPorts,
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
     transport: SharedBox<dyn NetworkRuntime<N>>,
@@ -132,12 +128,10 @@ impl<const N: usize> TcpPeer<N> {
         rng_seed: [u8; 32],
     ) -> Self {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let ephemeral_ports: EphemeralPorts = EphemeralPorts::new(&mut rng);
         let nonce: u32 = rng.gen();
         let (tx, _) = mpsc::unbounded();
         Self {
             isn_generator: IsnGenerator::new(nonce),
-            ephemeral_ports,
             runtime,
             transport,
             addresses: HashMap::<SocketId, QDesc>::new(),
@@ -212,9 +206,9 @@ impl<const N: usize> SharedTcpPeer<N> {
         }
 
         // Check if this is an ephemeral port.
-        if EphemeralPorts::is_private(local.port()) {
+        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
             // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.ephemeral_ports.alloc_port(local.port())?
+            self.runtime.reserve_ephemeral_port(local.port())?
         }
 
         // Issue operation.
@@ -241,8 +235,8 @@ impl<const N: usize> SharedTcpPeer<N> {
             },
             Err(e) => {
                 // Rollback ephemeral port allocation.
-                if EphemeralPorts::is_private(local.port()) {
-                    if self.ephemeral_ports.free(local.port()).is_err() {
+                if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
+                    if self.runtime.free_ephemeral_port(local.port()).is_err() {
                         warn!("bind(): leaking ephemeral port (port={})", local.port());
                     }
                 }
@@ -358,7 +352,7 @@ impl<const N: usize> SharedTcpPeer<N> {
                     Some(local) => local.clone(),
                     None => {
                         // TODO: we should free this when closing.
-                        let local_port: u16 = self.ephemeral_ports.alloc_any()?;
+                        let local_port: u16 = self.runtime.alloc_ephemeral_port()?;
                         SocketAddrV4::new(self.local_ipv4_addr, local_port)
                     },
                 };
