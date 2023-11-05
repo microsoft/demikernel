@@ -32,7 +32,7 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
         let ack_deadline_changed = ack_deadline.watch(ack_yielder).fuse();
         futures::pin_mut!(ack_deadline_changed);
 
-        let clock_ref: SharedTimer = cb.clock.clone();
+        let clock_ref: SharedTimer = cb.get_timer();
         let yielder: Yielder = Yielder::new();
         let ack_future = match deadline {
             Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),

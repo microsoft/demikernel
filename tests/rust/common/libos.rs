@@ -21,7 +21,6 @@ use ::demikernel::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
     },
@@ -34,10 +33,7 @@ use demikernel::runtime::network::consts::RECEIVE_BATCH_SIZE;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 //==============================================================================
@@ -59,7 +55,6 @@ impl DummyLibOS {
         rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
     ) -> Result<InetStack<RECEIVE_BATCH_SIZE>, Fail> {
-        let now: Instant = Instant::now();
         let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         let transport: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx);
         let arp_config: ArpConfig = ArpConfig::new(
@@ -71,13 +66,11 @@ impl DummyLibOS {
         );
         let udp_config: UdpConfig = UdpConfig::default();
         let tcp_config: TcpConfig = TcpConfig::default();
-        let clock: SharedTimer = SharedTimer::new(now);
         let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();
         InetStack::new(
             runtime,
             SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport)),
-            clock,
             link_addr,
             ipv4_addr,
             udp_config,

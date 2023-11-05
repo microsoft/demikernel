@@ -119,7 +119,6 @@ pub struct PassiveSocket<const N: usize> {
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: SharedTimer,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
     arp: SharedArpPeer<N>,
@@ -138,7 +137,6 @@ impl<const N: usize> SharedPassiveSocket<N> {
         max_backlog: usize,
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: SharedTimer,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
@@ -153,7 +151,6 @@ impl<const N: usize> SharedPassiveSocket<N> {
             local_link_addr,
             runtime,
             transport,
-            clock,
             tcp_config,
             arp,
         }))
@@ -226,7 +223,6 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 remote,
                 self.runtime.clone(),
                 self.transport.clone(),
-                self.clock.clone(),
                 self.local_link_addr,
                 self.tcp_config.clone(),
                 self.arp.clone(),
@@ -330,7 +326,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             self.transport.transmit(Box::new(segment));
-            let clock_ref: SharedTimer = self.clock.clone();
+            let clock_ref: SharedTimer = self.runtime.get_timer();
             let yielder: Yielder = Yielder::new();
             if let Err(e) = clock_ref.wait(handshake_timeout, yielder).await {
                 self.ready.push_err(e);

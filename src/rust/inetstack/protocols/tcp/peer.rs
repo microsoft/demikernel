@@ -38,7 +38,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::SharedTimer,
         Operation,
         OperationResult,
         QDesc,
@@ -100,7 +99,6 @@ pub struct TcpPeer<const N: usize> {
     // Connection or socket identifier for mapping incoming packets to the Demikernel queue
     addresses: HashMap<SocketId, QDesc>,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: SharedTimer,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
@@ -116,57 +114,31 @@ pub struct SharedTcpPeer<const N: usize>(SharedObject<TcpPeer<N>>);
 // Associated Functions
 //======================================================================================================================
 
-impl<const N: usize> TcpPeer<N> {
-    fn new(
-        runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: SharedTimer,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
-        rng_seed: [u8; 32],
-    ) -> Self {
-        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let nonce: u32 = rng.gen();
-        let (tx, _) = mpsc::unbounded();
-        Self {
-            isn_generator: IsnGenerator::new(nonce),
-            runtime,
-            transport,
-            addresses: HashMap::<SocketId, QDesc>::new(),
-            clock,
-            local_link_addr,
-            local_ipv4_addr,
-            tcp_config,
-            arp,
-            rng,
-            dead_socket_tx: tx,
-        }
-    }
-}
-
 impl<const N: usize> SharedTcpPeer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer::<N>::new(
+        let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
+        let nonce: u32 = rng.gen();
+        let (tx, _) = mpsc::unbounded();
+        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer::<N> {
+            isn_generator: IsnGenerator::new(nonce),
             runtime,
             transport,
-            clock,
+            addresses: HashMap::<SocketId, QDesc>::new(),
             local_link_addr,
             local_ipv4_addr,
             tcp_config,
             arp,
-            rng_seed,
-        ))))
+            rng,
+            dead_socket_tx: tx,
+        })))
     }
 
     /// Opens a TCP socket.
@@ -269,7 +241,6 @@ impl<const N: usize> SharedTcpPeer<N> {
                     backlog,
                     self.runtime.clone(),
                     self.transport.clone(),
-                    self.clock.clone(),
                     self.tcp_config.clone(),
                     self.local_link_addr,
                     self.arp.clone(),
@@ -367,7 +338,6 @@ impl<const N: usize> SharedTcpPeer<N> {
                         self.transport.clone(),
                         self.tcp_config.clone(),
                         self.local_link_addr,
-                        self.clock.clone(),
                         self.arp.clone(),
                     )?,
                     local,

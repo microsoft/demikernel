@@ -15,9 +15,15 @@ use crate::{
         YielderHandle,
     },
 };
+use ::async_trait::async_trait;
 use ::core::cmp::Reverse;
+use ::futures::{
+    future::FusedFuture,
+    FutureExt,
+};
 use ::std::{
     collections::BinaryHeap,
+    future::Future,
     ops::{
         Deref,
         DerefMut,
@@ -95,9 +101,44 @@ impl SharedTimer {
     }
 }
 
+//======================================================================================================================
+// Traits
+//======================================================================================================================
+
+/// Provides useful high-level future-related methods.
+#[async_trait(?Send)]
+pub trait UtilityMethods: Future + FusedFuture + Unpin {
+    /// Transforms our current future to include a timeout. We either return the results of the
+    /// future finishing or a Timeout error. Whichever happens first.
+    async fn with_timeout<Timer>(&mut self, timer: Timer) -> Result<Self::Output, Fail>
+    where
+        Timer: Future<Output = Result<(), Fail>>,
+    {
+        futures::select! {
+            result = self => Ok(result),
+            result = timer.fuse() => match result {
+                Ok(()) => Err(Fail::new(libc::ETIMEDOUT, "timer expired")),
+                Err(e) => Err(e),
+            },
+        }
+    }
+}
+
+// Implement UtiliytMethods for any Future that implements Unpin and FusedFuture.
+impl<F: ?Sized> UtilityMethods for F where F: Future + Unpin + FusedFuture {}
+
 //==============================================================================
 // Trait Implementations
 //==============================================================================
+
+impl Default for SharedTimer {
+    fn default() -> Self {
+        Self(SharedObject::<Timer>::new(Timer {
+            now: Instant::now(),
+            heap: BinaryHeap::new(),
+        }))
+    }
+}
 
 impl Deref for SharedTimer {
     type Target = Timer;

@@ -46,7 +46,6 @@ pub struct TestRuntime {
     incoming: VecDeque<DemiBuffer>,
     outgoing: VecDeque<DemiBuffer>,
     runtime: SharedDemiRuntime,
-    clock: SharedTimer,
 }
 
 #[derive(Clone)]
@@ -71,8 +70,7 @@ impl SharedTestRuntime {
             ipv4_addr,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
-            runtime: SharedDemiRuntime::default(),
-            clock: SharedTimer::new(now),
+            runtime: SharedDemiRuntime::new(now),
             arp_config,
             udp_config,
             tcp_config,
@@ -134,8 +132,13 @@ impl SharedTestRuntime {
     }
 
     /// Get the runtime's clock.
-    pub fn get_clock(&self) -> SharedTimer {
-        self.clock.clone()
+    pub fn get_timer(&self) -> SharedTimer {
+        self.runtime.get_timer()
+    }
+
+    /// Advance runtime's clock
+    pub fn advance_clock(&mut self, now: Instant) {
+        self.runtime.advance_clock(now)
     }
 
     /// Get the underlying DemiRuntime.

@@ -23,7 +23,6 @@ use crate::{
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
         },
-        timer::SharedTimer,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -43,7 +42,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -74,13 +72,10 @@ impl CatpowderLibOS {
             &config.local_interface_name(),
             HashMap::default(),
         );
-        let now: Instant = Instant::now();
-        let clock: SharedTimer = SharedTimer::new(now);
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
             runtime.clone(),
             SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
-            clock,
             transport.get_link_addr(),
             transport.get_ip_addr(),
             transport.get_udp_config(),

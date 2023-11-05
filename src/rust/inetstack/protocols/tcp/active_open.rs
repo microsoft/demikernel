@@ -73,7 +73,6 @@ pub struct ActiveOpenSocket<const N: usize> {
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
-    clock: SharedTimer,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
@@ -97,7 +96,6 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         transport: SharedBox<dyn NetworkRuntime<N>>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        clock: SharedTimer,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
         let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
@@ -106,7 +104,6 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             remote,
             runtime: runtime.clone(),
             transport,
-            clock,
             local_link_addr,
             tcp_config,
             arp,
@@ -214,7 +211,6 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             self.remote,
             self.runtime.clone(),
             self.transport.clone(),
-            self.clock.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
             self.arp.clone(),
@@ -269,7 +265,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             self.transport.transmit(Box::new(segment));
-            let clock_ref: SharedTimer = self.clock.clone();
+            let clock_ref: SharedTimer = self.runtime.get_timer();
             let yielder: Yielder = Yielder::new();
             if let Err(e) = clock_ref.wait(handshake_timeout, yielder).await {
                 self.result.set(Err(e));
