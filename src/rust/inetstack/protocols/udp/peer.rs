@@ -216,7 +216,7 @@ impl<const N: usize> SharedUdpPeer<N> {
 
         // Check whether address is in use.
         // TODO: Move to addr_in_use in runtime eventually.
-        if self.get_queue_from_addr(&addr).is_some() {
+        if self.runtime.addr_in_use(addr) {
             let cause: String = format!("address is already bound to socket");
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
