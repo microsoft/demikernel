@@ -29,8 +29,10 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::unwrap_socketaddr,
-        queue::downcast_queue_ptr,
+        network::{
+            socket::SocketId,
+            unwrap_socketaddr,
+        },
         types::{
             demi_accept_result_t,
             demi_opcode_t,
@@ -179,7 +181,7 @@ impl SharedCatloopLibOS {
         }
 
         // Check whether the address is in use.
-        if self.addr_in_use(local) {
+        if self.runtime.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -192,6 +194,14 @@ impl SharedCatloopLibOS {
 
         // Check if queue descriptor is valid.
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
+        if let Some(existing_qd) = self
+            .runtime
+            .insert_socket_id_to_qd(SocketId::Passive(local.clone()), qd)
+        {
+            let cause: String = format!("There is already a socket bound to this address: {:?}", existing_qd);
+            warn!("{}", cause);
+            return Err(Fail::new(libc::EADDRINUSE, &cause));
+        }
 
         // Check that the socket associated with the queue is not listening.
         queue.bind(local)
@@ -249,6 +259,7 @@ impl SharedCatloopLibOS {
         match result {
             Ok(new_queue) => {
                 let new_qd: QDesc = self.runtime.alloc_queue::<SharedCatloopQueue>(new_queue);
+                // TODO: insert into socket id to queue descriptor table?
                 let new_addr: SocketAddrV4 = SocketAddrV4::new(
                     *queue
                         .local()
@@ -304,6 +315,7 @@ impl SharedCatloopLibOS {
 
         // Wait for connect operation to complete.
         match queue.do_connect(remote, &yielder).await {
+            // TODO: insert into socket id to queue descriptor table?
             Ok(()) => (qd, OperationResult::Connect),
             Err(e) => {
                 warn!("connect() failed (qd={:?}, error={:?})", qd, e.cause);
@@ -328,6 +340,7 @@ impl SharedCatloopLibOS {
                     warn!("close(): leaking ephemeral port (port={})", addr.port());
                 }
             }
+            self.runtime.remove_socket_id_to_qd(&SocketId::Passive(addr));
         }
         // Expect is safe here because we looked up the queue to close it.
         self.runtime
@@ -377,6 +390,7 @@ impl SharedCatloopLibOS {
                             warn!("close(): leaking ephemeral port (port={})", addr.port());
                         }
                     }
+                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(addr));
                 }
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
@@ -526,20 +540,6 @@ impl SharedCatloopLibOS {
         };
 
         (qd, result)
-    }
-
-    fn addr_in_use(&self, local: SocketAddrV4) -> bool {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::addr_in_use");
-        for (_, queue) in self.runtime.get_qtable().get_values() {
-            if let Ok(catloop_queue) = downcast_queue_ptr::<SharedCatloopQueue>(queue) {
-                match catloop_queue.local() {
-                    Some(addr) if addr == local => return true,
-                    _ => continue,
-                }
-            }
-        }
-        false
     }
 
     fn get_queue(&self, qd: &QDesc) -> Result<SharedCatloopQueue, Fail> {
