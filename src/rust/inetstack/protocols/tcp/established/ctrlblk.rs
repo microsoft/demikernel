@@ -155,7 +155,6 @@ pub struct ControlBlock<const N: usize> {
     transport: SharedBox<dyn NetworkRuntime<N>>,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
-    pub clock: SharedTimer,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
 
@@ -222,7 +221,6 @@ impl<const N: usize> SharedControlBlock<N> {
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: SharedTimer,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
@@ -243,7 +241,6 @@ impl<const N: usize> SharedControlBlock<N> {
             remote,
             runtime,
             transport,
-            clock,
             local_link_addr,
             tcp_config,
             arp,
@@ -377,6 +374,14 @@ impl<const N: usize> SharedControlBlock<N> {
         self.sender.pop_one_unsent_byte()
     }
 
+    pub fn get_timer(&self) -> SharedTimer {
+        self.runtime.get_timer()
+    }
+
+    pub fn get_now(&self) -> Instant {
+        self.runtime.get_now()
+    }
+
     // This is the main TCP receive routine.
     //
     pub fn receive(&mut self, header: &mut TcpHeader, mut data: DemiBuffer) {
@@ -391,7 +396,7 @@ impl<const N: usize> SharedControlBlock<N> {
 
         // TODO: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
         // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
-        let now: Instant = self.clock.now();
+        let now: Instant = self.get_timer().now();
 
         // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
         // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments

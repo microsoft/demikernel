@@ -45,7 +45,6 @@ use crate::{
             QToken,
             QType,
         },
-        timer::SharedTimer,
         SharedBox,
         SharedDemiRuntime,
     },
@@ -73,7 +72,6 @@ use crate::timer;
 pub mod test_helpers;
 
 pub mod collections;
-pub mod futures;
 pub mod options;
 pub mod protocols;
 
@@ -94,7 +92,6 @@ pub struct InetStack<const N: usize> {
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
-    clock: SharedTimer,
     ts_iters: usize,
 }
 
@@ -102,7 +99,6 @@ impl<const N: usize> InetStack<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
-        clock: SharedTimer,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,
@@ -113,7 +109,6 @@ impl<const N: usize> InetStack<N> {
         let arp: SharedArpPeer<N> = SharedArpPeer::new(
             runtime.clone(),
             transport.clone(),
-            clock.clone(),
             local_link_addr,
             local_ipv4_addr,
             arp_config,
@@ -121,7 +116,6 @@ impl<const N: usize> InetStack<N> {
         let ipv4: Peer<N> = Peer::new(
             runtime.clone(),
             transport.clone(),
-            clock.clone(),
             local_link_addr,
             local_ipv4_addr,
             udp_config,
@@ -135,7 +129,6 @@ impl<const N: usize> InetStack<N> {
             runtime,
             transport,
             local_link_addr,
-            clock,
             ts_iters: 0,
         })
     }
@@ -592,7 +585,7 @@ impl<const N: usize> InetStack<N> {
         }
 
         if self.ts_iters == 0 {
-            self.clock.advance_clock(Instant::now());
+            self.runtime.advance_clock(Instant::now());
         }
         self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
     }

@@ -14,10 +14,7 @@ use crate::{
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 //==============================================================================
@@ -89,11 +86,6 @@ impl ArpCache {
         } else {
             self.cache.get(&ipv4_addr).map(|r| &r.link_addr)
         }
-    }
-
-    /// Advances internal clock of the ARP Cache.
-    pub fn advance_clock(&mut self, now: Instant) {
-        self.cache.advance_clock(now)
     }
 
     /// Clears the ARP cache.

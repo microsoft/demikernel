@@ -28,7 +28,7 @@ pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Res
         let rtx_deadline: Option<Instant> = rtx_deadline_watched.get();
         let rtx_deadline_changed = rtx_deadline_watched.watch(rtx_yielder).fuse();
         futures::pin_mut!(rtx_deadline_changed);
-        let clock_ref: SharedTimer = cb.clock.clone();
+        let clock_ref: SharedTimer = cb.get_timer();
         let yielder: Yielder = Yielder::new();
         let rtx_future = match rtx_deadline {
             Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
@@ -71,7 +71,7 @@ pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Res
 
                 // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
                 let rto: Duration = cb.rto();
-                let deadline: Instant = cb.clock.now() + rto;
+                let deadline: Instant = cb.get_now() + rto;
                 cb.set_retransmit_deadline(Some(deadline));
             },
         }

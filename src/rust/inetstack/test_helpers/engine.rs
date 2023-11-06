@@ -70,7 +70,6 @@ impl<const N: usize> SharedEngine<N> {
         let arp = SharedArpPeer::new(
             test_rig.get_runtime(),
             boxed_test_rig.clone(),
-            test_rig.get_clock(),
             link_addr,
             ipv4_addr,
             arp_config,
@@ -79,7 +78,6 @@ impl<const N: usize> SharedEngine<N> {
         let ipv4 = Peer::new(
             test_rig.get_runtime(),
             boxed_test_rig.clone(),
-            test_rig.get_clock(),
             link_addr,
             ipv4_addr,
             udp_config,
@@ -91,7 +89,7 @@ impl<const N: usize> SharedEngine<N> {
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
-        self.test_rig.get_clock().advance_clock(now)
+        self.test_rig.advance_clock(now)
     }
 
     pub fn receive(&mut self, bytes: DemiBuffer) -> Result<(), Fail> {

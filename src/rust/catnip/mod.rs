@@ -30,7 +30,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        timer::SharedTimer,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -52,7 +51,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
@@ -93,13 +91,10 @@ impl CatnipLibOS {
         let arp_config: ArpConfig = transport.get_arp_config();
         let udp_config: UdpConfig = transport.get_udp_config();
         let tcp_config: TcpConfig = transport.get_tcp_config();
-        let now: Instant = Instant::now();
-        let clock: SharedTimer = SharedTimer::new(now);
         let rng_seed: [u8; 32] = [0; 32];
         let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
             runtime.clone(),
             SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
-            clock,
             link_addr,
             ip_addr,
             udp_config,

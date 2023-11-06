@@ -43,6 +43,7 @@ use crate::{
             IoQueue,
             IoQueueTable,
         },
+        timer::SharedTimer,
     },
     scheduler::{
         scheduler::Scheduler,
@@ -59,6 +60,7 @@ use ::std::{
     },
     pin::Pin,
     rc::Rc,
+    time::Instant,
 };
 
 #[cfg(target_os = "windows")]
@@ -81,6 +83,8 @@ pub struct DemiRuntime {
     qtable: IoQueueTable,
     /// Shared ephemeral port allocator.
     ephemeral_ports: EphemeralPorts,
+    /// Shared timer for periodic triggering of coroutines and time outs.
+    timer: SharedTimer,
 }
 
 #[derive(Clone)]
@@ -114,6 +118,15 @@ impl DemiRuntime {
 
 /// Associate Functions for POSIX Runtime
 impl SharedDemiRuntime {
+    pub fn new(now: Instant) -> Self {
+        Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
+            scheduler: Scheduler::default(),
+            qtable: IoQueueTable::default(),
+            ephemeral_ports: EphemeralPorts::default(),
+            timer: SharedTimer::new(now),
+        }))
+    }
+
     /// Inserts the `coroutine` named `task_name` into the scheduler.
     pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
@@ -241,6 +254,21 @@ impl SharedDemiRuntime {
     /// Checks if a port is private.
     pub fn is_private_ephemeral_port(port: u16) -> bool {
         EphemeralPorts::is_private(port)
+    }
+
+    /// Returns a reference to the shared timer.
+    pub fn get_timer(&self) -> SharedTimer {
+        self.timer.clone()
+    }
+
+    /// Moves time forward deterministically.
+    pub fn advance_clock(&mut self, now: Instant) {
+        self.timer.advance_clock(now)
+    }
+
+    /// Gets the current time according to our internal timer.
+    pub fn get_now(&self) -> Instant {
+        self.timer.now()
     }
 }
 

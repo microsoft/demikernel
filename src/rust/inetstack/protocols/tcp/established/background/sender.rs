@@ -72,7 +72,7 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, 
             // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
                 bytes: buf.clone(),
-                initial_tx: Some(cb.clock.now()),
+                initial_tx: Some(cb.get_now()),
             };
             cb.push_unacked_segment(unacked_segment);
 
@@ -86,7 +86,7 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, 
             let mut timeout: Duration = Duration::from_secs(1);
             loop {
                 let yielder: Yielder = Yielder::new();
-                let clock_ref: SharedTimer = cb.clock.clone();
+                let clock_ref: SharedTimer = cb.get_timer();
 
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
@@ -183,7 +183,7 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, 
         // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {
             bytes: segment_data,
-            initial_tx: Some(cb.clock.now()),
+            initial_tx: Some(cb.get_now()),
         };
         cb.push_unacked_segment(unacked_segment);
 
@@ -192,7 +192,7 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, 
         let retransmit_deadline = cb.get_retransmit_deadline();
         if retransmit_deadline.is_none() {
             let rto: Duration = cb.rto();
-            cb.set_retransmit_deadline(Some(cb.clock.now() + rto));
+            cb.set_retransmit_deadline(Some(cb.get_now() + rto));
         }
     }
 }
