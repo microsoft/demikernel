@@ -12,10 +12,7 @@ pub mod state;
 // Imports
 //======================================================================================================================
 
-use ::std::{
-    net::SocketAddrV4,
-    os::fd::RawFd,
-};
+use ::std::net::SocketAddrV4;
 
 //======================================================================================================================
 // Structures
@@ -25,5 +22,4 @@ use ::std::{
 pub enum SocketId {
     Active(SocketAddrV4, SocketAddrV4),
     Passive(SocketAddrV4),
-    FileDescriptor(RawFd),
 }
