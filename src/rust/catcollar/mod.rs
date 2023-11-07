@@ -41,8 +41,6 @@ use crate::{
         },
         network::unwrap_socketaddr,
         queue::{
-            downcast_queue_ptr,
-            NetworkQueue,
             Operation,
             OperationResult,
             QDesc,
@@ -166,7 +164,7 @@ impl CatcollarLibOS {
         }
 
         // Check whether the address is in use.
-        if self.addr_in_use(local) {
+        if self.runtime.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -703,18 +701,6 @@ impl CatcollarLibOS {
 
     fn get_shared_queue(&self, qd: &QDesc) -> Result<CatcollarQueue, Fail> {
         Ok(self.runtime.get_shared_queue::<CatcollarQueue>(qd)?.clone())
-    }
-
-    fn addr_in_use(&self, local: SocketAddrV4) -> bool {
-        for (_, queue) in self.runtime.get_qtable().get_values() {
-            if let Ok(catcollar_queue) = downcast_queue_ptr::<CatcollarQueue>(queue) {
-                match catcollar_queue.local() {
-                    Some(addr) if addr == local => return true,
-                    _ => continue,
-                }
-            }
-        }
-        false
     }
 
     fn get_queue_fd(&self, qd: &QDesc) -> Result<RawFd, Fail> {

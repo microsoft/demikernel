@@ -38,7 +38,11 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        network::ephemeral::EphemeralPorts,
+        network::{
+            ephemeral::EphemeralPorts,
+            socket::SocketId,
+            NetworkQueueTable,
+        },
         queue::{
             IoQueue,
             IoQueueTable,
@@ -54,6 +58,7 @@ use crate::{
 use ::std::{
     boxed::Box,
     future::Future,
+    net::SocketAddrV4,
     ops::{
         Deref,
         DerefMut,
@@ -85,6 +90,8 @@ pub struct DemiRuntime {
     ephemeral_ports: EphemeralPorts,
     /// Shared timer for periodic triggering of coroutines and time outs.
     timer: SharedTimer,
+    /// Shared table for mapping from underlying transport identifiers to queue descriptors.
+    network_table: NetworkQueueTable,
 }
 
 #[derive(Clone)]
@@ -124,6 +131,7 @@ impl SharedDemiRuntime {
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
             timer: SharedTimer::new(now),
+            network_table: NetworkQueueTable::default(),
         }))
     }
 
@@ -269,6 +277,25 @@ impl SharedDemiRuntime {
     /// Gets the current time according to our internal timer.
     pub fn get_now(&self) -> Instant {
         self.timer.now()
+    }
+
+    /// Checks if an identifier is in use and returns the queue descriptor if it is.
+    pub fn get_qd_from_socket_id(&self, id: &SocketId) -> Option<QDesc> {
+        self.network_table.get_qd(id)
+    }
+
+    /// Inserts a mapping and returns the previously mapped queue descriptor if it exists.
+    pub fn insert_socket_id_to_qd(&mut self, id: SocketId, qd: QDesc) -> Option<QDesc> {
+        self.network_table.insert_qd(id, qd)
+    }
+
+    /// Removes a mapping and returns the mapped queue descriptor.
+    pub fn remove_socket_id_to_qd(&mut self, id: &SocketId) -> Option<QDesc> {
+        self.network_table.remove_qd(id)
+    }
+
+    pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+        self.network_table.addr_in_use(local)
     }
 }
 

@@ -33,10 +33,12 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::unwrap_socketaddr,
+        network::{
+            socket::SocketId,
+            unwrap_socketaddr,
+        },
         queue::{
             downcast_queue,
-            downcast_queue_ptr,
             NetworkQueue,
             Operation,
             OperationResult,
@@ -163,14 +165,18 @@ impl SharedCatnapLibOS {
         }
 
         // Check wether the address is in use.
-        if self.addr_in_use(local) {
+        if self.runtime.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
         // Issue bind operation.
-        self.get_shared_queue(&qd)?.bind(local)
+        self.get_shared_queue(&qd)?.bind(local)?;
+        // Insert into address to queue descriptor table.
+        self.runtime
+            .insert_socket_id_to_qd(SocketId::Passive(local.clone()), qd);
+        Ok(())
     }
 
     /// Sets a SharedCatnapQueue and its underlying socket as a passive one. This function contains the libOS-level
@@ -184,7 +190,6 @@ impl SharedCatnapLibOS {
         debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
 
         // Issue listen operation.
-
         self.get_shared_queue(&qd)?.listen(backlog)
     }
 
@@ -221,6 +226,7 @@ impl SharedCatnapLibOS {
         // Wait for the accept operation to complete.
         match queue.do_accept(yielder).await {
             Ok(new_queue) => {
+                // TODO: Do we need to add this to the socket id to queue descriptor table?
                 // It is safe to call except here because the new queue is connected and it should be connected to a
                 // remote address.
                 let addr: SocketAddrV4 = new_queue
@@ -271,7 +277,10 @@ impl SharedCatnapLibOS {
         };
         // Wait for connect operation to complete.
         match queue.do_connect(remote, yielder).await {
-            Ok(()) => (qd, OperationResult::Connect),
+            Ok(()) => {
+                // TODO: Do we need to add this to socket id to queue descriptor table?
+                (qd, OperationResult::Connect)
+            },
             Err(e) => {
                 warn!("connect() failed (qd={:?}, error={:?})", qd, e.cause);
                 (qd, OperationResult::Failed(e))
@@ -284,8 +293,16 @@ impl SharedCatnapLibOS {
         #[cfg(feature = "profiler")]
         timer!("catnap::close");
         trace!("close() qd={:?}", qd);
+
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         // Issue close operation.
-        self.get_shared_queue(&qd)?.close()?;
+        queue.close()?;
+
+        // If the queue was bound, remove from the socket id to queue descriptor table.
+        if let Some(local) = queue.local() {
+            self.runtime.remove_socket_id_to_qd(&SocketId::Passive(local));
+        }
+
         // Remove the queue from the queue table.
         self.runtime.free_queue::<SharedCatnapQueue>(&qd)?;
         Ok(())
@@ -323,6 +340,10 @@ impl SharedCatnapLibOS {
         // Wait for close operation to complete.
         match queue.do_close(yielder).await {
             Ok(()) => {
+                // If the queue was bound, remove from the socket id to queue descriptor table.
+                if let Some(local) = queue.local() {
+                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(local));
+                }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
                 // checks.
@@ -525,18 +546,6 @@ impl SharedCatnapLibOS {
         }
 
         (qd, result)
-    }
-
-    fn addr_in_use(&self, local: SocketAddrV4) -> bool {
-        for (_, queue) in self.runtime.get_qtable().get_values() {
-            if let Ok(catnap_queue) = downcast_queue_ptr::<SharedCatnapQueue>(queue) {
-                match catnap_queue.local() {
-                    Some(addr) if addr == local => return true,
-                    _ => continue,
-                }
-            }
-        }
-        false
     }
 
     /// This function gets a shared queue reference out of the I/O queue table. The type if a ref counted pointer to the queue itself.
