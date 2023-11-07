@@ -266,7 +266,7 @@ where
     #[allow(unused)]
     fn new(ring: &'a RingBuffer<T, S>) -> RingProducer<'a, T, S> {
         let mut ret: Self = Self {
-            ring: ring,
+            ring,
             cached_front: S::default(),
             cached_back: ring.get_back(),
         };
@@ -305,8 +305,8 @@ where
     pub fn try_enqueue(&mut self, val: T) -> Result<(), Fail> {
         self.validate_enqueue(S::from(1u8))?;
 
-        let mask = self.ring.mask;
-        let start = S::to_usize(self.cached_back & mask);
+        let mask: S = self.ring.mask;
+        let start: usize = S::to_usize(self.cached_back & mask);
         let slice: &mut [T] = unsafe { self.ring.get_unchecked_mut_slice(start..(start + 1)) };
         slice[0] = val;
 
