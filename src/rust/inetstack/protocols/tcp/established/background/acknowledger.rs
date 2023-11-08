@@ -43,6 +43,11 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
         futures::select_biased! {
             _ = ack_deadline_changed => continue,
             _ = ack_future => {
+                match cb.get_ack_deadline().get() {
+                    Some(timeout) if timeout > cb.get_now() => continue,
+                    None => continue,
+                    _ => {},
+                }
                 cb.send_ack();
             },
         }

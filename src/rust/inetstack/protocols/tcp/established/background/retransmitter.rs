@@ -52,11 +52,17 @@ pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Res
         }
         futures::pin_mut!(rtx_fast_retransmit_changed);
 
+        // Since these futures all share a single waker bit, they are all woken whenever one of them triggers.
         futures::select_biased! {
             _ = rtx_deadline_changed => continue,
             _ = rtx_fast_retransmit_changed => continue,
             _ = rtx_future => {
-                trace!("Retransmission Timer Expired");
+                match cb.get_retransmit_deadline() {
+                    Some(timeout) if timeout > cb.get_now() => continue,
+                    None => continue,
+                    _ => {},
+                }
+
                 // Notify congestion control about RTO.
                 // TODO: Is this the best place for this?
                 // TODO: Why call into ControlBlock to get SND.UNA when congestion_control_on_rto() has access to it?
