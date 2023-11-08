@@ -206,6 +206,7 @@ where
 
     /// Open the ring buffer for production and consumption. This method returns a pair of objects which allow the
     /// circular buffer to be interacted with like a single-producer-single-consumer pipe.
+    #[allow(unused)]
     pub fn open<'a>(&'a mut self) -> (RingProducer<'a, T, S>, RingConsumer<'a, T, S>) {
         (RingProducer::new(self), RingConsumer::new(self))
     }
@@ -218,6 +219,7 @@ where
     }
 
     /// Atomically store and release the `front` index.
+    #[allow(unused)]
     fn set_front(&self, val: S) {
         #[cfg(feature = "profiler")]
         timer!("collections::ring::set_front");
@@ -232,6 +234,7 @@ where
     }
 
     /// Atomically store and release the `back` index.
+    #[allow(unused)]
     fn set_back(&self, val: S) {
         #[cfg(feature = "profiler")]
         timer!("collections::ring::set_back");
@@ -240,6 +243,7 @@ where
 
     /// Create a slice from the underlying ring buffer according to the bounds in `range`. Does not perform any bounds
     /// checking.
+    #[allow(unused)]
     unsafe fn get_unchecked_slice<'a>(&'a self, range: Range<usize>) -> &'a [T] {
         // Safety: The underlying array must be made valid/available by the RingBuffer constructor.
         let arr: &[T] = unsafe { self.buffer.get() };
@@ -249,6 +253,7 @@ where
 
     /// Create a mutable slice from the underlying ring buffer according to the bounds in `range`. Does not perform
     /// any bounds checking.
+    #[allow(unused)]
     unsafe fn get_unchecked_mut_slice<'a>(&'a self, range: Range<usize>) -> &'a mut [T] {
         // Safety: The underlying array must be made valid/available by the RingBuffer constructor.
         let arr: &mut [T] = unsafe { self.buffer.get_mut() };
@@ -279,18 +284,21 @@ where
     }
 
     /// Get the number of free elements in the ring based on the cached state from the previous ring synchronization.
+    #[allow(unused)]
     pub fn get_ready_count(&self) -> S {
         self.cached_front - self.cached_back
     }
 
     /// Synchronize with the underlying ring buffer and get the number of free elements in the ring. This is similar to
     /// get_ready_count, except that it first synchronizes state with the underlying RingBuffer.
+    #[allow(unused)]
     pub fn sync_get_ready_count(&mut self) -> S {
         self.sync();
         self.get_ready_count()
     }
 
     /// Validate that a reservation of `count` elements is valid.
+    #[allow(unused)]
     fn validate_enqueue(&mut self, count: S) -> Result<(), Fail> {
         // NB cached_front is advanced by buf.capacity() so we only add it when we reload the cached value
         if self.get_ready_count() >= count || self.sync_get_ready_count() >= count {
@@ -302,6 +310,7 @@ where
 
     /// Start an enqueue operation, consuming self and returning a new RingEnqueue. If there are not enough free slots
     /// in the ring buffer to enqueue `count` `T`'s, the operation will return an error.
+    #[allow(unused)]
     pub fn try_enqueue(&mut self, val: T) -> Result<(), Fail> {
         self.validate_enqueue(S::from(1u8))?;
 
@@ -340,17 +349,20 @@ where
     }
 
     /// Get the number of free elements in the ring based on the cached state from the previous ring synchronization.
+    #[allow(unused)]
     pub fn get_ready_count(&self) -> S {
         self.cached_back - self.cached_front
     }
 
     /// Synchronize with the underlying ring buffer and get the number of free elements in the ring. This is similar to
     /// get_ready_count, except that it first synchronizes state with the underlying RingBuffer.
+    #[allow(unused)]
     pub fn sync_get_ready_count(&mut self) -> S {
         self.sync();
         self.get_ready_count()
     }
 
+    #[allow(unused)]
     fn validate_dequeue(&mut self, count: S) -> Result<(), Fail> {
         if self.get_ready_count() >= count || self.sync_get_ready_count() >= count {
             Ok(())
@@ -360,6 +372,7 @@ where
     }
 
     /// Dequeue a value from the ring. If such a value can be dequeued, calls f with the value; otherwise, returns
+    #[allow(unused)]
     pub fn try_dequeue(&mut self) -> Result<T, Fail> {
         self.validate_dequeue(S::from(1u8))?;
 
