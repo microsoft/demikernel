@@ -18,7 +18,7 @@ use ::std::net::SocketAddrV4;
 // Structures
 //======================================================================================================================
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum SocketId {
     Active(SocketAddrV4, SocketAddrV4),
     Passive(SocketAddrV4),
