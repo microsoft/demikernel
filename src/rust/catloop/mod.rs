@@ -601,23 +601,6 @@ fn pack_result(rt: &SharedDemiRuntime, result: OperationResult, qd: QDesc, qt: u
                 qr_value,
             }
         },
-        OperationResult::Close => demi_qresult_t {
-            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
-            qr_qd: qd.into(),
-            qr_qt: qt.into(),
-            qr_ret: 0,
-            qr_value: unsafe { mem::zeroed() },
-        },
-        OperationResult::Failed(e) => {
-            warn!("Operation Failed: {:?}", e);
-            demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                qr_qd: qd.into(),
-                qr_qt: qt,
-                qr_ret: e.errno as i64,
-                qr_value: unsafe { mem::zeroed() },
-            }
-        },
         OperationResult::Push => demi_qresult_t {
             qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
             qr_qd: qd.into(),
@@ -649,6 +632,23 @@ fn pack_result(rt: &SharedDemiRuntime, result: OperationResult, qd: QDesc, qt: u
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
+        },
+        OperationResult::Close => demi_qresult_t {
+            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+            qr_qd: qd.into(),
+            qr_qt: qt,
+            qr_ret: 0,
+            qr_value: unsafe { mem::zeroed() },
+        },
+        OperationResult::Failed(e) => {
+            warn!("Operation Failed: {:?}", e);
+            demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                qr_qd: qd.into(),
+                qr_qt: qt,
+                qr_ret: e.errno as i64,
+                qr_value: unsafe { mem::zeroed() },
+            }
         },
     }
 }
