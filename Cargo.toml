@@ -53,6 +53,7 @@ dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "a0bb97920560e9
 windows = { version = "0.51.1", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
+    "Win32_System_IO",
 ] }
 
 #=======================================================================================================================
@@ -145,6 +146,7 @@ catcollar-libos = ["liburing"]
 catmem-libos = []
 catnip-libos = ["libdpdk"]
 catloop-libos = ["catmem-libos"]
+rio-libos = []
 libdpdk = ["dpdk-rs"]
 mlx4 = ["dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs/mlx5"]

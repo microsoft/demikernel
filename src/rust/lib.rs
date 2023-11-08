@@ -48,6 +48,9 @@ mod catmem;
 #[cfg(feature = "catloop-libos")]
 mod catloop;
 
+#[cfg(feature = "rio-libos")]
+mod rio;
+
 pub use self::demikernel::libos::{
     name::LibOSName,
     LibOS,

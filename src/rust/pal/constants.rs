@@ -18,6 +18,9 @@ pub const AF_INET6: WinSock::ADDRESS_FAMILY = WinSock::AF_INET6;
 pub const AF_INET_VALUE: i32 = AF_INET.0 as i32;
 
 #[cfg(target_os = "windows")]
+pub const AF_INET6_VALUE: i32 = AF_INET6.0 as i32;
+
+#[cfg(target_os = "windows")]
 pub const SOCK_STREAM: i32 = WinSock::SOCK_STREAM.0 as i32;
 
 #[cfg(target_os = "windows")]
