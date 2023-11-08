@@ -15,6 +15,7 @@ use ::rand::prelude::{
 const FIRST_PRIVATE_PORT: u16 = 49152;
 const LAST_PRIVATE_PORT: u16 = 65535;
 /// Seed number of ephemeral port allocator.
+#[cfg(debug_assertions)]
 const EPHEMERAL_PORT_SEED: u64 = 12345;
 
 //======================================================================================================================
