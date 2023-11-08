@@ -58,7 +58,7 @@ pub fn pack_result(rt: &LinuxRuntime, result: OperationResult, qd: QDesc, qt: u6
                 if let Some(addr) = addr {
                     sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr)
                 }
-                let qr_value = demi_qr_value_t { sga };
+                let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                 demi_qresult_t {
                     qr_opcode: demi_opcode_t::DEMI_OPC_POP,
                     qr_qd: qd.into(),
