@@ -24,7 +24,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
+pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.
@@ -85,12 +85,11 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, 
             // TODO: Use the correct PERSIST mode timer here.
             let mut timeout: Duration = Duration::from_secs(1);
             loop {
-                let yielder: Yielder = Yielder::new();
                 let clock_ref: SharedTimer = cb.get_timer();
 
                 futures::select_biased! {
                     _ = win_sz_changed => continue 'top,
-                    _ = clock_ref.wait(timeout, yielder).fuse() => {
+                    _ = clock_ref.wait(timeout, &yielder).fuse() => {
                         timeout *= 2;
                     }
                 }

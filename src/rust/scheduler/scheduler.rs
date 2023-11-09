@@ -209,7 +209,10 @@ impl Scheduler {
             // Get the pinned ref.
             let pinned_ptr = {
                 let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
-                let pinned_ref: Pin<&mut Box<dyn Task>> = self.tasks.get_pin_mut(pin_slab_index).unwrap();
+                let pinned_ref: Pin<&mut Box<dyn Task>> = self
+                    .tasks
+                    .get_pin_mut(pin_slab_index)
+                    .expect(format!("Invalid offset: {:?}", pin_slab_index).as_str());
                 let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
                 pinned_ptr
             };

@@ -20,7 +20,7 @@ use ::std::time::{
     Instant,
 };
 
-pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
+pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let mut rtx_deadline_watched: SharedWatchedValue<Option<Instant>> = cb.watch_retransmit_deadline();
@@ -29,9 +29,8 @@ pub async fn retransmitter<const N: usize>(mut cb: SharedControlBlock<N>) -> Res
         let rtx_deadline_changed = rtx_deadline_watched.watch(rtx_yielder).fuse();
         futures::pin_mut!(rtx_deadline_changed);
         let clock_ref: SharedTimer = cb.get_timer();
-        let yielder: Yielder = Yielder::new();
         let rtx_future = match rtx_deadline {
-            Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
+            Some(t) => Either::Left(clock_ref.wait_until(t, &yielder).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(rtx_future);

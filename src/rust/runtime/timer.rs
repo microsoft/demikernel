@@ -86,12 +86,12 @@ impl SharedTimer {
         self.now
     }
 
-    pub async fn wait(self, timeout: Duration, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn wait(self, timeout: Duration, yielder: &Yielder) -> Result<(), Fail> {
         let now: Instant = self.now;
-        self.wait_until(now + timeout, yielder).await
+        self.wait_until(now + timeout, &yielder).await
     }
 
-    pub async fn wait_until(mut self, expiry: Instant, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn wait_until(mut self, expiry: Instant, yielder: &Yielder) -> Result<(), Fail> {
         let entry = TimerQueueEntry {
             expiry,
             yielder: yielder.get_handle(),
@@ -206,7 +206,7 @@ mod tests {
         let timer_ref: SharedTimer = timer.clone();
         let yielder: Yielder = Yielder::new();
 
-        let wait_future1 = timer_ref.wait(Duration::from_secs(2), yielder);
+        let wait_future1 = timer_ref.wait(Duration::from_secs(2), &yielder);
         futures::pin_mut!(wait_future1);
 
         crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
@@ -217,7 +217,7 @@ mod tests {
         let timer_ref2: SharedTimer = timer.clone();
         let yielder2: Yielder = Yielder::new();
         crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);
-        let wait_future2 = timer_ref2.wait(Duration::from_secs(1), yielder2);
+        let wait_future2 = timer_ref2.wait(Duration::from_secs(1), &yielder2);
         futures::pin_mut!(wait_future2);
 
         crate::ensure_eq!(Future::poll(Pin::new(&mut wait_future1), &mut ctx).is_pending(), true);

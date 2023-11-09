@@ -277,7 +277,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue<N>>(new_queue.clone());
         // Set up established socket data structure.
         let established: EstablishedSocket<N> =
-            EstablishedSocket::new(cb, new_qd, self.dead_socket_tx.clone(), self.runtime.clone())?;
+            EstablishedSocket::new(cb, self.dead_socket_tx.clone(), self.runtime.clone())?;
         let local: SocketAddrV4 = established.cb.get_local();
         let remote: SocketAddrV4 = established.cb.get_remote();
         // Set the socket in the new queue to established
@@ -358,7 +358,6 @@ impl<const N: usize> SharedTcpPeer<N> {
         let cb: SharedControlBlock<N> = socket.get_result(yielder).await?;
         let new_socket = Socket::Established(EstablishedSocket::new(
             cb,
-            qd,
             self.dead_socket_tx.clone(),
             self.runtime.clone(),
         )?);
