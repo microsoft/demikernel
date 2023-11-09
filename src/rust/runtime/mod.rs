@@ -214,7 +214,9 @@ impl SharedDemiRuntime {
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
     pub fn alloc_queue<T: IoQueue>(&mut self, queue: T) -> QDesc {
-        self.qtable.alloc::<T>(queue)
+        let qd: QDesc = self.qtable.alloc::<T>(queue);
+        trace!("Allocating new queue: qd={:?}", qd);
+        qd
     }
 
     /// Returns a reference to the I/O queue table.
@@ -229,6 +231,7 @@ impl SharedDemiRuntime {
 
     /// Frees the queue associated with [qd] and returns the freed queue.
     pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
+        trace!("Freeing queue: qd={:?}", qd);
         self.qtable.free(qd)
     }
 
@@ -246,17 +249,44 @@ impl SharedDemiRuntime {
 
     /// Allocates a port from the shared ephemeral port allocator.
     pub fn alloc_ephemeral_port(&mut self) -> Result<u16, Fail> {
-        self.ephemeral_ports.alloc()
+        match self.ephemeral_ports.alloc() {
+            Ok(port) => {
+                trace!("Allocating ephemeral port: {:?}", port);
+                Ok(port)
+            },
+            Err(e) => {
+                warn!("Could not allocate ephemeral port: {:?}", e);
+                Err(e)
+            },
+        }
     }
 
     /// Reserves a specific port if it is free.
     pub fn reserve_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        self.ephemeral_ports.reserve(port)
+        match self.ephemeral_ports.reserve(port) {
+            Ok(()) => {
+                trace!("Reserving ephemeral port: {:?}", port);
+                Ok(())
+            },
+            Err(e) => {
+                warn!("Could not reserve ephemeral port: port={:?} error={:?}", port, e);
+                Err(e)
+            },
+        }
     }
 
     /// Frees an ephemeral port.
     pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        self.ephemeral_ports.free(port)
+        match self.ephemeral_ports.free(port) {
+            Ok(()) => {
+                trace!("Freeing ephemeral port: {:?}", port);
+                Ok(())
+            },
+            Err(e) => {
+                warn!("Could not free ephemeral port: port={:?} error={:?}", port, e);
+                Err(e)
+            },
+        }
     }
 
     /// Checks if a port is private.
@@ -281,20 +311,43 @@ impl SharedDemiRuntime {
 
     /// Checks if an identifier is in use and returns the queue descriptor if it is.
     pub fn get_qd_from_socket_id(&self, id: &SocketId) -> Option<QDesc> {
-        self.network_table.get_qd(id)
+        match self.network_table.get_qd(id) {
+            Some(qd) => {
+                trace!("Looking up queue descriptor: socket_id={:?} qd={:?}", id, qd);
+                Some(qd)
+            },
+            None => {
+                trace!("Could not find queue descriptor for socket id: {:?}", id);
+                None
+            },
+        }
     }
 
     /// Inserts a mapping and returns the previously mapped queue descriptor if it exists.
     pub fn insert_socket_id_to_qd(&mut self, id: SocketId, qd: QDesc) -> Option<QDesc> {
+        trace!("Insert socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
         self.network_table.insert_qd(id, qd)
     }
 
     /// Removes a mapping and returns the mapped queue descriptor.
     pub fn remove_socket_id_to_qd(&mut self, id: &SocketId) -> Option<QDesc> {
-        self.network_table.remove_qd(id)
+        match self.network_table.remove_qd(id) {
+            Some(qd) => {
+                trace!("Remove socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
+                Some(qd)
+            },
+            None => {
+                trace!(
+                    "Remove but could not find socket id to queue descriptor mapping: {:?}",
+                    id
+                );
+                None
+            },
+        }
     }
 
     pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+        trace!("Check address in use: {:?}", local);
         self.network_table.addr_in_use(local)
     }
 }
