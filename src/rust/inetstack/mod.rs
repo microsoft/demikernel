@@ -253,7 +253,7 @@ impl<const N: usize> InetStack<N> {
         // Search for target queue descriptor.
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.accept(qd);
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.accept(qd)?;
                 let task_id: String = format!("Inetstack::TCP::accept for qd={:?}", qd);
                 let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 Ok(handle.get_task_id().into())
@@ -285,7 +285,7 @@ impl<const N: usize> InetStack<N> {
 
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.connect(qd, remote);
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.connect(qd, remote)?;
                 let task_id: String = format!("Inetstack::TCP::connect for qd={:?}", qd);
                 let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 Ok(handle.get_task_id().into())
@@ -334,7 +334,7 @@ impl<const N: usize> InetStack<N> {
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
                 let task_id: String = format!("Inetstack::TCP::close for qd={:?}", qd);
-                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.async_close(qd);
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.async_close(qd)?;
                 (task_id, coroutine)
             },
             QType::UdpSocket => {
@@ -365,7 +365,7 @@ impl<const N: usize> InetStack<N> {
     pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<TaskHandle, Fail> {
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
-                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.push(qd, buf);
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.push(qd, buf)?;
                 let task_id: String = format!("Inetstack::TCP::push for qd={:?}", qd);
                 self.runtime.insert_coroutine(task_id.as_str(), coroutine)
             },
@@ -443,7 +443,7 @@ impl<const N: usize> InetStack<N> {
         let (task_id, coroutine): (String, Pin<Box<Operation>>) = match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => {
                 let task_id: String = format!("Inetstack::TCP::pop for qd={:?}", qd);
-                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.pop(qd, size);
+                let coroutine: Pin<Box<Operation>> = self.ipv4.tcp.pop(qd, size)?;
                 (task_id, coroutine)
             },
             QType::UdpSocket => {
