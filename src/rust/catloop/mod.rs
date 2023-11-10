@@ -17,11 +17,7 @@ use crate::{
     catmem::SharedCatmemLibOS,
     demi_sgarray_t,
     demikernel::config::Config,
-    pal::{
-        constants::SOMAXCONN,
-        data_structures::SockAddr,
-        linux,
-    },
+    pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
         limits,
@@ -34,14 +30,11 @@ use crate::{
             unwrap_socketaddr,
         },
         types::{
-            demi_accept_result_t,
             demi_opcode_t,
-            demi_qr_value_t,
             demi_qresult_t,
         },
         Operation,
         OperationResult,
-        OperationTask,
         QDesc,
         QToken,
         SharedDemiRuntime,
@@ -513,11 +506,9 @@ impl SharedCatloopLibOS {
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::pack_result");
-        // Construct operation result.
-        let (qd, r): (QDesc, OperationResult) = self.take_result(handle);
-        let qr: demi_qresult_t = pack_result(&self.runtime, r, qd, qt.into());
-
-        return Ok(qr);
+        let result: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into());
+        self.remove_pending_op_if_needed(&result, handle);
+        Ok(result)
     }
 
     /// Polls scheduling queues.
@@ -527,25 +518,20 @@ impl SharedCatloopLibOS {
         self.runtime.poll()
     }
 
-    /// Takes out the [OperationResult] associated with the target [TaskHandle].
-    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::take_result");
-        let task: OperationTask = self.runtime.remove_coroutine(&handle);
-        let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
-
-        match result {
+    fn remove_pending_op_if_needed(&mut self, result: &demi_qresult_t, handle: TaskHandle) {
+        match result.qr_opcode {
             // The queue would already have been freed for Close, so nothing left to do here.
-            OperationResult::Close => {},
+            demi_opcode_t::DEMI_OPC_CLOSE => {},
             _ => {
-                match self.get_queue(&qd) {
+                match self.get_queue(&QDesc::from(result.qr_qd)) {
                     Ok(mut queue) => queue.remove_pending_op(&handle),
-                    Err(_) => warn!("Catloop::take_result() qd={:?}, lingering pending op found", qd),
+                    Err(_) => warn!(
+                        "Catloop::take_result() qd={:?}, lingering pending op found",
+                        result.qr_qd
+                    ),
                 };
             },
-        };
-
-        (qd, result)
+        }
     }
 
     fn get_queue(&self, qd: &QDesc) -> Result<SharedCatloopQueue, Fail> {
@@ -568,87 +554,5 @@ impl Deref for SharedCatloopLibOS {
 impl DerefMut for SharedCatloopLibOS {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
-    }
-}
-
-//======================================================================================================================
-// Standalone Functions
-//======================================================================================================================
-
-/// Packs a [OperationResult] into a [demi_qresult_t].
-fn pack_result(rt: &SharedDemiRuntime, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
-    match result {
-        OperationResult::Connect => demi_qresult_t {
-            qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
-            qr_qd: qd.into(),
-            qr_qt: qt,
-            qr_ret: 0,
-            qr_value: unsafe { mem::zeroed() },
-        },
-        OperationResult::Accept((new_qd, addr)) => {
-            let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&addr);
-            let qr_value: demi_qr_value_t = demi_qr_value_t {
-                ares: demi_accept_result_t {
-                    qd: new_qd.into(),
-                    addr: saddr,
-                },
-            };
-            demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
-                qr_qd: qd.into(),
-                qr_qt: qt,
-                qr_ret: 0,
-                qr_value,
-            }
-        },
-        OperationResult::Push => demi_qresult_t {
-            qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
-            qr_qd: qd.into(),
-            qr_qt: qt,
-            qr_ret: 0,
-            qr_value: unsafe { mem::zeroed() },
-        },
-        OperationResult::Pop(addr, bytes) => match rt.into_sgarray(bytes) {
-            Ok(mut sga) => {
-                if let Some(addr) = addr {
-                    sga.sga_addr = linux::socketaddrv4_to_sockaddr(&addr);
-                }
-                let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
-                demi_qresult_t {
-                    qr_opcode: demi_opcode_t::DEMI_OPC_POP,
-                    qr_qd: qd.into(),
-                    qr_qt: qt,
-                    qr_ret: 0,
-                    qr_value,
-                }
-            },
-            Err(e) => {
-                warn!("Operation Failed: {:?}", e);
-                demi_qresult_t {
-                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                    qr_qd: qd.into(),
-                    qr_qt: qt,
-                    qr_ret: e.errno as i64,
-                    qr_value: unsafe { mem::zeroed() },
-                }
-            },
-        },
-        OperationResult::Close => demi_qresult_t {
-            qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
-            qr_qd: qd.into(),
-            qr_qt: qt,
-            qr_ret: 0,
-            qr_value: unsafe { mem::zeroed() },
-        },
-        OperationResult::Failed(e) => {
-            warn!("Operation Failed: {:?}", e);
-            demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                qr_qd: qd.into(),
-                qr_qt: qt,
-                qr_ret: e.errno as i64,
-                qr_value: unsafe { mem::zeroed() },
-            }
-        },
     }
 }
