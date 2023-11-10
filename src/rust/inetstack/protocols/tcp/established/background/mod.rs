@@ -13,24 +13,24 @@ use self::{
 use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::QDesc,
+    scheduler::Yielder,
 };
 use ::futures::{
     channel::mpsc,
     FutureExt,
 };
 
-pub async fn background<const N: usize>(
-    cb: SharedControlBlock<N>,
-    fd: QDesc,
-    _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-) {
-    let acknowledger = acknowledger(cb.clone()).fuse();
+pub async fn background<const N: usize>(cb: SharedControlBlock<N>, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
+    let yielder_acknowledger: Yielder = Yielder::new();
+    let acknowledger = acknowledger(cb.clone(), yielder_acknowledger).fuse();
     futures::pin_mut!(acknowledger);
 
-    let retransmitter = retransmitter(cb.clone()).fuse();
+    let yielder_retransmitter: Yielder = Yielder::new();
+    let retransmitter = retransmitter(cb.clone(), yielder_retransmitter).fuse();
     futures::pin_mut!(retransmitter);
 
-    let sender = sender(cb.clone()).fuse();
+    let yielder_sender: Yielder = Yielder::new();
+    let sender = sender(cb.clone(), yielder_sender).fuse();
     futures::pin_mut!(sender);
 
     let r = futures::select_biased! {
@@ -38,7 +38,7 @@ pub async fn background<const N: usize>(
         r = retransmitter => r,
         r = sender => r,
     };
-    error!("Connection (fd {:?}) terminated: {:?}", fd, r);
+    error!("Connection terminated: {:?}", r);
 
     // TODO Properly clean up Peer state for this connection.
     // dead_socket_tx

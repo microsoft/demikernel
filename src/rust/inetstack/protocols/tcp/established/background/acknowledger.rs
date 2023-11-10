@@ -17,7 +17,7 @@ use ::futures::future::{
 };
 use ::std::time::Instant;
 
-pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
+pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK
@@ -33,9 +33,8 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
         futures::pin_mut!(ack_deadline_changed);
 
         let clock_ref: SharedTimer = cb.get_timer();
-        let yielder: Yielder = Yielder::new();
         let ack_future = match deadline {
-            Some(t) => Either::Left(clock_ref.wait_until(t, yielder).fuse()),
+            Some(t) => Either::Left(clock_ref.wait_until(t, &yielder).fuse()),
             None => Either::Right(future::pending()),
         };
         futures::pin_mut!(ack_future);
@@ -43,6 +42,11 @@ pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>) -> Resu
         futures::select_biased! {
             _ = ack_deadline_changed => continue,
             _ = ack_future => {
+                match cb.get_ack_deadline().get() {
+                    Some(timeout) if timeout > cb.get_now() => continue,
+                    None => continue,
+                    _ => {},
+                }
                 cb.send_ack();
             },
         }

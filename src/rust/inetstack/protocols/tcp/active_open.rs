@@ -47,6 +47,7 @@ use crate::{
     scheduler::{
         TaskHandle,
         Yielder,
+        YielderHandle,
     },
 };
 use ::libc::{
@@ -78,6 +79,7 @@ pub struct ActiveOpenSocket<const N: usize> {
     arp: SharedArpPeer<N>,
     result: AsyncValue<Result<SharedControlBlock<N>, Fail>>,
     handle: Option<TaskHandle>,
+    yielder_handle: YielderHandle,
 }
 
 #[derive(Clone)]
@@ -98,6 +100,8 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
         let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
             local_isn,
             local,
@@ -109,11 +113,12 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             arp,
             result: AsyncValue::<Result<SharedControlBlock<N>, Fail>>::default(),
             handle: None,
+            yielder_handle,
         }));
 
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::activeopen::background",
-            Box::pin(me.clone().background()),
+            Box::pin(me.clone().background(yielder)),
         )?;
         me.handle = Some(handle);
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
@@ -226,13 +231,14 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             None,
         );
         self.result.set(Ok(cb));
+        self.yielder_handle.wake_with(Ok(()));
         let handle: TaskHandle = self.handle.take().expect("We should have allocated a background task");
         if let Err(e) = self.runtime.remove_background_coroutine(&handle) {
             panic!("Failed to remove active open coroutine (error={:?}", e);
         }
     }
 
-    async fn background(mut self) {
+    async fn background(mut self, yielder: Yielder) {
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
         for _ in 0..handshake_retries {
@@ -266,8 +272,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             };
             self.transport.transmit(Box::new(segment));
             let clock_ref: SharedTimer = self.runtime.get_timer();
-            let yielder: Yielder = Yielder::new();
-            if let Err(e) = clock_ref.wait(handshake_timeout, yielder).await {
+            if let Err(e) = clock_ref.wait(handshake_timeout, &yielder).await {
                 self.result.set(Err(e));
                 return;
             }

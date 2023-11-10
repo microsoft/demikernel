@@ -46,14 +46,13 @@ pub struct EstablishedSocket<const N: usize> {
 impl<const N: usize> EstablishedSocket<N> {
     pub fn new(
         cb: SharedControlBlock<N>,
-        qd: QDesc,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         mut runtime: SharedDemiRuntime,
     ) -> Result<Self, Fail> {
         // TODO: Maybe add the queue descriptor here.
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
-            Box::pin(background::background(cb.clone(), qd, dead_socket_tx)),
+            Box::pin(background::background(cb.clone(), dead_socket_tx)),
         )?;
         Ok(Self {
             cb,

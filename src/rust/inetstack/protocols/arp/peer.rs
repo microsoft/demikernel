@@ -169,9 +169,9 @@ impl<const N: usize> SharedArpPeer<N> {
 
     /// Background task that cleans up the ARP cache from time to time.
     async fn background(&mut self) {
+        let yielder: Yielder = Yielder::new();
         loop {
-            let yielder: Yielder = Yielder::new();
-            match self.runtime.get_timer().wait(Self::ARP_CLEANUP_TIMEOUT, yielder).await {
+            match self.runtime.get_timer().wait(Self::ARP_CLEANUP_TIMEOUT, &yielder).await {
                 Ok(()) => continue,
                 Err(_) => break,
             }
@@ -276,13 +276,13 @@ impl<const N: usize> SharedArpPeer<N> {
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
+            let yielder: Yielder = Yielder::new();
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 self.transport.transmit(Box::new(msg.clone()));
-                let yielder: Yielder = Yielder::new();
                 let timer = self
                     .runtime
                     .get_timer()
-                    .wait(self.arp_config.get_request_timeout(), yielder);
+                    .wait(self.arp_config.get_request_timeout(), &yielder);
 
                 match arp_response.with_timeout(timer).await {
                     Ok(link_addr) => {

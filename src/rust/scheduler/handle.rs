@@ -87,9 +87,7 @@ impl YielderHandle {
                 "wake_with(): already scheduled, overwriting result (old={:?})",
                 old_result
             );
-        }
-
-        if let Some(waker) = self.waker_handle.borrow_mut().take() {
+        } else if let Some(waker) = self.waker_handle.borrow_mut().take() {
             waker.wake();
         }
     }

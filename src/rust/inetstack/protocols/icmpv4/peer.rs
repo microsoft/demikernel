@@ -276,7 +276,7 @@ impl<const N: usize> SharedIcmpv4Peer<N> {
         };
         let yielder: Yielder = Yielder::new();
         let clock_ref: SharedTimer = self.runtime.get_timer();
-        let timer = clock_ref.wait(timeout, yielder);
+        let timer = clock_ref.wait(timeout, &yielder);
         match rx.fuse().with_timeout(timer).await? {
             // Request completed successfully.
             Ok(_) => Ok(self.runtime.get_now() - t0),
