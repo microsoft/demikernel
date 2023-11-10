@@ -35,6 +35,7 @@ pub use dpdk_rs as libdpdk;
 //======================================================================================================================
 
 use crate::{
+    pal::data_structures::SockAddr,
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
@@ -48,6 +49,7 @@ use crate::{
             IoQueueTable,
         },
         timer::SharedTimer,
+        types::demi_opcode_t,
     },
     scheduler::{
         scheduler::Scheduler,
@@ -58,6 +60,7 @@ use crate::{
 use ::std::{
     boxed::Box,
     future::Future,
+    mem,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -73,6 +76,18 @@ use windows::Win32::Networking::WinSock::{
     WSAEALREADY,
     WSAEINPROGRESS,
     WSAEWOULDBLOCK,
+};
+
+#[cfg(target_os = "windows")]
+use crate::pal::functions::socketaddrv4_to_sockaddr;
+
+#[cfg(target_os = "linux")]
+use crate::pal::linux::socketaddrv4_to_sockaddr;
+
+use self::types::{
+    demi_accept_result_t,
+    demi_qr_value_t,
+    demi_qresult_t,
 };
 
 //======================================================================================================================
@@ -159,6 +174,21 @@ impl SharedDemiRuntime {
         // 2. Cast to void and then downcast to operation task.
         trace!("Removing coroutine: {:?}", boxed_task.get_name());
         OperationTask::from(boxed_task.as_any())
+    }
+
+    /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
+    /// and gets the result immediately.
+    pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {
+        // 1. Remove Task from scheduler.
+        let boxed_task: Box<dyn Task> = self
+            .scheduler
+            .remove(handle)
+            .expect("Removing task that does not exist (either was previously removed or never inserted");
+        // 2. Cast to void and then downcast to operation task.
+        trace!("Removing coroutine: {:?}", boxed_task.get_name());
+        let operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
+        let (qd, result) = operation_task.get_result().expect("Coroutine not finished");
+        self.pack_result(result, qd, qt)
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler.
@@ -349,6 +379,83 @@ impl SharedDemiRuntime {
     pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
         trace!("Check address in use: {:?}", local);
         self.network_table.addr_in_use(local)
+    }
+
+    pub fn pack_result(&self, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+        match result {
+            OperationResult::Connect => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
+                qr_qd: qd.into(),
+                qr_qt: qt,
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            OperationResult::Accept((new_qd, addr)) => {
+                let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
+                let qr_value: demi_qr_value_t = demi_qr_value_t {
+                    ares: demi_accept_result_t {
+                        qd: new_qd.into(),
+                        addr: saddr,
+                    },
+                };
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_ret: 0,
+                    qr_value,
+                }
+            },
+            OperationResult::Push => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
+                qr_qd: qd.into(),
+                qr_qt: qt,
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            OperationResult::Pop(addr, bytes) => match self.into_sgarray(bytes) {
+                Ok(mut sga) => {
+                    if let Some(addr) = addr {
+                        sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
+                    }
+                    let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
+                    demi_qresult_t {
+                        qr_opcode: demi_opcode_t::DEMI_OPC_POP,
+                        qr_qd: qd.into(),
+                        qr_qt: qt,
+                        qr_ret: 0,
+                        qr_value,
+                    }
+                },
+                Err(e) => {
+                    warn!("Operation Failed: {:?}", e);
+                    demi_qresult_t {
+                        qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                        qr_qd: qd.into(),
+                        qr_qt: qt,
+                        qr_ret: e.errno as i64,
+                        qr_value: unsafe { mem::zeroed() },
+                    }
+                },
+            },
+            OperationResult::Close => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+                qr_qd: qd.into(),
+                qr_qt: qt,
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            OperationResult::Failed(e) => {
+                warn!("Operation Failed: {:?}", e);
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                    qr_qd: qd.into(),
+                    qr_qt: qt,
+                    qr_ret: e.errno as i64,
+                    qr_value: unsafe { mem::zeroed() },
+                }
+            },
+        }
     }
 }
 
