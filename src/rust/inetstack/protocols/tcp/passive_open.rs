@@ -101,7 +101,7 @@ impl<const N: usize> ReadySockets<N> {
     }
 
     async fn pop(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
-        let new_socket: EstablishedSocket<N> = self.ready.pop(yielder).await??;
+        let new_socket: EstablishedSocket<N> = self.ready.pop(&yielder).await??;
         assert!(self.endpoints.remove(&new_socket.endpoints().1));
         Ok(new_socket.clone())
     }
