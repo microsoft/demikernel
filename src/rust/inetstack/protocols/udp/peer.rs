@@ -98,11 +98,11 @@ pub struct SharedUdpPeer<const N: usize>(SharedObject<UdpPeer<N>>);
 // Associate Functions
 //======================================================================================================================
 
-/// Associate functions for [UdpPeer].
-impl<const N: usize> UdpPeer<N> {
-    /// Creates a Udp peer.
+/// Associate functions for [SharedUdpPeer].
+
+impl<const N: usize> SharedUdpPeer<N> {
     pub fn new(
-        mut runtime: SharedDemiRuntime,
+        runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -118,9 +118,10 @@ impl<const N: usize> UdpPeer<N> {
             arp.clone(),
             send_queue.clone(),
         );
-        let handle: TaskHandle =
-            runtime.insert_background_coroutine("Inetstack::UDP::background", Box::pin(coroutine))?;
-        Ok(Self {
+        let handle: TaskHandle = runtime
+            .clone()
+            .insert_background_coroutine("Inetstack::UDP::background", Box::pin(coroutine))?;
+        Ok(Self(SharedObject::<UdpPeer<N>>::new(UdpPeer {
             runtime,
             transport,
             arp,
@@ -129,64 +130,7 @@ impl<const N: usize> UdpPeer<N> {
             local_ipv4_addr,
             checksum_offload: offload_checksum,
             background: handle,
-        })
-    }
-
-    /// Asynchronously send unsent datagrams to remote peer.
-    async fn background_sender_coroutine(
-        local_ipv4_addr: Ipv4Addr,
-        local_link_addr: MacAddress,
-        offload_checksum: bool,
-        mut arp: SharedArpPeer<N>,
-        mut rx: SharedQueue<N>,
-    ) {
-        loop {
-            // Grab next unsent datagram.
-            match rx.pop().await {
-                // Resolve remote address.
-                Ok(slot) => {
-                    match arp.query(slot.get_remote().ip().clone()).await {
-                        Ok(link_addr) => {
-                            if let Err(e) = slot.get_queue().pushto(
-                                local_ipv4_addr,
-                                &slot.get_remote(),
-                                local_link_addr,
-                                link_addr,
-                                slot.get_data(),
-                                offload_checksum,
-                            ) {
-                                let cause: String = format!("failed to send: {}", e);
-                                warn!("background_sender_coroutine(): {}", cause);
-                            }
-                        },
-                        // ARP query failed.
-                        Err(e) => warn!("Failed to send UDP datagram: {:?}", e),
-                    }
-                },
-                // Pop from shared queue failed.
-                Err(e) => warn!("Failed to send UDP datagram: {:?}", e),
-            }
-        }
-    }
-}
-
-impl<const N: usize> SharedUdpPeer<N> {
-    pub fn new(
-        runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        offload_checksum: bool,
-        arp: SharedArpPeer<N>,
-    ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::<UdpPeer<N>>::new(UdpPeer::<N>::new(
-            runtime,
-            transport,
-            local_link_addr,
-            local_ipv4_addr,
-            offload_checksum,
-            arp,
-        )?)))
+        })))
     }
 
     /// Opens a UDP socket.
@@ -334,6 +278,43 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedUdpQueue<N>, Fail> {
         Ok(self.runtime.get_shared_queue::<SharedUdpQueue<N>>(qd)?.clone())
+    }
+
+    /// Asynchronously send unsent datagrams to remote peer.
+    async fn background_sender_coroutine(
+        local_ipv4_addr: Ipv4Addr,
+        local_link_addr: MacAddress,
+        offload_checksum: bool,
+        mut arp: SharedArpPeer<N>,
+        mut rx: SharedQueue<N>,
+    ) {
+        loop {
+            // Grab next unsent datagram.
+            match rx.pop().await {
+                // Resolve remote address.
+                Ok(slot) => {
+                    match arp.query(slot.get_remote().ip().clone()).await {
+                        Ok(link_addr) => {
+                            if let Err(e) = slot.get_queue().pushto(
+                                local_ipv4_addr,
+                                &slot.get_remote(),
+                                local_link_addr,
+                                link_addr,
+                                slot.get_data(),
+                                offload_checksum,
+                            ) {
+                                let cause: String = format!("failed to send: {}", e);
+                                warn!("background_sender_coroutine(): {}", cause);
+                            }
+                        },
+                        // ARP query failed.
+                        Err(e) => warn!("Failed to send UDP datagram: {:?}", e),
+                    }
+                },
+                // Pop from shared queue failed.
+                Err(e) => warn!("Failed to send UDP datagram: {:?}", e),
+            }
+        }
     }
 }
 
