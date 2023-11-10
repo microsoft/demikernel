@@ -536,11 +536,12 @@ impl SharedCatnapLibOS {
 
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
         match result {
+            // The queue would already have been freed for Close, so nothing left to do here.
             OperationResult::Close => {},
             _ => {
                 match self.get_shared_queue(&qd) {
                     Ok(mut queue) => queue.remove_pending_op(&handle),
-                    Err(_) => debug!("Catnap::take_result() qd={:?}, This queue was closed", qd),
+                    Err(_) => warn!("Catnap::take_result() qd={:?}, lingering pending op found", qd),
                 };
             },
         }

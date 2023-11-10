@@ -534,9 +534,15 @@ impl SharedCatloopLibOS {
         let task: OperationTask = self.runtime.remove_coroutine(&handle);
         let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
 
-        match self.get_queue(&qd) {
-            Ok(mut queue) => queue.remove_pending_op(&handle),
-            Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
+        match result {
+            // The queue would already have been freed for Close, so nothing left to do here.
+            OperationResult::Close => {},
+            _ => {
+                match self.get_queue(&qd) {
+                    Ok(mut queue) => queue.remove_pending_op(&handle),
+                    Err(_) => warn!("Catloop::take_result() qd={:?}, lingering pending op found", qd),
+                };
+            },
         };
 
         (qd, result)
