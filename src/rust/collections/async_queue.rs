@@ -11,8 +11,15 @@ use crate::runtime::{
         Yielder,
         YielderHandle,
     },
+    SharedObject,
 };
-use ::std::vec::Vec;
+use ::std::{
+    ops::{
+        Deref,
+        DerefMut,
+    },
+    vec::Vec,
+};
 
 //======================================================================================================================
 // Structures
@@ -25,11 +32,16 @@ pub struct AsyncQueue<T> {
     waiters: Vec<YielderHandle>,
 }
 
+#[derive(Clone)]
+pub struct SharedAsyncQueue<T>(SharedObject<AsyncQueue<T>>);
+
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
 impl<T> AsyncQueue<T> {
+    /// This function allocates a shared async queue with a specified capacity.
+    // TODO: Enforce capacity limit and do not let queue grow past that.
     pub fn with_capacity(size: usize) -> Self {
         Self {
             queue: Vec::<T>::with_capacity(size),
@@ -37,6 +49,8 @@ impl<T> AsyncQueue<T> {
         }
     }
 
+    /// Push to a async queue. Currently async queues are unbounded, so we can synchronously push to them but we will
+    /// add bounds checking in the future.
     pub fn push(&mut self, item: T) {
         self.queue.push(item);
         if let Some(mut handle) = self.waiters.pop() {
@@ -44,7 +58,8 @@ impl<T> AsyncQueue<T> {
         }
     }
 
-    pub async fn pop(&mut self, yielder: Yielder) -> Result<T, Fail> {
+    /// Pop from an async queue. If the queue is empty, this function blocks until it finds something in the queue.
+    pub async fn pop(&mut self, yielder: &Yielder) -> Result<T, Fail> {
         match self.queue.pop() {
             Some(item) => Ok(item),
             None => {
@@ -70,11 +85,43 @@ impl<T> AsyncQueue<T> {
     }
 }
 
+impl<T> SharedAsyncQueue<T> {
+    /// This function allocates a shared async queue with a specified capacity.
+    // TODO: Enforce capacity limit and do not let queue grow past that.
+    #[allow(dead_code)]
+    pub fn with_capacity(size: usize) -> Self {
+        Self(SharedObject::<AsyncQueue<T>>::new(AsyncQueue::with_capacity(size)))
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
 impl<T> Default for AsyncQueue<T> {
     fn default() -> Self {
         Self {
             queue: Vec::<T>::new(),
             waiters: Vec::<YielderHandle>::new(),
         }
+    }
+}
+impl<T> Default for SharedAsyncQueue<T> {
+    fn default() -> Self {
+        Self(SharedObject::new(AsyncQueue::default()))
+    }
+}
+
+impl<T> Deref for SharedAsyncQueue<T> {
+    type Target = AsyncQueue<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<T> DerefMut for SharedAsyncQueue<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }
