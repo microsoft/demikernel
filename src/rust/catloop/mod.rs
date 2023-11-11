@@ -47,7 +47,6 @@ use crate::{
     QType,
 };
 use ::std::{
-    mem,
     net::{
         Ipv4Addr,
         SocketAddr,
