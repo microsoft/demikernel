@@ -524,10 +524,7 @@ impl SharedCatloopLibOS {
             _ => {
                 match self.get_queue(&QDesc::from(result.qr_qd)) {
                     Ok(mut queue) => queue.remove_pending_op(&handle),
-                    Err(_) => warn!(
-                        "Catloop::take_result() qd={:?}, lingering pending op found",
-                        result.qr_qd
-                    ),
+                    Err(_) => warn!("catloop: qd={:?}, lingering pending op found", result.qr_qd),
                 };
             },
         }
