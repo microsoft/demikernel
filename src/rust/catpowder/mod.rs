@@ -2,17 +2,13 @@
 // Licensed under the MIT license.
 
 mod config;
-mod interop;
 pub mod runtime;
 
 //==============================================================================
 // Imports
 //==============================================================================
 
-use self::{
-    interop::pack_result,
-    runtime::LinuxRuntime,
-};
+use self::runtime::LinuxRuntime;
 use crate::{
     demikernel::config::Config,
     inetstack::InetStack,
@@ -27,7 +23,6 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        OperationResult,
         QDesc,
         QToken,
         SharedBox,
@@ -133,8 +128,8 @@ impl CatpowderLibOS {
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
-        Ok(pack_result(&self.transport, r, qd, qt.into()))
+        let result: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into());
+        Ok(result)
     }
 
     /// Allocates a scatter-gather array.
