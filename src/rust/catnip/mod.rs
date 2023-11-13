@@ -26,6 +26,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -35,7 +36,6 @@ use crate::{
         SharedBox,
         SharedDemiRuntime,
     },
-    scheduler::TaskHandle,
 };
 use ::std::{
     net::{

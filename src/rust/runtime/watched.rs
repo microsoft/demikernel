@@ -5,15 +5,13 @@
 // Imports
 //==============================================================================
 
-use crate::{
-    runtime::{
-        Fail,
-        SharedObject,
-    },
+use crate::runtime::{
     scheduler::{
         Yielder,
         YielderHandle,
     },
+    Fail,
+    SharedObject,
 };
 use ::std::{
     fmt,

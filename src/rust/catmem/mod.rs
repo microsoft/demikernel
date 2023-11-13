@@ -19,6 +19,10 @@ use crate::{
             MemoryRuntime,
         },
         queue::downcast_queue,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         types::{
             demi_opcode_t,
             demi_qr_value_t,
@@ -32,10 +36,6 @@ use crate::{
         QToken,
         SharedDemiRuntime,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
 };
 use ::std::{

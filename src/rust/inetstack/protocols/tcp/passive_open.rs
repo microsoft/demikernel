@@ -38,16 +38,16 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
         timer::SharedTimer,
         QDesc,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
-        YielderHandle,
     },
 };
 use ::core::panic;

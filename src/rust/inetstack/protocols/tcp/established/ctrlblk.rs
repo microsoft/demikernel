@@ -38,13 +38,13 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::Yielder,
         timer::SharedTimer,
         watched::SharedWatchedValue,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::std::{
     collections::VecDeque,

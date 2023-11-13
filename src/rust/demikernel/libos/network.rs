@@ -9,6 +9,7 @@ use crate::{
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
+        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -16,7 +17,6 @@ use crate::{
         QDesc,
         QToken,
     },
-    scheduler::TaskHandle,
 };
 use ::std::net::SocketAddr;
 

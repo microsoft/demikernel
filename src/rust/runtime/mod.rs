@@ -11,6 +11,7 @@ pub mod logging;
 pub mod memory;
 pub mod network;
 pub mod queue;
+pub mod scheduler;
 pub mod timer;
 pub mod types;
 pub mod watched;
@@ -48,13 +49,13 @@ use crate::{
             IoQueue,
             IoQueueTable,
         },
+        scheduler::{
+            Scheduler,
+            Task,
+            TaskHandle,
+        },
         timer::SharedTimer,
         types::demi_opcode_t,
-    },
-    scheduler::{
-        scheduler::Scheduler,
-        Task,
-        TaskHandle,
     },
 };
 use ::std::{

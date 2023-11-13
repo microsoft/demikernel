@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::scheduler::waker64::{
+use crate::runtime::scheduler::waker64::{
     Waker64,
     WAKER_BIT_LENGTH,
 };

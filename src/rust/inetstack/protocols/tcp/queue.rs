@@ -40,13 +40,13 @@ use crate::{
             IoQueue,
             NetworkQueue,
         },
+        scheduler::Yielder,
         QDesc,
         QType,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::futures::channel::mpsc;
 use ::std::{

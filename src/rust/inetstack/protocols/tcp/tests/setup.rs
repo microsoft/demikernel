@@ -33,11 +33,11 @@ use crate::{
             types::MacAddress,
             PacketBuf,
         },
+        scheduler::TaskHandle,
         Operation,
         OperationResult,
         QDesc,
     },
-    scheduler::TaskHandle,
 };
 use ::anyhow::Result;
 use ::libc::EBADMSG;

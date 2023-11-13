@@ -23,13 +23,13 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
         network::NetworkRuntime,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         QDesc,
         SharedBox,
         SharedDemiRuntime,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
 };
 use ::futures::channel::mpsc;

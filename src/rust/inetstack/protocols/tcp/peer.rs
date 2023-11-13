@@ -26,6 +26,7 @@ use crate::{
             NetworkRuntime,
         },
         queue::NetworkQueue,
+        scheduler::Yielder,
         Operation,
         OperationResult,
         QDesc,
@@ -33,7 +34,6 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::futures::channel::mpsc;
 use ::rand::{

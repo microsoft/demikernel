@@ -5,10 +5,10 @@ use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::{
         fail::Fail,
+        scheduler::Yielder,
         timer::SharedTimer,
         watched::SharedWatchedValue,
     },
-    scheduler::Yielder,
 };
 use ::futures::future::{
     self,

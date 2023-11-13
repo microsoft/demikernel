@@ -18,8 +18,6 @@ mod pal;
 #[cfg(feature = "profiler")]
 pub mod perftools;
 
-pub mod scheduler;
-
 pub mod runtime;
 
 pub mod inetstack;
@@ -43,7 +41,6 @@ mod catcollar;
 
 #[cfg(all(feature = "catnap-libos"))]
 mod catnap;
-
 
 #[cfg(feature = "catmem-libos")]
 mod catmem;

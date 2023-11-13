@@ -20,14 +20,14 @@ use crate::{
             NetworkQueue,
             QType,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
         DemiRuntime,
         QToken,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
-        YielderHandle,
     },
 };
 use ::std::{

@@ -15,15 +15,15 @@ use crate::{
         limits,
         memory::DemiBuffer,
         queue::IoQueue,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
         DemiRuntime,
         QToken,
         QType,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
-        YielderHandle,
     },
 };
 use ::std::{

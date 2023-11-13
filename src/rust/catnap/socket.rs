@@ -18,10 +18,10 @@ use crate::{
             operation::SocketOp,
             state::SocketStateMachine,
         },
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
     },
 };
 use ::std::net::SocketAddrV4;
@@ -65,9 +65,9 @@ use socket2::{
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::{
-    WSAEISCONN,
     WSAEALREADY,
     WSAEINPROGRESS,
+    WSAEISCONN,
     WSAEWOULDBLOCK,
 };
 
@@ -440,7 +440,11 @@ impl Socket {
                     Ok(())
                 },
                 // Operation not ready yet.
-                Err(e) if e.raw_os_error() == Some(WSAEWOULDBLOCK.0) || e.raw_os_error() == Some(WSAEINPROGRESS.0) || e.raw_os_error() == Some(WSAEALREADY.0) => {
+                Err(e)
+                    if e.raw_os_error() == Some(WSAEWOULDBLOCK.0)
+                        || e.raw_os_error() == Some(WSAEINPROGRESS.0)
+                        || e.raw_os_error() == Some(WSAEALREADY.0) =>
+                {
                     Err(Fail::new(e.raw_os_error().unwrap_or(0), "operation not ready yet"))
                 },
                 // Operation failed.

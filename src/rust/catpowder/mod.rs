@@ -19,6 +19,7 @@ use crate::{
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
         },
+        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -28,7 +29,6 @@ use crate::{
         SharedBox,
         SharedDemiRuntime,
     },
-    scheduler::TaskHandle,
 };
 use ::std::{
     collections::HashMap,

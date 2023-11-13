@@ -29,6 +29,10 @@ use crate::{
             socket::SocketId,
             unwrap_socketaddr,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         types::{
             demi_opcode_t,
             demi_qresult_t,
@@ -39,10 +43,6 @@ use crate::{
         QToken,
         SharedDemiRuntime,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
     QType,
 };

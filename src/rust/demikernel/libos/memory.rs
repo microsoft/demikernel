@@ -5,17 +5,15 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    runtime::{
-        fail::Fail,
-        types::{
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
-        QDesc,
-        QToken,
-    },
+use crate::runtime::{
+    fail::Fail,
     scheduler::TaskHandle,
+    types::{
+        demi_qresult_t,
+        demi_sgarray_t,
+    },
+    QDesc,
+    QToken,
 };
 
 #[cfg(feature = "catmem-libos")]
