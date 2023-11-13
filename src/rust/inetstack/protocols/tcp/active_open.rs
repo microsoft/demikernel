@@ -22,7 +22,7 @@ use crate::{
                     self,
                     CongestionControl,
                 },
-                SharedControlBlock,
+                EstablishedSocket,
             },
             segment::{
                 TcpHeader,
@@ -40,6 +40,7 @@ use crate::{
             NetworkRuntime,
         },
         timer::SharedTimer,
+        QDesc,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -50,6 +51,7 @@ use crate::{
         YielderHandle,
     },
 };
+use ::futures::channel::mpsc;
 use ::libc::{
     ECONNREFUSED,
     ETIMEDOUT,
@@ -69,7 +71,6 @@ use ::std::{
 
 pub struct ActiveOpenSocket<const N: usize> {
     local_isn: SeqNumber,
-
     local: SocketAddrV4,
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
@@ -77,7 +78,8 @@ pub struct ActiveOpenSocket<const N: usize> {
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
-    result: AsyncValue<Result<SharedControlBlock<N>, Fail>>,
+    dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+    result: AsyncValue<Result<EstablishedSocket<N>, Fail>>,
     handle: Option<TaskHandle>,
     yielder_handle: YielderHandle,
 }
@@ -99,9 +101,9 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
         let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
         let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
             local_isn,
             local,
@@ -111,9 +113,10 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             local_link_addr,
             tcp_config,
             arp,
-            result: AsyncValue::<Result<SharedControlBlock<N>, Fail>>::default(),
+            dead_socket_tx,
+            result: AsyncValue::<Result<EstablishedSocket<N>, Fail>>::default(),
             handle: None,
-            yielder_handle,
+            yielder_handle: yielder.get_handle(),
         }));
 
         let handle: TaskHandle = runtime.insert_background_coroutine(
@@ -126,6 +129,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
     }
 
     pub fn receive(&mut self, header: &TcpHeader) {
+        trace!("active_open::receive");
         let expected_seq = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
@@ -211,7 +215,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             local_window_scale, remote_window_scale
         );
 
-        let cb = SharedControlBlock::new(
+        let result: Result<EstablishedSocket<N>, Fail> = EstablishedSocket::<N>::new(
             self.local,
             self.remote,
             self.runtime.clone(),
@@ -229,8 +233,10 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             mss,
             congestion_control::None::new,
             None,
+            self.dead_socket_tx.clone(),
         );
-        self.result.set(Ok(cb));
+        self.result.set(result);
+        // This will keep the coroutine from being woken later.
         self.yielder_handle.wake_with(Ok(()));
         let handle: TaskHandle = self.handle.take().expect("We should have allocated a background task");
         if let Err(e) = self.runtime.remove_background_coroutine(&handle) {
@@ -280,7 +286,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         self.result.set(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
     }
 
-    pub async fn get_result(mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
+    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
         self.result.get(yielder).await?
     }
 

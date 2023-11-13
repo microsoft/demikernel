@@ -5,11 +5,6 @@
 // Imports
 //======================================================================================================================
 
-use super::{
-    constants::FALLBACK_MSS,
-    established::SharedControlBlock,
-    isn_generator::IsnGenerator,
-};
 use crate::{
     collections::async_queue::AsyncQueue,
     inetstack::protocols::{
@@ -21,10 +16,13 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         tcp::{
+            constants::FALLBACK_MSS,
             established::{
                 congestion_control,
                 congestion_control::CongestionControl,
+                EstablishedSocket,
             },
+            isn_generator::IsnGenerator,
             segment::{
                 TcpHeader,
                 TcpOptions2,
@@ -41,6 +39,7 @@ use crate::{
             NetworkRuntime,
         },
         timer::SharedTimer,
+        QDesc,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -51,6 +50,8 @@ use crate::{
         YielderHandle,
     },
 };
+use ::core::panic;
+use ::futures::channel::mpsc;
 use ::libc::{
     EBADMSG,
     ETIMEDOUT,
@@ -68,7 +69,6 @@ use ::std::{
     },
     time::Duration,
 };
-use core::panic;
 
 //======================================================================================================================
 // Structures
@@ -86,26 +86,24 @@ struct InflightAccept {
 
 #[derive(Default)]
 struct ReadySockets<const N: usize> {
-    ready: AsyncQueue<Result<SharedControlBlock<N>, Fail>>,
+    ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
     endpoints: HashSet<SocketAddrV4>,
 }
 
 impl<const N: usize> ReadySockets<N> {
-    fn push_ok(&mut self, cb: SharedControlBlock<N>) {
-        assert!(self.endpoints.insert(cb.get_remote()));
-        self.ready.push(Ok(cb))
+    fn push_ok(&mut self, new_socket: EstablishedSocket<N>) {
+        assert!(self.endpoints.insert(new_socket.endpoints().1));
+        self.ready.push(Ok(new_socket))
     }
 
     fn push_err(&mut self, err: Fail) {
         self.ready.push(Err(err));
     }
 
-    async fn pop(&mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
-        let result: Result<SharedControlBlock<N>, Fail> = self.ready.pop(yielder).await?;
-        if let Ok(ref cb) = result {
-            assert!(self.endpoints.remove(&cb.get_remote()));
-        }
-        result
+    async fn pop(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
+        let new_socket: EstablishedSocket<N> = self.ready.pop(yielder).await??;
+        assert!(self.endpoints.remove(&new_socket.endpoints().1));
+        Ok(new_socket.clone())
     }
 
     fn len(&self) -> usize {
@@ -124,6 +122,7 @@ pub struct PassiveSocket<const N: usize> {
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
     arp: SharedArpPeer<N>,
+    dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
 #[derive(Clone)]
@@ -142,6 +141,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Self {
         Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket::<N> {
@@ -155,6 +155,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
             transport,
             tcp_config,
             arp,
+            dead_socket_tx,
         }))
     }
 
@@ -163,7 +164,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         self.local
     }
 
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<SharedControlBlock<N>, Fail> {
+    pub async fn accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
         self.ready.pop(yielder).await
     }
 
@@ -215,13 +216,13 @@ impl<const N: usize> SharedPassiveSocket<N> {
             );
 
             if let Some(mut inflight) = self.inflight.remove(&remote) {
+                // Setting the yielder handle will keep it from being woken in the future.
                 inflight.yielder_handle.wake_with(Ok(()));
                 if let Err(e) = self.runtime.remove_background_coroutine(&inflight.handle) {
                     panic!("Failed to remove inflight accept (error={:?})", e);
                 }
             }
-
-            let cb = SharedControlBlock::new(
+            let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::new(
                 self.local,
                 remote,
                 self.runtime.clone(),
@@ -239,8 +240,10 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 mss,
                 congestion_control::None::new,
                 None,
-            );
-            self.ready.push_ok(cb);
+                self.dead_socket_tx.clone(),
+            )?;
+
+            self.ready.push_ok(new_socket);
             return Ok(());
         }
 

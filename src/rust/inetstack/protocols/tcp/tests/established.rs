@@ -73,7 +73,7 @@ fn send_data<const N: usize>(
     );
 
     // Push data.
-    let push_coroutine: Pin<Box<Operation>> = sender.tcp_push(sender_qd, bytes.clone());
+    let push_coroutine: Pin<Box<Operation>> = sender.tcp_push(sender_qd, bytes.clone())?;
     let handle: TaskHandle = sender
         .get_test_rig()
         .get_runtime()
@@ -137,7 +137,7 @@ fn recv_data<const N: usize>(
     );
 
     // Pop data.
-    let pop_coroutine: Pin<Box<Operation>> = receiver.tcp_pop(receiver_qd);
+    let pop_coroutine: Pin<Box<Operation>> = receiver.tcp_pop(receiver_qd)?;
     let handle: TaskHandle = receiver
         .get_test_rig()
         .get_runtime()

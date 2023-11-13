@@ -362,7 +362,7 @@ fn connection_setup_listen_syn_sent<const N: usize>(
         Ok(fd) => fd,
         Err(e) => anyhow::bail!("client tcp socket returned error: {:?}", e),
     };
-    let connect_coroutine: Pin<Box<Operation>> = client.tcp_connect(client_fd, listen_addr);
+    let connect_coroutine: Pin<Box<Operation>> = client.tcp_connect(client_fd, listen_addr)?;
     let connect_handle: TaskHandle = client
         .get_test_rig()
         .get_runtime()
@@ -393,7 +393,7 @@ fn connection_setup_closed_listen<const N: usize>(
     if let Err(e) = server.tcp_listen(socket_fd, 1) {
         anyhow::bail!("server listen returned an error: {:?}", e);
     }
-    let accept_coroutine: Pin<Box<Operation>> = server.tcp_accept(socket_fd);
+    let accept_coroutine: Pin<Box<Operation>> = server.tcp_accept(socket_fd)?;
     let accept_handle: TaskHandle = server.get_test_rig().get_runtime().insert_coroutine(
         "test::connection_setup_closed_listen::accept_coroutine",
         accept_coroutine,

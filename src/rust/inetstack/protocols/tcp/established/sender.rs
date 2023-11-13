@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::SharedControlBlock;
 use crate::{
     inetstack::protocols::tcp::{
+        established::SharedControlBlock,
         segment::TcpHeader,
         SeqNumber,
     },

@@ -529,7 +529,9 @@ fn tcp_bad_listen() -> Result<()> {
     };
 
     let port: u16 = PORT_BASE;
+    let port2: u16 = PORT_BASE + 1;
     let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+    let local2: SocketAddr = SocketAddr::new(ALICE_IP, port2);
 
     // Invalid queue descriptor.
     match libos.listen(QDesc::from(0), 8) {
@@ -555,8 +557,9 @@ fn tcp_bad_listen() -> Result<()> {
     safe_close_active(&mut libos, sockqd)?;
 
     // Listen on an already listening socket.
+    // TODO: use a single IP and port when we properly clean up bound addresses on close.
     let sockqd: QDesc = safe_socket(&mut libos)?;
-    safe_bind(&mut libos, sockqd, local)?;
+    safe_bind(&mut libos, sockqd, local2)?;
     safe_listen(&mut libos, sockqd)?;
     match libos.listen(sockqd, 16) {
         Err(e) if e.errno == libc::EINVAL => (),

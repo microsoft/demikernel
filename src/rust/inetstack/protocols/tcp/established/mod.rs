@@ -7,17 +7,24 @@ mod ctrlblk;
 mod rto;
 mod sender;
 
-pub use self::ctrlblk::{
-    SharedControlBlock,
-    State,
-};
-
 use crate::{
-    inetstack::protocols::tcp::segment::TcpHeader,
+    inetstack::{
+        protocols::tcp::{
+            congestion_control::CongestionControlConstructor,
+            established::ctrlblk::SharedControlBlock,
+            segment::TcpHeader,
+            SeqNumber,
+        },
+        MacAddress,
+        SharedArpPeer,
+        TcpConfig,
+    },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        network::NetworkRuntime,
         QDesc,
+        SharedBox,
         SharedDemiRuntime,
     },
     scheduler::{
@@ -45,11 +52,45 @@ pub struct EstablishedSocket<const N: usize> {
 
 impl<const N: usize> EstablishedSocket<N> {
     pub fn new(
-        cb: SharedControlBlock<N>,
-        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
+        transport: SharedBox<dyn NetworkRuntime<N>>,
+        local_link_addr: MacAddress,
+        tcp_config: TcpConfig,
+        arp: SharedArpPeer<N>,
+        receiver_seq_no: SeqNumber,
+        ack_delay_timeout: Duration,
+        receiver_window_size: u32,
+        receiver_window_scale: u32,
+        sender_seq_no: SeqNumber,
+        sender_window_size: u32,
+        sender_window_scale: u8,
+        sender_mss: usize,
+        cc_constructor: CongestionControlConstructor,
+        congestion_control_options: Option<congestion_control::Options>,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
         // TODO: Maybe add the queue descriptor here.
+        let cb = SharedControlBlock::new(
+            local,
+            remote,
+            runtime.clone(),
+            transport,
+            local_link_addr,
+            tcp_config,
+            arp,
+            receiver_seq_no,
+            ack_delay_timeout,
+            receiver_window_size,
+            receiver_window_scale,
+            sender_seq_no,
+            sender_window_size,
+            sender_window_scale,
+            sender_mss,
+            cc_constructor,
+            congestion_control_options,
+        );
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
             Box::pin(background::background(cb.clone(), dead_socket_tx)),
