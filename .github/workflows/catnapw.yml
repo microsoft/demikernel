@@ -6,10 +6,6 @@ concurrency:
   group: catnapw
   cancel-in-progress: false
 
-concurrency:
-  group: azure-catnapw
-  cancel-in-progress: true
-
 on:
   push:
     branches:
@@ -106,7 +102,7 @@ jobs:
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
           Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw DEBUG=yes
+          nmake all DEBUG=yes
     - name: Compile Release
       uses: appleboy/ssh-action@master
       with:
@@ -121,7 +117,7 @@ jobs:
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
           Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw
+          nmake all
 
   # Node 1
   build-demikernel1:
@@ -143,7 +139,7 @@ jobs:
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
           Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw DEBUG=yes
+          nmake all DEBUG=yes
     - name: Compile Release
       uses: appleboy/ssh-action@master
       with:
@@ -158,7 +154,7 @@ jobs:
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
           Import-Module (Join-Path $VsInstallPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
           Enter-VsDevShell -VsInstallPath $VsInstallPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
-          nmake all LIBOS=catnapw
+          nmake all
 
   #=====================================================================================================================
   # Build Completed
