@@ -17,15 +17,15 @@ use crate::{
             NetworkQueue,
             QType,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
         OperationResult,
         QDesc,
         QToken,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
-        YielderHandle,
     },
 };
 use ::std::{

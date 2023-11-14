@@ -2,13 +2,11 @@
 // Licensed under the MIT license.
 
 use super::SharedControlBlock;
-use crate::{
-    runtime::{
-        fail::Fail,
-        timer::SharedTimer,
-        watched::SharedWatchedValue,
-    },
+use crate::runtime::{
+    fail::Fail,
     scheduler::Yielder,
+    timer::SharedTimer,
+    watched::SharedWatchedValue,
 };
 use ::futures::future::{
     self,

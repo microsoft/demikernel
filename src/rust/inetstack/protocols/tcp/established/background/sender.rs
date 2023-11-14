@@ -13,10 +13,10 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        scheduler::Yielder,
         timer::SharedTimer,
         watched::SharedWatchedValue,
     },
-    scheduler::Yielder,
 };
 use ::futures::FutureExt;
 use ::std::{

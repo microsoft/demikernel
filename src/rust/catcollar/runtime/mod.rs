@@ -20,9 +20,9 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
+        scheduler::Scheduler,
         SharedObject,
     },
-    scheduler::scheduler::Scheduler,
 };
 use ::std::{
     collections::{

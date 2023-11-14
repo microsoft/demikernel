@@ -19,16 +19,16 @@ use crate::{
             QDesc,
             QToken,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         types::{
             demi_opcode_t,
             demi_qresult_t,
             demi_sgarray_t,
         },
         OperationResult,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
 };
 use ::rand::{

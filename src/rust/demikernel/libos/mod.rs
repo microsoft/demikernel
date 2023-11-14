@@ -20,6 +20,7 @@ use crate::{
         fail::Fail,
         limits,
         logging,
+        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -28,7 +29,6 @@ use crate::{
         QToken,
         SharedDemiRuntime,
     },
-    scheduler::TaskHandle,
 };
 use ::std::{
     env,

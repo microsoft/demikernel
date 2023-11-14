@@ -30,13 +30,13 @@ use crate::{
             OperationResult,
             QDesc,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
 };
 use ::std::{

@@ -29,10 +29,10 @@ use crate::{
             IoQueue,
             NetworkQueue,
         },
+        scheduler::Yielder,
         SharedBox,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::futures::{
     channel::mpsc::{

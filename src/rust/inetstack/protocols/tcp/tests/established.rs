@@ -26,11 +26,11 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::consts::RECEIVE_BATCH_SIZE,
+        scheduler::TaskHandle,
         Operation,
         OperationResult,
         QDesc,
     },
-    scheduler::TaskHandle,
 };
 use ::anyhow::Result;
 use ::rand;

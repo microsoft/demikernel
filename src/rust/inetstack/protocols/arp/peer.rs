@@ -22,12 +22,12 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::Yielder,
         timer::UtilityMethods,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::futures::{
     channel::oneshot::{

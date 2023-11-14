@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::scheduler::{
+use crate::runtime::scheduler::{
     page::{
         WakerPage,
         WAKER_PAGE_SIZE,
@@ -138,7 +138,7 @@ impl Default for WakerPageRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::scheduler::page::WakerPageRef;
+    use crate::runtime::scheduler::page::WakerPageRef;
     use ::anyhow::Result;
     use ::std::ptr::NonNull;
 

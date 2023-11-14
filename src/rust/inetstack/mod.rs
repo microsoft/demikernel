@@ -45,10 +45,10 @@ use crate::{
             QToken,
             QType,
         },
+        scheduler::TaskHandle,
         SharedBox,
         SharedDemiRuntime,
     },
-    scheduler::TaskHandle,
 };
 use ::libc::c_int;
 use ::std::{

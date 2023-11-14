@@ -47,16 +47,16 @@ use crate::{
             QToken,
             QType,
         },
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         types::{
             demi_qresult_t,
             demi_sgarray_t,
         },
         DemiRuntime,
         SharedDemiRuntime,
-    },
-    scheduler::{
-        TaskHandle,
-        Yielder,
     },
 };
 use ::std::{

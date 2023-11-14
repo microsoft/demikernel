@@ -5,15 +5,13 @@
 // Imports
 //==============================================================================
 
-use crate::{
-    runtime::{
-        Fail,
-        SharedObject,
-    },
+use crate::runtime::{
     scheduler::{
         Yielder,
         YielderHandle,
     },
+    Fail,
+    SharedObject,
 };
 use ::async_trait::async_trait;
 use ::core::cmp::Reverse;
@@ -184,7 +182,7 @@ impl Ord for TimerQueueEntry {
 #[cfg(test)]
 mod tests {
     use super::SharedTimer;
-    use crate::scheduler::Yielder;
+    use crate::runtime::scheduler::Yielder;
     use ::anyhow::Result;
     use futures::task::noop_waker_ref;
     use std::{

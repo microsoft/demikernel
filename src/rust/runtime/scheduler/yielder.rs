@@ -5,8 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    runtime::fail::Fail,
+use crate::runtime::{
+    fail::Fail,
     scheduler::handle::YielderHandle,
 };
 

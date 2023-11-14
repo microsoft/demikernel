@@ -10,8 +10,8 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    runtime::fail::Fail,
+use crate::runtime::{
+    fail::Fail,
     scheduler::TaskWithResult,
 };
 use ::slab::{

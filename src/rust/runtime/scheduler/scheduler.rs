@@ -11,7 +11,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::scheduler::{
+use crate::runtime::scheduler::{
     page::{
         WakerPageRef,
         WakerRef,
@@ -269,7 +269,7 @@ impl Default for Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use crate::scheduler::{
+    use crate::runtime::scheduler::{
         scheduler::{
             Scheduler,
             TaskHandle,

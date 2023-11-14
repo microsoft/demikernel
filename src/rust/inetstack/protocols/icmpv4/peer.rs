@@ -24,6 +24,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::Yielder,
         timer::{
             SharedTimer,
             UtilityMethods,
@@ -32,7 +33,6 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::futures::{
     channel::{

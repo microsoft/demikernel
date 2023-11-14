@@ -12,8 +12,10 @@ use self::{
 };
 use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
-    runtime::QDesc,
-    scheduler::Yielder,
+    runtime::{
+        scheduler::Yielder,
+        QDesc,
+    },
 };
 use ::futures::{
     channel::mpsc,
