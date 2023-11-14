@@ -23,6 +23,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
+        scheduler::Yielder,
         Operation,
         QDesc,
         SharedBox,
@@ -109,14 +110,14 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.ping(dest_ipv4_addr, timeout).await
     }
 
-    pub fn udp_pushto(&self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<(), Fail> {
+    pub fn udp_pushto(&self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<Pin<Box<Operation>>, Fail> {
         let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
         udp.pushto(qd, buf, to)
     }
 
-    pub fn udp_pop(&self, qd: QDesc) -> Pin<Box<Operation>> {
+    pub fn udp_pop(&self, qd: QDesc) -> Result<Pin<Box<Operation>>, Fail> {
         let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
-        Box::pin(async move { udp.pop_coroutine(qd, None).await })
+        udp.pop(qd, None)
     }
 
     pub fn udp_socket(&mut self) -> Result<QDesc, Fail> {
@@ -168,7 +169,7 @@ impl<const N: usize> SharedEngine<N> {
     }
 
     pub async fn arp_query(&mut self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
-        self.arp.query(ipv4_addr).await
+        self.arp.query(ipv4_addr, &Yielder::new()).await
     }
 
     pub fn tcp_mss(&self, handle: QDesc) -> Result<usize, Fail> {

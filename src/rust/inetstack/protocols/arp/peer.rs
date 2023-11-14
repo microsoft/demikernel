@@ -276,13 +276,12 @@ impl<const N: usize> SharedArpPeer<N> {
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
-            let yielder: Yielder = Yielder::new();
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 self.transport.transmit(Box::new(msg.clone()));
                 let timer = self
                     .runtime
                     .get_timer()
-                    .wait(self.arp_config.get_request_timeout(), &yielder);
+                    .wait(self.arp_config.get_request_timeout(), yielder);
 
                 match arp_response.with_timeout(timer).await {
                     Ok(link_addr) => {

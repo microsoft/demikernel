@@ -33,7 +33,6 @@ use crate::{
         },
         scheduler::Yielder,
         SharedBox,
-        SharedDemiRuntime,
         SharedObject,
     },
 };
@@ -72,15 +71,11 @@ pub struct UdpQueue<const N: usize> {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
     local_link_addr: MacAddress,
-    runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
-    send_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
     arp: SharedArpPeer<N>,
     checksum_offload: bool,
-    task_handle: Option<TaskHandle>,
-    yielder_handle: YielderHandle,
 }
 #[derive(Clone)]
 pub struct SharedUdpQueue<const N: usize>(SharedObject<UdpQueue<N>>);
@@ -93,32 +88,19 @@ impl<const N: usize> SharedUdpQueue<N> {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
-        runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
         arp: SharedArpPeer<N>,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
-        let yielder: Yielder = Yielder::new();
-        let mut me = Self(SharedObject::new(UdpQueue {
+        Ok(Self(SharedObject::new(UdpQueue {
             local_ipv4_addr,
             bound: None,
             local_link_addr,
-            runtime,
             transport,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
-            send_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
             arp,
             checksum_offload,
-            yielder_handle: yielder.get_handle(),
-            task_handle: None,
-        }));
-
-        let coroutine = me.clone().background_sender_coroutine(yielder);
-        let handle: TaskHandle = me
-            .runtime
-            .insert_background_coroutine("Inetstack::UDP::background", Box::pin(coroutine))?;
-        me.task_handle = Some(handle);
-        Ok(me)
+        })))
     }
 
     pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
@@ -128,44 +110,30 @@ impl<const N: usize> SharedUdpQueue<N> {
 
     /// Close this UDP queue and release its resources
     pub fn close(&mut self) -> Result<(), Fail> {
-        // Cancel background coroutine.
-        self.yielder_handle
-            .wake_with(Err(Fail::new(libc::ECANCELED, "this queue has been closed")));
-        let task_handle: TaskHandle = self
-            .task_handle
-            .take()
-            .expect("we should have allocated this when the queue was created");
-        self.runtime.remove_background_coroutine(&task_handle)?;
         Ok(())
     }
 
-    pub fn pushto(&mut self, remote: &SocketAddrV4, buf: DemiBuffer) -> Result<(), Fail> {
-        // What happens if not bound?
-        // TODO: Move to a UDP socket state machine.
-        if !self.is_bound() {
+    pub async fn pushto(&mut self, remote: SocketAddrV4, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+        // Check that the socket is bound.
+        let port: u16 = if let Some(addr) = self.local() {
+            addr.port()
+        } else {
             let cause: String = format!("queue is not bound");
             error!("pushto(): {}", &cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
-        }
-        // Fast path: try to send the datagram immediately.
-        if let Some(remote_link_addr) = self.arp.try_query(remote.ip().clone()) {
-            // Fast path: try to send the datagram immediately.
-            let udp_header: UdpHeader =
-                UdpHeader::new(self.bound.expect("socket should be bound").port(), remote.port());
-            debug!("UDP send {:?}", udp_header);
-            let datagram = UdpDatagram::new(
-                Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-                Ipv4Header::new(self.local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
-                udp_header,
-                buf,
-                self.checksum_offload,
-            );
-            Ok(self.transport.transmit(Box::new(datagram)))
-        } else {
-            // Slow path: Defer send operation to the async path.
-            self.send_queue.push((remote.clone(), buf));
-            Ok(())
-        }
+        };
+        let remote_link_addr: MacAddress = self.arp.query(remote.ip().clone(), &yielder).await?;
+        let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
+        debug!("UDP send {:?}", udp_header);
+        let datagram = UdpDatagram::new(
+            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            Ipv4Header::new(self.local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
+            udp_header,
+            buf,
+            self.checksum_offload,
+        );
+        self.transport.transmit(Box::new(datagram));
+        Ok(())
     }
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
@@ -197,26 +165,6 @@ impl<const N: usize> SharedUdpQueue<N> {
 
     pub fn is_bound(&self) -> bool {
         self.bound.is_some()
-    }
-
-    /// Asynchronously send unsent datagrams to remote peer.
-    async fn background_sender_coroutine(mut self, yielder: Yielder) {
-        loop {
-            // Grab next unsent datagram.
-            match self.send_queue.pop(&yielder).await {
-                // Resolve remote address.
-                Ok(slot) => {
-                    let remote: SocketAddrV4 = slot.0;
-                    let buf: DemiBuffer = slot.1;
-                    if let Err(e) = self.pushto(&remote, buf) {
-                        let cause: String = format!("failed to send: {}", e);
-                        warn!("background_sender_coroutine(): {}", cause);
-                    }
-                },
-                // Pop from shared queue failed.
-                Err(e) => warn!("Failed to send UDP datagram: {:?}", e),
-            }
-        }
     }
 }
 

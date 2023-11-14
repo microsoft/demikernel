@@ -103,14 +103,18 @@ fn udp_push_pop() -> Result<()> {
 
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-    alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
+    let mut coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
+    match Future::poll(coroutine.as_mut(), &mut ctx) {
+        Poll::Ready((_, OperationResult::Push)) => {},
+        _ => unreachable!("Push failed"),
+    };
     alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
-    let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
+    let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
@@ -151,14 +155,18 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
 
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-    alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
+    let mut coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
+    match Future::poll(coroutine.as_mut(), &mut ctx) {
+        Poll::Ready((_, OperationResult::Push)) => {},
+        _ => unreachable!("Push failed"),
+    };
     alice.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
-    let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
+    let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
@@ -198,16 +206,18 @@ fn udp_ping_pong() -> Result<()> {
 
     // Send data to Bob.
     let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-    alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-    alice.get_test_rig().poll_scheduler();
-
+    let mut alice_coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
+    match Future::poll(alice_coroutine.as_mut(), &mut ctx) {
+        Poll::Ready((_, OperationResult::Push)) => {},
+        _ => unreachable!("Push failed"),
+    };
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
-    let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
+    let mut bob_coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
     let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
-        match Future::poll(coroutine.as_mut(), &mut ctx) {
+        match Future::poll(bob_coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
             _ => unreachable!("Pop failed"),
         };
@@ -218,14 +228,19 @@ fn udp_ping_pong() -> Result<()> {
 
     // Send data to Alice.
     let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-    bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
+    let mut bob_coroutine2: Pin<Box<Operation>> = bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
+    match Future::poll(bob_coroutine2.as_mut(), &mut ctx) {
+        Poll::Ready((_, OperationResult::Push)) => {},
+        _ => unreachable!("Push failed"),
+    };
+
     bob.get_test_rig().poll_scheduler();
 
     now += Duration::from_micros(1);
 
     // Receive data from Bob.
     alice.receive(bob.get_test_rig().pop_frame()).unwrap();
-    let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd);
+    let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd)?;
     let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
@@ -325,14 +340,17 @@ fn udp_loop2_push_pop() -> Result<()> {
     for b in 0..1000 {
         // Send data to Bob.
         let buf: DemiBuffer = DemiBuffer::from_slice(&vec![(b % 256) as u8; 32][..]).expect("slice should fit");
-        alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-        alice.get_test_rig().poll_scheduler();
+        let mut coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
+        match Future::poll(coroutine.as_mut(), &mut ctx) {
+            Poll::Ready((_, OperationResult::Push)) => {},
+            _ => unreachable!("Push failed"),
+        };
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
         bob.receive(alice.get_test_rig().pop_frame()).unwrap();
-        let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
+        let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
         let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
             match Future::poll(coroutine.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
@@ -386,16 +404,19 @@ fn udp_loop2_ping_pong() -> Result<()> {
     for _ in 0..1000 {
         // Send data to Bob.
         let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-        alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-        alice.get_test_rig().poll_scheduler();
+        let mut alice_coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
+        match Future::poll(alice_coroutine.as_mut(), &mut ctx) {
+            Poll::Ready((_, OperationResult::Push)) => {},
+            _ => unreachable!("Push failed"),
+        };
 
         now += Duration::from_micros(1);
 
         // Receive data from Alice.
         bob.receive(alice.get_test_rig().pop_frame()).unwrap();
-        let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd);
+        let mut bob_coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
         let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
-            match Future::poll(coroutine.as_mut(), &mut ctx) {
+            match Future::poll(bob_coroutine.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
                 _ => unreachable!("Pop failed"),
             };
@@ -406,16 +427,19 @@ fn udp_loop2_ping_pong() -> Result<()> {
 
         // Send data to Alice.
         let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-        bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
-        bob.get_test_rig().poll_scheduler();
+        let mut bob_coroutine2 = bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
+        match Future::poll(bob_coroutine2.as_mut(), &mut ctx) {
+            Poll::Ready((_, OperationResult::Push)) => {},
+            _ => unreachable!("Push failed"),
+        };
 
         now += Duration::from_micros(1);
 
         // Receive data from Bob.
         alice.receive(bob.get_test_rig().pop_frame()).unwrap();
-        let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd);
+        let mut alice_coroutine2: Pin<Box<Operation>> = alice.udp_pop(alice_fd)?;
         let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
-            match Future::poll(coroutine.as_mut(), &mut ctx) {
+            match Future::poll(alice_coroutine2.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
                 _ => unreachable!("Pop failed"),
             };
@@ -513,6 +537,7 @@ fn udp_udp_close_bad_file_descriptor() -> Result<()> {
 
 #[test]
 fn udp_pop_not_bound() -> Result<()> {
+    let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
     // Setup Alice.
@@ -530,8 +555,11 @@ fn udp_pop_not_bound() -> Result<()> {
 
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
-    alice.udp_pushto(alice_fd, buf, bob_addr)?;
-    alice.get_test_rig().poll_scheduler();
+    let mut coroutine: Pin<Box<Operation>> = alice.udp_pushto(alice_fd, buf, bob_addr)?;
+    match Future::poll(coroutine.as_mut(), &mut ctx) {
+        Poll::Ready((_, OperationResult::Push)) => {},
+        _ => unreachable!("Push failed"),
+    };
 
     now += Duration::from_micros(1);
 
@@ -577,7 +605,6 @@ fn udp_push_bad_file_descriptor() -> Result<()> {
         _ => anyhow::bail!("pushto should have failed"),
     };
 
-    alice.get_test_rig().poll_scheduler();
     now += Duration::from_micros(1);
 
     // Close peers.

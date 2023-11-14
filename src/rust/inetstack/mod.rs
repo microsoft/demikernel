@@ -12,10 +12,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        udp::{
-            queue::SharedUdpQueue,
-            SharedUdpPeer,
-        },
+        udp::queue::SharedUdpQueue,
         Peer,
     },
     pal::constants::{
@@ -401,8 +398,7 @@ impl<const N: usize> InetStack<N> {
 
         match self.runtime.get_queue_type(&qd)? {
             QType::UdpSocket => {
-                self.ipv4.udp.pushto(qd, buf, to)?;
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move { (qd, OperationResult::Push) });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pushto(qd, buf, to)?;
                 let task_id: String = format!("Inetstack::UDP::pushto for qd={:?}", qd);
                 self.runtime.insert_coroutine(task_id.as_str(), coroutine)
             },
@@ -448,8 +444,7 @@ impl<const N: usize> InetStack<N> {
             },
             QType::UdpSocket => {
                 let task_id: String = format!("Inetstack::UDP::pop for qd={:?}", qd);
-                let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move { udp.pop_coroutine(qd, size).await });
+                let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pop(qd, size)?;
                 (task_id, coroutine)
             },
             _ => return Err(Fail::new(libc::EINVAL, "invalid queue type")),

@@ -27,15 +27,12 @@ use crate::{
             OperationResult,
             QDesc,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
+        Operation,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
-    scheduler::Yielder,
 };
 use ::std::{
     net::{
@@ -46,6 +43,7 @@ use ::std::{
         Deref,
         DerefMut,
     },
+    pin::Pin,
 };
 
 #[cfg(feature = "profiler")]
@@ -107,7 +105,6 @@ impl<const N: usize> SharedUdpPeer<N> {
         let new_queue: SharedUdpQueue<N> = SharedUdpQueue::new(
             self.local_ipv4_addr,
             self.local_link_addr,
-            self.runtime.clone(),
             self.transport.clone(),
             self.arp.clone(),
             self.checksum_offload,
@@ -165,12 +162,9 @@ impl<const N: usize> SharedUdpPeer<N> {
     }
 
     /// Pushes data to a remote UDP peer.
-    pub fn pushto(&mut self, qd: QDesc, data: DemiBuffer, remote: SocketAddrV4) -> Result<(), Fail> {
+    pub fn pushto(&mut self, qd: QDesc, buf: DemiBuffer, remote: SocketAddrV4) -> Result<Pin<Box<Operation>>, Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pushto");
-        trace!("pushto(): qd={:?} remote={:?} bytes={:?}", qd, remote, data.len());
-        // Lookup associated endpoint and push.
-        self.get_shared_queue(&qd)?.pushto(&remote, data)
         trace!("pushto(): qd={:?} remote={:?} bytes={:?}", qd, remote, buf.len());
         let mut queue: SharedUdpQueue<N> = self.get_shared_queue(&qd)?;
         // TODO: Allocate ephemeral port if not bound.
@@ -190,20 +184,18 @@ impl<const N: usize> SharedUdpPeer<N> {
     }
 
     /// Pops data from a socket.
-    pub async fn pop_coroutine(&mut self, qd: QDesc, size: Option<usize>) -> (QDesc, OperationResult) {
+    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<Pin<Box<Operation>>, Fail> {
         #[cfg(feature = "profiler")]
         timer!("udp::pop");
-
-        // Make sure the queue still exists.
         let yielder: Yielder = Yielder::new();
-        let mut queue: SharedUdpQueue<N> = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
-        match queue.pop(size, yielder).await {
-            Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr), buf)),
-            Err(e) => (qd, OperationResult::Failed(e)),
-        }
+        let mut queue: SharedUdpQueue<N> = self.get_shared_queue(&qd)?;
+
+        Ok(Box::pin(async move {
+            match queue.pop(size, yielder).await {
+                Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr), buf)),
+                Err(e) => (qd, OperationResult::Failed(e)),
+            }
+        }))
     }
 
     /// Consumes the payload from a buffer.
