@@ -248,7 +248,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
         for _ in 0..handshake_retries {
-            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone()).await {
+            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone(), &yielder).await {
                 Ok(r) => r,
                 Err(e) => {
                     warn!("ARP query failed: {:?}", e);

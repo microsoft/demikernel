@@ -123,7 +123,7 @@ impl Receiver {
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
-            let mut buf: DemiBuffer = self.recv_queue.pop(yielder).await?;
+            let mut buf: DemiBuffer = self.recv_queue.pop(&yielder).await?;
             // Split the buffer if it's too big.
             if buf.len() > size {
                 buf.split_front(size)?
@@ -131,7 +131,7 @@ impl Receiver {
                 buf
             }
         } else {
-            self.recv_queue.pop(yielder).await?
+            self.recv_queue.pop(&yielder).await?
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);

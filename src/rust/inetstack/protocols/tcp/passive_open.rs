@@ -101,7 +101,7 @@ impl<const N: usize> ReadySockets<N> {
     }
 
     async fn pop(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
-        let new_socket: EstablishedSocket<N> = self.ready.pop(yielder).await??;
+        let new_socket: EstablishedSocket<N> = self.ready.pop(&yielder).await??;
         assert!(self.endpoints.remove(&new_socket.endpoints().1));
         Ok(new_socket.clone())
     }
@@ -305,7 +305,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         let handshake_timeout: Duration = self.tcp_config.get_handshake_timeout();
 
         for _ in 0..handshake_retries {
-            let remote_link_addr = match self.arp.query(remote.ip().clone()).await {
+            let remote_link_addr = match self.arp.query(remote.ip().clone(), &Yielder::new()).await {
                 Ok(r) => r,
                 Err(e) => {
                     warn!("ARP query failed: {:?}", e);
