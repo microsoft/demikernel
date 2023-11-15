@@ -255,7 +255,7 @@ impl<const N: usize> SharedArpPeer<N> {
         self.cache.get(ipv4_addr).cloned()
     }
 
-    pub async fn query(&mut self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+    pub async fn query(&mut self, ipv4_addr: Ipv4Addr, yielder: &Yielder) -> Result<MacAddress, Fail> {
         if let Some(&link_addr) = self.cache.get(ipv4_addr) {
             return Ok(link_addr);
         }

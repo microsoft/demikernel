@@ -61,7 +61,8 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yiel
         // repeatedly send window probes until window opens up.
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
-            let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
+            let arp_yielder: Yielder = Yielder::new();
+            let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone(), &arp_yielder).await?;
             let buf: DemiBuffer = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
@@ -146,7 +147,8 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yiel
         // TODO: Silly window syndrome - See RFC 1122's discussion of the SWS avoidance algorithm.
 
         // TODO: Link-level concerns don't belong here, we should call an IP-level send routine below.
-        let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
+        let arp_yielder: Yielder = Yielder::new();
+        let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone(), &arp_yielder).await?;
 
         // Form an outgoing packet.
         let max_size: usize = cmp::min(

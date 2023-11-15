@@ -179,7 +179,7 @@ impl<const N: usize> SharedIcmpv4Peer<N> {
         // Reply requests.
         while let Some((dst_ipv4_addr, id, seq_num, data)) = rx.next().await {
             debug!("initiating ARP query");
-            let dst_link_addr: MacAddress = match arp.query(dst_ipv4_addr).await {
+            let dst_link_addr: MacAddress = match arp.query(dst_ipv4_addr, &Yielder::new()).await {
                 Ok(dst_link_addr) => dst_link_addr,
                 Err(e) => {
                     warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e);
@@ -257,7 +257,7 @@ impl<const N: usize> SharedIcmpv4Peer<N> {
 
         let t0: Instant = self.runtime.get_now();
         debug!("initiating ARP query");
-        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr).await?;
+        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr, &Yielder::new()).await?;
         debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
         let data: DemiBuffer = DemiBuffer::new(datagram::ICMPV4_ECHO_REQUEST_MESSAGE_SIZE);
