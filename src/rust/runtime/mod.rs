@@ -177,6 +177,11 @@ impl SharedDemiRuntime {
         OperationTask::from(boxed_task.as_any())
     }
 
+    /// Removes a coroutine from the underlying scheduler given its associated [QToken] `qt`.
+    pub fn remove_coroutine_with_qtoken(&mut self, qt: QToken) -> OperationTask {
+        self.remove_coroutine(&self.scheduler.from_task_id(qt.into()).expect("coroutine should exist"))
+    }
+
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
     /// and gets the result immediately.
     pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {

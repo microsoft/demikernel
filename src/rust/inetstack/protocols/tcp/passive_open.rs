@@ -164,7 +164,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         self.local
     }
 
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
+    pub async fn do_accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
         self.ready.pop(yielder).await
     }
 

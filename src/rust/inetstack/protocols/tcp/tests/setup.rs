@@ -33,10 +33,9 @@ use crate::{
             types::MacAddress,
             PacketBuf,
         },
-        scheduler::TaskHandle,
-        Operation,
         OperationResult,
         QDesc,
+        QToken,
     },
 };
 use ::anyhow::Result;
@@ -46,7 +45,6 @@ use ::std::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    pin::Pin,
     time::{
         Duration,
         Instant,
@@ -75,8 +73,7 @@ fn test_connection_timeout() -> Result<()> {
     advance_clock(None, Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, connect_handle, bytes): (QDesc, TaskHandle, DemiBuffer) =
-        connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, qt, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -98,7 +95,7 @@ fn test_connection_timeout() -> Result<()> {
     match client
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine(&connect_handle)
+        .remove_coroutine_with_qtoken(qt)
         .get_result()
     {
         None => Ok(()),
@@ -120,13 +117,13 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -184,13 +181,13 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Temper packet.
     let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
@@ -248,13 +245,13 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
-    let _: TaskHandle = connection_setup_closed_listen(&mut server, listen_addr)?;
+    let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, TaskHandle, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
+    let (_, _, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
 
     // Sanity check packet.
     check_packet_pure_syn(
@@ -356,17 +353,13 @@ fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
 fn connection_setup_listen_syn_sent<const N: usize>(
     client: &mut SharedEngine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<(QDesc, TaskHandle, DemiBuffer)> {
+) -> Result<(QDesc, QToken, DemiBuffer)> {
     // Issue CONNECT operation.
     let client_fd: QDesc = match client.tcp_socket() {
         Ok(fd) => fd,
         Err(e) => anyhow::bail!("client tcp socket returned error: {:?}", e),
     };
-    let connect_coroutine: Pin<Box<Operation>> = client.tcp_connect(client_fd, listen_addr)?;
-    let connect_handle: TaskHandle = client
-        .get_test_rig()
-        .get_runtime()
-        .insert_coroutine("test::connection_setup_listen_syn_sent()", connect_coroutine)?;
+    let qt: QToken = client.tcp_connect(client_fd, listen_addr)?;
 
     // SYN_SENT state.
     client.get_test_rig().poll_scheduler();
@@ -374,14 +367,14 @@ fn connection_setup_listen_syn_sent<const N: usize>(
 
     let bytes: DemiBuffer = client.get_test_rig().pop_frame();
 
-    Ok((client_fd, connect_handle, bytes))
+    Ok((client_fd, qt, bytes))
 }
 
 /// Triggers CLOSED -> LISTEN state transition.
 fn connection_setup_closed_listen<const N: usize>(
     server: &mut SharedEngine<N>,
     listen_addr: SocketAddrV4,
-) -> Result<TaskHandle> {
+) -> Result<QToken> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = match server.tcp_socket() {
         Ok(fd) => fd,
@@ -393,15 +386,12 @@ fn connection_setup_closed_listen<const N: usize>(
     if let Err(e) = server.tcp_listen(socket_fd, 1) {
         anyhow::bail!("server listen returned an error: {:?}", e);
     }
-    let accept_coroutine: Pin<Box<Operation>> = server.tcp_accept(socket_fd)?;
-    let accept_handle: TaskHandle = server.get_test_rig().get_runtime().insert_coroutine(
-        "test::connection_setup_closed_listen::accept_coroutine",
-        accept_coroutine,
-    )?;
+    let accept_qt: QToken = server.tcp_accept(socket_fd)?;
+
     // LISTEN state.
     server.get_test_rig().poll_scheduler();
 
-    Ok(accept_handle)
+    Ok(accept_qt)
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
@@ -538,13 +528,13 @@ pub fn connection_setup<const N: usize>(
     listen_addr: SocketAddrV4,
 ) -> Result<((QDesc, SocketAddrV4), QDesc)> {
     // Server: LISTEN state at T(0).
-    let accept_handle: TaskHandle = connection_setup_closed_listen(server, listen_addr)?;
+    let accept_qt: QToken = connection_setup_closed_listen(server, listen_addr)?;
 
     // T(0) -> T(1)
     advance_clock(Some(server), Some(client), now);
 
     // Client: SYN_SENT state at T(1).
-    let (client_fd, connect_handle, mut bytes): (QDesc, TaskHandle, DemiBuffer) =
+    let (client_fd, connect_qt, mut bytes): (QDesc, QToken, DemiBuffer) =
         connection_setup_listen_syn_sent(client, listen_addr)?;
 
     // Sanity check packet.
@@ -597,7 +587,7 @@ pub fn connection_setup<const N: usize>(
     let (server_fd, addr): (QDesc, SocketAddrV4) = match server
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine(&accept_handle)
+        .remove_coroutine_with_qtoken(accept_qt)
         .get_result()
     {
         Some((_, crate::OperationResult::Accept((server_fd, addr)))) => (server_fd, addr),
@@ -606,7 +596,7 @@ pub fn connection_setup<const N: usize>(
     match client
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine(&connect_handle)
+        .remove_coroutine_with_qtoken(connect_qt)
         .get_result()
     {
         Some((_, OperationResult::Connect)) => {},

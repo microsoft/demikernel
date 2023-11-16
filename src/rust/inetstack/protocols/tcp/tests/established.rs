@@ -26,10 +26,9 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::consts::RECEIVE_BATCH_SIZE,
-        scheduler::TaskHandle,
-        Operation,
         OperationResult,
         QDesc,
+        QToken,
     },
 };
 use ::anyhow::Result;
@@ -37,7 +36,6 @@ use ::rand;
 use ::std::{
     collections::VecDeque,
     net::SocketAddrV4,
-    pin::Pin,
     time::Instant,
 };
 
@@ -73,11 +71,7 @@ fn send_data<const N: usize>(
     );
 
     // Push data.
-    let push_coroutine: Pin<Box<Operation>> = sender.tcp_push(sender_qd, bytes.clone())?;
-    let handle: TaskHandle = sender
-        .get_test_rig()
-        .get_runtime()
-        .insert_coroutine("test::send_data::push_coroutine", push_coroutine)?;
+    let qt: QToken = sender.tcp_push(sender_qd, bytes.clone())?;
 
     // Poll the coroutine.
     sender.get_test_rig().poll_scheduler();
@@ -111,7 +105,7 @@ fn send_data<const N: usize>(
     match sender
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine(&handle)
+        .remove_coroutine_with_qtoken(qt)
         .get_result()
     {
         Some((_, OperationResult::Push)) => {
@@ -137,11 +131,7 @@ fn recv_data<const N: usize>(
     );
 
     // Pop data.
-    let pop_coroutine: Pin<Box<Operation>> = receiver.tcp_pop(receiver_qd)?;
-    let handle: TaskHandle = receiver
-        .get_test_rig()
-        .get_runtime()
-        .insert_coroutine("test::recv_data::pop_coroutine", pop_coroutine)?;
+    let qt: QToken = receiver.tcp_pop(receiver_qd)?;
 
     // Deliver data.
     if let Err(e) = receiver.receive(bytes.clone()) {
@@ -155,7 +145,7 @@ fn recv_data<const N: usize>(
     match receiver
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine(&handle)
+        .remove_coroutine_with_qtoken(qt)
         .get_result()
     {
         Some((_, OperationResult::Pop(_, _))) => {

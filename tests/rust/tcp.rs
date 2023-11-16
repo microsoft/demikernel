@@ -562,11 +562,11 @@ fn tcp_bad_listen() -> Result<()> {
     safe_bind(&mut libos, sockqd, local2)?;
     safe_listen(&mut libos, sockqd)?;
     match libos.listen(sockqd, 16) {
-        Err(e) if e.errno == libc::EINVAL => (),
+        Err(e) if e.errno == libc::EADDRINUSE => (),
         _ => {
             // Close socket if not error because this test cannot continue.
             // FIXME: https://github.com/demikernel/demikernel/issues/633
-            anyhow::bail!("listen() called on an already listening socket should fail with EINVAL")
+            anyhow::bail!("listen() called on an already listening socket should fail with EADDRINUSE")
         },
     };
     safe_close_passive(&mut libos, sockqd)?;
