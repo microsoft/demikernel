@@ -26,6 +26,7 @@ use crate::{
         scheduler::Yielder,
         Operation,
         QDesc,
+        QToken,
         SharedBox,
         SharedObject,
     },
@@ -136,11 +137,7 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.socket()
     }
 
-    pub fn tcp_connect(
-        &mut self,
-        socket_fd: QDesc,
-        remote_endpoint: SocketAddrV4,
-    ) -> Result<Pin<Box<Operation>>, Fail> {
+    pub fn tcp_connect(&mut self, socket_fd: QDesc, remote_endpoint: SocketAddrV4) -> Result<QToken, Fail> {
         self.ipv4.tcp.connect(socket_fd, remote_endpoint)
     }
 
@@ -148,15 +145,15 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.bind(socket_fd, endpoint)
     }
 
-    pub fn tcp_accept(&self, fd: QDesc) -> Result<Pin<Box<Operation>>, Fail> {
+    pub fn tcp_accept(&mut self, fd: QDesc) -> Result<QToken, Fail> {
         self.ipv4.tcp.accept(fd)
     }
 
-    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> Result<Pin<Box<Operation>>, Fail> {
+    pub fn tcp_push(&mut self, socket_fd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
         self.ipv4.tcp.push(socket_fd, buf)
     }
 
-    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> Result<Pin<Box<Operation>>, Fail> {
+    pub fn tcp_pop(&mut self, socket_fd: QDesc) -> Result<QToken, Fail> {
         self.ipv4.tcp.pop(socket_fd, None)
     }
 

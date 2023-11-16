@@ -33,15 +33,24 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
         network::{
-            socket::SocketId,
+            socket::{
+                operation::SocketOp,
+                state::SocketStateMachine,
+                SocketId,
+            },
             NetworkRuntime,
         },
         queue::{
             IoQueue,
             NetworkQueue,
         },
-        scheduler::Yielder,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
         QDesc,
+        QToken,
         QType,
         SharedBox,
         SharedDemiRuntime,
@@ -51,6 +60,7 @@ use crate::{
 use ::futures::channel::mpsc;
 use ::std::{
     any::Any,
+    collections::HashMap,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -64,7 +74,8 @@ use ::std::{
 //======================================================================================================================
 
 pub enum Socket<const N: usize> {
-    Inactive(Option<SocketAddrV4>),
+    Unbound,
+    Bound(SocketAddrV4),
     Listening(SharedPassiveSocket<N>),
     Connecting(SharedActiveOpenSocket<N>),
     Established(EstablishedSocket<N>),
@@ -77,6 +88,7 @@ pub enum Socket<const N: usize> {
 
 /// Per-queue metadata for the TCP socket.
 pub struct TcpQueue<const N: usize> {
+    state_machine: SocketStateMachine,
     socket: Socket<N>,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
@@ -84,6 +96,7 @@ pub struct TcpQueue<const N: usize> {
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 #[derive(Clone)]
@@ -104,13 +117,15 @@ impl<const N: usize> SharedTcpQueue<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
-            socket: Socket::Inactive(None),
+            state_machine: SocketStateMachine::new_unbound(libc::SOCK_STREAM),
+            socket: Socket::Unbound,
             runtime,
             transport,
             local_link_addr,
             tcp_config,
             arp,
             dead_socket_tx,
+            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }))
     }
 
@@ -124,6 +139,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
+            state_machine: SocketStateMachine::new_connected(),
             socket: Socket::Established(socket),
             runtime,
             transport,
@@ -131,56 +147,57 @@ impl<const N: usize> SharedTcpQueue<N> {
             tcp_config,
             arp,
             dead_socket_tx,
+            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }))
     }
 
     /// Binds the target queue to `local` address.
     pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
-        match self.socket {
-            Socket::Inactive(None) => {
-                self.socket = Socket::Inactive(Some(local));
-                Ok(())
-            },
-            Socket::Inactive(_) => Err(Fail::new(libc::EINVAL, "socket is already bound to an address")),
-            Socket::Listening(_) => Err(Fail::new(libc::EINVAL, "socket is already listening")),
-            Socket::Connecting(_) => Err(Fail::new(libc::EINVAL, "socket is connecting")),
-            Socket::Established(_) => Err(Fail::new(libc::EINVAL, "socket is connected")),
-            Socket::Closing(_) => Err(Fail::new(libc::EINVAL, "socket is closed")),
-        }
+        self.state_machine.prepare(SocketOp::Bind)?;
+        self.socket = Socket::Bound(local);
+        self.state_machine.commit();
+        Ok(())
     }
 
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&mut self, backlog: usize, nonce: u32) -> Result<(), Fail> {
-        match self.socket {
-            Socket::Inactive(Some(local)) => {
-                self.socket = Socket::Listening(SharedPassiveSocket::new(
-                    local,
-                    backlog,
-                    self.runtime.clone(),
-                    self.transport.clone(),
-                    self.tcp_config.clone(),
-                    self.local_link_addr,
-                    self.arp.clone(),
-                    self.dead_socket_tx.clone(),
-                    nonce,
-                ));
-                Ok(())
-            },
-            Socket::Inactive(None) => Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address")),
-            Socket::Listening(_) => Err(Fail::new(libc::EINVAL, "socket is already listening")),
-            Socket::Connecting(_) => Err(Fail::new(libc::EINVAL, "socket is connecting")),
-            Socket::Established(_) => Err(Fail::new(libc::EINVAL, "socket is connected")),
-            Socket::Closing(_) => Err(Fail::new(libc::EINVAL, "socket is closed")),
-        }
+        self.state_machine.prepare(SocketOp::Listen)?;
+        self.socket = Socket::Listening(SharedPassiveSocket::new(
+            self.local()
+                .expect("If we were able to prepare, then the socket must be bound"),
+            backlog,
+            self.runtime.clone(),
+            self.transport.clone(),
+            self.tcp_config.clone(),
+            self.local_link_addr,
+            self.arp.clone(),
+            self.dead_socket_tx.clone(),
+            nonce,
+        ));
+        self.state_machine.commit();
+        Ok(())
     }
 
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<SharedTcpQueue<N>, Fail> {
+    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Accept)?;
+        Ok(self
+            .do_generic_sync_control_path_call(coroutine_constructor)?
+            .get_task_id()
+            .into())
+    }
+
+    pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<SharedTcpQueue<N>, Fail> {
         // Wait for a new connection on the listening socket.
+        self.state_machine.may_accept()?;
         let mut listening_socket: SharedPassiveSocket<N> = match self.socket {
             Socket::Listening(ref listening_socket) => listening_socket.clone(),
-            _ => return Err(Fail::new(libc::EOPNOTSUPP, "socket not listening")),
+            _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
-        let new_socket: EstablishedSocket<N> = listening_socket.accept(yielder).await?;
+        let new_socket: EstablishedSocket<N> = listening_socket.do_accept(yielder).await?;
+        self.state_machine.prepare(SocketOp::Accepted)?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
@@ -191,88 +208,116 @@ impl<const N: usize> SharedTcpQueue<N> {
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         );
+        self.state_machine.commit();
         Ok(new_queue)
     }
 
-    pub async fn connect(
+    pub fn connect<F>(
         &mut self,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         local_isn: SeqNumber,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
-        let socket: SharedActiveOpenSocket<N> = match self.socket {
-            Socket::Inactive(Some(local)) => {
-                // Create active socket.
-                SharedActiveOpenSocket::new(
-                    local_isn,
-                    local,
-                    remote,
-                    self.runtime.clone(),
-                    self.transport.clone(),
-                    self.tcp_config.clone(),
-                    self.local_link_addr,
-                    self.arp.clone(),
-                    self.dead_socket_tx.clone(),
-                )?
-            },
-            Socket::Inactive(None) => {
-                // Create active socket.
-                SharedActiveOpenSocket::new(
-                    local_isn,
-                    local,
-                    remote,
-                    self.runtime.clone(),
-                    self.transport.clone(),
-                    self.tcp_config.clone(),
-                    self.local_link_addr,
-                    self.arp.clone(),
-                    self.dead_socket_tx.clone(),
-                )?
-            },
-            Socket::Listening(_) => return Err(Fail::new(libc::EOPNOTSUPP, "socket is listening")),
-            Socket::Connecting(_) => return Err(Fail::new(libc::EALREADY, "socket is connecting")),
-            Socket::Established(_) => return Err(Fail::new(libc::EISCONN, "socket is connected")),
-            Socket::Closing(_) => return Err(Fail::new(libc::EINVAL, "socket is closed")),
-        };
-        // Update socket state to active open.
-        self.socket = Socket::Connecting(socket.clone());
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Connect)?;
+
+        // Create active socket.
+        self.socket = Socket::Connecting(SharedActiveOpenSocket::new(
+            local_isn,
+            local,
+            remote,
+            self.runtime.clone(),
+            self.transport.clone(),
+            self.tcp_config.clone(),
+            self.local_link_addr,
+            self.arp.clone(),
+            self.dead_socket_tx.clone(),
+        )?);
+
+        Ok(self
+            .do_generic_sync_control_path_call(coroutine_constructor)?
+            .get_task_id()
+            .into())
+    }
+
+    pub async fn connect_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
         // Wait for the established socket to come back and update again.
-        self.socket = Socket::Established(socket.connect(yielder).await?);
+        let connecting_socket: SharedActiveOpenSocket<N> = match self.socket {
+            Socket::Connecting(ref connecting_socket) => connecting_socket.clone(),
+            _ => unreachable!("State machine check should ensure that this socket is connecting"),
+        };
+        let socket: EstablishedSocket<N> = connecting_socket.connect(yielder).await?;
+        self.state_machine.prepare(SocketOp::Connected)?;
+        self.socket = Socket::Established(socket);
+        self.state_machine.commit();
         Ok(())
     }
 
-    pub fn push(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn push<F>(&mut self, buf: DemiBuffer, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.may_push()?;
+        // Send synchronously.
         match self.socket {
-            Socket::Established(ref mut socket) => socket.send(buf),
-            _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
+            Socket::Established(ref mut socket) => socket.send(buf)?,
+            _ => unreachable!("State machine check should ensure that this socket is connected"),
+        };
+        Ok(self
+            .do_generic_sync_data_path_call(coroutine_constructor)?
+            .get_task_id()
+            .into())
+    }
+
+    pub async fn push_coroutine(&mut self, _yielder: Yielder) -> Result<(), Fail> {
+        Ok(())
+    }
+
+    pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.may_pop()?;
+        Ok(self
+            .do_generic_sync_data_path_call(coroutine_constructor)?
+            .get_task_id()
+            .into())
+    }
+
+    pub async fn pop_coroutine(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+        self.state_machine.may_pop()?;
+        match self.socket {
+            Socket::Established(ref mut socket) => socket.pop(size, yielder).await,
+            _ => unreachable!("State machine check should ensure that this socket is connected"),
         }
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
-        match self.socket {
-            Socket::Established(ref mut socket) => socket.pop(size, yielder).await,
-            Socket::Closing(_) => Err(Fail::new(libc::EBADF, "socket closing")),
-            Socket::Connecting(_) => Err(Fail::new(libc::EINPROGRESS, "socket connecting")),
-            Socket::Inactive(_) => Err(Fail::new(libc::EBADF, "socket inactive")),
-            Socket::Listening(_) => Err(Fail::new(libc::ENOTCONN, "socket listening")),
-        }
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.state_machine.prepare(SocketOp::Close)?;
+        Ok(self
+            .do_generic_sync_control_path_call(coroutine_constructor)?
+            .get_task_id()
+            .into())
+    }
+
+    pub async fn close_coroutine(&mut self, _: Yielder) -> Result<Option<SocketId>, Fail> {
+        self.close()
     }
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
-        let socket: EstablishedSocket<N> = match self.socket {
+        self.state_machine.prepare(SocketOp::Close)?;
+        let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
                 socket.close()?;
-                // Only using a clone here because we need to read and write the socket.
-                socket.clone()
+                Some(Socket::Closing(socket.clone()))
             },
-            // Closing an unbound socket.
-            Socket::Inactive(None) => {
-                return Ok(None);
-            },
-            // Closing a bound socket.
-            Socket::Inactive(Some(addr)) => return Ok(Some(SocketId::Passive(addr.clone()))),
             // Closing a listening socket.
             Socket::Listening(_) => {
                 let cause: String = format!("cannot close a listening socket");
@@ -291,13 +336,18 @@ impl<const N: usize> SharedTcpQueue<N> {
                 error!("do_close(): {}", &cause);
                 return Err(Fail::new(libc::ENOTSUP, &cause));
             },
+            _ => None,
         };
-        self.socket = Socket::Closing(socket.clone());
-        return Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)));
-    }
-
-    pub async fn async_close(&mut self, _: Yielder) -> Result<Option<SocketId>, Fail> {
-        self.close()
+        if let Some(socket) = new_socket {
+            self.socket = socket;
+        }
+        self.state_machine.commit();
+        match self.socket {
+            Socket::Closing(ref socket) => Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1))),
+            Socket::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
+            Socket::Unbound => Ok(None),
+            _ => unreachable!("We do not support closing of other socket types"),
+        }
     }
 
     pub fn remote_mss(&self) -> Result<usize, Fail> {
@@ -317,6 +367,7 @@ impl<const N: usize> SharedTcpQueue<N> {
     pub fn endpoints(&self) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
         match self.socket {
             Socket::Established(ref socket) => Ok(socket.endpoints()),
+            Socket::Connecting(ref socket) => Ok(socket.endpoints()),
             _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
         }
     }
@@ -352,14 +403,13 @@ impl<const N: usize> SharedTcpQueue<N> {
                 }
             },
             // The segment is for an inactive connection.
-            Socket::Inactive(addr) => {
-                // It is safe to expect a bound socket here because we would not have found this queue otherwise.
-                debug!(
-                    "Routing to inactive connection: {:?}",
-                    addr.expect("This queue must be bound or we could not have routed to it")
-                );
+            Socket::Bound(addr) => {
+                debug!("Routing to inactive connection: {:?}", addr);
                 // Fall through and send a RST segment back.
             },
+            // The segment is for a totally unbound connection.
+            Socket::Unbound => unreachable!("This socket must be at least bound for us to find it"),
+            // Fall through and send a RST segment back.
             Socket::Closing(ref mut socket) => {
                 debug!("Routing to closing connection: {:?}", socket.endpoints());
                 socket.receive(tcp_hdr, buf);
@@ -431,6 +481,57 @@ impl<const N: usize> SharedTcpQueue<N> {
 
         Ok(())
     }
+
+    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
+    /// add_pending_op() was previously called.
+    /// TODO: Remove this when we clean up take_result().
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/888
+    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
+        self.pending_ops.remove(handle);
+    }
+
+    /// Adds a new operation to the list of pending operations on this queue.
+    fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
+        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
+    }
+
+    /// Generic function for spawning a control-path coroutine on [self].
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        // Spawn coroutine.
+        match coroutine(Yielder::new()) {
+            // We successfully spawned the coroutine.
+            Ok(handle) => {
+                // Commit the operation on the socket.
+                self.add_pending_op(&handle, &yielder_handle);
+                self.state_machine.commit();
+                Ok(handle)
+            },
+            // We failed to spawn the coroutine.
+            Err(e) => {
+                // Abort the operation on the socket.
+                self.state_machine.abort();
+                Err(e)
+            },
+        }
+    }
+
+    /// Generic function for spawning a data-path coroutine on [self].
+    fn do_generic_sync_data_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let task_handle: TaskHandle = coroutine(yielder)?;
+        self.add_pending_op(&task_handle, &yielder_handle);
+        Ok(task_handle)
+    }
 }
 
 //======================================================================================================================
@@ -459,7 +560,8 @@ impl<const N: usize> NetworkQueue for SharedTcpQueue<N> {
     /// Returns the local address to which the target queue is bound.
     fn local(&self) -> Option<SocketAddrV4> {
         match self.socket {
-            Socket::Inactive(addr) => addr,
+            Socket::Unbound => None,
+            Socket::Bound(addr) => Some(addr),
             Socket::Listening(ref socket) => Some(socket.endpoint()),
             Socket::Connecting(ref socket) => Some(socket.endpoints().0),
             Socket::Established(ref socket) => Some(socket.endpoints().0),
@@ -470,7 +572,8 @@ impl<const N: usize> NetworkQueue for SharedTcpQueue<N> {
     /// Returns the remote address to which the target queue is connected to.
     fn remote(&self) -> Option<SocketAddrV4> {
         match self.socket {
-            Socket::Inactive(_) => None,
+            Socket::Unbound => None,
+            Socket::Bound(_) => None,
             Socket::Listening(_) => None,
             Socket::Connecting(ref socket) => Some(socket.endpoints().1),
             Socket::Established(ref socket) => Some(socket.endpoints().1),
