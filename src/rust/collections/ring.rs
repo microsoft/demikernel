@@ -118,7 +118,7 @@ where
 {
     /// Creates a ring buffer.
     #[allow(unused)]
-    fn new<'a>(capacity: usize) -> Result<RingBuffer<T, S>, Fail> {
+    pub fn new<'a>(capacity: usize) -> Result<RingBuffer<T, S>, Fail> {
         #[cfg(feature = "profiler")]
         timer!("collections::ring::new");
         assert!(mem::size_of::<S>() > 0);

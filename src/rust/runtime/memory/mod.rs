@@ -55,6 +55,26 @@ pub trait MemoryRuntime {
         })
     }
 
+    /// Convert a scatter-gather array back into a buffer. The scatter-gather array must be a single buffer.
+    fn from_sgarray(&self, sga: demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        // Check arguments.
+        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
+        if sga.sga_numsegs != 1 {
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
+        }
+
+        if sga.sga_buf == ptr::null_mut() {
+            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid DemiBuffer token"));
+        }
+
+        // Convert back to a DemiBuffer.
+        // Safety: The `NonNull::new_unchecked()` call is safe, as we verified `sga.sga_buf` is not null above.
+        let token: NonNull<u8> = unsafe { NonNull::new_unchecked(sga.sga_buf as *mut u8) };
+        // Safety: The `DemiBuffer::from_raw()` call *should* be safe, as the `sga_buf` field in the `demi_sgarray_t`
+        // contained a valid `DemiBuffer` token when we provided it to the user (and the user shouldn't change it).
+        Ok(unsafe { DemiBuffer::from_raw(token) })
+    }
+
     /// Allocates a scatter-gather array.
     fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
@@ -67,40 +87,13 @@ pub trait MemoryRuntime {
         // First allocate the underlying DemiBuffer.
         let buf: DemiBuffer = DemiBuffer::new(size as u16);
 
-        // Create a scatter-gather segment to expose the DemiBuffer to the user.
-        let data: *const u8 = buf.as_ptr();
-        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
-            sgaseg_buf: data as *mut c_void,
-            sgaseg_len: size as u32,
-        };
-
-        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
-        Ok(demi_sgarray_t {
-            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
-            sga_numsegs: 1,
-            sga_segs: [sga_seg],
-            sga_addr: unsafe { mem::zeroed() },
-        })
+        // Convert into scatter-gather array.
+        self.into_sgarray(buf)
     }
 
     /// Releases a scatter-gather array.
     fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        // Check arguments.
-        // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
-        if sga.sga_numsegs != 1 {
-            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
-        }
-
-        if sga.sga_buf == ptr::null_mut() {
-            return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid DemiBuffer token"));
-        }
-
-        // Convert back to a DemiBuffer and drop it.
-        // Safety: The `NonNull::new_unchecked()` call is safe, as we verified `sga.sga_buf` is not null above.
-        let token: NonNull<u8> = unsafe { NonNull::new_unchecked(sga.sga_buf as *mut u8) };
-        // Safety: The `DemiBuffer::from_raw()` call *should* be safe, as the `sga_buf` field in the `demi_sgarray_t`
-        // contained a valid `DemiBuffer` token when we provided it to the user (and the user shouldn't change it).
-        let buf: DemiBuffer = unsafe { DemiBuffer::from_raw(token) };
+        let buf: DemiBuffer = self.from_sgarray(sga)?;
         drop(buf);
 
         Ok(())

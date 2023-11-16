@@ -353,10 +353,88 @@ impl DemiBuffer {
         self.as_metadata().data_len as usize
     }
 
-    /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
-    // Note: If `nbytes` is greater than the length of the first segment in the chain, then this function will fail and
-    // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
-    // the behavior of DPDK's rte_pktmbuf_adj() routine.
+    /// Returns the number of bytes available after `len()` in the DemiBuffer.
+    pub fn tailroom(&self) -> usize {
+        let md: &MetaData = self.as_metadata();
+        (md.buf_len - md.data_off - md.data_len) as usize
+    }
+
+    /// Adds `nbytes` bytes to the head of the `DemiBuffer` chain. This operation is the logical inverse of adjust.
+    /// Note: If `nbytes` is greater than the head room (i.e., the value of data_off), then this function will fail and
+    /// return an error, rather than adding bytes to the first segment in the chain. This is to match the behavior of
+    /// DPDK's rte_pktmbuf_prepend() routine.
+    pub fn prepend(&mut self, nbytes: usize) -> Result<(), Fail> {
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        match self.get_tag() {
+            Tag::Heap => {
+                let metadata: &mut MetaData = self.as_metadata();
+                if nbytes > metadata.data_off as usize {
+                    return Err(Fail::new(
+                        libc::EINVAL,
+                        "tried to add more bytes than are available in buffer headroom",
+                    ));
+                }
+                // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
+                metadata.data_off -= nbytes as u16;
+                metadata.pkt_len += nbytes as u32;
+                metadata.data_len += nbytes as u16;
+            },
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
+
+                // Safety: rte_pktmbuf_prepend is a FFI, which is safe since we call it with an actual MBuf pointer.
+                if unsafe { rte_pktmbuf_prepend(mbuf, nbytes as u16) } == ptr::null_mut() {
+                    return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                }
+            },
+        }
+
+        Ok(())
+    }
+
+    /// Adds `nbytes` bytes to the end of the `DemiBuffer` chain. This operation is the logical inverse of trim.
+    /// Note: If `nbytes` is greater than the tail room (i.e., the difference between the data length and the buffer
+    /// length), then this function will fail and return an error, rather than adding bytes to the ultimate segment in
+    /// the chain.  This is to match the behavior of DPDK's rte_pktmbuf_append() routine.
+    pub fn append(&mut self, nbytes: usize) -> Result<(), Fail> {
+        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
+        match self.get_tag() {
+            Tag::Heap => {
+                let md_first: &mut MetaData = self.as_metadata();
+                let md_last: &mut MetaData = md_first.get_last_segment();
+
+                let tail_len: u16 = md_last.buf_len - md_last.data_off - md_last.data_len;
+
+                if nbytes > tail_len as usize {
+                    return Err(Fail::new(
+                        libc::EINVAL,
+                        "tried to add more bytes than available in buffer",
+                    ));
+                }
+                // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
+                md_last.data_len += nbytes as u16;
+                md_first.pkt_len += nbytes as u32;
+            },
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
+
+                // Safety: rte_pktmbuf_append is a FFI, which is safe since we call it with an actual MBuf pointer.
+                if unsafe { rte_pktmbuf_append(mbuf, nbytes as u16) } == ptr::null_mut() {
+                    return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                }
+            },
+        }
+
+        Ok(())
+    }
+
+    /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.  This operation is the logical inverse of
+    /// prepend.
+    /// Note: If `nbytes` is greater than the length of the first segment in the chain, then this function will fail
+    /// and return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to
+    /// match the behavior of DPDK's rte_pktmbuf_adj() routine.
     pub fn adjust(&mut self, nbytes: usize) -> Result<(), Fail> {
         // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
@@ -390,7 +468,7 @@ impl DemiBuffer {
         Ok(())
     }
 
-    /// Removes `nbytes` bytes from the end of the `DemiBuffer` chain.
+    /// Removes `nbytes` bytes from the end of the `DemiBuffer` chain. This operation is the logical inverse of append.
     // Note: If `nbytes` is greater than the length of the last segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match
     // the behavior of DPDK's rte_pktmbuf_trim() routine.

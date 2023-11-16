@@ -13,3 +13,10 @@ cfg_if! {
         pub mod concurrent_ring;
     }
 }
+
+cfg_if! {
+    if #[cfg(feature = "rio-libos")] {
+        pub mod raw_array;
+        pub mod ring;
+    }
+}

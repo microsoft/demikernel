@@ -3,6 +3,7 @@
 
 mod config;
 mod queue;
+mod runtime;
 mod socket;
 
 //==============================================================================
@@ -73,14 +74,10 @@ use ::std::{
     pin::Pin,
 };
 
-use ::windows::Win32::Networking::WinSock::{
-    socket,
-    WSAIoctl,
-    RIO_EXTENSION_FUNCTION_TABLE,
-};
-
 #[cfg(feature = "profiler")]
 use crate::timer;
+
+use self::runtime::RioRuntime;
 
 // TODO: update to use value from windows crate once exposed.
 const WSAID_MULTIPLE_RIO: ::windows::core::GUID =
@@ -93,6 +90,8 @@ const WSAID_MULTIPLE_RIO: ::windows::core::GUID =
 pub struct RioLibOS {
     /// Underlying runtime.
     runtime: SharedDemiRuntime,
+    /// Registered I/O runtime.
+    transport: RioRuntime,
 }
 
 #[derive(Clone)]
@@ -104,7 +103,10 @@ pub struct SharedRioLibOS(SharedObject<RioLibOS>);
 
 impl RioLibOS {
     pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            transport: RioRuntime::new(),
+        }
     }
 }
 
