@@ -151,7 +151,50 @@ catnip:
   tcp_push_pop: {}
   udp_ping_pong: {}
   udp_push_pop: {}
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 100
+      run_mode: sequential
+    scenario1:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 100
+      run_mode: sequential
+    scenario2:
+      bufsize: 64
+      nclients: 1
+      nrequests: 100
+      run_mode: concurrent
+    scenario3:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 100
+      run_mode: concurrent
 catpowder:
   tcp_ping_pong: {}
+  tcp_push_pop: {}
   udp_ping_pong: {}
   udp_push_pop: {}
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 100
+      run_mode: sequential
+    scenario1:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 100
+      run_mode: sequential
+    scenario2:
+      bufsize: 64
+      nclients: 1
+      nrequests: 100
+      run_mode: concurrent
+    scenario3:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 100
+      run_mode: concurrent
