@@ -516,35 +516,37 @@ impl<const N: usize> SharedControlBlock<N> {
         if header.rst {
             // TODO: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
             // segment doesn't start precisely on RCV.NXT.
+            if seg_start == receive_next && header.ack_num != SeqNumber::from(0) {
+                // Our peer has given up.  Shut the connection down hard.
+                info!("Received RST");
+                match self.state {
+                    // Data transfer states.
+                    State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
+                        // TODO: Return all outstanding user Receive and Send requests with "reset" responses.
+                        // TODO: Flush all segment queues.
 
-            // Our peer has given up.  Shut the connection down hard.
-            info!("Received RST");
-            match self.state {
-                // Data transfer states.
-                State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
-                    // TODO: Return all outstanding user Receive and Send requests with "reset" responses.
-                    // TODO: Flush all segment queues.
+                        // Enter Closed state.
+                        self.state = State::Closed;
 
-                    // Enter Closed state.
-                    self.state = State::Closed;
+                        // TODO: Delete the ControlBlock.
+                        return;
+                    },
 
-                    // TODO: Delete the ControlBlock.
-                    return;
-                },
+                    // Closing states.
+                    State::Closing | State::LastAck | State::TimeWait => {
+                        // Enter Closed state.
+                        self.state = State::Closed;
 
-                // Closing states.
-                State::Closing | State::LastAck | State::TimeWait => {
-                    // Enter Closed state.
-                    self.state = State::Closed;
+                        // TODO: Delete the ControlBlock.
+                        return;
+                    },
 
-                    // TODO: Delete the ControlBlock.
-                    return;
-                },
-
-                // Should never happen.
-                state => panic!("Bad TCP state {:?}", state),
+                    // Should never happen.
+                    state => panic!("Bad TCP state {:?}", state),
+                }
+            } else {
+                debug!("Spurious reset");
             }
-
             // Note: We should never get here.
         }
 
