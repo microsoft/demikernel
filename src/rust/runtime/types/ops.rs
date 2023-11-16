@@ -8,7 +8,7 @@
 //======================================================================================================================
 
 use crate::{
-    pal::data_structures::SockAddr,
+    pal::data_structures::SockAddrStorage,
     runtime::types::{
         memory::demi_sgarray_t,
         queue::demi_qtoken_t,
@@ -37,7 +37,7 @@ pub enum demi_opcode_t {
 #[derive(Copy, Clone)]
 pub struct demi_accept_result_t {
     pub qd: i32,
-    pub addr: SockAddr,
+    pub addr: SockAddrStorage,
 }
 
 #[repr(C)]

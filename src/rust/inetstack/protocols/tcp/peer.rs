@@ -223,7 +223,7 @@ impl<const N: usize> SharedTcpPeer<N> {
                             existing_qd
                         );
                     }
-                    (qd, OperationResult::Accept((new_qd, endpoints.1)))
+                    (qd, OperationResult::Accept((new_qd, endpoints.1.into())))
                 },
                 Err(e) => (qd, OperationResult::Failed(e)),
             }

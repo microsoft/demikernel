@@ -220,7 +220,7 @@ impl SharedCatnapLibOS {
                     .remote()
                     .expect("An accepted socket must have a remote address");
                 let new_qd: QDesc = self.runtime.alloc_queue(new_queue);
-                (qd, OperationResult::Accept((new_qd, addr)))
+                (qd, OperationResult::Accept((new_qd, addr.into())))
             },
             Err(e) => {
                 warn!("accept() listening_qd={:?}: {:?}", qd, &e);
@@ -472,7 +472,7 @@ impl SharedCatnapLibOS {
 
         // Wait for pop to complete.
         match queue.do_pop(size, yielder).await {
-            Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
+            Ok((addr, buf)) => (qd, OperationResult::Pop(addr.map(SocketAddr::from), buf)),
             Err(e) => {
                 warn!("pop() qd={:?}: {:?}", qd, &e);
                 (qd, OperationResult::Failed(e))

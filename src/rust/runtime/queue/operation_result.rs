@@ -12,7 +12,7 @@ use crate::runtime::{
 };
 use ::std::{
     fmt,
-    net::SocketAddrV4,
+    net::SocketAddr,
 };
 
 //==============================================================================
@@ -22,9 +22,9 @@ use ::std::{
 #[derive(Clone)]
 pub enum OperationResult {
     Connect,
-    Accept((QDesc, SocketAddrV4)),
+    Accept((QDesc, SocketAddr)),
     Push,
-    Pop(Option<SocketAddrV4>, DemiBuffer),
+    Pop(Option<SocketAddr>, DemiBuffer),
     Close,
     Failed(Fail),
 }

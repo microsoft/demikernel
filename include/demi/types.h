@@ -13,7 +13,7 @@
 #endif
 
 #ifdef _WIN32
-#include <winsock.h>
+#include <WinSock2.h>
 #endif
 
 #ifdef __cplusplus
@@ -63,7 +63,7 @@ extern "C"
         void *sga_buf;                                /**< Reserved.                                       */
         uint32_t sga_numsegs;                         /**< Number of segments in the scatter-gather array. */
         demi_sgaseg_t sga_segs[DEMI_SGARRAY_MAXSIZE]; /**< Scatter-gather array segments.                  */
-        struct sockaddr_in sga_addr;                  /**< Source address of scatter-gather array.         */
+        struct sockaddr_storage sga_addr;             /**< Source address of scatter-gather array.         */
     } demi_sgarray_t;
     #ifdef _WIN32
     #pragma pack(pop)
@@ -94,8 +94,8 @@ extern "C"
     typedef struct __attribute__((__packed__)) demi_accept_result
     #endif
     {
-        int32_t qd;                  /**< Socket I/O queue descriptor of accepted connection. */
-        struct sockaddr_in addr; /**< Remote address of accepted connection.              */
+        int32_t qd;                   /**< Socket I/O queue descriptor of accepted connection. */
+        struct sockaddr_storage addr; /**< Remote address of accepted connection.              */
     } demi_accept_result_t;
     #ifdef _WIN32
     #pragma pack(pop)

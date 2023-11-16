@@ -36,7 +36,10 @@ pub use dpdk_rs as libdpdk;
 //======================================================================================================================
 
 use crate::{
-    pal::data_structures::SockAddr,
+    pal::{
+        data_structures::SockAddrStorage,
+        functions::socketaddr_to_sockaddr_storage,
+    },
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
@@ -78,12 +81,6 @@ use windows::Win32::Networking::WinSock::{
     WSAEINPROGRESS,
     WSAEWOULDBLOCK,
 };
-
-#[cfg(target_os = "windows")]
-use crate::pal::functions::socketaddrv4_to_sockaddr;
-
-#[cfg(target_os = "linux")]
-use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 use self::types::{
     demi_accept_result_t,
@@ -392,7 +389,7 @@ impl SharedDemiRuntime {
                 qr_value: unsafe { mem::zeroed() },
             },
             OperationResult::Accept((new_qd, addr)) => {
-                let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
+                let saddr: SockAddrStorage = socketaddr_to_sockaddr_storage(addr);
                 let qr_value: demi_qr_value_t = demi_qr_value_t {
                     ares: demi_accept_result_t {
                         qd: new_qd.into(),
@@ -417,7 +414,7 @@ impl SharedDemiRuntime {
             OperationResult::Pop(addr, bytes) => match self.into_sgarray(bytes) {
                 Ok(mut sga) => {
                     if let Some(addr) = addr {
-                        sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
+                        sga.sga_addr = socketaddr_to_sockaddr_storage(addr);
                     }
                     let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
                     demi_qresult_t {

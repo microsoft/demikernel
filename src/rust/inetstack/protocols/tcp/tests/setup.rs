@@ -52,6 +52,7 @@ use ::std::{
         Instant,
     },
 };
+use std::net::SocketAddr;
 
 //======================================================================================================================
 // Tests
@@ -600,7 +601,7 @@ pub fn connection_setup<const N: usize>(
         .remove_coroutine(&accept_handle)
         .get_result()
     {
-        Some((_, crate::OperationResult::Accept((server_fd, addr)))) => (server_fd, addr),
+        Some((_, crate::OperationResult::Accept((server_fd, SocketAddr::V4(addr))))) => (server_fd, addr),
         _ => anyhow::bail!("accept should have completed"),
     };
     match client

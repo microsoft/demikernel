@@ -14,5 +14,9 @@ pub mod constants;
 pub mod data_structures;
 pub mod functions;
 
+#[cfg_attr(linux, path = "linux/mod.rs")]
+#[cfg_attr(windows, path = "windows/mod.rs")]
+mod sys;
+
 #[cfg(target_os = "linux")]
 pub mod linux;

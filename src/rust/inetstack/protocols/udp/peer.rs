@@ -192,7 +192,7 @@ impl<const N: usize> SharedUdpPeer<N> {
 
         Ok(Box::pin(async move {
             match queue.pop(size, yielder).await {
-                Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr), buf)),
+                Ok((addr, buf)) => (qd, OperationResult::Pop(Some(addr.into()), buf)),
                 Err(e) => (qd, OperationResult::Failed(e)),
             }
         }))

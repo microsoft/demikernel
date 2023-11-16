@@ -40,6 +40,7 @@ use ::std::{
         Instant,
     },
 };
+use std::net::SocketAddr;
 
 //==============================================================================
 // Bind & Close
@@ -115,12 +116,13 @@ fn udp_push_pop() -> Result<()> {
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
-        match Future::poll(coroutine.as_mut(), &mut ctx) {
-            Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
-            _ => unreachable!("Pop failed"),
-        };
-    assert_eq!(remote_addr.unwrap(), alice_addr);
+    let (remote_addr, received_buf): (Option<SocketAddr>, DemiBuffer) = match Future::poll(coroutine.as_mut(), &mut ctx)
+    {
+        Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
+        _ => unreachable!("Pop failed"),
+    };
+    assert!(remote_addr.unwrap().is_ipv4());
+    assert_eq!(remote_addr.unwrap(), SocketAddr::V4(alice_addr));
     assert_eq!(received_buf[..], buf[..]);
 
     // Close peers.
@@ -167,12 +169,12 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
-        match Future::poll(coroutine.as_mut(), &mut ctx) {
-            Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
-            _ => unreachable!("Pop failed"),
-        };
-    assert_eq!(remote_addr.unwrap(), alice_addr);
+    let (remote_addr, received_buf): (Option<SocketAddr>, DemiBuffer) = match Future::poll(coroutine.as_mut(), &mut ctx)
+    {
+        Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
+        _ => unreachable!("Pop failed"),
+    };
+    assert_eq!(remote_addr.unwrap(), SocketAddr::V4(alice_addr));
     assert_eq!(received_buf[..], buf[..]);
     // Close peers.
     alice.udp_close(alice_fd)?;
@@ -216,12 +218,12 @@ fn udp_ping_pong() -> Result<()> {
     // Receive data from Alice.
     bob.receive(alice.get_test_rig().pop_frame()).unwrap();
     let mut bob_coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
-    let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
+    let (remote_addr, received_buf_a): (Option<SocketAddr>, DemiBuffer) =
         match Future::poll(bob_coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
             _ => unreachable!("Pop failed"),
         };
-    assert_eq!(remote_addr.unwrap(), alice_addr);
+    assert_eq!(remote_addr.unwrap(), SocketAddr::V4(alice_addr));
     assert_eq!(received_buf_a[..], buf_a[..]);
 
     now += Duration::from_micros(1);
@@ -241,12 +243,12 @@ fn udp_ping_pong() -> Result<()> {
     // Receive data from Bob.
     alice.receive(bob.get_test_rig().pop_frame()).unwrap();
     let mut coroutine: Pin<Box<Operation>> = alice.udp_pop(alice_fd)?;
-    let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
+    let (remote_addr, received_buf_b): (Option<SocketAddr>, DemiBuffer) =
         match Future::poll(coroutine.as_mut(), &mut ctx) {
             Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
             _ => unreachable!("Pop failed"),
         };
-    assert_eq!(remote_addr.unwrap(), bob_addr);
+    assert_eq!(remote_addr.unwrap(), SocketAddr::V4(bob_addr));
     assert_eq!(received_buf_b[..], buf_b[..]);
 
     // Close peers.
@@ -351,12 +353,12 @@ fn udp_loop2_push_pop() -> Result<()> {
         // Receive data from Alice.
         bob.receive(alice.get_test_rig().pop_frame()).unwrap();
         let mut coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
-        let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
+        let (remote_addr, received_buf): (Option<SocketAddr>, DemiBuffer) =
             match Future::poll(coroutine.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
                 _ => unreachable!("Pop failed"),
             };
-        assert_eq!(remote_addr.unwrap(), alice_addr);
+        assert_eq!(remote_addr.unwrap(), SocketAddr::V4(alice_addr));
         assert_eq!(received_buf[..], buf[..]);
     }
 
@@ -415,12 +417,12 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Receive data from Alice.
         bob.receive(alice.get_test_rig().pop_frame()).unwrap();
         let mut bob_coroutine: Pin<Box<Operation>> = bob.udp_pop(bob_fd)?;
-        let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
+        let (remote_addr, received_buf_a): (Option<SocketAddr>, DemiBuffer) =
             match Future::poll(bob_coroutine.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
                 _ => unreachable!("Pop failed"),
             };
-        assert_eq!(remote_addr.unwrap(), alice_addr);
+        assert_eq!(remote_addr.unwrap(), SocketAddr::V4(alice_addr));
         assert_eq!(received_buf_a[..], buf_a[..]);
 
         now += Duration::from_micros(1);
@@ -438,12 +440,12 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Receive data from Bob.
         alice.receive(bob.get_test_rig().pop_frame()).unwrap();
         let mut alice_coroutine2: Pin<Box<Operation>> = alice.udp_pop(alice_fd)?;
-        let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
+        let (remote_addr, received_buf_b): (Option<SocketAddr>, DemiBuffer) =
             match Future::poll(alice_coroutine2.as_mut(), &mut ctx) {
                 Poll::Ready((_, OperationResult::Pop(addr, buf))) => (addr, buf),
                 _ => unreachable!("Pop failed"),
             };
-        assert_eq!(remote_addr.unwrap(), bob_addr);
+        assert_eq!(remote_addr.unwrap(), SocketAddr::V4(bob_addr));
         assert_eq!(received_buf_b[..], buf_b[..]);
     }
 

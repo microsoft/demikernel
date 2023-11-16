@@ -7,7 +7,6 @@ use std::{
 
 use windows::Win32::{
     Foundation::{
-        CloseHandle,
         GetLastError,
         BOOL,
         ERROR_IO_PENDING,
@@ -19,7 +18,6 @@ use windows::Win32::{
         closesocket,
         tcp_keepalive,
         GetAcceptExSockaddrs,
-        WSAAccept,
         FROM_PROTOCOL_INFO,
         INVALID_SOCKET,
         IPPROTO_TCP,
@@ -35,12 +33,9 @@ use windows::Win32::{
         WSAPROTOCOL_INFOW,
         WSA_FLAG_OVERLAPPED,
     },
-    System::{
-        Threading::CreateEventW,
-        IO::{
-            GetOverlappedResult,
-            OVERLAPPED,
-        },
+    System::IO::{
+        GetOverlappedResult,
+        OVERLAPPED,
     },
 };
 
@@ -129,10 +124,6 @@ impl Socket {
         let mut overlapped: OVERLAPPED = OVERLAPPED::default();
         overlapped.hEvent = HANDLE(1);
 
-        let teardown = || unsafe {
-            CloseHandle(event);
-        };
-
         // Per AcceptEx documentation, address storage must contain 16 bytes of buffer.
         const SOCKADDR_BUF_SIZE: usize = std::mem::size_of::<SOCKADDR_STORAGE>() + 16;
         const BUFFER_LEN: usize = (SOCKADDR_BUF_SIZE) * 2;
@@ -161,19 +152,16 @@ impl Socket {
                         unsafe { GetOverlappedResult(None, &overlapped, &mut bytes_transferred, TRUE) }
                     {
                         if err.code() != ERROR_IO_PENDING.into() {
-                            teardown();
                             return Err(Fail::from(err));
                         };
                     }
                 },
 
                 Err(ref err) => {
-                    teardown();
                     return Err(Fail::from(err));
                 },
 
                 Ok(_) => {
-                    teardown();
                     return Err(Fail::new(libc::EFAULT, "GetOverlappedResult returned unexpectedly"));
                 },
             }
@@ -210,7 +198,6 @@ impl Socket {
             .as_socket()
             .ok_or_else(|| Fail::new(libc::EAFNOSUPPORT, "bad remote socket address from accept"))?;
 
-        teardown();
         Ok((dup, remote_addr))
     }
 }
