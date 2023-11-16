@@ -312,6 +312,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
         self.state_machine.prepare(SocketOp::Close)?;
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
@@ -494,6 +495,16 @@ impl<const N: usize> SharedTcpQueue<N> {
     /// Adds a new operation to the list of pending operations on this queue.
     fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
         self.pending_ops.insert(handle.clone(), yielder_handle.clone());
+    }
+
+    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
+    /// yielded, wake the coroutine with an error.
+    fn cancel_pending_ops(&mut self, cause: Fail) {
+        for (handle, mut yielder_handle) in self.pending_ops.drain() {
+            if !handle.has_completed() {
+                yielder_handle.wake_with(Err(cause.clone()));
+            }
+        }
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
