@@ -17,10 +17,6 @@ on:
       - unstable
       - master
 
-env:
-  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
-  GITHUB_SHA: $GITHUB_SHA
-
 jobs:
 
   #=====================================================================================================================
