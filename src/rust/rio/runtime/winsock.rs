@@ -68,29 +68,35 @@ impl SocketExtensions {
             acceptex: Self::lookup_single_fn(s, &WSAID_ACCEPTEX)?,
             connectex: Self::lookup_single_fn(s, &WSAID_CONNECTEX)?,
             disconnectex: Self::lookup_single_fn(s, &WSAID_DISCONNECTEX)?,
-            rio_fns: RIO_EXTENSION_FUNCTION_TABLE::default(),
+            rio_fns: Self::resolve_rio_fn_table(s)?,
         });
 
         // Safety: SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER expects input of type GUID and output of type
         // RIO_EXTENSION_FUNCTION_TABLE.
-        result.rio_fns.cbSize = std::mem::size_of::<RIO_EXTENSION_FUNCTION_TABLE>() as u32;
+        Ok(result)
+    }
+
+    fn resolve_rio_fn_table(s: SOCKET) -> Result<RIO_EXTENSION_FUNCTION_TABLE, Fail> {
+        let mut result: RIO_EXTENSION_FUNCTION_TABLE = RIO_EXTENSION_FUNCTION_TABLE::default();
+        result.cbSize = std::mem::size_of::<RIO_EXTENSION_FUNCTION_TABLE>() as u32;
+
         unsafe {
             WinsockRuntime::do_ioctl(
                 s,
                 SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER,
                 Some(&WSAID_MULTIPLE_RIO),
-                Some(&mut result.rio_fns),
+                Some(&mut result),
             )
         }?;
 
-        if result.rio_fns.cbSize != std::mem::size_of::<RIO_EXTENSION_FUNCTION_TABLE>() as u32 {
-            return Err(Fail::new(
+        if result.cbSize != std::mem::size_of::<RIO_EXTENSION_FUNCTION_TABLE>() as u32 {
+            Err(Fail::new(
                 libc::EFAULT,
                 "Winsock did not return enough data for RIO_EXTENSION_FUNCTION_TABLE",
-            ));
+            ))
+        } else {
+            Ok(result)
         }
-
-        Ok(result)
     }
 
     /// Lookup a single function pointer using SIO_GET_EXTENSION_FUNCTION_POINTER ioctl. To be sound, T must be a `fn`

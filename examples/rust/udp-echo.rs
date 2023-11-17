@@ -37,7 +37,7 @@ use ::std::{
     },
 };
 #[cfg(target_os = "windows")]
-use windows::Win32::Networking::WinSock::SOCKADDR;
+use windows::Win32::Networking::WinSock::SOCKADDR_STORAGE;
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: windows::Win32::Networking::WinSock::ADDRESS_FAMILY = windows::Win32::Networking::WinSock::AF_INET;
@@ -193,8 +193,7 @@ impl Application {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    let saddr: SocketAddr = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr })
-                    {
+                    let saddr: SocketAddr = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr }) {
                         Ok(saddr) => SocketAddr::V4(saddr),
                         Err(e) => {
                             // If error, free scatter-gather array.
@@ -242,7 +241,7 @@ impl Application {
 
     #[cfg(target_os = "linux")]
     /// Converts a [sockaddr] into a [SocketAddrV4].
-    pub fn sockaddr_to_socketaddrv4(saddr: *const libc::sockaddr) -> Result<SocketAddrV4> {
+    pub fn sockaddr_to_socketaddrv4(saddr: *const libc::sockaddr_storage) -> Result<SocketAddrV4> {
         // TODO: Change the logic below and rename this function once we support V6 addresses as well.
         let sin: libc::sockaddr_in =
             unsafe { *mem::transmute::<*const libc::sockaddr, *const libc::sockaddr_in>(saddr) };
@@ -256,9 +255,8 @@ impl Application {
 
     #[cfg(target_os = "windows")]
     /// Converts a [sockaddr] into a [SocketAddrV4].
-    pub fn sockaddr_to_socketaddrv4(saddr: *const SOCKADDR) -> Result<SocketAddrV4> {
+    pub fn sockaddr_to_socketaddrv4(saddr: *const SOCKADDR_STORAGE) -> Result<SocketAddrV4> {
         // TODO: Change the logic below and rename this function once we support V6 addresses as well.
-
         let sin: SOCKADDR_IN = unsafe { *(saddr as *const SOCKADDR_IN) };
         if sin.sin_family != AF_INET {
             anyhow::bail!("communication domain not supported");

@@ -9,23 +9,15 @@ use crate::{
     demikernel::config::Config,
     runtime::fail::Fail,
 };
-use ::anyhow::Error;
-use ::std::{
-    collections::HashMap,
-    ffi::CString,
-    net::Ipv4Addr,
-};
 use ::yaml_rust::Yaml;
 use std::{
     ops::{
-        FnOnce,
+        Fn,
         Index,
     },
     time::Duration,
 };
 use windows::Win32::Networking::WinSock::tcp_keepalive;
-
-enum CqConfig {}
 
 //======================================================================================================================
 // Associated Functions
@@ -109,7 +101,7 @@ impl Config {
     }
 
     /// Index `yaml` to find the value at `index`, validating that it exists and that the receiver returns Some(_).
-    fn require_typed_option<T>(yaml: &Yaml, index: &str, receiver: &dyn FnOnce(&Yaml) -> Option<T>) -> Result<T, Fail> {
+    fn require_typed_option<T>(yaml: &Yaml, index: &str, receiver: &dyn Fn(&Yaml) -> Option<T>) -> Result<T, Fail> {
         let option: &Yaml = Self::require_option(yaml, index)?;
         match receiver(option) {
             Some(value) => Ok(value),

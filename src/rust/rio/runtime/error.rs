@@ -112,3 +112,9 @@ impl From<&windows::core::Error> for Fail {
         Fail::new(errno, cause.as_str())
     }
 }
+
+impl From<windows::core::Error> for Fail {
+    fn from(value: windows::core::Error) -> Self {
+        Self::from(&value)
+    }
+}

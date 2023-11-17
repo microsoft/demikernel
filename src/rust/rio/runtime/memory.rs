@@ -49,7 +49,7 @@ impl BufferRing {
             bufs: VecDeque::with_capacity(ring_size),
         };
 
-        for i in 0..ring_size {
+        for _ in 0..ring_size {
             result.bufs.push_back(DemiBuffer::new(buf_size_u16));
         }
 
