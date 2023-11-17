@@ -66,26 +66,32 @@ def extract_performance(job_name, file):
         for line in lines:
             line = line.replace("::", ";")
             columns = line.split(";")
-            assert len(columns) == 6
-            depth = columns[0]
-            libos = columns[1]
-            syscall = columns[2]
-            total_time = columns[3]
-            average_cycles = columns[4]
-            average_time = columns[5]
+            # Workaround for LibOses which are miss behaving.
+            if len(columns) == 6:
+                depth = columns[0]
+                libos = columns[1]
+                syscall = columns[2]
+                total_time = columns[3]
+                average_cycles = columns[4]
+                average_time = columns[5]
 
-            partition_key: str = "-".join([COMMIT_HASH, libos, job_name])
-            row_key: str = syscall
+                partition_key: str = "-".join([COMMIT_HASH, libos, job_name])
+                row_key: str = syscall
 
-            entry: dict[str, str, str, float, float, float] = {}
-            entry["PartitionKey"] = partition_key
-            entry["RowKey"] = row_key
-            entry["TotalTime"] = float(total_time)
-            entry["AverageCyclesPerSyscall"] = float(average_cycles)
-            entry["AverageTimePerSyscall"] = float(average_time)
+                entry: dict[str, str, str, str, str,
+                            str, float, float, float] = {}
+                entry["PartitionKey"] = partition_key
+                entry["RowKey"] = row_key
+                entry["CommitHash"] = COMMIT_HASH
+                entry["LibOS"] = libos
+                entry["JobName"] = job_name
+                entry["Syscall"] = syscall
+                entry["TotalTime"] = float(total_time)
+                entry["AverageCyclesPerSyscall"] = float(average_cycles)
+                entry["AverageTimePerSyscall"] = float(average_time)
 
-            table_client.delete_entity(partition_key, row_key)
-            table_client.create_entity(entry)
+                table_client.delete_entity(partition_key, row_key)
+                table_client.create_entity(entry)
 
 
 def wait_jobs(log_directory: str, jobs: dict):
