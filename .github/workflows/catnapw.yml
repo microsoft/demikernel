@@ -17,10 +17,6 @@ on:
       - unstable
       - master
 
-env:
-  GITHUB_REPOSITORY: $GITHUB_REPOSITORY
-  GITHUB_SHA: $GITHUB_SHA
-
 jobs:
 
   #=====================================================================================================================
@@ -44,7 +40,7 @@ jobs:
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
           git pull
-          git checkout dev
+          git checkout origin/${{ github.ref_name }}
 
 
   # Node 1
@@ -64,7 +60,7 @@ jobs:
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
           git pull
-          git checkout dev
+          git checkout origin/${{ github.ref_name }}
 
   #=====================================================================================================================
   # Setup Completed
