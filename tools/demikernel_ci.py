@@ -9,14 +9,36 @@ from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 from typing import List
+from azure.data.tables import TableServiceClient
 
 from ci.src.base_test import BaseTest
 from ci.src.ci_map import CIMap
 from ci.src.test_instantiator import TestInstantiator
 
 # ======================================================================================================================
+# Global Variables
+# ======================================================================================================================
+
+COMMIT_HASH: str = ""
+CONNECTION_STRING: str = ""
+TABLE_NAME = "test"
+
+# ======================================================================================================================
 # Utilities
 # ======================================================================================================================
+
+
+def get_commit_hash() -> str:
+    cmd = "git rev-parse HEAD"
+    git_cmd = "bash -l -c \'{}\'".format(cmd)
+    git_process = subprocess.Popen(
+        git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git_stdout, _ = git_process.communicate()
+    git_stdout = git_stdout.replace("\n", "")
+
+    global COMMIT_HASH
+    COMMIT_HASH = git_stdout
+    assert len(COMMIT_HASH) == 40
 
 
 def timing(f):
@@ -29,6 +51,43 @@ def timing(f):
     return wrap
 
 
+def extract_performance(job_name, file):
+
+    # Connect to Azure Tables.
+    if not CONNECTION_STRING == "":
+        table_service = TableServiceClient.from_connection_string(
+            CONNECTION_STRING)
+        table_client = table_service.get_table_client(TABLE_NAME)
+
+        # Filter profiler lines.
+        lines = [line for line in file if line.startswith("+")]
+
+        # Parse statistics and upload them to azure tables.
+        for line in lines:
+            line = line.replace("::", ";")
+            columns = line.split(";")
+            assert len(columns) == 6
+            depth = columns[0]
+            libos = columns[1]
+            syscall = columns[2]
+            total_time = columns[3]
+            average_cycles = columns[4]
+            average_time = columns[5]
+
+            partition_key: str = "-".join([COMMIT_HASH, libos, job_name])
+            row_key: str = syscall
+
+            entry: dict[str, str, str, float, float, float] = {}
+            entry["PartitionKey"] = partition_key
+            entry["RowKey"] = row_key
+            entry["TotalTime"] = float(total_time)
+            entry["AverageCyclesPerSyscall"] = float(average_cycles)
+            entry["AverageTimePerSyscall"] = float(average_time)
+
+            table_client.delete_entity(partition_key, row_key)
+            table_client.create_entity(entry)
+
+
 def wait_jobs(log_directory: str, jobs: dict):
     @timing
     def wait_jobs2(log_directory: str, jobs: dict) -> List:
@@ -39,6 +98,9 @@ def wait_jobs(log_directory: str, jobs: dict):
             status.append((j.pid, j.returncode))
             with open(log_directory + "/" + job_name + ".stdout.txt", "w") as file:
                 file.write("{}".format(stdout))
+            with open(log_directory + "/" + job_name + ".stdout.txt", "r") as file:
+                extract_performance(job_name, file)
+
             with open(log_directory + "/" + job_name + ".stderr.txt", "w") as file:
                 file.write("{}".format(stderr))
 
@@ -417,6 +479,13 @@ def main():
 
     # Output directory.
     output_dir: str = args.output_dir
+
+    # Initialize glboal variables.
+    get_commit_hash()
+    global CONNECTION_STRING
+    CONNECTION_STRING = args.connection_string if args.connection_string != "" else CONNECTION_STRING
+    global TABLE_NAME
+    TABLE_NAME = args.table_name if args.table_name != "" else TABLE_NAME
 
     status: dict = run_pipeline(repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,
