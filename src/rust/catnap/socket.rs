@@ -457,7 +457,7 @@ impl Socket {
     }
 
     pub fn close(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
+        self.state_machine.prepare(SocketOp::LocalClose)?;
         self.state_machine.commit();
         self.try_close()
     }
@@ -468,7 +468,7 @@ impl Socket {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.state_machine.prepare(SocketOp::Close)?;
+        self.state_machine.prepare(SocketOp::LocalClose)?;
         Ok(self.do_generic_sync_control_path_call(coroutine, yielder)?)
     }
 
@@ -599,7 +599,7 @@ impl Socket {
     }
 
     /// Attempts to read data from the socket into the given buffer.
-    pub fn try_pop(&self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
+    pub fn try_pop(&mut self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
         // Ensure that the socket did not transition to an invalid state.
         self.state_machine.may_pop()?;
 
@@ -620,12 +620,17 @@ impl Socket {
             } {
                 // Operation completed.
                 nbytes if nbytes >= 0 => {
-                    trace!("data received ({:?}/{:?} bytes)", nbytes, size);
+                    if nbytes == 0 {
+                        trace!("remote closed connection");
+                        self.state_machine.prepare(SocketOp::RemoteClose)?;
+                        self.state_machine.commit();
+                    } else {
+                        trace!("data received ({:?}/{:?} bytes)", nbytes, size);
+                    }
                     buf.trim(size - nbytes as usize)?;
                     let addr: SocketAddrV4 = linux::sockaddr_to_socketaddrv4(&saddr);
                     return Ok(Some(addr));
                 },
-
                 // Operation not completed, thus parse errno to find out what happened.
                 _ => {
                     let errno: libc::c_int = unsafe { *libc::__errno_location() };

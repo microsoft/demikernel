@@ -35,9 +35,14 @@ enum SocketState {
     Connecting,
     /// A socket that is connected to a remote address.
     Connected,
-    /// A socket that is closing.
+    /// A socket that is closing on the local end (i.e., the application will no longer be sending bits).
+    LocalClosing,
+    /// A socket that is closing on the remote end (i.e., the application will no longer be receiving bits from the
+    /// remote).
+    RemoteClosing,
+    /// A socket that is closing on both ends.
     Closing,
-    /// A socket that is closed.
+    /// A socket that is closed on both ends.
     Closed,
 }
 
@@ -143,7 +148,7 @@ impl SocketStateMachine {
     /// Prepares to move into the next state.
     pub fn prepare(&mut self, op: SocketOp) -> Result<(), Fail> {
         let next: SocketState = self.get_next_state(op)?;
-        if next != SocketState::Closing {
+        if next != SocketState::LocalClosing && next != SocketState::RemoteClosing && next != SocketState::Closing {
             if let Some(pending) = self.next {
                 if pending != next {
                     return Err(fail(op, &(format!("socket is busy")), libc::EBUSY));
@@ -163,6 +168,8 @@ impl SocketStateMachine {
             SocketState::Accepting => self.accepting_state(op),
             SocketState::Connecting => self.connecting_state(op),
             SocketState::Connected => self.connected_state(op),
+            SocketState::LocalClosing => self.local_closing_state(op),
+            SocketState::RemoteClosing => self.remote_closing_state(op),
             SocketState::Closing => self.closing_state(op),
             SocketState::Closed => self.closed_state(op),
         };
@@ -195,7 +202,8 @@ impl SocketStateMachine {
             SocketOp::Connect => Ok(SocketState::Connecting),
             // Should this be possible without going through the Connecting state?
             SocketOp::Connected => Ok(SocketState::Connected),
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Err(fail(op, &format!("socket is not connected"), libc::ENOTCONN)),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
@@ -208,7 +216,8 @@ impl SocketStateMachine {
             },
             SocketOp::Listen => Ok(SocketState::Listening),
             SocketOp::Connect => Ok(SocketState::Connecting),
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Err(fail(op, &format!("socket is not connected"), libc::ENOTCONN)),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
@@ -222,7 +231,8 @@ impl SocketStateMachine {
             SocketOp::Listen => Err(fail(op, &(format!("socket is already listening")), libc::EADDRINUSE)),
             SocketOp::Accept => Ok(SocketState::Accepting),
             SocketOp::Connect => Err(fail(op, &(format!("socket is already listening")), libc::EOPNOTSUPP)),
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Err(fail(op, &format!("socket is not connected"), libc::ENOTCONN)),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
@@ -257,7 +267,8 @@ impl SocketStateMachine {
                 &(format!("socket is already accepting connections")),
                 libc::EBUSY,
             )),
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Err(fail(op, &format!("socket is not connected"), libc::ENOTCONN)),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
@@ -275,7 +286,8 @@ impl SocketStateMachine {
                 libc::EINPROGRESS,
             )),
             SocketOp::Connected => Ok(SocketState::Connected),
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Err(fail(op, &format!("socket is not connected"), libc::ENOTCONN)),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
@@ -288,17 +300,35 @@ impl SocketStateMachine {
             SocketOp::Listen | SocketOp::Accept | SocketOp::Accepted | SocketOp::Connect | SocketOp::Connected => {
                 Err(fail(op, &(format!("socket is already connected")), libc::EISCONN))
             },
-            SocketOp::Close => Ok(SocketState::Closing),
+            SocketOp::LocalClose => Ok(SocketState::LocalClosing),
+            SocketOp::RemoteClose => Ok(SocketState::RemoteClosing),
             SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
         }
     }
 
-    /// Attempts to transition from a closing state.
+    /// Attempts to transition to a locally closing state.
+    fn local_closing_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::RemoteClose => Ok(SocketState::Closing),
+            SocketOp::Closed => Ok(SocketState::Closed),
+            _ => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+        }
+    }
+
+    /// Attempts to transition to a remote closing state.
+    fn remote_closing_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
+        match op {
+            SocketOp::LocalClose => Ok(SocketState::Closing),
+            SocketOp::Closed => Ok(SocketState::Closed),
+            _ => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
+        }
+    }
+
+    /// Attempts to transition to a closed state.
     fn closing_state(&self, op: SocketOp) -> Result<SocketState, Fail> {
-        if op == SocketOp::Closed {
-            Ok(SocketState::Closed)
-        } else {
-            Err(fail(op, &(format!("socket is closing")), libc::EBADF))
+        match op {
+            SocketOp::Closed => Ok(SocketState::Closed),
+            _ => Err(fail(op, &(format!("socket is closing")), libc::EBADF)),
         }
     }
 
@@ -339,7 +369,10 @@ impl SocketStateMachine {
 
     /// Ensures that the target [SocketState] is not closing.
     fn ensure_not_closing(&self) -> Result<(), Fail> {
-        if self.current == SocketState::Closing {
+        if self.current == SocketState::LocalClosing
+            || self.current == SocketState::RemoteClosing
+            || self.current == SocketState::Closing
+        {
             let cause: String = format!("socket is closing");
             error!("ensure_not_closing(): {}", cause);
             return Err(Fail::new(libc::EBADF, &cause));

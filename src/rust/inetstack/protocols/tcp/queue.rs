@@ -291,7 +291,19 @@ impl<const N: usize> SharedTcpQueue<N> {
     pub async fn pop_coroutine(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
         self.state_machine.may_pop()?;
         match self.socket {
-            Socket::Established(ref mut socket) => socket.pop(size, yielder).await,
+            Socket::Established(ref mut socket) => {
+                let buf: DemiBuffer = socket.pop(size, yielder).await?;
+                // If this is an EOF on the connection, then close the socket.
+                // TODO: Get rid of this when we deduplicate the state machine.
+                // FIXME:
+                if buf.is_empty() {
+                    self.state_machine.prepare(SocketOp::RemoteClose)?;
+                    self.state_machine.commit();
+                }
+                // We are assuming that the application will call close when it receives a zero-length pop. Any other
+                // pops will be cancelled with an EBADF.
+                Ok(buf)
+            },
             _ => unreachable!("State machine check should ensure that this socket is connected"),
         }
     }
@@ -300,7 +312,7 @@ impl<const N: usize> SharedTcpQueue<N> {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.state_machine.prepare(SocketOp::Close)?;
+        self.state_machine.prepare(SocketOp::LocalClose)?;
         let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
@@ -353,7 +365,7 @@ impl<const N: usize> SharedTcpQueue<N> {
     }
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
+        self.state_machine.prepare(SocketOp::LocalClose)?;
         self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.

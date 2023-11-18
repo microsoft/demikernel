@@ -297,7 +297,7 @@ impl Socket {
 
     /// Closes this socket.
     pub fn close(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Close)?;
+        self.state.prepare(SocketOp::LocalClose)?;
         self.state.commit();
         self.state.prepare(SocketOp::Closed)?;
         if let Some(qd) = self.catmem_qd {
@@ -321,7 +321,7 @@ impl Socket {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.state.prepare(SocketOp::Close)?;
+        self.state.prepare(SocketOp::LocalClose)?;
         Ok(self.do_generic_sync_control_path_call(coroutine, yielder)?)
     }
 

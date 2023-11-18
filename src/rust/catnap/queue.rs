@@ -271,7 +271,7 @@ impl SharedCatnapQueue {
     /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to pop from a queue and any single-queue functionality after the pop completes.
     pub async fn do_pop(
-        &self,
+        &mut self,
         size: Option<usize>,
         yielder: Yielder,
     ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {

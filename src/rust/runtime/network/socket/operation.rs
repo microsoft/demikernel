@@ -13,6 +13,7 @@ pub enum SocketOp {
     Accepted,
     Connect,
     Connected,
-    Close,
+    LocalClose,
+    RemoteClose,
     Closed,
 }

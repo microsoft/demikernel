@@ -465,7 +465,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
