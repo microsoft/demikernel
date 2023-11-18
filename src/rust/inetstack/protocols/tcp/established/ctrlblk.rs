@@ -640,6 +640,7 @@ impl<const N: usize> SharedControlBlock<N> {
                             // is, we can delete our state (we maintained it in case we needed to retransmit something,
                             // but we had already sent everything we're ever going to send (incl. FIN) at least once).
                             self.state = State::Closed;
+                            trace!("last ack received");
                             self.result.set(Ok(()));
                         },
                         // TODO: Handle TimeWait to Closed transition.
@@ -731,10 +732,12 @@ impl<const N: usize> SharedControlBlock<N> {
                     // Enter TIME-WAIT.
                     self.state = State::TimeWait;
                     // TODO: Start the time-wait timer and turn off the other timers.
+                    // FIXME: https://github.com/microsoft/demikernel/issues/1018
                 },
                 State::CloseWait | State::Closing | State::LastAck => (), // Remain in current state.
                 State::TimeWait => {
                     // TODO: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
+                    // FIXME: https://github.com/microsoft/demikernel/issues/1018
                 },
                 state => panic!("Bad TCP state {:?}", state), // Should never happen.
             }
@@ -867,6 +870,7 @@ impl<const N: usize> SharedControlBlock<N> {
 
         // If we sent a FIN, update our protocol state.
         if sent_fin {
+            trace!("Sending fin updating state: {:?}", self.state);
             match self.state {
                 // Active close.
                 State::Established => self.state = State::FinWait1,

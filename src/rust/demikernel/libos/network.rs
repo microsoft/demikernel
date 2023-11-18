@@ -156,16 +156,23 @@ impl NetworkLibOS {
     }
 
     /// Closes a socket.
+    #[deprecated]
     pub fn close(&mut self, sockqd: QDesc) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.close(sockqd),
+            NetworkLibOS::Catpowder(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "Synchronous close is not suppported in this libos",
+            )),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.close(sockqd),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.close(sockqd),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.close(sockqd),
+            NetworkLibOS::Catnip(_) => Err(Fail::new(
+                libc::ENOTSUP,
+                "Synchronous close is not suppported in this libos",
+            )),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOS::Catloop(libos) => libos.close(sockqd),
         }

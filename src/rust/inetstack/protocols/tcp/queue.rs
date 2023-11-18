@@ -352,50 +352,6 @@ impl<const N: usize> SharedTcpQueue<N> {
         Ok(result)
     }
 
-    pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-        let new_socket: Option<Socket<N>> = match self.socket {
-            // Closing an active socket.
-            Socket::Established(ref mut socket) => {
-                socket.close()?;
-                Some(Socket::Closing(socket.clone()))
-            },
-            // Closing a listening socket.
-            Socket::Listening(_) => {
-                let cause: String = format!("cannot close a listening socket");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            // Closing a connecting socket.
-            Socket::Connecting(_) => {
-                let cause: String = format!("cannot close a connecting socket");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            // Closing a closing socket.
-            Socket::Closing(_) => {
-                let cause: String = format!("cannot close a socket that is closing");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            _ => None,
-        };
-        if let Some(socket) = new_socket {
-            self.socket = socket;
-        }
-        self.state_machine.commit();
-        self.state_machine.prepare(SocketOp::Closed)?;
-        self.state_machine.commit();
-        match self.socket {
-            // Cannot remove this from the address table until close finishes.
-            Socket::Closing(_) => Ok(None),
-            Socket::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
-            Socket::Unbound => Ok(None),
-            _ => unreachable!("We do not support closing of other socket types"),
-        }
-    }
-
     pub fn remote_mss(&self) -> Result<usize, Fail> {
         match self.socket {
             Socket::Established(ref socket) => Ok(socket.remote_mss()),

@@ -75,7 +75,7 @@ fn do_udp_setup<const N: usize>(libos: &mut InetStack<N>) -> Result<()> {
         },
     };
 
-    match libos.close(sockfd) {
+    match libos.async_close(sockfd) {
         Ok(_) => Ok(()),
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
@@ -98,7 +98,7 @@ fn do_udp_setup_ephemeral<const N: usize>(libos: &mut InetStack<N>) -> Result<()
         },
     };
 
-    match libos.close(sockfd) {
+    match libos.async_close(sockfd) {
         Ok(_) => Ok(()),
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
@@ -120,7 +120,7 @@ fn do_udp_setup_wildcard_ephemeral<const N: usize>(libos: &mut InetStack<N>) -> 
         },
     };
 
-    match libos.close(sockfd) {
+    match libos.async_close(sockfd) {
         Ok(_) => Ok(()),
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
@@ -168,7 +168,7 @@ fn udp_connect_loopback() -> Result<()> {
         },
     };
 
-    match libos.close(sockfd) {
+    match libos.async_close(sockfd) {
         Ok(_) => Ok(()),
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
@@ -253,7 +253,7 @@ fn udp_push_remote() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.async_close(sockfd) {
             Ok(_) => Ok(()),
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
@@ -319,7 +319,7 @@ fn udp_push_remote() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.async_close(sockfd) {
             Ok(_) => Ok(()),
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
@@ -406,7 +406,7 @@ fn udp_loopback() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.async_close(sockfd) {
             Ok(_) => Ok(()),
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
@@ -464,7 +464,7 @@ fn udp_loopback() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
+        match libos.async_close(sockfd) {
             Ok(_) => Ok(()),
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }

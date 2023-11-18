@@ -284,28 +284,6 @@ impl<const N: usize> InetStack<N> {
     ///
     /// **Brief**
     ///
-    /// Closes a connection referred to by `qd`.
-    ///
-    /// **Return Value**
-    ///
-    /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
-    /// returned instead.
-    ///
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("inetstack::close");
-        trace!("close(): qd={:?}", qd);
-
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.close(qd),
-            QType::UdpSocket => self.ipv4.udp.close(qd),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }
-    }
-
-    ///
-    /// **Brief**
-    ///
     /// Asynchronously closes a connection referred to by `qd`.
     ///
     /// **Return Value**

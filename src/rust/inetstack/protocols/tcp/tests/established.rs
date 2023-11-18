@@ -282,9 +282,9 @@ fn connection_hangup<const N: usize>(
     client_qd: QDesc,
 ) -> Result<()> {
     // Send FIN: Client -> Server
-    if let Err(e) = client.tcp_close(client_qd) {
-        anyhow::bail!("client tcp_close returned error: {:?}", e);
-    }
+    #[allow(unused)]
+    let client_close_qt: QToken = client.tcp_async_close(client_qd)?;
+
     client.get_test_rig().poll_scheduler();
     let client_frames: VecDeque<DemiBuffer> = client.get_test_rig().pop_all_frames();
     advance_clock(Some(server), Some(client), now);
@@ -308,9 +308,7 @@ fn connection_hangup<const N: usize>(
     advance_clock(Some(server), Some(client), now);
 
     // Send FIN: Server -> Client
-    if let Err(e) = server.tcp_close(server_qd) {
-        anyhow::bail!("server tcp_close returned error: {:?}", e);
-    }
+    let server_close_qt: QToken = server.tcp_async_close(server_qd)?;
     server.get_test_rig().poll_scheduler();
     let server_frames: VecDeque<DemiBuffer> = server.get_test_rig().pop_all_frames();
     advance_clock(Some(server), Some(client), now);
@@ -336,6 +334,28 @@ fn connection_hangup<const N: usize>(
 
     client.get_test_rig().poll_scheduler();
     server.get_test_rig().poll_scheduler();
+
+    // TODO: Uncomment this when we properly implement timed wait on close.
+    // FIXME: https://github.com/microsoft/demikernel/issues/1018
+    // match client
+    //     .get_test_rig()
+    //     .get_runtime()
+    //     .remove_coroutine_with_qtoken(client_close_qt)
+    //     .get_result()
+    // {
+    //     Some((_, crate::OperationResult::Close)) => (),
+    //     _ => anyhow::bail!("client close should have completed"),
+    // };
+
+    match server
+        .get_test_rig()
+        .get_runtime()
+        .remove_coroutine_with_qtoken(server_close_qt)
+        .get_result()
+    {
+        Some((_, crate::OperationResult::Close)) => (),
+        _ => anyhow::bail!("server close should have completed"),
+    };
 
     Ok(())
 }
