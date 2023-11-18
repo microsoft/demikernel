@@ -13,7 +13,10 @@ use super::{
     },
 };
 use crate::{
-    collections::async_queue::AsyncQueue,
+    collections::{
+        async_queue::AsyncQueue,
+        async_value::AsyncValue,
+    },
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -209,6 +212,9 @@ pub struct ControlBlock<const N: usize> {
 
     // Retransmission Timeout (RTO) calculator.
     rto_calculator: RtoCalculator,
+
+    // Result of current operation. For now, this is just used for closing.
+    result: AsyncValue<Result<(), Fail>>,
 }
 
 #[derive(Clone)]
@@ -257,6 +263,7 @@ impl<const N: usize> SharedControlBlock<N> {
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
             retransmit_deadline: SharedWatchedValue::new(None),
             rto_calculator: RtoCalculator::new(),
+            result: AsyncValue::default(),
         }))
     }
 
@@ -538,6 +545,7 @@ impl<const N: usize> SharedControlBlock<N> {
                     self.state = State::Closed;
 
                     // TODO: Delete the ControlBlock.
+                    self.result.set(Ok(()));
                     return;
                 },
 
@@ -632,6 +640,7 @@ impl<const N: usize> SharedControlBlock<N> {
                             // is, we can delete our state (we maintained it in case we needed to retransmit something,
                             // but we had already sent everything we're ever going to send (incl. FIN) at least once).
                             self.state = State::Closed;
+                            self.result.set(Ok(()));
                         },
                         // TODO: Handle TimeWait to Closed transition.
                         _ => (),
@@ -764,6 +773,7 @@ impl<const N: usize> SharedControlBlock<N> {
     ///
     /// Note this routine will only be called for connections with a ControlBlock (i.e. in state ESTABLISHED or later).
     ///
+    ///
     pub fn close(&mut self) -> Result<(), Fail> {
         // Check to see if close has already been called, as we should only do this once.
         if self.user_is_done_sending {
@@ -774,18 +784,21 @@ impl<const N: usize> SharedControlBlock<N> {
         // In the normal case, we'll be in either ESTABLISHED or CLOSE_WAIT here (depending upon whether we've received
         // a FIN from our peer yet).  Queue up a FIN to be sent, and attempt to send it immediately (if possible).  We
         // only change state to FIN-WAIT-1 or LAST_ACK after we've actually been able to send the FIN.
+        // The emit function updates the state.
         debug_assert!((self.state == State::Established) || (self.state == State::CloseWait));
 
         // Send a FIN.
         let fin_buf: DemiBuffer = DemiBuffer::new(0);
         self.send(fin_buf).expect("send failed");
 
-        // TODO: Set state to FIN-WAIT1 if currently establisehd or set to LASTACK if CloseWait.
-
         // Remember that the user has called close.
         self.user_is_done_sending = true;
 
         Ok(())
+    }
+
+    pub async fn async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        self.result.get(yielder).await?
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
@@ -862,7 +875,7 @@ impl<const N: usize> SharedControlBlock<N> {
                 // We can legitimately retransmit the FIN in these states.  And we stay there until the FIN is ACK'd.
                 State::FinWait1 | State::LastAck => {},
                 // We shouldn't be sending a FIN from any other state.
-                state => warn!("Sent FIN while in nonsensical TCP state {:?}", state),
+                state => unreachable!("Sent FIN while in nonsensical TCP state {:?}", state),
             }
         }
     }

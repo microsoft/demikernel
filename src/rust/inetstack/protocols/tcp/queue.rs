@@ -301,14 +301,55 @@ impl<const N: usize> SharedTcpQueue<N> {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
+        let new_socket: Option<Socket<N>> = match self.socket {
+            // Closing an active socket.
+            Socket::Established(ref mut socket) => {
+                socket.close()?;
+                Some(Socket::Closing(socket.clone()))
+            },
+            // Closing a listening socket.
+            Socket::Listening(_) => {
+                let cause: String = format!("cannot close a listening socket");
+                error!("do_close(): {}", &cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            },
+            // Closing a connecting socket.
+            Socket::Connecting(_) => {
+                let cause: String = format!("cannot close a connecting socket");
+                error!("do_close(): {}", &cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            },
+            // Closing a closing socket.
+            Socket::Closing(_) => {
+                let cause: String = format!("cannot close a socket that is closing");
+                error!("do_close(): {}", &cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            },
+            _ => None,
+        };
+        if let Some(socket) = new_socket {
+            self.socket = socket;
+        }
         Ok(self
             .do_generic_sync_control_path_call(coroutine_constructor)?
             .get_task_id()
             .into())
     }
 
-    pub async fn close_coroutine(&mut self, _: Yielder) -> Result<Option<SocketId>, Fail> {
-        self.close()
+    pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<Option<SocketId>, Fail> {
+        let result: Option<SocketId> = match self.socket {
+            Socket::Closing(ref mut socket) => {
+                socket.async_close(yielder).await?;
+                Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1))
+            },
+            Socket::Bound(addr) => Some(SocketId::Passive(addr)),
+            Socket::Unbound => None,
+            _ => unreachable!("We do not support closing of other socket types"),
+        };
+        self.state_machine.prepare(SocketOp::Closed)?;
+        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+        self.state_machine.commit();
+        Ok(result)
     }
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
@@ -344,8 +385,11 @@ impl<const N: usize> SharedTcpQueue<N> {
             self.socket = socket;
         }
         self.state_machine.commit();
+        self.state_machine.prepare(SocketOp::Closed)?;
+        self.state_machine.commit();
         match self.socket {
-            Socket::Closing(ref socket) => Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1))),
+            // Cannot remove this from the address table until close finishes.
+            Socket::Closing(_) => Ok(None),
             Socket::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
             Socket::Unbound => Ok(None),
             _ => unreachable!("We do not support closing of other socket types"),
