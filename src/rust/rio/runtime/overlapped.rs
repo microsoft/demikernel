@@ -223,7 +223,13 @@ impl Drop for IoCompletionPort {
 #[cfg(test)]
 mod tests {
     use std::{
+        net::{
+            Ipv4Addr,
+            SocketAddr,
+            SocketAddrV4,
+        },
         pin::pin,
+        rc::Rc,
         sync::{
             atomic::{
                 AtomicBool,
@@ -234,7 +240,14 @@ mod tests {
         task::Wake,
     };
 
-    use crate::ensure_eq;
+    use crate::{
+        ensure_eq,
+        rio::runtime::error::last_wsa_error,
+        runtime::scheduler::{
+            Scheduler,
+            TaskWithResult,
+        },
+    };
 
     use super::*;
     use anyhow::{
@@ -243,7 +256,33 @@ mod tests {
         ensure,
         Result,
     };
-    use windows::Win32::System::IO::PostQueuedCompletionStatus;
+    use futures::Future;
+    use windows::{
+        core::PSTR,
+        Win32::{
+            Networking::WinSock::{
+                bind,
+                closesocket,
+                listen,
+                WSAAccept,
+                WSAConnect,
+                WSAGetLastError,
+                WSARecv,
+                WSASend,
+                WSASocketW,
+                AF_INET,
+                INVALID_SOCKET,
+                IPPROTO_TCP,
+                SOCKADDR_STORAGE,
+                SOCKET,
+                SOCK_STREAM,
+                WSABUF,
+                WSA_FLAG_OVERLAPPED,
+                WSA_IO_PENDING,
+            },
+            System::IO::PostQueuedCompletionStatus,
+        },
+    };
 
     struct TestWaker(AtomicBool);
 
@@ -261,6 +300,163 @@ mod tests {
     fn post_completion(iocp: &IoCompletionPort, overlapped: *const OVERLAPPED, completion_key: usize) -> Result<()> {
         unsafe { PostQueuedCompletionStatus(iocp.iocp, 0, completion_key, Some(overlapped)) }
             .map_err(|err| anyhow!("PostQueuedCompletionStatus failed: {}", err))
+    }
+
+    fn make_tcp_socket() -> Result<SOCKET, Fail> {
+        match unsafe {
+            WSASocketW(
+                AF_INET.0 as i32,
+                SOCK_STREAM.0,
+                IPPROTO_TCP.0,
+                None,
+                0,
+                WSA_FLAG_OVERLAPPED,
+            )
+        } {
+            s if s == INVALID_SOCKET => Err(Fail::new(last_wsa_error(), "bad socket")),
+            s => Ok(s),
+        }
+    }
+
+    #[test]
+    fn run_example() -> Result<()> {
+        let mut scheduler: Scheduler = Scheduler::default();
+        let iocp: Rc<IoCompletionPort> = Rc::new(make_iocp()?);
+        const PORT: u16 = 39405;
+
+        let server_iocp = iocp.clone();
+        let server: Pin<Box<dyn Future<Output = Result<(), Fail>>>> = Box::pin(async move {
+            let server: SOCKET = make_tcp_socket()?;
+            let yielder: Yielder = Yielder::new();
+            let teardown = || {
+                unsafe { closesocket(server) };
+            };
+
+            let sockaddr = socket2::SockAddr::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, PORT));
+            if unsafe { bind(server, sockaddr.as_ptr().cast(), sockaddr.len()) } != 0 {
+                teardown();
+                return Err(Fail::new(last_wsa_error(), "bind failed"));
+            }
+
+            if unsafe { listen(server, 1) } != 0 {
+                teardown();
+                return Err(Fail::new(last_wsa_error(), "bind failed"));
+            }
+
+            let s: SOCKET = unsafe { WSAAccept(server, None, None, None, 0) };
+            if s == INVALID_SOCKET {
+                return Err(Fail::new(last_wsa_error(), "failed to accept"));
+            }
+
+            let teardown = || {
+                unsafe { closesocket(s) };
+                teardown();
+            };
+
+            server_iocp.associate(HANDLE(s.0 as isize), 0)?;
+
+            let mut buffer: [u8; 10] = [0u8; 10];
+            let wsa_buf: WSABUF = WSABUF {
+                buf: PSTR::from_raw(buffer.as_mut_ptr()),
+                len: buffer.len() as u32,
+            };
+            let mut received: u32 = 0;
+            let mut flags: u32 = 0;
+            match unsafe {
+                server_iocp.method1_do_overlapped(yielder, |overlapped| {
+                    if unsafe {
+                        WSARecv(
+                            s,
+                            std::slice::from_ref(&wsa_buf),
+                            Some(&mut received as *mut u32),
+                            &mut flags,
+                            Some(overlapped),
+                            None,
+                        )
+                    } == 0
+                    {
+                        // Shouldn't happen when we request overlapped I/O.
+                        Err(Fail::new(-1 as libc::errno_t, "operation completed immediately"))
+                    } else if unsafe { WSAGetLastError() } == WSA_IO_PENDING {
+                        Ok(())
+                    } else {
+                        Err(Fail::new(last_wsa_error(), "WSARecv failed"))
+                    }
+                })
+            }
+            .await
+            {
+                Err(err) if err.errno == -1 => (),
+                Ok(_) => (),
+                Err(err) => {
+                    teardown();
+                    return Err(err);
+                },
+            };
+
+            let message: String = String::from_utf8(Vec::from(&buffer.as_slice()[..(received as usize)]))
+                .unwrap_or(String::from("failed"));
+            println!("{}", message);
+
+            teardown();
+            Ok(())
+        });
+
+        let client_iocp = iocp.clone();
+        let client: Pin<Box<dyn Future<Output = Result<(), Fail>>>> = Box::pin(async move {
+            let s: SOCKET = make_tcp_socket()?;
+            let yielder: Yielder = Yielder::new();
+            let teardown = || {
+                unsafe { closesocket(s) };
+            };
+
+            if let Err(err) = client_iocp.associate(HANDLE(s.0 as isize), 0) {
+                teardown();
+                return Err(err);
+            }
+
+            let sockaddr = socket2::SockAddr::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, PORT));
+            if unsafe { WSAConnect(s, sockaddr.as_ptr().cast(), sockaddr.len(), None, None, None, None) } != 0 {
+                teardown();
+                return Err(Fail::new(last_wsa_error(), "WSAConnect failed"));
+            }
+
+            let mut buffer: Vec<u8> = String::from("hello!").into_bytes();
+            let wsa_buf: WSABUF = WSABUF {
+                buf: PSTR::from_raw(buffer.as_mut_ptr()),
+                len: buffer.len() as u32,
+            };
+            match unsafe {
+                client_iocp.method1_do_overlapped(yielder, |overlapped| {
+                    if unsafe { WSASend(s, std::slice::from_ref(&wsa_buf), None, 0, Some(overlapped), None) } == 0 {
+                        // Shouldn't happen when we request overlapped I/O.
+                        Err(Fail::new(-1 as libc::errno_t, "operation completed immediately"))
+                    } else if unsafe { WSAGetLastError() } == WSA_IO_PENDING {
+                        Ok(())
+                    } else {
+                        Err(Fail::new(last_wsa_error(), "WSARecv failed"))
+                    }
+                })
+            }
+            .await
+            {
+                Err(err) if err.errno == -1 => (),
+                Ok(_) => (),
+                Err(err) => {
+                    teardown();
+                    return Err(err);
+                },
+            };
+
+            teardown();
+
+            Ok(())
+        });
+
+        scheduler.insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server));
+        scheduler.insert(TaskWithResult::<Result<(), Fail>>::new("client".into(), client));
+
+        Ok(())
     }
 
     // #[test]
