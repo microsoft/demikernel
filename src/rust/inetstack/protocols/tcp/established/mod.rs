@@ -118,6 +118,10 @@ impl<const N: usize> EstablishedSocket<N> {
         self.cb.close()
     }
 
+    pub async fn async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        self.cb.async_close(yielder).await
+    }
+
     pub fn remote_mss(&self) -> usize {
         self.cb.remote_mss()
     }

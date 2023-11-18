@@ -383,20 +383,16 @@ impl<const N: usize> SharedTcpPeer<N> {
         // As a result, we have stale closed queues that are labelled as closing. We should clean these up.
         // look up socket
         let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-        queue.close()?;
-        // TODO: Uncomment this when we have moved totally to async close.
-        // FIXME: https://github.com/microsoft/demikernel/issues/224
-        // if let Some(socket_id) = queue.close()? {
-        //     match self.runtime.remove_socket_id_to_qd(&socket_id) {
-        //         Some(existing_qd) if existing_qd == qd => {},
-        //         _ => return Err(Fail::new(libc::EINVAL, "socket id did not map to this qd!")),
-        //     };
-        // }
+        if let Some(socket_id) = queue.close()? {
+            match self.runtime.remove_socket_id_to_qd(&socket_id) {
+                Some(existing_qd) if existing_qd == qd => {},
+                _ => return Err(Fail::new(libc::EINVAL, "socket id did not map to this qd!")),
+            };
+        }
         // // Free the queue.
         // self.runtime
         //     .free_queue::<SharedTcpQueue<N>>(&qd)
         //     .expect("queue should exist");
-
         Ok(())
     }
 
