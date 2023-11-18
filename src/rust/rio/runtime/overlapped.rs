@@ -453,8 +453,15 @@ mod tests {
             Ok(())
         });
 
-        scheduler.insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server));
-        scheduler.insert(TaskWithResult::<Result<(), Fail>>::new("client".into(), client));
+        let server_handle = scheduler
+            .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
+            .unwrap();
+        let client_handle = scheduler
+            .insert(TaskWithResult::<Result<(), Fail>>::new("client".into(), client))
+            .unwrap();
+        while !server_handle.has_completed() || !client_handle.has_completed() {
+            scheduler.poll();
+        }
 
         Ok(())
     }
