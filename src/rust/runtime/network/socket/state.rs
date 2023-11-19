@@ -168,7 +168,7 @@ impl SocketStateMachine {
         };
         match next_state {
             Ok(state) => {
-                if state != self.current {
+                if state != self.current && self.next != Some(state) {
                     debug!(
                         "get_next_state(): previous={:?}, current={:?}, transition={:?}",
                         self.previous, self.current, op
