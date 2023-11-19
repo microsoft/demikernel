@@ -36,6 +36,7 @@ use ::rand::{
     RngCore,
     SeedableRng,
 };
+use ::socket2::Type;
 use ::std::{
     collections::HashSet,
     mem,
@@ -92,7 +93,7 @@ impl Socket {
     /// Creates a new socket that is not bound to an address.
     pub fn new(catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
         Ok(Self {
-            state: SocketStateMachine::new_unbound(libc::SOCK_STREAM),
+            state: SocketStateMachine::new_unbound(Type::STREAM),
             catmem,
             catmem_qd: None,
             local: None,

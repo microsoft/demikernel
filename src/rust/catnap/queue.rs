@@ -6,10 +6,9 @@
 //======================================================================================================================
 
 use crate::{
-    catnap::socket::Socket,
-    pal::constants::{
-        SOCK_DGRAM,
-        SOCK_STREAM,
+    catnap::{
+        socket::CatnapSocket,
+        transport::SharedCatnapTransport,
     },
     runtime::{
         fail::Fail,
@@ -30,6 +29,10 @@ use crate::{
         SharedObject,
     },
 };
+use ::socket2::{
+    Domain,
+    Type,
+};
 use ::std::{
     any::Any,
     collections::HashMap,
@@ -48,7 +51,7 @@ use ::std::{
 /// a single queue. It is stateless, all state is kept in the Socket data structure.
 pub struct CatnapQueue {
     qtype: QType,
-    socket: Socket,
+    socket: CatnapSocket,
     pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
@@ -60,20 +63,20 @@ pub struct SharedCatnapQueue(SharedObject<CatnapQueue>);
 //======================================================================================================================
 
 impl CatnapQueue {
-    pub fn new(domain: libc::c_int, typ: libc::c_int) -> Result<Self, Fail> {
+    pub fn new(domain: Domain, typ: Type, transport: SharedCatnapTransport) -> Result<Self, Fail> {
         // This was previously checked in the LibOS layer.
-        debug_assert!(typ == SOCK_STREAM || typ == SOCK_DGRAM);
+        debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
 
         let qtype: QType = match typ {
-            SOCK_STREAM => QType::TcpSocket,
-            SOCK_DGRAM => QType::UdpSocket,
+            Type::STREAM => QType::TcpSocket,
+            Type::DGRAM => QType::UdpSocket,
             // The following statement is unreachable because we have checked this on the libOS layer.
             _ => unreachable!("Invalid socket type (typ={:?})", typ),
         };
 
         Ok(Self {
             qtype,
-            socket: Socket::new(domain, typ)?,
+            socket: CatnapSocket::new(domain, typ, transport)?,
             pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         })
     }
@@ -81,8 +84,8 @@ impl CatnapQueue {
 
 /// Associate Functions for Catnap LibOS
 impl SharedCatnapQueue {
-    pub fn new(domain: libc::c_int, typ: libc::c_int) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::new(CatnapQueue::new(domain, typ)?)))
+    pub fn new(domain: Domain, typ: Type, transport: SharedCatnapTransport) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::new(CatnapQueue::new(domain, typ, transport)?)))
     }
 
     /// Binds the target queue to `local` address.
@@ -238,7 +241,7 @@ impl SharedCatnapQueue {
     /// Asynchronously push data to the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to push to the queue and any single-queue functionality after the push completes.
     pub async fn do_push(
-        &self,
+        &mut self,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddrV4>,
         yielder: Yielder,
@@ -271,7 +274,7 @@ impl SharedCatnapQueue {
     /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to pop from a queue and any single-queue functionality after the pop completes.
     pub async fn do_pop(
-        &self,
+        &mut self,
         size: Option<usize>,
         yielder: Yielder,
     ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {

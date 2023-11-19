@@ -66,7 +66,7 @@ impl NetworkLibOS {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder(libos) => libos.socket(domain, socket_type, protocol),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOS::Catnap(libos) => libos.socket(domain, socket_type, protocol),
+            NetworkLibOS::Catnap(libos) => libos.socket(domain.into(), socket_type.into(), protocol.into()),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.socket(domain, socket_type, protocol),
             #[cfg(feature = "catnip-libos")]
