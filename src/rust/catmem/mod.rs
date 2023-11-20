@@ -240,20 +240,6 @@ impl SharedCatmemLibOS {
         (qd, OperationResult::Pop(None, buf))
     }
 
-    /// Allocates a scatter-gather array.
-    pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::alloc_sgarray");
-        self.runtime.alloc_sgarray(size)
-    }
-
-    /// Releases a scatter-gather array.
-    pub fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catmem::free_sgarray");
-        self.runtime.free_sgarray(sga)
-    }
-
     /// Takes out the [OperationResult] associated with the target [TaskHandle].
     fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
         #[cfg(feature = "profiler")]
