@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 mod queue;
-mod socket;
 mod transport;
 
 //==============================================================================
@@ -220,7 +219,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for the accept operation to complete.
-        match queue.do_accept(yielder).await {
+        match queue.accept_coroutine(yielder).await {
             Ok(new_queue) => {
                 // TODO: Do we need to add this to the socket id to queue descriptor table?
                 // It is safe to call except here because the new queue is connected and it should be connected to a
@@ -272,7 +271,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for connect operation to complete.
-        match queue.do_connect(remote, yielder).await {
+        match queue.connect_coroutine(remote, yielder).await {
             Ok(()) => {
                 // TODO: Do we need to add this to socket id to queue descriptor table?
                 (qd, OperationResult::Connect)
@@ -334,7 +333,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for close operation to complete.
-        match queue.do_close(yielder).await {
+        match queue.close_coroutine(yielder).await {
             Ok(()) => {
                 // If the queue was bound, remove from the socket id to queue descriptor table.
                 if let Some(local) = queue.local() {
@@ -388,7 +387,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for push to complete.
-        match queue.do_push(&mut buf, None, yielder).await {
+        match queue.push_coroutine(&mut buf, None, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => {
                 warn!("push() qd={:?}: {:?}", qd, &e);
@@ -439,7 +438,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for push to complete.
-        match queue.do_push(&mut buf, Some(remote), yielder).await {
+        match queue.push_coroutine(&mut buf, Some(remote), yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => {
                 warn!("pushto() qd={:?}: {:?}", qd, &e);
@@ -480,7 +479,7 @@ impl SharedCatnapLibOS {
         };
 
         // Wait for pop to complete.
-        match queue.do_pop(size, yielder).await {
+        match queue.pop_coroutine(size, yielder).await {
             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
             Err(e) => {
                 warn!("pop() qd={:?}: {:?}", qd, &e);
