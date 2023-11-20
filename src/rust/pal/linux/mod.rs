@@ -14,10 +14,12 @@ pub mod shm;
 
 use ::std::{
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::SocketAddrV4,
+};
+
+#[cfg(feature = "catcollar-libos")]
+use ::std::{
+    net::Ipv4Addr,
     os::unix::prelude::RawFd,
 };
 
@@ -25,6 +27,7 @@ use ::std::{
 // Standalone Functions
 //======================================================================================================================
 
+#[cfg(feature = "catcollar-libos")]
 /// Sets TCP_NODELAY option in a socket.
 pub unsafe fn set_tcp_nodelay(fd: RawFd) -> i32 {
     let value: u32 = 1;
@@ -39,6 +42,7 @@ pub unsafe fn set_tcp_nodelay(fd: RawFd) -> i32 {
     )
 }
 
+#[cfg(feature = "catcollar-libos")]
 /// Sets SO_REUSEPORT option in a socket.
 pub unsafe fn set_so_reuseport(fd: RawFd) -> i32 {
     let value: u32 = 1;
@@ -53,6 +57,7 @@ pub unsafe fn set_so_reuseport(fd: RawFd) -> i32 {
     )
 }
 
+#[cfg(feature = "catcollar-libos")]
 /// Sets NONBLOCK option in a socket.
 pub unsafe fn set_nonblock(fd: RawFd) -> i32 {
     // Get file flags.
@@ -84,6 +89,7 @@ fn socketaddrv4_to_sockaddr_in(addr: &SocketAddrV4) -> libc::sockaddr_in {
     }
 }
 
+#[cfg(feature = "catcollar-libos")]
 /// Converts a [std::net::SocketAddrV4] to a [libc::sockaddr_in].
 fn sockaddr_in_to_socketaddrv4(sin: &libc::sockaddr_in) -> SocketAddrV4 {
     SocketAddrV4::new(
@@ -98,6 +104,7 @@ pub fn socketaddrv4_to_sockaddr(addr: &SocketAddrV4) -> libc::sockaddr {
     unsafe { mem::transmute::<libc::sockaddr_in, libc::sockaddr>(sin) }
 }
 
+#[cfg(feature = "catcollar-libos")]
 /// Converts a [libc::sockaddr] to a [std::net::SocketAddrV4].
 pub fn sockaddr_to_socketaddrv4(saddr: &libc::sockaddr) -> SocketAddrV4 {
     let sin: libc::sockaddr_in = unsafe { mem::transmute::<libc::sockaddr, libc::sockaddr_in>(saddr.to_owned()) };

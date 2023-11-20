@@ -5,16 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    pal::constants::{
-        SOCK_DGRAM,
-        SOCK_STREAM,
-    },
-    runtime::{
-        fail::Fail,
-        network::socket::operation::SocketOp,
-    },
+use crate::runtime::{
+    fail::Fail,
+    network::socket::operation::SocketOp,
 };
+use ::socket2::Type;
 
 //======================================================================================================================
 // Structures
@@ -44,7 +39,7 @@ enum SocketState {
 /// Encodes the state of a socket.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SocketStateMachine {
-    typ: libc::c_int,
+    typ: Type,
     previous: Option<SocketState>,
     current: SocketState,
     next: Option<SocketState>,
@@ -56,9 +51,9 @@ pub struct SocketStateMachine {
 
 impl SocketStateMachine {
     /// Constructs a new [SocketState] of type `typ` that is on unbound state.
-    pub fn new_unbound(typ: libc::c_int) -> Self {
+    pub fn new_unbound(typ: Type) -> Self {
         // This was previously checked in the LibOS layer.
-        debug_assert!(typ == SOCK_STREAM || typ == SOCK_DGRAM);
+        debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
         Self {
             typ,
             previous: None,
@@ -70,7 +65,7 @@ impl SocketStateMachine {
     /// Constructs a new [SocketState] that is on connected state.
     pub fn new_connected() -> Self {
         Self {
-            typ: SOCK_STREAM,
+            typ: Type::STREAM,
             previous: None,
             current: SocketState::Connected,
             next: None,
@@ -97,7 +92,7 @@ impl SocketStateMachine {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
 
-        if self.typ == SOCK_STREAM {
+        if self.typ == Type::STREAM {
             self.ensure_connected()?;
         }
 
@@ -111,7 +106,7 @@ impl SocketStateMachine {
         self.ensure_not_closing()?;
         self.ensure_not_closed()?;
 
-        if self.typ == SOCK_STREAM {
+        if self.typ == Type::STREAM {
             self.ensure_connected()?;
         } else {
             self.ensure_bound()?;
@@ -168,7 +163,7 @@ impl SocketStateMachine {
         };
         match next_state {
             Ok(state) => {
-                if state != self.current {
+                if state != self.current && self.next != Some(state) {
                     debug!(
                         "get_next_state(): previous={:?}, current={:?}, transition={:?}",
                         self.previous, self.current, op

@@ -2,21 +2,19 @@
 // Licensed under the MIT license.
 
 mod queue;
-mod socket;
+mod transport;
 
 //==============================================================================
 // Imports
 //==============================================================================
 
 use crate::{
-    catnap::queue::SharedCatnapQueue,
-    demikernel::config::Config,
-    pal::constants::{
-        AF_INET_VALUE,
-        SOCK_DGRAM,
-        SOCK_STREAM,
-        SOMAXCONN,
+    catnap::{
+        queue::SharedCatnapQueue,
+        transport::SharedCatnapTransport,
     },
+    demikernel::config::Config,
+    pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
         limits,
@@ -49,6 +47,11 @@ use crate::{
         SharedObject,
     },
 };
+use ::socket2::{
+    Domain,
+    Protocol,
+    Type,
+};
 use ::std::{
     net::{
         Ipv4Addr,
@@ -76,6 +79,8 @@ use crate::timer;
 pub struct CatnapLibOS {
     /// Underlying runtime.
     runtime: SharedDemiRuntime,
+    /// Underlying network transport.
+    transport: SharedCatnapTransport,
 }
 
 #[derive(Clone)]
@@ -87,7 +92,10 @@ pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS>);
 
 impl CatnapLibOS {
     pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            transport: SharedCatnapTransport::default(),
+        }
     }
 }
 
@@ -102,25 +110,25 @@ impl SharedCatnapLibOS {
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatnapQueue that
     /// wraps the underlying POSIX socket.
-    pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
+    pub fn socket(&mut self, domain: Domain, typ: Type, _protocol: Protocol) -> Result<QDesc, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catnap::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
-        if domain != AF_INET_VALUE {
+        if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
         }
 
         // Parse socket type.
-        if (typ != SOCK_STREAM) && (typ != SOCK_DGRAM) {
+        if (typ != Type::STREAM) && (typ != Type::DGRAM) {
             let cause: String = format!("socket type not supported (type={:?})", typ);
             error!("socket(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // Create underlying queue.
-        let queue: SharedCatnapQueue = SharedCatnapQueue::new(domain, typ)?;
+        let queue: SharedCatnapQueue = SharedCatnapQueue::new(domain, typ, self.transport.clone())?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
     }
@@ -211,7 +219,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for the accept operation to complete.
-        match queue.do_accept(yielder).await {
+        match queue.accept_coroutine(yielder).await {
             Ok(new_queue) => {
                 // TODO: Do we need to add this to the socket id to queue descriptor table?
                 // It is safe to call except here because the new queue is connected and it should be connected to a
@@ -263,7 +271,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for connect operation to complete.
-        match queue.do_connect(remote, yielder).await {
+        match queue.connect_coroutine(remote, yielder).await {
             Ok(()) => {
                 // TODO: Do we need to add this to socket id to queue descriptor table?
                 (qd, OperationResult::Connect)
@@ -325,7 +333,7 @@ impl SharedCatnapLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for close operation to complete.
-        match queue.do_close(yielder).await {
+        match queue.close_coroutine(yielder).await {
             Ok(()) => {
                 // If the queue was bound, remove from the socket id to queue descriptor table.
                 if let Some(local) = queue.local() {
@@ -374,12 +382,12 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for push to complete.
-        match queue.do_push(&mut buf, None, yielder).await {
+        match queue.push_coroutine(&mut buf, None, yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => {
                 warn!("push() qd={:?}: {:?}", qd, &e);
@@ -425,12 +433,12 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for push to complete.
-        match queue.do_push(&mut buf, Some(remote), yielder).await {
+        match queue.push_coroutine(&mut buf, Some(remote), yielder).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => {
                 warn!("pushto() qd={:?}: {:?}", qd, &e);
@@ -465,13 +473,13 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
 
         // Wait for pop to complete.
-        match queue.do_pop(size, yielder).await {
+        match queue.pop_coroutine(size, yielder).await {
             Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
             Err(e) => {
                 warn!("pop() qd={:?}: {:?}", qd, &e);

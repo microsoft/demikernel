@@ -29,7 +29,6 @@ use crate::{
         SharedArpPeer,
         TcpConfig,
     },
-    pal::constants::SOCK_STREAM,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -59,6 +58,7 @@ use crate::{
     },
 };
 use ::futures::channel::mpsc;
+use ::socket2::Type;
 use ::std::{
     any::Any,
     collections::HashMap,
@@ -118,7 +118,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
-            state_machine: SocketStateMachine::new_unbound(SOCK_STREAM),
+            state_machine: SocketStateMachine::new_unbound(Type::STREAM),
             socket: Socket::Unbound,
             runtime,
             transport,
