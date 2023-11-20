@@ -135,13 +135,17 @@ impl LibOS {
 
     /// Opens an existing memory queue and connects to producer end.
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
-        match self {
+        let result: Result<QDesc, Fail> = match self {
             LibOS::NetworkLibOS(_) => Err(Fail::new(
                 libc::ENOTSUP,
                 "open_pipe() is not supported on network liboses",
             )),
             LibOS::MemoryLibOS(libos) => libos.open_pipe(name),
-        }
+        };
+
+        self.poll();
+
+        result
     }
 
     /// Creates a socket.
