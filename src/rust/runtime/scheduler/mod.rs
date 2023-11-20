@@ -33,7 +33,6 @@
 mod handle;
 pub mod mutex;
 mod page;
-mod pin_slab;
 pub mod scheduler;
 pub mod task;
 mod waker64;

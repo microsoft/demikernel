@@ -4,6 +4,7 @@
 pub mod async_queue;
 pub mod async_value;
 pub mod intrusive;
+pub mod pin_slab;
 
 cfg_if! {
     if #[cfg(feature = "catmem-libos")] {
