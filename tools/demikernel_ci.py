@@ -9,14 +9,36 @@ from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 from typing import List
+from azure.data.tables import TableServiceClient
 
 from ci.src.base_test import BaseTest
 from ci.src.ci_map import CIMap
 from ci.src.test_instantiator import TestInstantiator
 
 # ======================================================================================================================
+# Global Variables
+# ======================================================================================================================
+
+COMMIT_HASH: str = ""
+CONNECTION_STRING: str = ""
+TABLE_NAME = "test"
+
+# ======================================================================================================================
 # Utilities
 # ======================================================================================================================
+
+
+def get_commit_hash() -> str:
+    cmd = "git rev-parse HEAD"
+    git_cmd = "bash -l -c \'{}\'".format(cmd)
+    git_process = subprocess.Popen(
+        git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git_stdout, _ = git_process.communicate()
+    git_stdout = git_stdout.replace("\n", "")
+
+    global COMMIT_HASH
+    COMMIT_HASH = git_stdout
+    assert len(COMMIT_HASH) == 40
 
 
 def timing(f):
@@ -29,6 +51,49 @@ def timing(f):
     return wrap
 
 
+def extract_performance(job_name, file):
+
+    # Connect to Azure Tables.
+    if not CONNECTION_STRING == "":
+        table_service = TableServiceClient.from_connection_string(
+            CONNECTION_STRING)
+        table_client = table_service.get_table_client(TABLE_NAME)
+
+        # Filter profiler lines.
+        lines = [line for line in file if line.startswith("+")]
+
+        # Parse statistics and upload them to azure tables.
+        for line in lines:
+            line = line.replace("::", ";")
+            columns = line.split(";")
+            # Workaround for LibOses which are miss behaving.
+            if len(columns) == 6:
+                depth = columns[0]
+                libos = columns[1]
+                syscall = columns[2]
+                total_time = columns[3]
+                average_cycles = columns[4]
+                average_time = columns[5]
+
+                partition_key: str = "-".join([COMMIT_HASH, libos, job_name])
+                row_key: str = syscall
+
+                entry: dict[str, str, str, str, str,
+                            str, float, float, float] = {}
+                entry["PartitionKey"] = partition_key
+                entry["RowKey"] = row_key
+                entry["CommitHash"] = COMMIT_HASH
+                entry["LibOS"] = libos
+                entry["JobName"] = job_name
+                entry["Syscall"] = syscall
+                entry["TotalTime"] = float(total_time)
+                entry["AverageCyclesPerSyscall"] = float(average_cycles)
+                entry["AverageTimePerSyscall"] = float(average_time)
+
+                table_client.delete_entity(partition_key, row_key)
+                table_client.create_entity(entry)
+
+
 def wait_jobs(log_directory: str, jobs: dict):
     @timing
     def wait_jobs2(log_directory: str, jobs: dict) -> List:
@@ -39,6 +104,9 @@ def wait_jobs(log_directory: str, jobs: dict):
             status.append((j.pid, j.returncode))
             with open(log_directory + "/" + job_name + ".stdout.txt", "w") as file:
                 file.write("{}".format(stdout))
+            with open(log_directory + "/" + job_name + ".stdout.txt", "r") as file:
+                extract_performance(job_name, file)
+
             with open(log_directory + "/" + job_name + ".stderr.txt", "w") as file:
                 file.write("{}".format(stderr))
 
@@ -61,7 +129,8 @@ def wait_and_report(name: str, log_directory: str, jobs: dict, all_pass=True):
             passed: bool = True if status[0][1] == 0 or status[1][1] == 0 else False
     else:
         passed: bool = True if status[0][1] == 0 else False
-    print("[{}] in {:9.2f} ms {}".format("PASSED" if passed else "FAILED", duration, name))
+    print("[{}] in {:9.2f} ms {}".format(
+        "PASSED" if passed else "FAILED", duration, name))
 
     return passed
 
@@ -72,7 +141,8 @@ def wait_and_report(name: str, log_directory: str, jobs: dict, all_pass=True):
 
 # Executes a checkout command in a remote host.
 def remote_checkout(host: str, repository: str, branch: str):
-    cmd = "cd {} && git pull origin && git checkout {}".format(repository, branch)
+    cmd = "cd {} && git pull origin && git checkout {}".format(
+        repository, branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -80,7 +150,9 @@ def remote_checkout(host: str, repository: str, branch: str):
 # Executes a compile command in a remote host.
 def remote_compile(host: str, repository: str, target: str, is_debug: bool):
     debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
-    cmd = "cd {} && make PROFILER=yes {} {}".format(repository, debug_flag, target)
+    profiler_flag: str = "PROFILER=yes" if not is_debug else "PROFILER=no"
+    cmd = "cd {} && make {} {} {}".format(
+        repository, profiler_flag, debug_flag, target)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -89,7 +161,8 @@ def remote_compile(host: str, repository: str, target: str, is_debug: bool):
 def remote_run(host: str, repository: str, is_debug: bool, target: str, is_sudo: bool, config_path: str):
     debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
     sudo_cmd: str = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make CONFIG_PATH={} {} {}".format(repository, sudo_cmd, config_path, debug_flag, target)
+    cmd = "cd {} && {} make CONFIG_PATH={} {} {}".format(
+        repository, sudo_cmd, config_path, debug_flag, target)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -97,7 +170,8 @@ def remote_run(host: str, repository: str, is_debug: bool, target: str, is_sudo:
 # Executes a cleanup command in a remote host.
 def remote_cleanup(host: str, workspace: str, is_sudo: bool, default_branch: str = "dev"):
     sudo_cmd: str = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(workspace, sudo_cmd, default_branch)
+    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(
+        workspace, sudo_cmd, default_branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -112,9 +186,11 @@ def job_checkout(repository: str, branch: str, server: str, client: str, enable_
     # Jobs is a map of job names (server name, repository and compile mode)
     jobs: dict[str, subprocess.Popen[str]] = {}
     test_name = "checkout"
-    jobs[test_name + "-server-" + server] = remote_checkout(server, repository, branch)
+    jobs[test_name + "-server-" +
+         server] = remote_checkout(server, repository, branch)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client] = remote_checkout(client, repository, branch)
+        jobs[test_name + "-client-" +
+             client] = remote_checkout(client, repository, branch)
     return wait_and_report(test_name, log_directory, jobs)
 
 
@@ -123,7 +199,8 @@ def job_compile(
         log_directory: str) -> bool:
     jobs: dict[str, subprocess.Popen[str]] = {}
     test_name = "compile-{}".format("debug" if is_debug else "release")
-    jobs[test_name + "-server-" + server] = remote_compile(server, repository, "all LIBOS={}".format(libos), is_debug)
+    jobs[test_name + "-server-" + server] = remote_compile(
+        server, repository, "all LIBOS={}".format(libos), is_debug)
     if not enable_nfs:
         jobs[test_name + "-client-" + client] = remote_compile(client,
                                                                repository, "all LIBOS={}".format(libos), is_debug)
@@ -134,12 +211,16 @@ def job_test_system_rust(
         test_alias: str, test_name: str, repo: str, libos: str, is_debug: bool, server: str, client: str,
         server_args: str, client_args: str, is_sudo: bool, all_pass: bool, delay: float, config_path: str,
         log_directory: str) -> bool:
-    server_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, server_args)
-    client_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(libos, test_name, client_args)
+    server_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(
+        libos, test_name, server_args)
+    client_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS=\\\"{}\\\"".format(
+        libos, test_name, client_args)
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_alias + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_alias + "-server-" +
+         server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
     time.sleep(delay)
-    jobs[test_alias + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    jobs[test_alias + "-client-" +
+         client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
     return wait_and_report(test_alias, log_directory, jobs, all_pass)
 
 
@@ -149,7 +230,8 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
     client_cmd: str = "test-unit-rust LIBOS={}".format(libos)
     test_name = "unit-test"
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_name + "-server-" +
+         server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
     # Unit tests require a single endpoint, so do not run them on client.
     return wait_and_report(test_name, log_directory, jobs, True)
 
@@ -157,44 +239,54 @@ def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, clien
 def job_test_integration_tcp_rust(
         repo: str, libos: str, is_debug: bool, server: str, client: str, server_addr: str, client_addr: str,
         is_sudo: bool, config_path: str, log_directory: str) -> bool:
-    server_args: str = "--local-address {}:12345 --remote-address {}:23456".format(server_addr, client_addr)
-    client_args: str = "--local-address {}:23456 --remote-address {}:12345".format(client_addr, server_addr)
+    server_args: str = "--local-address {}:12345 --remote-address {}:23456".format(
+        server_addr, client_addr)
+    client_args: str = "--local-address {}:23456 --remote-address {}:12345".format(
+        client_addr, server_addr)
     server_cmd: str = "test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={} ARGS=\\\"{}\\\"".format(
         libos, server_args)
     client_cmd: str = "test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={} ARGS=\\\"{}\\\"".format(
         libos, client_args)
     test_name = "integration-test"
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_name + "-server-" +
+         server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
     if libos != "catloop":
-        jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+        jobs[test_name + "-client-" + client] = remote_run(
+            client, repo, is_debug, client_cmd, is_sudo, config_path)
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
 def job_test_integration_pipe_rust(
         repo: str, libos: str, is_debug: bool, run_mode: str, server: str, client: str, server_addr: str,
         delay: float, is_sudo: bool, config_path: str, log_directory: str) -> bool:
-    server_args: str = "--peer server --pipe-name {}:12345 --run-mode {}".format(server_addr, run_mode)
-    client_args: str = "--peer client --pipe-name {}:12345 --run-mode {}".format(server_addr, run_mode)
+    server_args: str = "--peer server --pipe-name {}:12345 --run-mode {}".format(
+        server_addr, run_mode)
+    client_args: str = "--peer client --pipe-name {}:12345 --run-mode {}".format(
+        server_addr, run_mode)
     server_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
         libos, server_args)
     client_cmd: str = "test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={} ARGS=\\\"{}\\\"".format(
         libos, client_args)
     test_name = "integration-test" + "-" + run_mode
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    jobs[test_name + "-server-" +
+         server] = remote_run(server, repo, is_debug, server_cmd, is_sudo, config_path)
     if run_mode != "standalone":
         time.sleep(delay)
-        jobs[test_name + "-client-" + client] = remote_run(client, repo, is_debug, client_cmd, is_sudo, config_path)
+        jobs[test_name + "-client-" + client] = remote_run(
+            client, repo, is_debug, client_cmd, is_sudo, config_path)
     return wait_and_report(test_name, log_directory, jobs, True)
 
 
 def job_cleanup(repository: str, server: str, client: str, is_sudo: bool, enable_nfs: bool, log_directory: str) -> bool:
     test_name = "cleanup"
     jobs: dict[str, subprocess.Popen[str]] = {}
-    jobs[test_name + "-server-" + server] = remote_cleanup(server, repository, is_sudo)
+    jobs[test_name + "-server-" +
+         server] = remote_cleanup(server, repository, is_sudo)
     if not enable_nfs:
-        jobs[test_name + "-client-" + client + "-"] = remote_cleanup(client, repository, is_sudo)
+        jobs[test_name + "-client-" + client +
+             "-"] = remote_cleanup(client, repository, is_sudo)
     return wait_and_report(test_name, log_directory, jobs)
 
 
@@ -223,11 +315,13 @@ def run_pipeline(
     mkdir(log_directory)
 
     # STEP 1: Check out.
-    status["checkout"] = job_checkout(repository, branch, server, client, enable_nfs, log_directory)
+    status["checkout"] = job_checkout(
+        repository, branch, server, client, enable_nfs, log_directory)
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = job_compile(repository, libos, is_debug, server, client, enable_nfs, log_directory)
+        status["compile"] = job_compile(
+            repository, libos, is_debug, server, client, enable_nfs, log_directory)
 
     # STEP 3: Run unit tests.
     if test_unit:
@@ -260,13 +354,16 @@ def run_pipeline(
             scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
                                                    repository, delay, config_path, log_directory)
             ci_map: CIMap = get_ci_map()
-            test_names: List = get_tests_to_run(scaffolding, ci_map) if test_system == "all" else [test_system]
+            test_names: List = get_tests_to_run(
+                scaffolding, ci_map) if test_system == "all" else [test_system]
             for test_name in test_names:
-                t: BaseTest = create_test_instance(scaffolding, ci_map, test_name)
+                t: BaseTest = create_test_instance(
+                    scaffolding, ci_map, test_name)
                 status[test_name] = t.execute()
 
     # Setp 5: Clean up.
-    status["cleanup"] = job_cleanup(repository, server, client, is_sudo, enable_nfs, log_directory)
+    status["cleanup"] = job_cleanup(
+        repository, server, client, is_sudo, enable_nfs, log_directory)
 
     return status
 
@@ -317,31 +414,46 @@ def read_args() -> argparse.Namespace:
     description += "For more information, check out the README.md file of the project."
 
     # Initialize parser.
-    parser = argparse.ArgumentParser(prog="demikernel_ci.py", description=description)
+    parser = argparse.ArgumentParser(
+        prog="demikernel_ci.py", description=description)
 
     # Host options.
     parser.add_argument("--server", required=True, help="set server host name")
     parser.add_argument("--client", required=True, help="set client host name")
 
     # Build options.
-    parser.add_argument("--repository", required=True, help="set location of target repository in remote hosts")
-    parser.add_argument("--branch", required=True, help="set target branch in remote hosts")
-    parser.add_argument("--libos", required=True, help="set target libos in remote hosts")
-    parser.add_argument("--debug", required=False, action='store_true', help="sets debug build mode")
+    parser.add_argument("--repository", required=True,
+                        help="set location of target repository in remote hosts")
+    parser.add_argument("--branch", required=True,
+                        help="set target branch in remote hosts")
+    parser.add_argument("--libos", required=True,
+                        help="set target libos in remote hosts")
+    parser.add_argument("--debug", required=False,
+                        action='store_true', help="sets debug build mode")
     parser.add_argument("--delay", default=1.0, type=float, required=False,
                         help="set delay between server and host for system-level tests")
     parser.add_argument("--enable-nfs", required=False, default=False,
                         action="store_true", help="enable building on nfs directories")
 
     # Test options.
-    parser.add_argument("--test-unit", action='store_true', required=False, help="run unit tests")
-    parser.add_argument("--test-system", type=str, required=False, help="run system tests")
-    parser.add_argument("--server-addr", required="--test-system" in sys.argv, help="sets server address in tests")
-    parser.add_argument("--client-addr", required="--test-system" in sys.argv, help="sets client address in tests")
-    parser.add_argument("--config-path", required=False, default="\$HOME/config.yaml", help="sets config path")
+    parser.add_argument("--test-unit", action='store_true',
+                        required=False, help="run unit tests")
+    parser.add_argument("--test-system", type=str,
+                        required=False, help="run system tests")
+    parser.add_argument("--server-addr", required="--test-system" in sys.argv,
+                        help="sets server address in tests")
+    parser.add_argument("--client-addr", required="--test-system" in sys.argv,
+                        help="sets client address in tests")
+    parser.add_argument("--config-path", required=False,
+                        default="\$HOME/config.yaml", help="sets config path")
 
     # Other options.
-    parser.add_argument("--output-dir", required=False, default=".", help="output directory for logs")
+    parser.add_argument("--output-dir", required=False,
+                        default=".", help="output directory for logs")
+    parser.add_argument("--connection-string", required=False,
+                        default="", help="connection string to access Azure tables")
+    parser.add_argument("--table-name", required=False,
+                        default="", help="Azure table to place results")
 
     # Read arguments from command line.
     return parser.parse_args()
@@ -373,6 +485,13 @@ def main():
 
     # Output directory.
     output_dir: str = args.output_dir
+
+    # Initialize glboal variables.
+    get_commit_hash()
+    global CONNECTION_STRING
+    CONNECTION_STRING = args.connection_string if args.connection_string != "" else CONNECTION_STRING
+    global TABLE_NAME
+    TABLE_NAME = args.table_name if args.table_name != "" else TABLE_NAME
 
     status: dict = run_pipeline(repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,

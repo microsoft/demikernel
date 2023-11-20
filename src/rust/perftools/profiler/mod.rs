@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests;
 
-use ::std::{
+use std::{
     cell::RefCell,
     io,
     rc::Rc,
@@ -144,14 +144,14 @@ impl Scope {
         let percent = duration_sum_secs / pred_sum_secs * 100.0;
 
         // Write markers.
-        let mut markers = String::from(" +");
+        let mut markers = String::from("+");
         for _ in 0..depth {
             markers.push('+');
         }
         writeln!(
             out,
-            "{: <60} {: >6.2}%, {: >18.4} cycles, {: >18.4} ns",
-            format!(" {}  {}", markers, self.name),
+            "{};{};{};{}",
+            format!("{};{}", markers, self.name),
             percent,
             duration_sum_secs / (self.num_calls as f64),
             duration_sum_secs / (self.num_calls as f64) * ns_per_cycle,
@@ -309,6 +309,10 @@ impl Profiler {
     fn write<W: io::Write>(&self, out: &mut W, max_depth: Option<usize>) -> io::Result<()> {
         let total_duration = self.roots.iter().map(|root| root.borrow().duration_sum).sum();
 
+        writeln!(
+            out,
+            "call-depth;function-name;percent-total;cycles-per-call;ns-per-call"
+        )?;
         for root in self.roots.iter() {
             root.borrow()
                 .write_recursive(out, total_duration, 0, max_depth, self.ns_per_cycle)?;
