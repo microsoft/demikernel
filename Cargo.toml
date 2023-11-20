@@ -49,7 +49,7 @@ dpdk-rs = { git = "https://github.com/demikernel/dpdk-rs", rev = "a0bb97920560e9
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
 # libc implementation in Rust is quite different for Windows and Linux. This library provides the relevant networking
-# constants and datastructures for Windows.
+# constants and data structures for Windows.
 windows = { version = "0.51.1", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
