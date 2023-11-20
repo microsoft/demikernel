@@ -64,10 +64,14 @@ impl SharedCatnapTransport {
         // Create socket.
         match socket2::Socket::new(domain, typ, Some(protocol)) {
             Ok(socket) => {
-                match socket.set_nonblocking(true) {
-                    Ok(_) => {},
-                    Err(_) => warn!("cannot set NONBLOCK option"),
+                // Set socket options.
+                if socket.set_nonblocking(true).is_err() {
+                    warn!("cannot set NONBLOCK option");
                 }
+                if socket.set_reuse_address(true).is_err() {
+                    warn!("cannot set REUSE_ADDRESS option");
+                }
+
                 Ok(socket)
             },
             Err(e) => {
@@ -103,15 +107,17 @@ impl SharedCatnapTransport {
             Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
 
-                // Set async options in socket.
-                match new_socket.set_nodelay(true) {
-                    Ok(_) => {},
-                    Err(_) => warn!("cannot set TCP_NONDELAY option"),
+                // Set socket options.
+                if new_socket.set_nodelay(true).is_err() {
+                    warn!("cannot set TCP_NONDELAY option");
                 }
-                match new_socket.set_nonblocking(true) {
-                    Ok(_) => {},
-                    Err(_) => warn!("cannot set NONBLOCK option"),
+                if new_socket.set_nonblocking(true).is_err() {
+                    warn!("cannot set NONBLOCK option");
                 };
+                if socket.set_reuse_address(true).is_err() {
+                    warn!("cannot set REUSE_ADDRESS option");
+                }
+
                 let addr: SocketAddrV4 = saddr.as_socket_ipv4().expect("not a SocketAddrV4");
                 Ok((new_socket, addr))
             },
