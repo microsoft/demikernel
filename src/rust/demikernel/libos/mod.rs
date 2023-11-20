@@ -53,6 +53,9 @@ use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
 use crate::catpowder::CatpowderLibOS;
 
+#[cfg(feature = "profiler")]
+use crate::timer;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -73,6 +76,9 @@ pub enum LibOS {
 impl LibOS {
     /// Instantiates a new LibOS.
     pub fn new(libos_name: LibOSName) -> Result<Self, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::new");
+
         logging::initialize();
 
         // Read in configuration file.
@@ -120,12 +126,16 @@ impl LibOS {
 
     /// Creates a new memory queue and connect to consumer end.
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
-        let result: Result<QDesc, Fail> = match self {
-            LibOS::NetworkLibOS(_) => Err(Fail::new(
-                libc::ENOTSUP,
-                "create_pipe() is not supported on network liboses",
-            )),
-            LibOS::MemoryLibOS(libos) => libos.create_pipe(name),
+        let result: Result<QDesc, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::create_pipe");
+            match self {
+                LibOS::NetworkLibOS(_) => Err(Fail::new(
+                    libc::ENOTSUP,
+                    "create_pipe() is not supported on network liboses",
+                )),
+                LibOS::MemoryLibOS(libos) => libos.create_pipe(name),
+            }
         };
 
         self.poll();
@@ -135,12 +145,16 @@ impl LibOS {
 
     /// Opens an existing memory queue and connects to producer end.
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
-        let result: Result<QDesc, Fail> = match self {
-            LibOS::NetworkLibOS(_) => Err(Fail::new(
-                libc::ENOTSUP,
-                "open_pipe() is not supported on network liboses",
-            )),
-            LibOS::MemoryLibOS(libos) => libos.open_pipe(name),
+        let result: Result<QDesc, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::open_pipe");
+            match self {
+                LibOS::NetworkLibOS(_) => Err(Fail::new(
+                    libc::ENOTSUP,
+                    "open_pipe() is not supported on network liboses",
+                )),
+                LibOS::MemoryLibOS(libos) => libos.open_pipe(name),
+            }
         };
 
         self.poll();
@@ -155,9 +169,13 @@ impl LibOS {
         socket_type: libc::c_int,
         protocol: libc::c_int,
     ) -> Result<QDesc, Fail> {
-        let result: Result<QDesc, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "socket() is not supported on memory liboses")),
+        let result: Result<QDesc, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::socket");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "socket() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -167,9 +185,13 @@ impl LibOS {
 
     /// Binds a socket to a local address.
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
-        let result: Result<(), Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "bind() is not supported on memory liboses")),
+        let result: Result<(), Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::bind");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "bind() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -179,9 +201,13 @@ impl LibOS {
 
     /// Marks a socket as a passive one.
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
-        let result: Result<(), Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "listen() is not supported on memory liboses")),
+        let result: Result<(), Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::listen");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "listen() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -191,9 +217,13 @@ impl LibOS {
 
     /// Accepts an incoming connection on a TCP socket.
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "accept() is not supported on memory liboses")),
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::accept");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "accept() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -203,9 +233,13 @@ impl LibOS {
 
     /// Initiates a connection with a remote TCP socket.
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "connect() is not supported on memory liboses")),
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::connect");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "connect() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -215,9 +249,13 @@ impl LibOS {
 
     /// Closes an I/O queue.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        let result: Result<(), Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.close(qd),
-            LibOS::MemoryLibOS(libos) => libos.close(qd),
+        let result: Result<(), Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::close");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.close(qd),
+                LibOS::MemoryLibOS(libos) => libos.close(qd),
+            }
         };
 
         self.poll();
@@ -226,9 +264,13 @@ impl LibOS {
     }
 
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.async_close(qd),
-            LibOS::MemoryLibOS(libos) => libos.async_close(qd),
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::async_close");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.async_close(qd),
+                LibOS::MemoryLibOS(libos) => libos.async_close(qd),
+            }
         };
 
         self.poll();
@@ -238,9 +280,13 @@ impl LibOS {
 
     /// Pushes a scatter-gather array to an I/O queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
-            LibOS::MemoryLibOS(libos) => libos.push(qd, sga),
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::push");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
+                LibOS::MemoryLibOS(libos) => libos.push(qd, sga),
+            }
         };
 
         self.poll();
@@ -250,9 +296,13 @@ impl LibOS {
 
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
-            LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "pushto() is not supported on memory liboses")),
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::pushto");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
+                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "pushto() is not supported on memory liboses")),
+            }
         };
 
         self.poll();
@@ -262,19 +312,24 @@ impl LibOS {
 
     /// Pops data from a an I/O queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        // Check if this is a fixed-size pop.
-        if let Some(size) = size {
-            // Check if size is valid.
-            if !((size > 0) && (size <= limits::POP_SIZE_MAX)) {
-                let cause: String = format!("invalid pop size (size={:?})", size);
-                error!("pop(): {:?}", &cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            }
-        }
+        let result: Result<QToken, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::pop");
 
-        let result: Result<QToken, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
-            LibOS::MemoryLibOS(libos) => libos.pop(qd, size),
+            // Check if this is a fixed-size pop.
+            if let Some(size) = size {
+                // Check if size is valid.
+                if !((size > 0) && (size <= limits::POP_SIZE_MAX)) {
+                    let cause: String = format!("invalid pop size (size={:?})", size);
+                    error!("pop(): {:?}", &cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
+                }
+            }
+
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
+                LibOS::MemoryLibOS(libos) => libos.pop(qd, size),
+            }
         };
 
         self.poll();
@@ -353,9 +408,13 @@ impl LibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&mut self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        let result: Result<demi_sgarray_t, Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
-            LibOS::MemoryLibOS(libos) => libos.sgaalloc(size),
+        let result: Result<demi_sgarray_t, Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::sgaalloc");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
+                LibOS::MemoryLibOS(libos) => libos.sgaalloc(size),
+            }
         };
 
         self.poll();
@@ -365,9 +424,13 @@ impl LibOS {
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&mut self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        let result: Result<(), Fail> = match self {
-            LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
-            LibOS::MemoryLibOS(libos) => libos.sgafree(sga),
+        let result: Result<(), Fail> = {
+            #[cfg(feature = "profiler")]
+            timer!("demikernel::sgafree");
+            match self {
+                LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
+                LibOS::MemoryLibOS(libos) => libos.sgafree(sga),
+            }
         };
 
         self.poll();
@@ -384,6 +447,9 @@ impl LibOS {
     }
 
     fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::pack_result");
+
         match self {
             LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
             LibOS::MemoryLibOS(libos) => libos.pack_result(handle, qt),
@@ -391,6 +457,8 @@ impl LibOS {
     }
 
     fn poll(&mut self) {
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::poll");
         match self {
             LibOS::NetworkLibOS(libos) => libos.poll(),
             LibOS::MemoryLibOS(libos) => libos.poll(),
