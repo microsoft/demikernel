@@ -45,6 +45,10 @@ BUILD_DIR = $(MAKEDIR)\target\release
 BUILD_DIR = $(MAKEDIR)\target\debug
 !endif
 
+!ifndef INPUT_DIR
+INPUT_DIR = $(MAKEDIR)\nettest\input
+!endif
+
 #=======================================================================================================================
 # Toolchain Configuration
 #=======================================================================================================================
@@ -247,6 +251,7 @@ test-unit-c: all-tests-c
 
 # Rust unit tests.
 test-unit-rust:
+	set INPUT_DIR=$(INPUT_DIR)
 	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	$(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture
 	$(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture

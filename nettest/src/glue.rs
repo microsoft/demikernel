@@ -5,7 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use std::{fmt::Debug, net::SocketAddr, time::Duration};
+use std::{
+    fmt::Debug,
+    net::SocketAddr,
+    time::Duration,
+};
 
 //======================================================================================================================
 
@@ -30,32 +34,28 @@ pub struct SyscallEvent {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub enum DemikernelSyscall {
-    Socket(SocketArgs),
-    Bind(BindArgs),
-    Listen(ListenArgs),
-    Accept(AcceptArgs),
-    Connect(ConnectArgs),
+    Socket(SocketArgs, u32),
+    Bind(BindArgs, u32),
+    Listen(ListenArgs, u32),
+    Accept(AcceptArgs, u32),
+    Connect(ConnectArgs, u32),
     Push(PushArgs),
     Pop,
     Close,
-    Wait,
-    WaitAny,
     Unsupported,
 }
 
 impl Debug for DemikernelSyscall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DemikernelSyscall::Socket(args) => write!(f, "demi_socket({:?})", args),
-            DemikernelSyscall::Bind(args) => write!(f, "demi_bind({:?})", args),
-            DemikernelSyscall::Listen(args) => write!(f, "demi_listen({:?})", args),
-            DemikernelSyscall::Accept(args) => write!(f, "demi_accept({:?})", args),
-            DemikernelSyscall::Connect(args) => write!(f, "demi_connect({:?})", args),
+            DemikernelSyscall::Socket(args, _qd) => write!(f, "demi_socket({:?})", args),
+            DemikernelSyscall::Bind(args, _ok) => write!(f, "demi_bind({:?})", args),
+            DemikernelSyscall::Listen(args, _ok) => write!(f, "demi_listen({:?})", args),
+            DemikernelSyscall::Accept(args, _qd) => write!(f, "demi_accept({:?})", args),
+            DemikernelSyscall::Connect(args, _ok) => write!(f, "demi_connect({:?})", args),
             DemikernelSyscall::Push(args) => write!(f, "demi_push({:?})", args),
             DemikernelSyscall::Pop => write!(f, "demi_pop"),
             DemikernelSyscall::Close => write!(f, "demi_close"),
-            DemikernelSyscall::Wait => write!(f, "demi_wait"),
-            DemikernelSyscall::WaitAny => write!(f, "demi_wait_any"),
             DemikernelSyscall::Unsupported => write!(f, "Unsupported"),
         }
     }

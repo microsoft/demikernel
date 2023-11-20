@@ -31,6 +31,7 @@ export BUILD_DIR := $(CURDIR)/target/release
 ifeq ($(BUILD),dev)
 export BUILD_DIR := $(CURDIR)/target/debug
 endif
+export INPUT_DIR ?= $(CURDIR)/nettest/input
 
 #=======================================================================================================================
 # Toolchain Configuration

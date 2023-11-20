@@ -68,19 +68,24 @@ SyscallEvent -> glue::SyscallEvent
 
 Syscall -> DemikernelSyscall
       : 'SOCKET' 'LPAREN' SocketArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Socket($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Socket($3, ret)
       }
       | 'BIND' 'LPAREN' BindArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Bind($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Bind($3, ret)
       }
       | 'LISTEN' 'LPAREN' ListenArgs 'RPAREN' 'EQUALS' Expression{
-            DemikernelSyscall::Listen($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Listen($3, ret)
       }
       | 'ACCEPT' 'LPAREN' AcceptArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Accept($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Accept($3, ret)
       }
       | 'CONNECT' 'LPAREN' ConnectArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Connect($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Connect($3, ret)
       }
       | 'SEND' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Unsupported
@@ -352,12 +357,12 @@ TcpOptionsList -> Vec<glue::TcpOption>
       }
       | TcpOption {
             let mut v = Vec::new();
-            v.push($1);
+            v.insert(0, $1);
             v
       }
       | TcpOption 'COMMA' TcpOptionsList {
             let mut v = $3;
-            v.push($1);
+            v.insert(0, $1);
             v
       }
       ;
