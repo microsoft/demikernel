@@ -28,7 +28,6 @@ use crate::{
             Yielder,
             YielderHandle,
         },
-        DemiRuntime,
         QToken,
         SharedObject,
     },
@@ -149,13 +148,7 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Accept)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -164,41 +157,29 @@ impl SharedCatnapQueue {
     pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<Self, Fail> {
         self.state_machine.may_accept()?;
         self.state_machine.prepare(SocketOp::Accepted)?;
-        let transport: SharedCatnapTransport = self.transport.clone();
-        loop {
-            match transport.accept(&mut self.socket) {
-                // Operation completed.
-                Ok((new_socket, saddr)) => {
-                    trace!("connection accepted ({:?})", new_socket);
-                    self.state_machine.commit();
-                    return Ok(Self(SharedObject::new(CatnapQueue {
-                        qtype: self.qtype,
-                        state_machine: SocketStateMachine::new_connected(),
-                        socket: new_socket,
-                        local: None,
-                        remote: Some(saddr),
-                        transport: self.transport.clone(),
-                        pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
-                    })));
-                },
-                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
-                    // Operation in progress. Check if cancelled.
-                    if let Err(e) = yielder.yield_once().await {
-                        self.state_machine.rollback();
-                        return Err(e);
-                    } else {
-                        continue;
-                    }
-                },
-                Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
-                    // Socket has been closed.
-                    return Err(Fail::new(errno, "socket was closed"));
-                },
-                Err(e) => {
-                    self.state_machine.rollback();
-                    return Err(e);
-                },
-            }
+        match self.transport.clone().accept(&mut self.socket, yielder).await {
+            // Operation completed.
+            Ok((new_socket, saddr)) => {
+                trace!("connection accepted ({:?})", new_socket);
+                self.state_machine.commit();
+                Ok(Self(SharedObject::new(CatnapQueue {
+                    qtype: self.qtype,
+                    state_machine: SocketStateMachine::new_connected(),
+                    socket: new_socket,
+                    local: None,
+                    remote: Some(saddr),
+                    transport: self.transport.clone(),
+                    pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
+                })))
+            },
+            Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
+                // Socket has been closed.
+                Err(Fail::new(errno, "socket was closed"))
+            },
+            Err(e) => {
+                self.state_machine.rollback();
+                Err(e)
+            },
         }
     }
 
@@ -210,11 +191,7 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -224,31 +201,19 @@ impl SharedCatnapQueue {
         // Check whether we can connect.
         self.state_machine.may_connect()?;
         self.state_machine.prepare(SocketOp::Connected)?;
-        let transport: SharedCatnapTransport = self.transport.clone();
-        loop {
-            match transport.connect(&mut self.socket, remote) {
-                Ok(()) => {
-                    self.remote = Some(remote);
-                    return Ok(());
-                },
-                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
-                    // Operation in progress. Check if cancelled.
-                    if let Err(e) = yielder.yield_once().await {
-                        self.state_machine.rollback();
-                        return Err(e);
-                    } else {
-                        continue;
-                    }
-                },
-                Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
-                    // Socket has been closed.
-                    return Err(Fail::new(errno, "Socket was closed"));
-                },
-                Err(e) => {
-                    self.state_machine.rollback();
-                    return Err(e);
-                },
-            }
+        match self.transport.clone().connect(&mut self.socket, remote, yielder).await {
+            Ok(()) => {
+                self.remote = Some(remote);
+                Ok(())
+            },
+            Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
+                // Socket has been closed.
+                Err(Fail::new(errno, "Socket was closed"))
+            },
+            Err(e) => {
+                self.state_machine.rollback();
+                Err(e)
+            },
         }
     }
 
@@ -258,15 +223,13 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
-        let yielder: Yielder = Yielder::new();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&mut self) -> Result<(), Fail> {
-        let transport: SharedCatnapTransport = self.transport.clone();
-        match transport.close(&mut self.socket) {
+        match self.transport.clone().close(&mut self.socket) {
             Ok(()) => {
                 self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
                 Ok(())
@@ -279,25 +242,15 @@ impl SharedCatnapQueue {
     /// to close a queue and any single-queue functionality after the close completes.
     pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Closed)?;
-        let transport: SharedCatnapTransport = self.transport.clone();
-        loop {
-            match transport.close(&mut self.socket) {
-                Ok(()) => {
-                    self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-                    return Ok(());
-                },
-                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
-                    // Operation in progress. Check if cancelled.
-                    if let Err(e) = yielder.yield_once().await {
-                        self.state_machine.rollback();
-                        return Err(e);
-                    }
-                },
-                Err(e) => {
-                    self.state_machine.rollback();
-                    return Err(e);
-                },
-            }
+        match self.transport.clone().async_close(&mut self.socket, yielder).await {
+            Ok(()) => {
+                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
+                Ok(())
+            },
+            Err(e) => {
+                self.state_machine.rollback();
+                Err(e)
+            },
         }
     }
 
@@ -318,22 +271,12 @@ impl SharedCatnapQueue {
         addr: Option<SocketAddrV4>,
         yielder: Yielder,
     ) -> Result<(), Fail> {
-        let transport: SharedCatnapTransport = self.transport.clone();
-        loop {
-            match transport.push(&mut self.socket, buf, addr) {
-                Ok(()) => {
-                    if buf.len() == 0 {
-                        return Ok(());
-                    }
-                    // Operation in progress. Check if cancelled.
-                    yielder.yield_once().await?;
-                },
-                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
-                    // Operation in progress. Check if cancelled.
-                    yielder.yield_once().await?;
-                },
-                Err(e) => return Err(e),
-            }
+        match self.transport.clone().push(&mut self.socket, buf, addr, yielder).await {
+            Ok(()) => {
+                debug_assert_eq!(buf.len(), 0);
+                Ok(())
+            },
+            Err(e) => return Err(e),
         }
     }
 
@@ -358,35 +301,32 @@ impl SharedCatnapQueue {
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
         // Check that we allocated a DemiBuffer that is big enough.
-        debug_assert!(buf.len() == size);
-        let transport: SharedCatnapTransport = self.transport.clone();
-        loop {
-            match transport.pop(&mut self.socket, &mut buf, size) {
-                Ok(addr) => return Ok((addr, buf)),
-                Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
-                    // Operation in progress. Check if cancelled.
-                    yielder.yield_once().await?;
-                },
-                Err(e) => return Err(e),
-            }
+        debug_assert_eq!(buf.len(), size);
+        match self
+            .transport
+            .clone()
+            .pop(&mut self.socket, &mut buf, size, yielder)
+            .await
+        {
+            Ok(addr) => Ok((addr, buf)),
+            Err(e) => Err(e),
         }
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(
-        &mut self,
-        coroutine_constructor: F,
-        yielder: Yielder,
-    ) -> Result<TaskHandle, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
         // Spawn coroutine.
         match coroutine_constructor(yielder) {
             // We successfully spawned the coroutine.
             Ok(handle) => {
                 // Commit the operation on the socket.
                 self.state_machine.commit();
+                self.add_pending_op(&handle, &yielder_handle);
                 Ok(handle)
             },
             // We failed to spawn the coroutine.
