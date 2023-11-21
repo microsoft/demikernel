@@ -150,7 +150,7 @@ fn bind_to_private_ports(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
         let addr: SocketAddr = SocketAddr::new(*local, port);
         match libos.bind(sockqd, addr) {
             Ok(()) => (),
-            Err(e) if e.errno == libc::EADDRINUSE => (),
+            Err(e) if e.errno == libc::EADDRINUSE || e.errno == libc::EBADF => (),
             Err(e) => anyhow::bail!("bind() failed with {}", e),
         };
 
