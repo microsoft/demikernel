@@ -60,6 +60,7 @@ use crate::{
 };
 use ::std::{
     boxed::Box,
+    collections::HashMap,
     future::Future,
     mem,
     net::SocketAddrV4,
@@ -85,10 +86,13 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 #[cfg(target_os = "linux")]
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
-use self::types::{
-    demi_accept_result_t,
-    demi_qr_value_t,
-    demi_qresult_t,
+use self::{
+    scheduler::YielderHandle,
+    types::{
+        demi_accept_result_t,
+        demi_qr_value_t,
+        demi_qresult_t,
+    },
 };
 
 //======================================================================================================================
@@ -108,6 +112,8 @@ pub struct DemiRuntime {
     timer: SharedTimer,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
     network_table: NetworkQueueTable,
+    /// Currently running coroutines.
+    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 #[derive(Clone)]
@@ -148,6 +154,7 @@ impl SharedDemiRuntime {
             ephemeral_ports: EphemeralPorts::default(),
             timer: SharedTimer::new(now),
             network_table: NetworkQueueTable::default(),
+            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }))
     }
 
@@ -461,6 +468,30 @@ impl SharedDemiRuntime {
                     qr_value: unsafe { mem::zeroed() },
                 }
             },
+        }
+    }
+
+    /// Adds a new operation to the list of pending operations on this queue.
+    pub fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
+        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
+    }
+
+    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
+    /// add_pending_op() was previously called.
+    /// TODO: Remove this when we clean up take_result().
+    /// This function is deprecated, do not use.
+    /// FIXME: https://github.com/microsoft/demikernel/issues/888
+    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
+        self.pending_ops.remove(handle);
+    }
+
+    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
+    /// yielded, wake the coroutine with an error.
+    pub fn cancel_pending_ops(&mut self, cause: Fail) {
+        for (handle, mut yielder_handle) in self.pending_ops.drain() {
+            if !handle.has_completed() {
+                yielder_handle.wake_with(Err(cause.clone()));
+            }
         }
     }
 }
