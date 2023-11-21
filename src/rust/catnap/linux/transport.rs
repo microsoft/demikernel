@@ -72,7 +72,8 @@ pub type SocketFd = Socket;
 /// Underlying network transport.
 pub struct CatnapTransport {
     epoll_fd: Id,
-    handles: HashMap<Id, YielderHandle>,
+    push_handles: HashMap<Id, Vec<YielderHandle>>,
+    pop_handles: HashMap<Id, Vec<YielderHandle>>,
 }
 
 #[derive(Clone)]
@@ -92,7 +93,8 @@ impl SharedCatnapTransport {
         };
         let me: Self = Self(SharedObject::new(CatnapTransport {
             epoll_fd,
-            handles: HashMap::<Id, YielderHandle>::new(),
+            pop_handles: HashMap::<Id, Vec<YielderHandle>>::new(),
+            push_handles: HashMap::<Id, Vec<YielderHandle>>::new(),
         }));
         let mut me2: Self = me.clone();
         runtime
@@ -102,9 +104,13 @@ impl SharedCatnapTransport {
     }
 
     /// This function registers a handler for incoming I/O on the socket. There should only be one of these per socket.
-    pub fn register_epoll(&mut self, socket: &Socket, yielder_handle: YielderHandle) -> Result<(), Fail> {
+    fn register_epoll(&mut self, socket: &Socket) -> Result<(), Fail> {
         let id: Id = socket.as_raw_fd();
-        match self.handles.insert(id, yielder_handle) {
+        match self.push_handles.insert(id, Vec::new()) {
+            None => (),
+            Some(_) => unreachable!("Cannot overwrite an old handler"),
+        };
+        match self.pop_handles.insert(id, Vec::new()) {
             None => (),
             Some(_) => unreachable!("Cannot overwrite an old handler"),
         };
@@ -121,9 +127,10 @@ impl SharedCatnapTransport {
         }
     }
 
-    pub fn unregister_epoll(&mut self, socket: &Socket) -> Result<(), Fail> {
+    fn unregister_epoll(&mut self, socket: &Socket) -> Result<(), Fail> {
         let id: Id = socket.as_raw_fd();
-        self.handles.remove(&id);
+        self.pop_handles.remove(&id);
+        self.push_handles.remove(&id);
         let mut epoll_event: epoll_event = epoll_event {
             events: (EPOLLIN | EPOLLOUT) as u32,
             u64: id as u64,
@@ -141,23 +148,41 @@ impl SharedCatnapTransport {
         let yielder: Yielder = Yielder::new();
         loop {
             let mut events: Vec<libc::epoll_event> = Vec::with_capacity(1024);
-            let ready_num: usize =
-                match unsafe { epoll_wait(self.epoll_fd, events.as_mut_ptr() as *mut libc::epoll_event, 1024, 0) } {
-                    result if result >= 0 => result as u32 as usize,
-                    result if result == libc::EINTR => continue,
-                    _ => {
-                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                        error!("epoll returned an error: {:?}", errno);
-                        break;
-                    },
-                };
-            trace!("Found some events: {:?}", ready_num);
+
+            match unsafe { epoll_wait(self.epoll_fd, events.as_mut_ptr() as *mut libc::epoll_event, 1024, 0) } {
+                result if result >= 0 => result as u32 as usize,
+                result if result == libc::EINTR => continue,
+                _ => {
+                    let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                    error!("epoll returned an error: {:?}", errno);
+                    break;
+                },
+            };
             while let Some(event) = events.pop() {
                 let id: Id = event.u64 as Id;
                 if event.events | (libc::EPOLLIN as u32) != 0 {
+                    trace!("got an event");
                     // Get handler.
-                    match self.handles.get_mut(&id) {
-                        Some(handle) => handle.wake_with(Ok(())),
+                    match self.pop_handles.get_mut(&id) {
+                        Some(queue) => {
+                            if let Some(mut handle) = queue.pop() {
+                                trace!("waking for pop");
+                                handle.wake_with(Ok(()));
+                            }
+                        },
+                        None => {
+                            unreachable!("should have registered a handler at the same time as the epoll event")
+                        },
+                    };
+                }
+                if event.events | (libc::EPOLLOUT as u32) != 0 {
+                    // Get handler.
+                    match self.push_handles.get_mut(&id) {
+                        Some(queue) => {
+                            if let Some(mut handle) = queue.pop() {
+                                handle.wake_with(Ok(()))
+                            }
+                        },
                         None => {
                             unreachable!("should have registered a handler at the same time as the epoll event")
                         },
@@ -186,9 +211,6 @@ impl SharedCatnapTransport {
         match socket2::Socket::new(domain, typ, Some(protocol)) {
             Ok(socket) => {
                 // Set socket options.
-                if socket.set_nonblocking(true).is_err() {
-                    warn!("cannot set NONBLOCK option");
-                }
                 if socket.set_reuse_address(true).is_err() {
                     warn!("cannot set REUSE_ADDRESS option");
                 }
@@ -212,121 +234,46 @@ impl SharedCatnapTransport {
         }
     }
 
-    pub fn listen(&self, socket: &mut Socket, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, socket: &mut Socket, backlog: usize) -> Result<(), Fail> {
         trace!("listen to");
         if let Err(e) = socket.listen(backlog as i32) {
             error!("failed to listen ({:?})", e);
             Err(Fail::new(e.kind() as i32, "unable to listen"))
         } else {
+            self.register_epoll(socket)?;
             Ok(())
         }
     }
 
-    pub fn accept(&self, socket: &mut Socket) -> Result<(Socket, SocketAddrV4), Fail> {
-        match socket.accept() {
-            // Operation completed.
-            Ok((new_socket, saddr)) => {
-                trace!("connection accepted ({:?})", new_socket);
-
-                // Set socket options.
-                if new_socket.set_nodelay(true).is_err() {
-                    warn!("cannot set TCP_NONDELAY option");
-                }
-                if new_socket.set_nonblocking(true).is_err() {
-                    warn!("cannot set NONBLOCK option");
-                };
-                if socket.set_reuse_address(true).is_err() {
-                    warn!("cannot set REUSE_ADDRESS option");
-                }
-
-                let addr: SocketAddrV4 = saddr.as_socket_ipv4().expect("not a SocketAddrV4");
-                Ok((new_socket, addr))
-            },
-            Err(e) => {
-                // Check the return error code.
-                if let Some(e) = e.raw_os_error() {
-                    if DemiRuntime::should_retry(e) {
-                        Err(Fail::new(EAGAIN, "operation not complete yet"))
-                    } else {
-                        Err(Fail::new(e.into(), "operation failed"))
-                    }
-                } else {
-                    unreachable!("Should have an errno!");
-                }
-            },
-        }
-    }
-
-    pub fn connect(&self, socket: &mut Socket, remote: SocketAddrV4) -> Result<(), Fail> {
-        match socket.connect(&remote.into()) {
-            Ok(()) => {
-                // Set async options in socket.
-                match socket.set_nodelay(true) {
-                    Ok(_) => {},
-                    Err(_) => warn!("cannot set TCP_NONDELAY option"),
-                }
-                Ok(())
-            },
-            Err(e) => {
-                if let Some(e) = e.raw_os_error() {
-                    // Extra check for Windows.
-                    #[cfg(target_os = "windows")]
-                    if e == WSAEISCONN.0 {
-                        return Ok(());
-                    }
-                    if DemiRuntime::should_retry(e) {
-                        Err(Fail::new(EAGAIN, "operaton not complete yet"))
-                    } else {
-                        Err(Fail::new(e.into(), "operation failed"))
-                    }
-                } else {
-                    unreachable!("Should have an errno!");
-                }
-            },
-        }
-    }
-
-    pub fn close(&self, socket: &mut Socket) -> Result<(), Fail> {
-        match socket.shutdown(Shutdown::Both) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                if let Some(e) = e.raw_os_error() {
-                    // Extra check for Windows.
-                    if e == ENOTCONN {
-                        return Ok(());
-                    }
-                    if DemiRuntime::should_retry(e) {
-                        Err(Fail::new(EAGAIN, "operaton not complete yet"))
-                    } else {
-                        Err(Fail::new(e.into(), "operation failed"))
-                    }
-                } else {
-                    unreachable!("Should have an errno!");
-                }
-            },
-        }
-    }
-
-    pub fn push(&self, socket: &mut Socket, buf: &mut DemiBuffer, addr: Option<SocketAddrV4>) -> Result<(), Fail> {
-        {
-            let send_result = match addr {
-                Some(addr) => socket.send_to(buf, &addr.into()),
-                None => socket.send(buf),
-            };
-
-            match send_result {
+    pub async fn accept(&mut self, socket: &mut Socket, yielder: Yielder) -> Result<(Socket, SocketAddrV4), Fail> {
+        loop {
+            match socket.accept() {
                 // Operation completed.
-                Ok(nbytes) => {
-                    trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
-                    buf.adjust(nbytes as usize)?;
-                    Ok(())
+                Ok((new_socket, saddr)) => {
+                    trace!("connection accepted ({:?})", new_socket);
+
+                    // Set socket options.
+                    if new_socket.set_nodelay(true).is_err() {
+                        warn!("cannot set TCP_NONDELAY option");
+                    }
+                    if socket.set_reuse_address(true).is_err() {
+                        warn!("cannot set REUSE_ADDRESS option");
+                    }
+                    self.register_epoll(&new_socket)?;
+                    let addr: SocketAddrV4 = saddr.as_socket_ipv4().expect("not a SocketAddrV4");
+                    return Ok((new_socket, addr));
                 },
                 Err(e) => {
+                    // Check the return error code.
                     if let Some(e) = e.raw_os_error() {
                         if DemiRuntime::should_retry(e) {
-                            Err(Fail::new(EAGAIN, "operaton not complete yet"))
+                            self.pop_handles
+                                .get_mut(&socket.as_raw_fd())
+                                .expect("should have allocated an entry")
+                                .push(yielder.get_handle());
+                            yielder.yield_until_wake().await?;
                         } else {
-                            Err(Fail::new(e.into(), "operation failed"))
+                            return Err(Fail::new(e.into(), "operation failed"));
                         }
                     } else {
                         unreachable!("Should have an errno!");
@@ -336,24 +283,52 @@ impl SharedCatnapTransport {
         }
     }
 
-    pub fn pop(&self, socket: &mut Socket, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddrV4>, Fail> {
-        let buf_ref = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut MaybeUninit<u8>, buf.len()) };
+    pub async fn connect(&mut self, socket: &mut Socket, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
+        self.register_epoll(socket)?;
+        loop {
+            match socket.connect(&remote.into()) {
+                Ok(()) => {
+                    // Set async options in socket.
+                    match socket.set_nodelay(true) {
+                        Ok(_) => {},
+                        Err(_) => warn!("cannot set TCP_NONDELAY option"),
+                    }
+                    return Ok(());
+                },
+                Err(e) => {
+                    if let Some(e) = e.raw_os_error() {
+                        if DemiRuntime::should_retry(e) {
+                            self.pop_handles
+                                .get_mut(&socket.as_raw_fd())
+                                .expect("should have allocated an entry")
+                                .push(yielder.get_handle());
+                            yielder.yield_until_wake().await?;
+                        } else {
+                            return Err(Fail::new(e.into(), "operation failed"));
+                        }
+                    } else {
+                        unreachable!("Should have an errno!");
+                    }
+                },
+            }
+        }
+    }
 
-        match socket.recv_from(buf_ref) {
-            // Operation completed.
-            Ok((nbytes, socketaddr)) => {
-                if nbytes > 0 {
-                    trace!("data received ({:?}/{:?} bytes)", nbytes, size);
-                } else {
-                    trace!("remote closing connection");
-                }
-                buf.trim(size - nbytes as usize)?;
-                Ok(socketaddr.as_socket_ipv4())
+    pub fn close(&mut self, socket: &mut Socket) -> Result<(), Fail> {
+        match socket.shutdown(Shutdown::Both) {
+            Ok(()) => {
+                self.unregister_epoll(socket)?;
+                Ok(())
             },
             Err(e) => {
                 if let Some(e) = e.raw_os_error() {
+                    // Extra check for Windows.
+                    if e == ENOTCONN {
+                        self.unregister_epoll(socket)?;
+                        return Ok(());
+                    }
                     if DemiRuntime::should_retry(e) {
-                        Err(Fail::new(EAGAIN, "operation not complete yet"))
+                        Err(Fail::new(EAGAIN, "operaton not complete yet"))
                     } else {
                         Err(Fail::new(e.into(), "operation failed"))
                     }
@@ -361,6 +336,115 @@ impl SharedCatnapTransport {
                     unreachable!("Should have an errno!");
                 }
             },
+        }
+    }
+
+    pub async fn async_close(&mut self, socket: &mut Socket, yielder: Yielder) -> Result<(), Fail> {
+        loop {
+            match self.close(socket) {
+                Err(Fail { errno: e, cause: _ }) if e == EAGAIN => {
+                    self.pop_handles
+                        .get_mut(&socket.as_raw_fd())
+                        .expect("should have allocated an entry")
+                        .push(yielder.get_handle());
+
+                    yielder.yield_until_wake().await?;
+                },
+                Err(e) => return Err(e),
+                Ok(()) => {
+                    self.unregister_epoll(socket)?;
+                    return Ok(());
+                },
+            }
+        }
+    }
+
+    pub async fn push(
+        &mut self,
+        socket: &mut Socket,
+        buf: &mut DemiBuffer,
+        addr: Option<SocketAddrV4>,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        {
+            loop {
+                let send_result = match addr {
+                    Some(addr) => socket.send_to(buf, &addr.into()),
+                    None => socket.send(buf),
+                };
+
+                match send_result {
+                    // Operation completed.
+                    Ok(nbytes) => {
+                        trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
+                        buf.adjust(nbytes as usize)?;
+                        if buf.is_empty() {
+                            return Ok(());
+                        } else {
+                            self.push_handles
+                                .get_mut(&socket.as_raw_fd())
+                                .expect("should have allocated an entry")
+                                .push(yielder.get_handle());
+                            yielder.yield_until_wake().await?;
+                        }
+                    },
+                    Err(e) => {
+                        if let Some(e) = e.raw_os_error() {
+                            if DemiRuntime::should_retry(e) {
+                                self.push_handles
+                                    .get_mut(&socket.as_raw_fd())
+                                    .expect("should have allocated an entry")
+                                    .push(yielder.get_handle());
+                                yielder.yield_until_wake().await?;
+                            } else {
+                                return Err(Fail::new(e.into(), "operation failed"));
+                            }
+                        } else {
+                            unreachable!("Should have an errno!");
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+    pub async fn pop(
+        &mut self,
+        socket: &mut Socket,
+        buf: &mut DemiBuffer,
+        size: usize,
+        yielder: Yielder,
+    ) -> Result<Option<SocketAddrV4>, Fail> {
+        let buf_ref = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut MaybeUninit<u8>, buf.len()) };
+
+        loop {
+            match socket.recv_from(buf_ref) {
+                // Operation completed.
+                Ok((nbytes, socketaddr)) => {
+                    if nbytes > 0 {
+                        trace!("data received ({:?}/{:?} bytes)", nbytes, size);
+                    } else {
+                        trace!("remote closing connection");
+                    }
+                    buf.trim(size - nbytes as usize)?;
+                    return Ok(socketaddr.as_socket_ipv4());
+                },
+                Err(e) => {
+                    if let Some(e) = e.raw_os_error() {
+                        if DemiRuntime::should_retry(e) {
+                            self.pop_handles
+                                .get_mut(&socket.as_raw_fd())
+                                .expect("should have allocated an entry")
+                                .push(yielder.get_handle());
+                            yielder.yield_until_wake().await?;
+                        } else {
+                            return Err(Fail::new(e.into(), "operation failed"));
+                        }
+                    } else {
+                        unreachable!("Should have an errno!");
+                    }
+                },
+            }
         }
     }
 }
