@@ -96,7 +96,7 @@ impl CatnapLibOS {
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         Self {
             runtime: runtime.clone(),
-            transport: SharedCatnapTransport::new(&config, runtime),
+            transport: SharedCatnapTransport::new(config, runtime),
         }
     }
 }

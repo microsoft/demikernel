@@ -34,7 +34,6 @@ use crate::{
 };
 use ::socket2::{
     Domain,
-    Socket,
     Type,
 };
 use ::std::{
