@@ -93,10 +93,10 @@ pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS>);
 //======================================================================================================================
 
 impl CatnapLibOS {
-    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         Self {
             runtime: runtime.clone(),
-            transport: SharedCatnapTransport::new(runtime),
+            transport: SharedCatnapTransport::new(&config, runtime),
         }
     }
 }

@@ -5,16 +5,19 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
-    scheduler::{
-        Yielder,
-        YielderHandle,
+use crate::{
+    demikernel::config::Config,
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+        scheduler::{
+            Yielder,
+            YielderHandle,
+        },
+        DemiRuntime,
+        SharedDemiRuntime,
+        SharedObject,
     },
-    DemiRuntime,
-    SharedDemiRuntime,
-    SharedObject,
 };
 use ::libc::{
     EAGAIN,
@@ -80,7 +83,7 @@ pub struct CatnapTransport {
 pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 
 impl SharedCatnapTransport {
-    pub fn new(mut runtime: SharedDemiRuntime) -> Self {
+    pub fn new(_config: Config, mut runtime: SharedDemiRuntime) -> Self {
         // Create epoll.
         // Create socket.
         // Linux ignores the size argument, it just has to be more than 0.

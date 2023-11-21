@@ -77,7 +77,7 @@ pub struct SharedCatnapQueue(SharedObject<CatnapQueue>);
 //======================================================================================================================
 
 impl CatnapQueue {
-    pub fn new(domain: Domain, typ: Type, transport: SharedCatnapTransport) -> Result<Self, Fail> {
+    pub fn new(domain: Domain, typ: Type, mut transport: SharedCatnapTransport) -> Result<Self, Fail> {
         // This was previously checked in the LibOS layer.
         debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
 
@@ -88,7 +88,7 @@ impl CatnapQueue {
             _ => unreachable!("Invalid socket type (typ={:?})", typ),
         };
 
-        let socket: Socket = transport.socket(domain, typ)?;
+        let socket: SocketFd = transport.socket(domain, typ)?;
         Ok(Self {
             qtype,
             state_machine: SocketStateMachine::new_unbound(typ),
