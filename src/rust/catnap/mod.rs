@@ -128,8 +128,7 @@ impl SharedCatnapLibOS {
         }
 
         // Create underlying queue.
-        let queue: SharedCatnapQueue =
-            SharedCatnapQueue::new(domain, typ, self.transport.clone(), self.runtime.clone())?;
+        let queue: SharedCatnapQueue = SharedCatnapQueue::new(domain, typ, self.transport.clone())?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
     }
@@ -515,7 +514,7 @@ impl SharedCatnapLibOS {
             demi_opcode_t::DEMI_OPC_CLOSE => {},
             _ => {
                 match self.get_shared_queue(&QDesc::from(result.qr_qd)) {
-                    Ok(_) => self.runtime.remove_pending_op(&handle),
+                    Ok(mut queue) => queue.remove_pending_op(&handle),
                     Err(_) => warn!("catnap: qd={:?}, lingering pending op found", result.qr_qd),
                 };
             },
