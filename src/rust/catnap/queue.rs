@@ -146,13 +146,7 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Accept)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -207,11 +201,7 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -255,8 +245,7 @@ impl SharedCatnapQueue {
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
-        let yielder: Yielder = Yielder::new();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -370,20 +359,24 @@ impl SharedCatnapQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(
-        &mut self,
-        coroutine_constructor: F,
-        yielder: Yielder,
-    ) -> Result<TaskHandle, Fail>
+    /// This variant adds the operation to the list of pending operations.
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+
         // Spawn coroutine.
         match coroutine_constructor(yielder) {
             // We successfully spawned the coroutine.
             Ok(handle) => {
                 // Commit the operation on the socket.
                 self.state_machine.commit();
+
+                // Add to the list of pending operations only if the socket is not closing.
+                self.add_pending_op(&handle, &yielder_handle);
+
                 Ok(handle)
             },
             // We failed to spawn the coroutine.

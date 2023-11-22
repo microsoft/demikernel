@@ -196,7 +196,7 @@ impl SharedCatnapLibOS {
         timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
         let self_: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Asynchronous accept code. Clone the self reference and move into the coroutine.
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd, yielder));
             // Insert async coroutine into the scheduler.
@@ -204,7 +204,7 @@ impl SharedCatnapLibOS {
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        Ok(self_.get_shared_queue(&qd)?.accept(coroutine)?)
+        Ok(self_.get_shared_queue(&qd)?.accept(coroutine_constructor)?)
     }
 
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
@@ -249,14 +249,14 @@ impl SharedCatnapLibOS {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let me: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Clone the self reference and move into the coroutine.
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, remote, yielder));
             let task_name: String = format!("Catnap::connect for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        Ok(me.get_shared_queue(&qd)?.connect(coroutine)?)
+        Ok(me.get_shared_queue(&qd)?.connect(coroutine_constructor)?)
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
@@ -311,14 +311,14 @@ impl SharedCatnapLibOS {
         trace!("async_close() qd={:?}", qd);
 
         let self_: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             // Async code to close this queue.
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
             let task_name: String = format!("Catnap::close for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
 
-        Ok(self_.get_shared_queue(&qd)?.async_close(coroutine)?)
+        Ok(self_.get_shared_queue(&qd)?.async_close(coroutine_constructor)?)
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
@@ -367,12 +367,12 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         };
         let self_: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
             let task_name: String = format!("Catnap::push for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        Ok(self_.get_shared_queue(&qd)?.push(coroutine)?)
+        Ok(self_.get_shared_queue(&qd)?.push(coroutine_constructor)?)
     }
 
     /// Asynchronous code to push [buf] to a SharedCatnapQueue and its underlying POSIX socket. This function returns a
@@ -412,12 +412,12 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
         let self_: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pushto_coroutine(qd, buf, remote, yielder));
             let task_name: String = format!("Catnap::pushto for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        Ok(self_.get_shared_queue(&qd)?.push(coroutine)?)
+        Ok(self_.get_shared_queue(&qd)?.push(coroutine_constructor)?)
     }
 
     /// Asynchronous code to pushto [buf] to [remote] on a SharedCatnapQueue and its underlying POSIX socket. This function
@@ -458,12 +458,12 @@ impl SharedCatnapLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
         let self_: Self = self.clone();
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
             let task_name: String = format!("Catnap::pop for qd={:?}", qd);
             self.runtime.insert_coroutine(&task_name, coroutine)
         };
-        Ok(self_.get_shared_queue(&qd)?.pop(coroutine)?)
+        Ok(self_.get_shared_queue(&qd)?.pop(coroutine_constructor)?)
     }
 
     /// Asynchronous code to pop data from a SharedCatnapQueue and its underlying POSIX socket of optional [size]. This

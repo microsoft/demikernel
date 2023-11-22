@@ -186,7 +186,7 @@ impl SharedDemiRuntime {
     /// and gets the result immediately.
     pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {
         let operation_task: OperationTask = self.remove_coroutine(handle);
-        let (qd, result) = operation_task.get_result().expect("Coroutine not finished");
+        let (qd, result) = operation_task.get_result().expect("coroutine not finished");
         self.pack_result(result, qd, qt)
     }
 
