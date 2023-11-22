@@ -5,7 +5,11 @@
 // Imports
 //==============================================================================
 
-use std::pin::Pin;
+use std::{
+    cell::UnsafeCell,
+    marker::PhantomPinned,
+    pin::Pin,
+};
 
 use windows::Win32::{
     Foundation::{
@@ -20,10 +24,7 @@ use windows::Win32::{
         WAIT_TIMEOUT,
         WIN32_ERROR,
     },
-    Networking::WinSock::{
-        WSACancelAsyncRequest,
-        SOCKET,
-    },
+    Networking::WinSock::SOCKET,
     System::IO::{
         CancelIoEx,
         CreateIoCompletionPort,
@@ -33,37 +34,51 @@ use windows::Win32::{
     },
 };
 
-use crate::{
-    collections::pin_slab::PinSlab,
-    runtime::{
-        fail::Fail,
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
+use crate::runtime::{
+    fail::Fail,
+    scheduler::{
+        Yielder,
+        YielderHandle,
     },
 };
 
-use super::error::translate_win32_error;
+//======================================================================================================================
+// Traits
+//======================================================================================================================
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-/// Store data next to an OVERLAPPED with `repr(C)` so that we can reconstitute state from a dequeued I/O completion.
+/// Data required by the I/O completion port processor to process I/O completions.
 #[repr(C)]
 struct OverlappedCompletion {
+    /// OVERLAPPED must be first; the implementation casts between the outer structure and this type.
     overlapped: OVERLAPPED,
+    /// If set, indicates a coroutine in waiting. Cleared by the I/O processor to signal completion. If unset when an
+    /// overlapped is dequeued from the completion port, the completion is abandoned.
     yielder_handle: Option<YielderHandle>,
+    /// Set by the I/O processor to indicate completion key value as informed by the completion status.
     completion_key: usize,
-    pinslab_key: usize,
+    /// A callback to free all resources associated with the completion for abandoned waits.
+    free: unsafe fn(*mut OVERLAPPED) -> (),
+    /// Ensure the data stays pinned since the OVERLAPPED must be pinned.
+    _marker: PhantomPinned,
+}
+
+/// The set of data which must live as long as the I/O operation, including any optional state from the caller.
+#[repr(C)]
+struct StatefulOverlappedCompletion<S> {
+    /// Inner data required by the completion processor; must be first to "downcast" to OVERLAPPED.
+    inner: OverlappedCompletion,
+    /// Caller state, encased in a cell for interior mutability.
+    state: UnsafeCell<S>,
 }
 
 /// A single-threaded I/O completion port implementation, designed to integrate with rust futures. This class allows
 /// creation of futures which can themselves be used as `OVERLAPPED` pointers to Windows overlapped I/O functions.
 pub struct IoCompletionPort {
     iocp: HANDLE,
-    completions: PinSlab<OverlappedCompletion>,
 }
 
 //======================================================================================================================
@@ -80,10 +95,7 @@ impl IoCompletionPort {
         // Verified by windows crate.
         assert!(!iocp.is_invalid());
 
-        Ok(IoCompletionPort {
-            iocp,
-            completions: PinSlab::new(),
-        })
+        Ok(IoCompletionPort { iocp })
     }
 
     /// Associate `file` with this I/O completion port. All overlapped I/O operations which complete on this completion
@@ -95,52 +107,61 @@ impl IoCompletionPort {
         }
     }
 
-    /// Call a function `f` which will start an overlapped I/O operation with the passed-in OVERLAPPED pointer. If the
-    /// callback starts an overlapped I/O operation with the argument, it must return Ok(_). Conversely, if an
-    /// overlapped I/O operation is not started, the callback must return Err(_). Failing to meet these criteria
-    /// produces unsound behavior. This function will await until the OVERLAPPED is dequeued from this I/O completion
-    /// port.
-    pub async unsafe fn do_io<F1, F2, F3, R>(
+    /// Perform an asyncronous overlapped I/O operation. This method requires three functions: one to start the I/O
+    /// (`start`), one to cancel the I/O on cancellation (`cancel`), and one to finish/clean up and interpret the
+    /// results (`finish`). `start` and `cancel` accept an OVERLAPPED pointer for controlling the I/O operation as
+    /// well as the state value (initialized by `state`). `start` updates the state value in its successful return
+    /// value; if `start` fails, the operation will abort without calling `cancel` or `finish`. `cancel` is invoked if
+    /// the Yielder wakes with an `ECANCELLED` error. When the OVERLAPPED passed to `start` is dequeued from the
+    /// completion port, `finish` is invoked with a reference to the OVERLAPPED, the state returned from `start`, and
+    /// the completion key (set on call to `associate`). The return of `finish` is returned from the method.
+    ///
+    /// Safety: `start` should return Ok(...) iff the I/O is started and the OVERLAPPED parameter will
+    /// eventually be dequeued from the completion port; if this requirement is not met, resources will leak. Likewise,
+    /// `cancel` should return Ok(...) iff the operation is cancelled and the OVERLAPPED parameter will never be
+    /// dequeued from the completion port.  Waking the Yielder for errors which are no ECANCELLED will abandon the wait.
+    /// While OVERLAPPED resources will be freed in a non-exceptional scenario, this may cause unsound behavior I/O on
+    /// the same file/socket.
+    pub async unsafe fn do_io_with<F1, F2, F3, R, S>(
         &mut self,
+        state: S,
         yielder: Yielder,
         start: F1,
         cancel: F2,
-        validate: F3,
+        finish: F3,
     ) -> Result<R, Fail>
     where
-        F1: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
-        F2: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
-        F3: FnOnce(&OVERLAPPED, usize) -> Result<R, Fail>,
+        F1: FnOnce(Pin<&mut S>, *mut OVERLAPPED) -> Result<(), Fail>,
+        F2: FnOnce(Pin<&mut S>, *mut OVERLAPPED) -> Result<(), Fail>,
+        F3: FnOnce(Pin<&mut S>, &OVERLAPPED, usize) -> Result<R, Fail>,
     {
-        let pinslab_key: usize = self
-            .completions
-            .insert(OverlappedCompletion {
+        let mut completion: Pin<Box<StatefulOverlappedCompletion<S>>> = Box::pin(StatefulOverlappedCompletion {
+            inner: OverlappedCompletion {
                 overlapped: OVERLAPPED::default(),
                 yielder_handle: None,
                 completion_key: 0,
-                pinslab_key: 0,
-            })
-            .ok_or(Fail::new(libc::ENOBUFS, "no more buffers available"))?;
-
-        // Update the PinSlab key.
-        let mut completion: Pin<&mut OverlappedCompletion> = self.completions.get_pin_mut(pinslab_key).unwrap();
-
-        unsafe {
-            completion.as_mut().get_unchecked_mut().pinslab_key = pinslab_key;
-        }
+                free: StatefulOverlappedCompletion::<S>::drop_overlapped,
+                _marker: PhantomPinned,
+            },
+            state: UnsafeCell::new(state),
+        });
 
         let overlapped: *mut OVERLAPPED = completion.as_mut().marshal();
-        match start(overlapped) {
+        match start(completion.as_ref().get_state_ref(), overlapped) {
             Ok(()) => loop {
-                debug_assert!(completion.yielder_handle.is_some());
+                debug_assert!(completion.inner.yielder_handle.is_some());
                 let status: Result<(), Fail> = yielder.yield_until_wake().await;
 
                 // NB If the yielder handle is cleared, the event was dequeued from the completion port and processed.
                 // If the coroutine was also cancelled, depending on the order of scheduling the result may still
                 // indicate failure. YielderHandler absence takes higher precedence here -- no need to signal failure if
                 // it's not semantically useful.
-                if completion.yielder_handle.is_none() {
-                    return validate(&completion.overlapped, completion.completion_key);
+                if completion.inner.yielder_handle.is_none() {
+                    return finish(
+                        completion.as_ref().get_state_ref(),
+                        &completion.inner.overlapped,
+                        completion.inner.completion_key,
+                    );
                 }
 
                 match status {
@@ -149,24 +170,15 @@ impl IoCompletionPort {
                         continue;
                     },
 
-                    Err(err) if err.errno == libc::ECANCELED => {
-                        match cancel(overlapped) {
-                            Ok(()) => {
-                                // Cancellation succeeded. Overlapped will never be dequeued from the completion port.
-                                std::mem::drop(completion);
-                                self.completions.remove_unpin(pinslab_key);
-                            },
-
-                            Err(cancel_err) => {
-                                warn!("cancellation failed: {}", cancel_err);
-                                Self::abandon_wait(completion);
-                            },
-                        };
-                        return Err(err);
-                    },
-
                     Err(err) => {
-                        Self::abandon_wait(completion);
+                        unsafe { completion.as_mut().get_unchecked_mut().inner.yielder_handle.take() };
+
+                        if err.errno == libc::ECANCELED {
+                            if let Err(cancel_err) = cancel(completion.as_ref().get_state_ref(), overlapped) {
+                                warn!("cancellation failed: {}", cancel_err);
+                            }
+                        }
+
                         return Err(err);
                     },
                 }
@@ -176,11 +188,34 @@ impl IoCompletionPort {
         }
     }
 
+    /// Same as `do_io_with`, but does not use an intermediate state value.
+    pub async unsafe fn do_io<F1, F2, F3, R>(
+        &mut self,
+        yielder: Yielder,
+        start: F1,
+        cancel: F2,
+        finish: F3,
+    ) -> Result<R, Fail>
+    where
+        F1: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
+        F2: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
+        F3: FnOnce(&OVERLAPPED, usize) -> Result<R, Fail>,
+    {
+        self.do_io_with(
+            (),
+            yielder,
+            |_, overlapped: *mut OVERLAPPED| -> Result<(), Fail> { start(overlapped) },
+            |_, overlapped: *mut OVERLAPPED| -> Result<(), Fail> { cancel(overlapped) },
+            |_, overlapped: &OVERLAPPED, ck: usize| -> Result<R, Fail> { finish(overlapped, ck) },
+        )
+        .await
+    }
+
     /// Start an overlapped WinSock I/O operation by calling `start` with an OVERLAPPED structure. This is the same as
     /// `do_io`, except validation and cancellation are standard for WinSock routines. The returned value is the
     /// completion key associated with the socket.
     /// Note that OVERLAPPED and WSAOVERLAPPED are interchangeable types.
-    pub async unsafe fn do_socket_io<F1>(&mut self, yielder: Yielder, start: F1, s: SOCKET) -> Result<usize, Fail>
+    pub async unsafe fn do_socket_io<F1>(&mut self, yielder: Yielder, s: SOCKET, start: F1) -> Result<usize, Fail>
     where
         F1: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
     {
@@ -194,19 +229,14 @@ impl IoCompletionPort {
             })
         };
 
-        let validate = |overlapped: &OVERLAPPED, ck: usize| -> Result<usize, Fail> {
+        let finish = |overlapped: &OVERLAPPED, ck: usize| -> Result<usize, Fail> {
             NTSTATUS(overlapped.Internal as i32)
                 .ok()
                 .map_err(|err| err.into())
                 .and(Ok(ck))
         };
 
-        self.do_io(yielder, start, cancel, validate).await
-    }
-
-    /// Clear the yielder handle to indicate no one is waiting.
-    fn abandon_wait(completion: Pin<&mut OverlappedCompletion>) {
-        unsafe { completion.get_unchecked_mut().yielder_handle.take() };
+        self.do_io(yielder, start, cancel, finish).await
     }
 
     /// Process a single overlapped entry.
@@ -224,7 +254,9 @@ impl IoCompletionPort {
             } else {
                 // This can happen due to a failed cancellation or any other error on the do_overlapped path.
                 trace!("I/O dropped");
-                self.completions.remove_unpin(overlapped.pinslab_key);
+                let free_fn: unsafe fn(*mut OVERLAPPED) = overlapped.free;
+                unsafe { (free_fn)(entry.lpOverlapped) };
+                std::mem::forget(overlapped);
             }
         }
     }
@@ -263,14 +295,28 @@ impl IoCompletionPort {
 }
 
 impl OverlappedCompletion {
-    /// Marshal an OverlappedCompletion into an OVERLAPPED pointer. This type must be pinned for marshaling.
-    fn marshal(self: Pin<&mut Self>) -> *mut OVERLAPPED {
-        unsafe { self.get_unchecked_mut() as *mut Self }.cast()
-    }
-
     /// Marshal an OVERLAPPED pointer back into an OverlappedCompletion.
     fn unmarshal<'a>(overlapped: std::ptr::NonNull<OVERLAPPED>) -> Pin<&'a mut Self> {
         unsafe { Pin::new_unchecked(&mut *(overlapped.as_ptr() as *mut Self)) }
+    }
+}
+
+impl<S> StatefulOverlappedCompletion<S> {
+    /// Marshal a StatefulOverlappedCompletion into an OVERLAPPED pointer. This type must be pinned for marshaling.
+    fn marshal(mut self: Pin<&mut Self>) -> *mut OVERLAPPED {
+        unsafe { self.as_mut().get_unchecked_mut() as *mut Self }.cast()
+    }
+
+    unsafe fn drop_overlapped(overlapped: *mut OVERLAPPED) {
+        if overlapped != std::ptr::null_mut() {
+            let overlapped: *mut Self = overlapped.cast();
+            let overlapped: Box<Self> = unsafe { Box::from_raw(overlapped) };
+            std::mem::drop(overlapped);
+        }
+    }
+
+    fn get_state_ref(self: Pin<&Self>) -> Pin<&mut S> {
+        unsafe { Pin::new_unchecked(&mut *self.state.get()) }
     }
 }
 

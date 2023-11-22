@@ -16,15 +16,22 @@ use std::{
         SocketAddr,
         SocketAddrV4,
     },
+    pin::{
+        pin,
+        Pin,
+    },
     time::Duration,
 };
 
 use libc::ENOTSUP;
-use windows::Win32::Networking::WinSock::{
-    tcp_keepalive,
-    IPPROTO,
-    IPPROTO_TCP,
-    IPPROTO_UDP,
+use windows::Win32::{
+    Networking::WinSock::{
+        tcp_keepalive,
+        IPPROTO,
+        IPPROTO_TCP,
+        IPPROTO_UDP,
+    },
+    System::IO::OVERLAPPED,
 };
 
 use crate::{
@@ -39,7 +46,10 @@ use crate::{
 
 use self::{
     overlapped::IoCompletionPort,
-    socket::Socket,
+    socket::{
+        AcceptResult,
+        Socket,
+    },
     winsock::WinsockRuntime,
 };
 
@@ -116,14 +126,53 @@ impl SharedCatnapTransport {
             .socket(domain.into(), typ.into(), protocol.0, &self.0.config)
     }
 
-    pub async fn accept(&mut self, socket: &mut Socket, yielder: Yielder) -> Result<(Socket, SocketAddrV4), Fail> {
-        socket.accept(yielder, &mut self.0.iocp).await.and_then(
-            |(socket, addr)| -> Result<(Socket, SocketAddrV4), Fail> {
-                match addr {
-                    SocketAddr::V4(addr) => Ok((socket, addr)),
-                    _ => Err(Fail::new(libc::EAFNOSUPPORT, "bad address family on result of accept")),
-                }
-            },
-        )
+    pub fn bind(&self, socket: &Socket, local: SocketAddrV4) -> Result<(), Fail> {
+        trace!("Bind to {:?}", local);
+        socket.bind(local.into())
+    }
+
+    pub fn listen(&mut self, socket: &mut Socket, backlog: usize) -> Result<(), Fail> {
+        socket.listen(backlog)
+    }
+
+    pub async fn accept(&mut self, socket: &Socket, yielder: Yielder) -> Result<(Socket, SocketAddrV4), Fail> {
+        let start = |accept_result: Pin<&mut AcceptResult>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+            socket.start_accept(accept_result, overlapped)
+        };
+        let cancel = |_: Pin<&mut AcceptResult>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+            socket.cancel_io(overlapped)
+        };
+        let finish = |accept_result: Pin<&mut AcceptResult>,
+                      overlapped: &OVERLAPPED,
+                      completion_key: usize|
+         -> Result<(Socket, SocketAddr, SocketAddr), Fail> {
+            socket.finish_accept(accept_result, overlapped, completion_key)
+        };
+
+        let (socket, _local_addr, remote_addr) = unsafe {
+            self.0
+                .iocp
+                .do_io_with(AcceptResult::new(), yielder, start, cancel, finish)
+        }
+        .await?;
+
+        match remote_addr {
+            SocketAddr::V4(addr) => Ok((socket, addr)),
+            _ => Err(Fail::new(libc::EAFNOSUPPORT, "bad address family on result of accept")),
+        }
+    }
+
+    pub async fn connect(&mut self, socket: &Socket, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
+        unsafe {
+            self.0.iocp.do_io(
+                yielder,
+                |overlapped: *mut OVERLAPPED| -> Result<(), Fail> { socket.start_conect(remote.into(), overlapped) },
+                |overlapped: *mut OVERLAPPED| -> Result<(), Fail> { socket.cancel_io(overlapped) },
+                |overlapped: &OVERLAPPED, completion_key: usize| -> Result<(), Fail> {
+                    socket.finish_connect(overlapped, completion_key)
+                },
+            )
+        }
+        .await
     }
 }
