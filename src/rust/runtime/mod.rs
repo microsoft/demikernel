@@ -185,14 +185,7 @@ impl SharedDemiRuntime {
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
     /// and gets the result immediately.
     pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {
-        // 1. Remove Task from scheduler.
-        let boxed_task: Box<dyn Task> = self
-            .scheduler
-            .remove(handle)
-            .expect("Removing task that does not exist (either was previously removed or never inserted");
-        // 2. Cast to void and then downcast to operation task.
-        trace!("Removing coroutine: {:?}", boxed_task.get_name());
-        let operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
+        let operation_task: OperationTask = self.remove_coroutine(handle);
         let (qd, result) = operation_task.get_result().expect("Coroutine not finished");
         self.pack_result(result, qd, qt)
     }
