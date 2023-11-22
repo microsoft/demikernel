@@ -83,13 +83,13 @@ impl PacketBuf for TcpSegment {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SelectiveAcknowlegement {
     pub begin: SeqNumber,
     pub end: SeqNumber,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TcpOptions2 {
     EndOfOptionsList,
     NoOperation,
