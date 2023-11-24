@@ -16,6 +16,7 @@ on:
       - dev
       - unstable
       - main
+  workflow_dispatch:
 
 env:
   LIBOS: catnap
@@ -51,7 +52,7 @@ jobs:
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
-          --repository demikernel/demikernel \
+          --repository demikernel \
           --branch origin/${{ github.ref_name }} \
           --libos $LIBOS \
           --debug \
@@ -93,7 +94,7 @@ jobs:
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
-          --repository demikernel/demikernel \
+          --repository demikernel \
           --branch origin/${{ github.ref_name }} \
           --libos $LIBOS \
           --test-unit --test-system all --delay 2 \
