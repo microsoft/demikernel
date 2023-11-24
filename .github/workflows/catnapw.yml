@@ -37,7 +37,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
           git pull
@@ -57,7 +57,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
           git pull
@@ -93,7 +93,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $Env:Path += $RustPath + ';'
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
@@ -108,7 +108,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $Env:Path += $RustPath + ';'
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
@@ -130,7 +130,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $Env:Path += $RustPath + ';'
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
@@ -145,7 +145,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $Env:Path += $RustPath + ';'
           $VsInstallPath = &(Join-Path ${Env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe') -latest -property installationPath
@@ -185,7 +185,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
@@ -210,7 +210,7 @@ jobs:
         key: ${{ secrets.SSHKEY }}
         username: ${{ secrets.USERNAME }}
         script: |
-          cd c:\demikernel\demikernel
+          cd c:\demikernel
           $RustPath = Join-Path $Env:HOME "\.cargo\bin"
           $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
           $Env:Path += $GitPath + ';'
