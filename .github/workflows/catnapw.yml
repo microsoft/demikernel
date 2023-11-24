@@ -16,6 +16,7 @@ on:
       - dev
       - unstable
       - master
+  workflow_dispatch:
 
 jobs:
 
