@@ -227,6 +227,10 @@ PEER = server
 TEST = udp-push-pop
 !endif
 
+!ifndef TEST_INTEGRATION
+TEST_INTEGRATION = tcp-test
+!endif
+
 # Runs system tests.
 test-system: test-system-rust
 
@@ -252,3 +256,7 @@ test-unit-rust:
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
+
+# Runs Rust integration tests.
+test-integration-rust:
+	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
