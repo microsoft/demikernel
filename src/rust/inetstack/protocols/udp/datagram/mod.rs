@@ -22,7 +22,6 @@ use crate::{
 // Exports
 //==============================================================================
 
-pub use self::header::UDP_HEADER_SIZE;
 pub use header::UdpHeader;
 
 //==============================================================================
@@ -123,6 +122,7 @@ impl PacketBuf for UdpDatagram {
 
 #[cfg(test)]
 mod test {
+    use self::header::UDP_HEADER_SIZE;
     use super::*;
     use crate::{
         inetstack::protocols::{
