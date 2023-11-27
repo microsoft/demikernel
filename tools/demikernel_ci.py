@@ -304,6 +304,23 @@ def job_test_system_rust(
     return wait_and_report(test_alias, log_directory, jobs, all_pass)
 
 
+def job_test_system_rust_windows(
+        test_alias: str, test_name: str, repo: str, libos: str, is_debug: bool, server: str, client: str,
+        server_args: str, client_args: str, is_sudo: bool, all_pass: bool, delay: float, config_path: str,
+        log_directory: str) -> bool:
+    server_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS='{}'".format(
+        libos, test_name, server_args)
+    client_cmd: str = "test-system-rust LIBOS={} TEST={} ARGS='{}'".format(
+        libos, test_name, client_args)
+    jobs: dict[str, subprocess.Popen[str]] = {}
+    jobs[test_alias + "-server-" +
+         server] = remote_run_windows(server, repo, is_debug, server_cmd, is_sudo, config_path)
+    time.sleep(delay)
+    jobs[test_alias + "-client-" +
+         client] = remote_run_windows(client, repo, is_debug, client_cmd, is_sudo, config_path)
+    return wait_and_report(test_alias, log_directory, jobs, all_pass)
+
+
 def job_test_unit_rust(repo: str, libos: str, is_debug: bool, server: str, client: str,
                        is_sudo: bool, config_path: str, log_directory: str) -> bool:
     server_cmd: str = "test-unit-rust LIBOS={}".format(libos)
@@ -454,6 +471,19 @@ def run_pipeline(
                 status["integration_tests"] = job_test_integration_tcp_rust_windows(
                     repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
 
+        # STEP 4: Run system tests.
+        if test_system:
+            if status["checkout"] and status["compile"]:
+                scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
+                                                       repository, delay, config_path, log_directory)
+                ci_map: CIMap = get_ci_map()
+                test_names: List = get_tests_to_run(
+                    scaffolding, ci_map) if test_system == "all" else [test_system]
+                for test_name in test_names:
+                    t: BaseTest = create_test_instance_windows(
+                        scaffolding, ci_map, test_name)
+                    status[test_name] = t.execute()
+
         # Setp 5: Clean up.
         status["cleanup"] = job_cleanup_windows(
             repository, server, client, is_sudo, enable_nfs, log_directory)
@@ -549,6 +579,13 @@ def create_test_instance(scaffolding: dict, ci_map: CIMap, test_name: str) -> Ba
     td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
     ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
     t: BaseTest = ti.get_test_instance(job_test_system_rust)
+    return t
+
+
+def create_test_instance_windows(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
+    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
+    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
+    t: BaseTest = ti.get_test_instance(job_test_system_rust_windows)
     return t
 
 
