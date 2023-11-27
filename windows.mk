@@ -236,7 +236,7 @@ test-system: test-system-rust
 
 # Rust system tests.
 test-system-rust:
-	$(BINDIR)/examples/rust/$(TEST).exe $(ARGS)
+	$(BINDIR)\examples\rust\$(TEST).exe $(ARGS)
 
 # Runs unit tests.
 test-unit: test-unit-rust
