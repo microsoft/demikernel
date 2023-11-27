@@ -468,8 +468,10 @@ def run_pipeline(
             if status["checkout"] and status["compile"]:
                 status["unit_tests"] = job_test_unit_rust_windows(repository, libos, is_debug, server, client,
                                                                   is_sudo, config_path, log_directory)
-                status["integration_tests"] = job_test_integration_tcp_rust_windows(
-                    repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
+                # FIXME: https://github.com/microsoft/demikernel/issues/1030
+                if False:
+                    status["integration_tests"] = job_test_integration_tcp_rust_windows(
+                        repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
 
         # STEP 4: Run system tests.
         if test_system:
