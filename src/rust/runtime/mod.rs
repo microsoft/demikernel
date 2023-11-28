@@ -71,6 +71,7 @@ use ::std::{
     rc::Rc,
     time::Instant,
 };
+use std::collections::HashMap;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::{
@@ -85,10 +86,13 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 #[cfg(target_os = "linux")]
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
-use self::types::{
-    demi_accept_result_t,
-    demi_qr_value_t,
-    demi_qresult_t,
+use self::{
+    scheduler::YielderHandle,
+    types::{
+        demi_accept_result_t,
+        demi_qr_value_t,
+        demi_qresult_t,
+    },
 };
 
 //======================================================================================================================
@@ -108,6 +112,8 @@ pub struct DemiRuntime {
     timer: SharedTimer,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
     network_table: NetworkQueueTable,
+    /// Currently running coroutines.
+    pending_ops: HashMap<QDesc, HashMap<TaskHandle, YielderHandle>>,
 }
 
 #[derive(Clone)]
@@ -148,6 +154,7 @@ impl SharedDemiRuntime {
             ephemeral_ports: EphemeralPorts::default(),
             timer: SharedTimer::new(now),
             network_table: NetworkQueueTable::default(),
+            pending_ops: HashMap::<QDesc, HashMap<TaskHandle, YielderHandle>>::new(),
         }))
     }
 
@@ -162,6 +169,28 @@ impl SharedDemiRuntime {
                 error!("insert_coroutine(): {}", cause);
                 Err(Fail::new(libc::EAGAIN, &cause))
             },
+        }
+    }
+
+    /// Inserts the `coroutine` named `task_name` into the scheduler.
+    /// This function also tracks the coroutine and it's yielder_handle.
+    pub fn insert_coroutine_with_tracking(
+        &mut self,
+        task_name: &str,
+        coroutine: Pin<Box<Operation>>,
+        yielder_handle: YielderHandle,
+        qd: QDesc,
+    ) -> Result<TaskHandle, Fail> {
+        match self.insert_coroutine(task_name, coroutine) {
+            Ok(task_handle) => {
+                // This allows to keep track of currently running coroutines.
+                self.pending_ops
+                    .entry(qd)
+                    .or_insert(HashMap::new())
+                    .insert(task_handle.clone(), yielder_handle.clone());
+                Ok(task_handle)
+            },
+            Err(e) => Err(e),
         }
     }
 
@@ -187,7 +216,45 @@ impl SharedDemiRuntime {
     pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {
         let operation_task: OperationTask = self.remove_coroutine(handle);
         let (qd, result) = operation_task.get_result().expect("coroutine not finished");
+        self.cancel_or_remove_pending_ops_as_needed(&result, &qd, handle);
         self.pack_result(result, qd, qt)
+    }
+
+    /// When the queue is closed, we need to cancel all pending ops. When the coroutine is removed, we only need to
+    /// cancel the pending op associated with the handle.
+    fn cancel_or_remove_pending_ops_as_needed(
+        &mut self,
+        result: &OperationResult,
+        qd: &QDesc,
+        task_handle: &TaskHandle,
+    ) {
+        match result {
+            OperationResult::Close => {
+                self.cancel_all_pending_ops_for_queue(qd);
+            },
+            _ => {
+                self.cancel_pending_op(qd, task_handle);
+            },
+        }
+    }
+
+    /// Cancel pending op because the coroutine was removed.
+    fn cancel_pending_op(&mut self, qd: &QDesc, task_handle: &TaskHandle) {
+        if let Some(inner_hash_map) = self.pending_ops.get_mut(&qd) {
+            inner_hash_map.remove(task_handle);
+        }
+    }
+
+    /// Cancel all pending ops because the queue was closed.
+    fn cancel_all_pending_ops_for_queue(&mut self, qd: &QDesc) {
+        if let Some(inner_hash_map) = &mut self.pending_ops.remove(&qd) {
+            let drain = inner_hash_map.drain();
+            for (handle, mut yielder_handle) in drain {
+                if !handle.has_completed() {
+                    yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
+                }
+            }
+        }
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler.
@@ -261,6 +328,7 @@ impl SharedDemiRuntime {
     /// Frees the queue associated with [qd] and returns the freed queue.
     pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
         trace!("Freeing queue: qd={:?}", qd);
+        self.cancel_all_pending_ops_for_queue(qd);
         self.qtable.free(qd)
     }
 
