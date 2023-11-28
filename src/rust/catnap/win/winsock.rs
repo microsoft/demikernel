@@ -41,7 +41,7 @@ use windows::{
 };
 
 use super::{
-    error::last_wsa_error,
+    error::expect_last_wsa_error,
     socket::Socket,
     WinConfig,
 };
@@ -122,7 +122,7 @@ impl WinsockRuntime {
     pub fn new() -> Result<Self, Fail> {
         let mut data: WSADATA = WSADATA::default();
         if unsafe { WSAStartup(0x202u16, &mut data as *mut WSADATA) } != 0 {
-            return Err(Fail::new(last_wsa_error(), "failed to initialize Winsock"));
+            return Err(expect_last_wsa_error());
         }
 
         Ok(WinsockRuntime {
@@ -172,7 +172,7 @@ impl WinsockRuntime {
                 Err(Fail::new(libc::EFAULT, "WSAIoctl did not return enough data"))
             }
         } else {
-            Err(Fail::new(last_wsa_error(), "WSAIoctl failed"))
+            Err(expect_last_wsa_error())
         }
     }
 
@@ -199,7 +199,7 @@ impl WinsockRuntime {
         if unsafe { setsockopt(s, level, opt, val) } == 0 {
             Ok(())
         } else {
-            Err(Fail::new(last_wsa_error(), "setsocketopt failed"))
+            Err(expect_last_wsa_error())
         }
     }
 
@@ -219,7 +219,7 @@ impl WinsockRuntime {
         if unsafe { getsockopt(s, level, optname, optval, &mut optlen) } == 0 {
             Ok(unsafe { out.assume_init() })
         } else {
-            Err(Fail::new(last_wsa_error(), "getsockopt failed"))
+            Err(expect_last_wsa_error())
         }
     }
 
@@ -255,7 +255,7 @@ impl WinsockRuntime {
     ) -> Result<SOCKET, Fail> {
         let protocol_info: Option<*const WSAPROTOCOL_INFOW> = protocol_info.map(|i| i as *const WSAPROTOCOL_INFOW);
         match unsafe { WSASocketW(domain, typ, protocol, protocol_info, 0, flags) } {
-            INVALID_SOCKET => Err(Fail::new(last_wsa_error(), "failed to create socket")),
+            INVALID_SOCKET => Err(expect_last_wsa_error()),
             socket => Ok(socket),
         }
     }

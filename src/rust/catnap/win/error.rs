@@ -1,22 +1,30 @@
-use windows::Win32::{
-    Foundation::{
-        ERROR_ABANDONED_WAIT_0,
-        ERROR_ACCESS_DENIED,
-        ERROR_ALREADY_EXISTS,
-        ERROR_INSUFFICIENT_BUFFER,
-        ERROR_INVALID_HANDLE,
-        ERROR_INVALID_PARAMETER,
-        ERROR_IO_INCOMPLETE,
-        ERROR_IO_PENDING,
-        ERROR_MORE_DATA,
-        ERROR_NOT_ENOUGH_MEMORY,
-        ERROR_OPERATION_ABORTED,
-        WIN32_ERROR,
+use windows::{
+    core::{
+        HRESULT,
+        HSTRING,
     },
-    Networking::WinSock::{
-        self,
-        WSAGetLastError,
-        WSA_ERROR,
+    Win32::{
+        Foundation::{
+            ERROR_ABANDONED_WAIT_0,
+            ERROR_ACCESS_DENIED,
+            ERROR_ALREADY_EXISTS,
+            ERROR_INSUFFICIENT_BUFFER,
+            ERROR_INVALID_HANDLE,
+            ERROR_INVALID_PARAMETER,
+            ERROR_IO_INCOMPLETE,
+            ERROR_IO_PENDING,
+            ERROR_MORE_DATA,
+            ERROR_NOT_ENOUGH_MEMORY,
+            ERROR_OPERATION_ABORTED,
+            NTSTATUS,
+            WIN32_ERROR,
+        },
+        Networking::WinSock::{
+            self,
+            WSAGetLastError,
+            WSA_ERROR,
+        },
+        System::IO::OVERLAPPED,
     },
 };
 
@@ -79,9 +87,45 @@ pub fn translate_wsa_error(err: WSA_ERROR) -> libc::errno_t {
     }
 }
 
-pub fn last_wsa_error() -> libc::errno_t {
+fn wsa_error_to_win_error(err: WSA_ERROR) -> windows::core::Error {
+    let hresult: HRESULT = WIN32_ERROR(err.0 as u32).into();
+    windows::core::Error::new(hresult, HSTRING::new())
+}
+
+pub fn last_overlapped_wsa_error() -> Result<(), Fail> {
+    let wsa_error: WSA_ERROR = unsafe { WSAGetLastError() };
+    if wsa_error.0 == ERROR_IO_PENDING.0 as i32 {
+        Ok(())
+    } else {
+        let error: windows::core::Error = wsa_error_to_win_error(wsa_error);
+        if error.code().is_ok() {
+            Ok(())
+        } else {
+            Err(error.into())
+        }
+    }
+}
+
+pub fn get_overlapped_api_result(api_success: bool) -> Result<(), Fail> {
+    if !api_success {
+        last_overlapped_wsa_error()
+    } else {
+        Ok(())
+    }
+}
+
+pub fn expect_last_wsa_error() -> Fail {
     // Safety: FFI; no major considerations.
-    translate_wsa_error(unsafe { WSAGetLastError() })
+    wsa_error_to_win_error(unsafe { WSAGetLastError() }).into()
+}
+
+pub fn get_last_wsa_error() -> Result<(), Fail> {
+    let error: windows::core::Error = wsa_error_to_win_error(unsafe { WSAGetLastError() });
+    if error.code().is_ok() {
+        Ok(())
+    } else {
+        Err(error.into())
+    }
 }
 
 /// Translate a small subset of Win32 error codes which we may be interested in distinguishing to errno_t.
@@ -99,6 +143,24 @@ pub fn translate_win32_error(error: WIN32_ERROR) -> libc::errno_t {
         ERROR_INSUFFICIENT_BUFFER => libc::EOVERFLOW,
         ERROR_MORE_DATA => libc::EOVERFLOW,
         _ => libc::EFAULT,
+    }
+}
+
+pub fn get_result_from_overlapped(overlapped: &OVERLAPPED) -> Result<(), Fail> {
+    let status: NTSTATUS = NTSTATUS(overlapped.Internal as i32);
+    if status.is_ok() {
+        Ok(())
+    } else {
+        Err(windows::core::Error::new(status.into(), HSTRING::new()).into())
+    }
+}
+
+impl From<WSA_ERROR> for Fail {
+    fn from(value: WSA_ERROR) -> Self {
+        match get_last_wsa_error() {
+            Ok(()) => Fail::new(0 as libc::errno_t, "operation completed successfully"),
+            Err(err) => err.into(),
+        }
     }
 }
 

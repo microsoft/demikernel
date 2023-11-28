@@ -8,38 +8,46 @@ use std::{
     time::Duration,
 };
 
-use windows::Win32::{
-    Foundation::{
-        ERROR_IO_PENDING,
-        ERROR_NOT_FOUND,
-        HANDLE,
-    },
-    Networking::WinSock::{
-        bind,
-        closesocket,
-        listen,
-        tcp_keepalive,
-        GetAcceptExSockaddrs,
-        WSAGetLastError,
-        FROM_PROTOCOL_INFO,
-        INVALID_SOCKET,
-        IPPROTO_TCP,
-        LINGER,
-        SIO_KEEPALIVE_VALS,
-        SOCKADDR_STORAGE,
-        SOCKET,
-        SOL_SOCKET,
-        SO_KEEPALIVE,
-        SO_LINGER,
-        SO_PROTOCOL_INFOW,
-        SO_UPDATE_ACCEPT_CONTEXT,
-        SO_UPDATE_CONNECT_CONTEXT,
-        WSAPROTOCOL_INFOW,
-        WSA_FLAG_OVERLAPPED,
-    },
-    System::IO::{
-        CancelIoEx,
-        OVERLAPPED,
+use windows::{
+    core::HRESULT,
+    Win32::{
+        Foundation::{
+            GetLastError,
+            ERROR_IO_PENDING,
+            ERROR_NOT_FOUND,
+            HANDLE,
+        },
+        Networking::WinSock::{
+            bind,
+            closesocket,
+            listen,
+            shutdown,
+            tcp_keepalive,
+            GetAcceptExSockaddrs,
+            WSAGetLastError,
+            FROM_PROTOCOL_INFO,
+            INVALID_SOCKET,
+            IPPROTO_TCP,
+            LINGER,
+            SD_BOTH,
+            SIO_KEEPALIVE_VALS,
+            SOCKADDR_STORAGE,
+            SOCKET,
+            SOL_SOCKET,
+            SO_KEEPALIVE,
+            SO_LINGER,
+            SO_PROTOCOL_INFOW,
+            SO_UPDATE_ACCEPT_CONTEXT,
+            SO_UPDATE_CONNECT_CONTEXT,
+            WINSOCK_SHUTDOWN_HOW,
+            WSAENOTCONN,
+            WSAPROTOCOL_INFOW,
+            WSA_FLAG_OVERLAPPED,
+        },
+        System::IO::{
+            CancelIoEx,
+            OVERLAPPED,
+        },
     },
 };
 
@@ -49,7 +57,11 @@ use crate::{
 };
 
 use super::{
-    error::last_wsa_error,
+    error::{
+        expect_last_wsa_error,
+        get_overlapped_api_result,
+        get_result_from_overlapped,
+    },
     winsock::{
         SocketExtensions,
         WinsockRuntime,
@@ -162,13 +174,42 @@ impl Socket {
         })
     }
 
+    /// Begin disconnecting a connection-oriented socket. If called on a non-stream-based socket or an unconnected
+    /// stream-based socket, this method will return an `ENOTCONN` failure.
+    pub fn start_disconnect(&self, overlapped: *mut OVERLAPPED) -> Result<(), Fail> {
+        let result: bool = unsafe { self.extensions.disconnectex.unwrap()(self.s, overlapped, 0, 0).as_bool() };
+
+        get_overlapped_api_result(result)
+    }
+
+    /// Call once the overlapped operation started by `start_disconnect` has completed to finish disconnecting and
+    /// shutdown the socket.
+    pub fn finish_disconnect(&self, overlapped: &OVERLAPPED, _completion_key: usize) -> Result<(), Fail> {
+        let result: Result<(), Fail> = get_result_from_overlapped(overlapped);
+
+        self.shutdown().and(result)
+    }
+
+    /// Shutdown communication on the socket. For better asynchronous behavior on connection-oriented sockets,
+    /// `start_disconnect` will start an asynchronous disconnect operation. If the socket is not disconnected prior to
+    /// this call, this call may block for socket teardown, depending on the linger settings.
+    pub fn shutdown(&self) -> Result<(), Fail> {
+        if unsafe { shutdown(self.s, SD_BOTH) } == 0 {
+            Ok(())
+        } else {
+            Err(expect_last_wsa_error().into())
+        }
+    }
+
     /// Call `bind` winsock API on self.
     pub fn bind(&self, local: SocketAddr) -> Result<(), Fail> {
         let sockaddr: socket2::SockAddr = local.into();
-        if unsafe { bind(self.s, sockaddr.as_ptr().cast(), sockaddr.len()) } == 0 {
+        let result: i32 = unsafe { bind(self.s, sockaddr.as_ptr().cast(), sockaddr.len()) };
+
+        if result == 0 {
             Ok(())
         } else {
-            Err(Fail::new(last_wsa_error(), "bind failed"))
+            Err(expect_last_wsa_error().into())
         }
     }
 
@@ -178,7 +219,7 @@ impl Socket {
         if unsafe { listen(self.s, backlog) } == 0 {
             Ok(())
         } else {
-            Err(Fail::new(last_wsa_error(), "listen failed"))
+            Err(expect_last_wsa_error().into())
         }
     }
 
@@ -201,7 +242,7 @@ impl Socket {
     ) -> Result<(), Fail> {
         let new_socket: Socket = Socket::new_like(self)?;
 
-        let result: bool = unsafe {
+        let success: bool = unsafe {
             self.extensions.acceptex.unwrap()(
                 self.s,
                 new_socket.s,
@@ -215,15 +256,10 @@ impl Socket {
         }
         .as_bool();
 
-        match (result, unsafe { WSAGetLastError() }) {
-            (false, err) if err.0 != ERROR_IO_PENDING.0 as i32 => {
-                Err(Fail::new(translate_wsa_error(err), "accept failed"))
-            },
-            _ => {
-                accept_result.new_socket = Some(new_socket);
-                Ok(())
-            },
-        }
+        get_overlapped_api_result(success).and_then(|_| {
+            accept_result.new_socket = Some(new_socket);
+            Ok(())
+        })
     }
 
     /// Finish an accept operation, once the overlapped accept call has completed. Calling this method before the I/O
@@ -232,9 +268,13 @@ impl Socket {
     pub fn finish_accept(
         &self,
         accept_result: Pin<&mut AcceptResult>,
-        _overlapped: *const OVERLAPPED,
+        overlapped: &OVERLAPPED,
         _completion_key: usize,
     ) -> Result<(Socket, SocketAddr, SocketAddr), Fail> {
+        if let Err(err) = get_result_from_overlapped(overlapped) {
+            return Err(err);
+        }
+
         let new_socket = accept_result
             .new_socket
             .ok_or_else(|| Fail::new(libc::EINVAL, "invalid state"))?;
@@ -281,7 +321,7 @@ impl Socket {
 
     pub fn start_conect(&self, remote: SocketAddr, overlapped: *mut OVERLAPPED) -> Result<(), Fail> {
         let sockaddr: socket2::SockAddr = remote.into();
-        let result: bool = unsafe {
+        let success: bool = unsafe {
             self.extensions.connectex.unwrap()(
                 self.s,
                 sockaddr.as_ptr().cast(),
@@ -294,15 +334,14 @@ impl Socket {
         }
         .as_bool();
 
-        match (result, unsafe { WSAGetLastError() }) {
-            (false, err) if err.0 != ERROR_IO_PENDING.0 as i32 => {
-                Err(Fail::new(translate_wsa_error(err), "connect failed"))
-            },
-            _ => Ok(()),
-        }
+        get_overlapped_api_result(success)
     }
 
-    pub fn finish_connect(&self, _overlapped: &OVERLAPPED, _completion_key: usize) -> Result<(), Fail> {
+    pub fn finish_connect(&self, overlapped: &OVERLAPPED, _completion_key: usize) -> Result<(), Fail> {
+        if let Err(err) = get_result_from_overlapped(overlapped) {
+            return Err(err);
+        }
+
         // Required to update user mode attributes of the socket after ConnectEx completes.
         unsafe { WinsockRuntime::do_setsockopt::<()>(self.s, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, None) }
     }

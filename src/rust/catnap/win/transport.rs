@@ -16,10 +16,7 @@ use std::{
         SocketAddr,
         SocketAddrV4,
     },
-    pin::{
-        pin,
-        Pin,
-    },
+    pin::Pin,
     time::Duration,
 };
 
@@ -124,6 +121,26 @@ impl SharedCatnapTransport {
         self.0
             .winsock
             .socket(domain.into(), typ.into(), protocol.0, &self.0.config)
+    }
+
+    pub fn close(&mut self, socket: &Socket) -> Result<(), Fail> {
+        socket.shutdown()
+    }
+
+    pub async fn async_close(&mut self, socket: &Socket, yielder: Yielder) -> Result<(), Fail> {
+        match unsafe {
+            self.0.iocp.do_io(
+                yielder,
+                |overlapped: *mut OVERLAPPED| socket.start_disconnect(overlapped),
+                |_| Err(Fail::new(libc::EFAULT, "cannot cancel a disconnect")),
+                |overlapped: &OVERLAPPED, completion_key: usize| socket.finish_disconnect(overlapped, completion_key),
+            )
+        }
+        .await
+        {
+            Err(err) if err.errno == libc::ENOTCONN => socket.shutdown(),
+            r => r,
+        }
     }
 
     pub fn bind(&self, socket: &Socket, local: SocketAddrV4) -> Result<(), Fail> {
