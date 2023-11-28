@@ -172,8 +172,8 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Inserts the `coroutine` named `task_name` into the scheduler.
-    /// This function also tracks the coroutine and it's yielder_handle.
+    /// Inserts the `coroutine` named `task_name` into the scheduler. This function also tracks the qd, coroutine and
+    /// it's yielder_handle.
     pub fn insert_coroutine_with_tracking(
         &mut self,
         task_name: &str,

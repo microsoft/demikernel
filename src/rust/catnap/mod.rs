@@ -196,7 +196,7 @@ impl SharedCatnapLibOS {
         timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
 
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::accept for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -249,7 +249,7 @@ impl SharedCatnapLibOS {
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::connect for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -313,7 +313,7 @@ impl SharedCatnapLibOS {
         timer!("catnap::async_close");
         trace!("async_close() qd={:?}", qd);
 
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::close for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -370,7 +370,7 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         };
 
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::push for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -420,7 +420,7 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
 
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::pushto for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -471,7 +471,7 @@ impl SharedCatnapLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let mut queue = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::pop for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();

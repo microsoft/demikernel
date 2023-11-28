@@ -20,7 +20,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         OperationResult,
         QDesc,
@@ -30,7 +29,6 @@ use crate::{
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     net::{
         Ipv4Addr,
         SocketAddrV4,
@@ -50,7 +48,6 @@ use ::std::{
 pub struct CatloopQueue {
     qtype: QType,
     socket: Socket,
-    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 /// A shared Catloop queue. This queue is concurrently accessed by multiple coroutines, so each time a coroutine yields, it implicitly gives up ownership and then regains it when it resumes.
@@ -67,17 +64,12 @@ impl CatloopQueue {
         Ok(Self {
             qtype,
             socket: Socket::new(catmem)?,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         })
     }
 
     /// Allocates a new Catloop queue.
     pub fn alloc(qtype: QType, socket: Socket) -> Self {
-        Self {
-            qtype,
-            socket,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
-        }
+        Self { qtype, socket }
     }
 }
 
@@ -113,15 +105,11 @@ impl SharedCatloopQueue {
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
     /// synchronous functionality necessary to start an accept.
-    pub fn accept<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.socket.accept(insert_coroutine, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = self.socket.accept(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -143,15 +131,11 @@ impl SharedCatloopQueue {
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
     /// connect completes.
-    pub fn connect<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.socket.connect(insert_coroutine, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = self.socket.connect(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -164,38 +148,28 @@ impl SharedCatloopQueue {
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&mut self) -> Result<(), Fail> {
         self.socket.close()?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         Ok(())
     }
 
     /// Start an asynchronous coroutine to close this queue.
-    pub fn async_close<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let task_handle: TaskHandle = self.socket.async_close(insert_coroutine, yielder)?;
+    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = self.socket.async_close(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub async fn do_close(&mut self, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
         let result: (QDesc, OperationResult) = self.socket.do_close(yielder).await?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         Ok(result)
     }
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.socket.push(insert_coroutine, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = self.socket.push(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -205,42 +179,13 @@ impl SharedCatloopQueue {
 
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.socket.pop(insert_coroutine, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, insert_coroutine: F) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = self.socket.pop(insert_coroutine)?;
         Ok(task_handle.get_task_id().into())
     }
 
     pub async fn do_pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
         self.socket.do_pop(size, yielder).await
-    }
-
-    /// Adds a new operation to the list of pending operations on this queue.
-    fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
-        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
-    }
-
-    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
-    /// add_pending_op() was previously called.
-    /// TODO: Remove this when we clean up take_result().
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
-        self.pending_ops.remove(handle);
-    }
-
-    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
-    /// yielded, wake the coroutine with an error.
-    fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (handle, mut yielder_handle) in self.pending_ops.drain() {
-            if !handle.has_completed() {
-                yielder_handle.wake_with(Err(cause.clone()));
-            }
-        }
     }
 }
 
