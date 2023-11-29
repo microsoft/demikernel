@@ -1,0 +1,48 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+#=======================================================================================================================
+# Package
+#=======================================================================================================================
+
+[package]
+name = "nettest"
+version = "0.1.0"
+edition = "2021"
+description = "Network Testing Tool for Demikernel"
+readme = "README.md"
+homepage = "https://aka.ms/demikernel"
+repository = "https://github.com/demikernel/demikernel"
+license-file = "LICENSE.txt"
+
+#=======================================================================================================================
+# Dependencies
+#=======================================================================================================================
+
+[build-dependencies]
+cfgrammar = "0.13"
+lrlex = "0.13"
+lrpar = "0.13"
+anyhow = "1.0.75"
+
+[dependencies]
+cfgrammar = "0.13"
+lrlex = "0.13"
+lrpar = "0.13"
+anyhow = "1.0.75"
+clap = "4.4.6"
+
+#=======================================================================================================================
+# Artifacts
+#=======================================================================================================================
+
+[[bin]]
+doc = false
+name = "nettest"
+path = "src/main.rs"
+
+
+[lib]
+doc = false
+name = "nettest"
+path = "src/lib.rs"

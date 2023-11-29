@@ -83,14 +83,15 @@ impl PacketBuf for TcpSegment {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SelectiveAcknowlegement {
     pub begin: SeqNumber,
     pub end: SeqNumber,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TcpOptions2 {
+    EndOfOptionsList,
     NoOperation,
     MaximumSegmentSize(u16),
     WindowScale(u8),
@@ -109,6 +110,7 @@ impl TcpOptions2 {
     fn compute_size(&self) -> usize {
         use TcpOptions2::*;
         match self {
+            EndOfOptionsList => 0,
             NoOperation => 1,
             MaximumSegmentSize(..) => 4,
             WindowScale(..) => 3,
@@ -121,6 +123,7 @@ impl TcpOptions2 {
     fn serialize(&self, buf: &mut [u8]) -> usize {
         use TcpOptions2::*;
         match self {
+            EndOfOptionsList => 0,
             NoOperation => {
                 buf[0] = 1;
                 1
@@ -272,7 +275,7 @@ impl TcpHeader {
         let urgent_pointer: u16 = u16::from_be_bytes([hdr_buf[18], hdr_buf[19]]);
 
         let mut num_options: usize = 0;
-        let mut option_list: [TcpOptions2; 5] = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
+        let mut option_list: [TcpOptions2; MAX_TCP_OPTIONS] = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
 
         if data_offset > MIN_TCP_HEADER_SIZE {
             let mut option_rdr: Cursor<&[u8]> = Cursor::new(&hdr_buf[MIN_TCP_HEADER_SIZE..data_offset]);
