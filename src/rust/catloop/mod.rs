@@ -518,8 +518,7 @@ impl SharedCatloopLibOS {
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
         timer!("catloop::pack_result");
-        let result: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into());
-        Ok(result)
+        self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
     }
 
     /// Polls scheduling queues.

@@ -60,6 +60,7 @@ use crate::{
 };
 use ::std::{
     boxed::Box,
+    collections::HashMap,
     future::Future,
     mem,
     net::SocketAddrV4,
@@ -71,7 +72,6 @@ use ::std::{
     rc::Rc,
     time::Instant,
 };
-use std::collections::HashMap;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::{
@@ -213,11 +213,11 @@ impl SharedDemiRuntime {
 
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
     /// and gets the result immediately.
-    pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> demi_qresult_t {
+    pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> Result<demi_qresult_t, Fail> {
         let operation_task: OperationTask = self.remove_coroutine(handle);
         let (qd, result) = operation_task.get_result().expect("coroutine not finished");
         self.cancel_or_remove_pending_ops_as_needed(&result, &qd, handle);
-        self.pack_result(result, qd, qt)
+        Ok(self.pack_result(result, qd, qt))
     }
 
     /// When the queue is closed, we need to cancel all pending ops. When the coroutine is removed, we only need to
