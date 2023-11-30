@@ -107,7 +107,7 @@ impl Default for EphemeralPorts {
             }
         };
         let mut ports: Vec<u16> = Vec::<u16>::new();
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             ports.push(port);
         }
         ports.shuffle(&mut rng);
@@ -171,7 +171,7 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::default();
 
         // Allocate all ports.
-        for _ in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for _ in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.alloc() {
                 anyhow::bail!("failed to allocate an ephemeral port (error={:?})", &e);
             }
@@ -183,7 +183,7 @@ mod test {
         }
 
         // Free all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.free(port) {
                 anyhow::bail!("failed to free ephemeral port (error={:?})", &e);
             }
@@ -198,7 +198,7 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::default();
 
         // Allocate all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.reserve(port) {
                 anyhow::bail!("failed to allocate an ephemeral port (port={:?}, error={:?})", port, &e);
             }
@@ -210,7 +210,7 @@ mod test {
         }
 
         // Free all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.free(port) {
                 anyhow::bail!("failed to free ephemeral port (port={:?}, error={:?})", port, &e);
             }
