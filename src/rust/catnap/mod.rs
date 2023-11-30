@@ -301,8 +301,10 @@ impl SharedCatnapLibOS {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::close for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
+            let yielder_handle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
-            self.runtime.insert_coroutine(&task_name, coroutine)
+            self.runtime
+                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
         };
 
         queue.async_close(coroutine_constructor)
