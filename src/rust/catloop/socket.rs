@@ -161,12 +161,12 @@ impl Socket {
         Ok(())
     }
 
-    pub fn accept<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<TaskHandle, Fail> {
         self.state.prepare(SocketOp::Accept)?;
-        self.do_generic_sync_control_path_call(coroutine, yielder)
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
@@ -238,12 +238,12 @@ impl Socket {
         }
     }
 
-    pub fn connect<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<TaskHandle, Fail> {
         self.state.prepare(SocketOp::Connect)?;
-        self.do_generic_sync_control_path_call(coroutine, yielder)
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Connects this socket to [remote].
@@ -318,12 +318,12 @@ impl Socket {
     }
 
     /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<TaskHandle, Fail> {
         self.state.prepare(SocketOp::Close)?;
-        Ok(self.do_generic_sync_control_path_call(coroutine, yielder)?)
+        Ok(self.do_generic_sync_control_path_call(coroutine_constructor)?)
     }
 
     /// Closes `socket`.
@@ -352,12 +352,8 @@ impl Socket {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
-        &self,
-        coroutine: F,
-        yielder: Yielder,
-    ) -> Result<TaskHandle, Fail> {
-        coroutine(yielder)
+    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail> {
+        coroutine_constructor()
     }
 
     /// Asynchronous code for pushing to the underlying Catmem transport.
@@ -372,12 +368,8 @@ impl Socket {
 
     /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
-        &self,
-        coroutine: F,
-        yielder: Yielder,
-    ) -> Result<TaskHandle, Fail> {
-        coroutine(yielder)
+    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail> {
+        coroutine_constructor()
     }
 
     /// Asynchronous code for popping from the underlying Catmem transport.
@@ -404,17 +396,17 @@ impl Socket {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F, yielder: Yielder) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    fn do_generic_sync_control_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<TaskHandle, Fail> {
         // Spawn coroutine.
-        match coroutine(yielder) {
+        match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(handle) => {
+            Ok(task_handle) => {
                 // Commit the operation on the socket.
                 self.state.commit();
-                Ok(handle)
+                Ok(task_handle)
             },
             // We failed to spawn the coroutine.
             Err(e) => {

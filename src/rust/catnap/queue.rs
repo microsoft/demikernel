@@ -23,7 +23,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         DemiRuntime,
         QToken,
@@ -37,7 +36,6 @@ use ::socket2::{
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -63,8 +61,6 @@ pub struct CatnapQueue {
     remote: Option<SocketAddrV4>,
     /// Underlying network transport.
     transport: SharedCatnapTransport,
-    /// Currently running coroutines.
-    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 #[derive(Clone)]
@@ -94,7 +90,6 @@ impl CatnapQueue {
             local: None,
             remote: None,
             transport,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         })
     }
 }
@@ -141,18 +136,12 @@ impl SharedCatnapQueue {
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
     /// synchronous functionality necessary to start an accept.
-    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
         self.state_machine.prepare(SocketOp::Accept)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -175,7 +164,6 @@ impl SharedCatnapQueue {
                         local: None,
                         remote: Some(saddr),
                         transport: self.transport.clone(),
-                        pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
                     })));
                 },
                 Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
@@ -202,16 +190,12 @@ impl SharedCatnapQueue {
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
     /// connect completes.
-    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
         self.state_machine.prepare(SocketOp::Connect)?;
-
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
@@ -250,26 +234,19 @@ impl SharedCatnapQueue {
     }
 
     /// Start an asynchronous coroutine to close this queue.
-    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
         self.state_machine.prepare(SocketOp::Close)?;
-        let yielder: Yielder = Yielder::new();
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor, yielder)?;
+        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn close(&mut self) -> Result<(), Fail> {
         let transport: SharedCatnapTransport = self.transport.clone();
-        match transport.close(&mut self.socket) {
-            Ok(()) => {
-                self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
-                Ok(())
-            },
-            Err(e) => Err(e),
-        }
+        transport.close(&mut self.socket)
     }
 
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
@@ -280,7 +257,6 @@ impl SharedCatnapQueue {
         loop {
             match transport.close(&mut self.socket) {
                 Ok(()) => {
-                    self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
                     return Ok(());
                 },
                 Err(Fail { errno, cause: _ }) if DemiRuntime::should_retry(errno) => {
@@ -300,10 +276,7 @@ impl SharedCatnapQueue {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
@@ -337,10 +310,7 @@ impl SharedCatnapQueue {
     /// Schedules a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to pop a buffer from this queue and any single-queue functionality after the pop
     /// completes.
-    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
@@ -370,21 +340,17 @@ impl SharedCatnapQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(
+    fn do_generic_sync_control_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
         &mut self,
         coroutine_constructor: F,
-        yielder: Yielder,
-    ) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
+    ) -> Result<TaskHandle, Fail> {
         // Spawn coroutine.
-        match coroutine_constructor(yielder) {
+        match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(handle) => {
+            Ok(task_handle) => {
                 // Commit the operation on the socket.
                 self.state_machine.commit();
-                Ok(handle)
+                Ok(task_handle)
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -396,39 +362,12 @@ impl SharedCatnapQueue {
     }
 
     /// Generic function for spawning a data-path coroutine on [self].
-    fn do_generic_sync_data_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = coroutine_constructor(yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+    fn do_generic_sync_data_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
+        &mut self,
+        coroutine_constructor: F,
+    ) -> Result<QToken, Fail> {
+        let task_handle: TaskHandle = coroutine_constructor()?;
         Ok(task_handle.get_task_id().into())
-    }
-
-    /// Adds a new operation to the list of pending operations on this queue.
-    fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
-        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
-    }
-
-    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
-    /// add_pending_op() was previously called.
-    /// TODO: Remove this when we clean up take_result().
-    /// This function is deprecated, do not use.
-    /// FIXME: https://github.com/microsoft/demikernel/issues/888
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
-        self.pending_ops.remove(handle);
-    }
-
-    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
-    /// yielded, wake the coroutine with an error.
-    fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (handle, mut yielder_handle) in self.pending_ops.drain() {
-            if !handle.has_completed() {
-                yielder_handle.wake_with(Err(cause.clone()));
-            }
-        }
     }
 }
 
