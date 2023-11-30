@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::runtime::fail::Fail;
+#[cfg(not(debug_assertions))]
 use ::rand::prelude::{
     SeedableRng,
     SliceRandom,
@@ -12,10 +17,12 @@ use ::rand::prelude::{
 // Constants
 //======================================================================================================================
 
+/// First private port. See https://datatracker.ietf.org/doc/html/rfc6335 for details.
 const FIRST_PRIVATE_PORT: u16 = 49152;
+/// Last private port. See https://datatracker.ietf.org/doc/html/rfc6335 for details.
 const LAST_PRIVATE_PORT: u16 = 65535;
-/// Seed number of ephemeral port allocator.
-#[cfg(debug_assertions)]
+/// Seed number for ephemeral port allocator.
+#[cfg(not(debug_assertions))]
 const EPHEMERAL_PORT_SEED: u64 = 12345;
 
 //======================================================================================================================
@@ -86,21 +93,15 @@ impl EphemeralPorts {
 impl Default for EphemeralPorts {
     /// Creates a new ephemeral port allocator.
     fn default() -> Self {
-        let mut rng: SmallRng = {
-            #[cfg(debug_assertions)]
-            {
-                SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED)
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                SmallRng::from_entropy()
-            }
-        };
         let mut ports: Vec<u16> = Vec::<u16>::new();
-        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
+        for port in (FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT).rev() {
             ports.push(port);
         }
-        ports.shuffle(&mut rng);
+        #[cfg(not(debug_assertions))]
+        {
+            let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
+            ports.shuffle(&mut rng);
+        }
         Self { ports }
     }
 }
