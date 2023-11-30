@@ -31,16 +31,6 @@ pub struct EphemeralPorts {
 //======================================================================================================================
 
 impl EphemeralPorts {
-    /// Creates a new ephemeral port allocator.
-    pub fn new(rng: &mut SmallRng) -> Self {
-        let mut ports: Vec<u16> = Vec::<u16>::new();
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            ports.push(port);
-        }
-        ports.shuffle(rng);
-        Self { ports }
-    }
-
     /// Asserts wether a port is in the ephemeral port range.
     pub fn is_private(port: u16) -> bool {
         port >= FIRST_PRIVATE_PORT
