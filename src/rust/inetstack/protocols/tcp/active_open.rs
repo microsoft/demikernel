@@ -52,10 +52,6 @@ use crate::{
     },
 };
 use ::futures::channel::mpsc;
-use ::libc::{
-    ECONNREFUSED,
-    ETIMEDOUT,
-};
 use ::std::{
     convert::TryInto,
     net::SocketAddrV4,
@@ -139,7 +135,8 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
 
         // Check if our peer is refusing our connection request.
         if header.rst {
-            self.result.set(Err(Fail::new(ECONNREFUSED, "connection refused")));
+            self.result
+                .set(Err(Fail::new(libc::ECONNREFUSED, "connection refused")));
             return;
         }
 
@@ -283,7 +280,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 return;
             }
         }
-        self.result.set(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
+        self.result.set(Err(Fail::new(libc::ETIMEDOUT, "handshake timeout")));
     }
 
     pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {

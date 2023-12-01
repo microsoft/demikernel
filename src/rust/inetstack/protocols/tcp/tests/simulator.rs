@@ -55,7 +55,10 @@ use std::{
         BufRead,
         BufReader,
     },
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     path::PathBuf,
     time::{
         Duration,
@@ -96,8 +99,12 @@ fn test_simulation() -> Result<()> {
     let verbose: bool = false;
     let local_mac: MacAddress = test_helpers::ALICE_MAC;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
-    let local_sockaddr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, 80);
-    let remote_sockaddr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, 49751);
+    let local_port: u16 = 12345;
+    let local_ephemeral_port: u16 = 49152;
+    let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
+    let remote_port: u16 = 23456;
+    let remote_ephemeral_port: u16 = 49152;
+    let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
 
     let input_path: String = match env::var("INPUT_DIR") {
         Ok(config_path) => config_path,
@@ -119,8 +126,17 @@ fn test_simulation() -> Result<()> {
     for test in &tests {
         println!("Running test: {:?}", test);
 
-        let mut simulation: Simulation =
-            Simulation::new(test, &local_mac, &local_sockaddr, &remote_mac, &remote_sockaddr)?;
+        let mut simulation: Simulation = Simulation::new(
+            test,
+            &local_mac,
+            local_port,
+            local_ephemeral_port,
+            &local_ipv4,
+            &remote_mac,
+            remote_port,
+            remote_ephemeral_port,
+            &remote_ipv4,
+        )?;
         simulation.run(verbose)?;
     }
 
@@ -159,12 +175,14 @@ fn collect_tests(test_path: &str) -> Result<Vec<String>> {
 /// A simulation of the network stack.
 struct Simulation {
     local_mac: MacAddress,
-    local_addr: SocketAddrV4,
+    local_sockaddr: SocketAddrV4,
+    local_port: u16,
     remote_mac: MacAddress,
-    remote_addr: SocketAddrV4,
+    remote_sockaddr: SocketAddrV4,
+    remote_port: u16,
     local_qd: Option<(u32, QDesc)>,
     remote_qd: Option<(u32, Option<QDesc>)>,
-    server: SharedEngine<RECEIVE_BATCH_SIZE>,
+    engine: SharedEngine<RECEIVE_BATCH_SIZE>,
     now: Instant,
     inflight: Option<QToken>,
     steps: Vec<String>,
@@ -175,9 +193,13 @@ impl Simulation {
     pub fn new(
         filename: &str,
         local_mac: &MacAddress,
-        local_sockaddr: &SocketAddrV4,
+        local_port: u16,
+        local_ephemeral_port: u16,
+        local_ipv4: &Ipv4Addr,
         remote_mac: &MacAddress,
-        remote_sockaddr: &SocketAddrV4,
+        remote_port: u16,
+        remote_ephemeral_port: u16,
+        remote_ipv4: &Ipv4Addr,
     ) -> Result<Simulation> {
         let now: Instant = Instant::now();
         const ARP_CACHE_TTL: Duration = Duration::from_secs(600);
@@ -191,9 +213,9 @@ impl Simulation {
             Some(retry_count),
             Some(disable_arp),
             local_mac,
-            local_sockaddr,
+            local_ipv4,
             remote_mac,
-            remote_sockaddr,
+            remote_ipv4,
         );
         let udp_config: UdpConfig = Self::new_udp_config();
         let tcp_config: TcpConfig = Self::new_tcp_config();
@@ -204,20 +226,26 @@ impl Simulation {
             udp_config,
             tcp_config,
             local_mac.clone(),
-            local_sockaddr.ip().clone(),
+            local_ipv4.clone(),
         );
-        let server: SharedEngine<RECEIVE_BATCH_SIZE> = SharedEngine::new(test_rig)?;
+        let local: SharedEngine<RECEIVE_BATCH_SIZE> = SharedEngine::new(test_rig)?;
+
+        println!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
+        println!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
+
         let steps: Vec<String> = Self::read_input_file(&filename)?;
         Ok(Simulation {
             local_mac: local_mac.clone(),
             remote_mac: remote_mac.clone(),
-            server,
+            engine: local,
             now,
             local_qd: None,
             remote_qd: None,
             inflight: None,
-            local_addr: local_sockaddr.clone(),
-            remote_addr: remote_sockaddr.clone(),
+            local_sockaddr: SocketAddrV4::new(local_ipv4.clone(), local_ephemeral_port),
+            local_port,
+            remote_sockaddr: SocketAddrV4::new(remote_ipv4.clone(), remote_ephemeral_port),
+            remote_port,
             steps,
         })
     }
@@ -245,13 +273,13 @@ impl Simulation {
         retry_count: Option<usize>,
         disable_arp: Option<bool>,
         local_mac: &MacAddress,
-        local_sockaddr: &SocketAddrV4,
+        local_ipv4: &Ipv4Addr,
         remote_mac: &MacAddress,
-        remote_sockaddr: &SocketAddrV4,
+        remote_ipv4: &Ipv4Addr,
     ) -> ArpConfig {
         let mut initial_values: HashMap<std::net::Ipv4Addr, MacAddress> = HashMap::new();
-        initial_values.insert(local_sockaddr.ip().clone(), local_mac.clone());
-        initial_values.insert(remote_sockaddr.ip().clone(), remote_mac.clone());
+        initial_values.insert(local_ipv4.clone(), local_mac.clone());
+        initial_values.insert(remote_ipv4.clone(), remote_mac.clone());
 
         ArpConfig::new(
             cache_ttl,
@@ -274,6 +302,7 @@ impl Simulation {
 
     /// Runs the simulation.
     pub fn run(&mut self, verbose: bool) -> Result<()> {
+        println!("+++++++++++++++++");
         // Process all lines of the source file.
         for step in &self.steps.clone() {
             if verbose {
@@ -291,6 +320,7 @@ impl Simulation {
     /// Runs an event.
     fn run_event(&mut self, event: &Event) -> Result<()> {
         self.now += event.time;
+        println!("=================");
 
         match &event.action {
             nettest::glue::Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
@@ -303,8 +333,7 @@ impl Simulation {
     /// Runs a system call.
     #[allow(unused_variables)]
     fn run_syscall(&mut self, syscall: &SyscallEvent) -> Result<()> {
-        println!("=================");
-        println!("{:?}", syscall);
+        println!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
             // Issue demi_socket().
             nettest::glue::DemikernelSyscall::Socket(args, fd) => self.run_socket_syscall(args, fd.clone())?,
@@ -326,8 +355,7 @@ impl Simulation {
 
     /// Runs a packet.
     fn run_packet(&mut self, packet: &PacketEvent) -> Result<()> {
-        println!("=================");
-        println!("{:?}", packet);
+        println!("{:?}: {:?}", self.now, packet);
         match packet {
             nettest::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_packet(tcp_packet)?,
@@ -362,7 +390,7 @@ impl Simulation {
         }
 
         // Issue demi_socket().
-        let qd: QDesc = self.server.tcp_socket()?;
+        let qd: QDesc = self.engine.tcp_socket()?;
         self.local_qd = Some((fd, qd));
 
         Ok(())
@@ -372,7 +400,10 @@ impl Simulation {
     fn run_bind_syscall(&mut self, args: &BindArgs, ret: u32) -> Result<()> {
         // Extract bind address.
         let local_addr: SocketAddrV4 = match args.addr {
-            None => self.local_addr,
+            None => {
+                self.local_sockaddr.set_port(self.local_port);
+                self.local_sockaddr
+            },
 
             // Custom bind address is not supported.
             Some(addr) => {
@@ -400,7 +431,7 @@ impl Simulation {
         };
 
         // Issue demi_bind().
-        match self.server.tcp_bind(local_qd, local_addr) {
+        match self.engine.tcp_bind(local_qd, local_addr) {
             Ok(()) if ret == 0 => Ok(()),
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
@@ -441,7 +472,7 @@ impl Simulation {
         };
 
         // Issue demi_listen().
-        match self.server.tcp_listen(local_qd, backlog) {
+        match self.engine.tcp_listen(local_qd, backlog) {
             Ok(()) if ret == 0 => Ok(()),
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
@@ -472,12 +503,12 @@ impl Simulation {
         };
 
         // Issue demi_accept().
-        match self.server.tcp_accept(local_qd) {
+        match self.engine.tcp_accept(local_qd) {
             Ok(accept_qt) => {
                 self.remote_qd = Some((ret, None));
 
                 self.inflight = Some(accept_qt);
-                self.server.get_test_rig().poll_scheduler();
+                self.engine.get_test_rig().poll_scheduler();
 
                 Ok(())
             },
@@ -504,7 +535,10 @@ impl Simulation {
 
         // Extract remote address.
         let remote_addr: SocketAddrV4 = match args.addr {
-            None => self.remote_addr,
+            None => {
+                self.remote_sockaddr = SocketAddrV4::new(self.remote_sockaddr.ip().clone(), self.remote_port);
+                self.remote_sockaddr
+            },
             Some(addr) => {
                 // Unsupported remote address.
                 let cause: String = format!("unsupported remote address (addr={:?})", addr);
@@ -513,10 +547,10 @@ impl Simulation {
             },
         };
 
-        let connect_qt: QToken = self.server.tcp_connect(local_qd, remote_addr)?;
+        let connect_qt: QToken = self.engine.tcp_connect(local_qd, remote_addr)?;
 
         self.inflight = Some(connect_qt);
-        self.server.get_test_rig().poll_scheduler();
+        self.engine.get_test_rig().poll_scheduler();
 
         Ok(())
     }
@@ -542,10 +576,10 @@ impl Simulation {
         };
 
         let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
-        let push_qt: QToken = self.server.tcp_push(remote_qd, buf)?;
+        let push_qt: QToken = self.engine.tcp_push(remote_qd, buf)?;
 
         self.inflight = Some(push_qt);
-        self.server.get_test_rig().poll_scheduler();
+        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
@@ -582,16 +616,20 @@ impl Simulation {
 
     /// Builds an Ethernet 2 header.
     fn build_ethernet_header(&self) -> Ethernet2Header {
-        Ethernet2Header::new(self.local_mac, self.remote_mac, EtherType2::Ipv4)
+        let (src_addr, dst_addr) = { (self.remote_mac, self.local_mac) };
+        Ethernet2Header::new(dst_addr, src_addr, EtherType2::Ipv4)
     }
 
     /// Builds an IPv4 header.
     fn build_ipv4_header(&self) -> Ipv4Header {
-        Ipv4Header::new(
-            self.remote_addr.ip().to_owned(),
-            self.local_addr.ip().to_owned(),
-            IpProtocol::TCP,
-        )
+        let (src_addr, dst_addr) = {
+            (
+                self.remote_sockaddr.ip().to_owned(),
+                self.local_sockaddr.ip().to_owned(),
+            )
+        };
+
+        Ipv4Header::new(src_addr, dst_addr, IpProtocol::TCP)
     }
 
     /// Builds a TCP header.
@@ -599,11 +637,18 @@ impl Simulation {
         let (option_list, num_options): ([TcpOptions2; MAX_TCP_OPTIONS], usize) =
             self.build_tcp_options(&tcp_packet.options);
 
+        let (src_port, dst_port) = { (self.remote_port, self.local_sockaddr.port()) };
+
+        let ack_num = match tcp_packet.ack {
+            Some(ack_num) => ack_num,
+            None => 0,
+        };
+
         TcpHeader {
-            src_port: self.remote_addr.port(),
-            dst_port: self.local_addr.port(),
+            src_port,
+            dst_port,
             seq_num: tcp_packet.seqnum.seq.into(),
-            ack_num: tcp_packet.seqnum.ack.into(),
+            ack_num: ack_num.into(),
             ns: false,
             cwr: tcp_packet.flags.cwr,
             ece: tcp_packet.flags.ece,
@@ -641,13 +686,13 @@ impl Simulation {
         let segment: TcpSegment = self.build_tcp_segment(&tcp_packet);
 
         let buf: DemiBuffer = Self::serialize_segment(segment);
-        self.server.receive(buf)?;
+        self.engine.receive(buf)?;
 
-        self.server.get_test_rig().poll_scheduler();
+        self.engine.get_test_rig().poll_scheduler();
 
         if let Ok(Some(qt)) = self.operation_has_completed() {
             match self
-                .server
+                .engine
                 .get_test_rig()
                 .get_runtime()
                 .remove_coroutine_with_qtoken(qt)
@@ -657,6 +702,9 @@ impl Simulation {
                     crate::OperationResult::Accept((remote_qd, remote_addr)) => {
                         eprintln!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
                         self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
+                    },
+                    crate::OperationResult::Connect => {
+                        eprintln!("connection established (qd={:?})", qd);
                     },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
@@ -678,8 +726,8 @@ impl Simulation {
 
     /// Checks an IPv4 header.
     fn check_ipv4_header(&self, ipv4_header: &Ipv4Header) -> Result<()> {
-        crate::ensure_eq!(ipv4_header.get_src_addr(), self.local_addr.ip().to_owned());
-        crate::ensure_eq!(ipv4_header.get_dest_addr(), self.remote_addr.ip().to_owned());
+        crate::ensure_eq!(ipv4_header.get_src_addr(), self.local_sockaddr.ip().to_owned());
+        crate::ensure_eq!(ipv4_header.get_dest_addr(), self.remote_sockaddr.ip().to_owned());
         crate::ensure_eq!(ipv4_header.get_protocol(), IpProtocol::TCP);
 
         Ok(())
@@ -688,9 +736,9 @@ impl Simulation {
     /// Checks a TCP header.
     fn check_tcp_header(&self, tcp_header: &TcpHeader, tcp_packet: &TcpPacket) -> Result<()> {
         // Check if source port number matches what we expect.
-        crate::ensure_eq!(tcp_header.src_port, self.local_addr.port());
+        crate::ensure_eq!(tcp_header.src_port, self.local_sockaddr.port());
         // Check if destination port number matches what we expect.
-        crate::ensure_eq!(tcp_header.dst_port, self.remote_addr.port());
+        crate::ensure_eq!(tcp_header.dst_port, self.remote_port);
         // Check if sequence number matches what we expect.
         crate::ensure_eq!(tcp_header.seq_num, tcp_packet.seqnum.seq.into());
         // Check if acknowledgement number matches what we expect.
@@ -749,7 +797,7 @@ impl Simulation {
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<Option<QToken>> {
         let has_completed: bool = match self.inflight {
-            Some(qt) => match self.server.get_test_rig().get_runtime().from_task_id(qt.clone()) {
+            Some(qt) => match self.engine.get_test_rig().get_runtime().from_task_id(qt.clone()) {
                 Ok(task_handle) => task_handle.has_completed(),
                 Err(e) => anyhow::bail!("{:?}", e),
             },
@@ -764,9 +812,9 @@ impl Simulation {
 
     /// Runs an outgoing packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        self.server.get_test_rig().poll_scheduler();
+        self.engine.get_test_rig().poll_scheduler();
 
-        let frames: VecDeque<DemiBuffer> = self.server.get_test_rig().pop_all_frames();
+        let frames: VecDeque<DemiBuffer> = self.engine.get_test_rig().pop_all_frames();
 
         // FIXME: We currently do not support multi-frame segments.
         crate::ensure_eq!(frames.len(), 1);
@@ -784,7 +832,7 @@ impl Simulation {
 
         if let Ok(Some(qt)) = self.operation_has_completed() {
             match self
-                .server
+                .engine
                 .get_test_rig()
                 .get_runtime()
                 .remove_coroutine_with_qtoken(qt)
