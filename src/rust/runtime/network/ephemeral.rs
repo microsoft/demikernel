@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::runtime::fail::Fail;
+#[cfg(not(debug_assertions))]
 use ::rand::prelude::{
     SeedableRng,
     SliceRandom,
@@ -12,10 +17,12 @@ use ::rand::prelude::{
 // Constants
 //======================================================================================================================
 
+/// First private port. See https://datatracker.ietf.org/doc/html/rfc6335 for details.
 const FIRST_PRIVATE_PORT: u16 = 49152;
+/// Last private port. See https://datatracker.ietf.org/doc/html/rfc6335 for details.
 const LAST_PRIVATE_PORT: u16 = 65535;
-/// Seed number of ephemeral port allocator.
-#[cfg(debug_assertions)]
+/// Seed number for ephemeral port allocator.
+#[cfg(not(debug_assertions))]
 const EPHEMERAL_PORT_SEED: u64 = 12345;
 
 //======================================================================================================================
@@ -31,16 +38,6 @@ pub struct EphemeralPorts {
 //======================================================================================================================
 
 impl EphemeralPorts {
-    /// Creates a new ephemeral port allocator.
-    pub fn new(rng: &mut SmallRng) -> Self {
-        let mut ports: Vec<u16> = Vec::<u16>::new();
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
-            ports.push(port);
-        }
-        ports.shuffle(rng);
-        Self { ports }
-    }
-
     /// Asserts wether a port is in the ephemeral port range.
     pub fn is_private(port: u16) -> bool {
         port >= FIRST_PRIVATE_PORT
@@ -96,21 +93,15 @@ impl EphemeralPorts {
 impl Default for EphemeralPorts {
     /// Creates a new ephemeral port allocator.
     fn default() -> Self {
-        let mut rng: SmallRng = {
-            #[cfg(debug_assertions)]
-            {
-                SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED)
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                SmallRng::from_entropy()
-            }
-        };
         let mut ports: Vec<u16> = Vec::<u16>::new();
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in (FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT).rev() {
             ports.push(port);
         }
-        ports.shuffle(&mut rng);
+        #[cfg(not(debug_assertions))]
+        {
+            let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
+            ports.shuffle(&mut rng);
+        }
         Self { ports }
     }
 }
@@ -171,7 +162,7 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::default();
 
         // Allocate all ports.
-        for _ in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for _ in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.alloc() {
                 anyhow::bail!("failed to allocate an ephemeral port (error={:?})", &e);
             }
@@ -183,7 +174,7 @@ mod test {
         }
 
         // Free all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.free(port) {
                 anyhow::bail!("failed to free ephemeral port (error={:?})", &e);
             }
@@ -198,7 +189,7 @@ mod test {
         let mut ports: EphemeralPorts = EphemeralPorts::default();
 
         // Allocate all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.reserve(port) {
                 anyhow::bail!("failed to allocate an ephemeral port (port={:?}, error={:?})", port, &e);
             }
@@ -210,7 +201,7 @@ mod test {
         }
 
         // Free all ports.
-        for port in FIRST_PRIVATE_PORT..LAST_PRIVATE_PORT {
+        for port in FIRST_PRIVATE_PORT..=LAST_PRIVATE_PORT {
             if let Err(e) = ports.free(port) {
                 anyhow::bail!("failed to free ephemeral port (port={:?}, error={:?})", port, &e);
             }
