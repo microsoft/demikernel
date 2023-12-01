@@ -80,7 +80,7 @@ macro_rules! ensure_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`,right: `{:?}`"#, left_val, right_val)
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}` at file: {}, line: {}"#, left_val, right_val, file!(), line!())
                 }
             }
         }
@@ -92,7 +92,7 @@ macro_rules! ensure_eq {
         match (&($left), &($right)) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {}"#, left_val, right_val, format_args!($($arg)+))
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {} at file: {}, line: {}"#, left_val, right_val, format_args!($($arg)+), file!(), line!())
                 }
             }
         }
@@ -106,7 +106,7 @@ macro_rules! ensure_neq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if (*left_val == *right_val) {
-                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`,right: `{:?}`"#, left_val, right_val)
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}` at file: {}, line: {}"#, left_val, right_val, file!(), line!())
                 }
             }
         }
@@ -118,7 +118,7 @@ macro_rules! ensure_neq {
         match (&($left), &($right)) {
             (left_val, right_val) => {
                 if (*left_val == *right_val) {
-                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {}"#, left_val, right_val, format_args!($($arg)+))
+                    anyhow::bail!(r#"ensure failed: `(left == right)` left: `{:?}`, right: `{:?}`: {} at file: {}, line: {}"#, left_val, right_val, format_args!($($arg)+), file!(), line!())
                 }
             }
         }
