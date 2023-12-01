@@ -103,16 +103,12 @@ impl CatnapLibOS {
 impl SharedCatnapLibOS {
     /// Instantiates a Catnap LibOS.
     pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::new");
         Self(SharedObject::new(CatnapLibOS::new(_config, runtime)))
     }
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatnapQueue that
     /// wraps the underlying POSIX socket.
     pub fn socket(&mut self, domain: Domain, typ: Type, _protocol: Protocol) -> Result<QDesc, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
@@ -136,8 +132,6 @@ impl SharedCatnapLibOS {
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedCatnapQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -177,8 +171,6 @@ impl SharedCatnapLibOS {
     /// Sets a SharedCatnapQueue and its underlying socket as a passive one. This function contains the libOS-level
     /// functionality to move the SharedCatnapQueue and underlying socket into the listen state.
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::listen");
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
@@ -192,8 +184,6 @@ impl SharedCatnapLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the accept.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::accept");
         trace!("accept(): qd={:?}", qd);
 
         let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
@@ -243,8 +233,6 @@ impl SharedCatnapLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -288,8 +276,6 @@ impl SharedCatnapLibOS {
 
     /// Synchronously closes a SharedCatnapQueue and its underlying POSIX socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::close");
         trace!("close() qd={:?}", qd);
 
         let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
@@ -309,8 +295,6 @@ impl SharedCatnapLibOS {
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::async_close");
         trace!("async_close() qd={:?}", qd);
 
         let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
@@ -361,8 +345,6 @@ impl SharedCatnapLibOS {
     /// coroutine that asynchronously runs the push and any synchronous multi-queue functionality before the push
     /// begins.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::push");
         trace!("push() qd={:?}", qd);
 
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
@@ -408,8 +390,6 @@ impl SharedCatnapLibOS {
     /// function schedules the coroutine that asynchronously runs the pushto and any synchronous multi-queue
     /// functionality after pushto begins.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::pushto");
         trace!("pushto() qd={:?}", qd);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -464,8 +444,6 @@ impl SharedCatnapLibOS {
     /// function schedules the asynchronous coroutine and performs any necessary synchronous, multi-queue operations
     /// at the libOS-level before beginning the pop.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
@@ -507,35 +485,25 @@ impl SharedCatnapLibOS {
     }
 
     pub fn poll(&mut self) {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::poll");
         self.runtime.poll()
     }
 
     pub fn schedule(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::schedule");
         self.runtime.from_task_id(qt)
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::pack_result");
         self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
     }
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnap::sgaalloc");
         trace!("sgalloc() size={:?}", size);
         self.runtime.alloc_sgarray(size)
     }
 
     /// Frees a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        #[cfg(feature = "sgafree")]
-        timer!("catnap::sgafree");
         trace!("sgafree()");
         self.runtime.free_sgarray(sga)
     }

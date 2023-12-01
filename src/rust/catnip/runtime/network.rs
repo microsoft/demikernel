@@ -139,17 +139,10 @@ impl<const N: usize> NetworkRuntime<N> for SharedDPDKRuntime {
         let mut out = ArrayVec::new();
 
         let mut packets: [*mut rte_mbuf; N] = unsafe { mem::zeroed() };
-        let nb_rx = unsafe {
-            #[cfg(feature = "profiler")]
-            timer!("catnip_libos::receive::rte_eth_rx_burst");
-
-            rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), N as u16)
-        };
+        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), N as u16) };
         assert!(nb_rx as usize <= N);
 
         {
-            #[cfg(feature = "profiler")]
-            timer!("catnip_libos:receive::for");
             for &packet in &packets[..nb_rx as usize] {
                 // Safety: `packet` is a valid pointer to a properly initialized `rte_mbuf` struct.
                 let buf: DemiBuffer = unsafe { DemiBuffer::from_mbuf(packet) };

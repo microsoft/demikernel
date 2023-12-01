@@ -87,8 +87,6 @@ pub struct SharedCatloopLibOS(SharedObject<CatloopLibOS>);
 impl CatloopLibOS {
     /// Instantiates a new LibOS.
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::new");
         Self {
             catmem: SharedCatmemLibOS::new(config, runtime.clone()),
             runtime,
@@ -99,16 +97,12 @@ impl CatloopLibOS {
 
 impl SharedCatloopLibOS {
     pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
-        #[cfg(feature = "profiler")]
-        timer!("sharedcatloop::new");
         Self(SharedObject::new(CatloopLibOS::new(config, runtime)))
     }
 
     /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedCatloopQueue
     /// that wraps the underlying Catmem queue.
     pub fn socket(&mut self, domain: libc::c_int, typ: libc::c_int, _protocol: libc::c_int) -> Result<QDesc, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::socket");
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
         // Parse communication domain.
@@ -140,8 +134,6 @@ impl SharedCatloopLibOS {
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedCatloopQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::bind");
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -200,8 +192,6 @@ impl SharedCatloopLibOS {
     /// Sets a SharedCatloopQueue and as a passive one. This function contains the libOS-level
     /// functionality to move the SharedCatloopQueue into a listening state.
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::listen");
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
         // We just assert backlog here, because it was previously checked at PDPIX layer.
@@ -216,8 +206,6 @@ impl SharedCatloopLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the accept.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::accept");
         trace!("accept() qd={:?}", qd);
 
         // Allocate ephemeral port.
@@ -277,8 +265,6 @@ impl SharedCatloopLibOS {
     /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
     /// the connect.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::connect");
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -320,8 +306,6 @@ impl SharedCatloopLibOS {
 
     /// Synchronously closes a SharedCatloopQueue and its underlying Catmem queues.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::close");
         trace!("close() qd={:?}", qd);
 
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
@@ -348,8 +332,6 @@ impl SharedCatloopLibOS {
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::async_close");
         trace!("async_close() qd={:?}", qd);
 
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
@@ -404,8 +386,6 @@ impl SharedCatloopLibOS {
 
     /// Schedules a coroutine to push to a Catloop queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::push");
         trace!("push() qd={:?}", qd);
 
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
@@ -453,8 +433,6 @@ impl SharedCatloopLibOS {
 
     /// Schedules a coroutine to pop data from a Catloop queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::pop");
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
@@ -495,36 +473,26 @@ impl SharedCatloopLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::sgaalloc");
         self.runtime.alloc_sgarray(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::sgafree");
         self.runtime.free_sgarray(sga)
     }
 
     /// Inserts a queue token into the scheduler.
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::schedule");
         self.runtime.from_task_id(qt.into())
     }
 
     /// Constructs an operation result from a scheduler handler and queue token pair.
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::pack_result");
         self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
     }
 
     /// Polls scheduling queues.
     pub fn poll(&mut self) {
-        #[cfg(feature = "profiler")]
-        timer!("catloop::poll");
         self.runtime.poll()
     }
 

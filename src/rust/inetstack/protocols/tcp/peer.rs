@@ -113,8 +113,6 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Creates a TCP socket.
     pub fn socket(&mut self) -> Result<QDesc, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("tcp::socket");
         let new_queue: SharedTcpQueue<N> = SharedTcpQueue::<N>::new(
             self.runtime.clone(),
             self.transport.clone(),
@@ -204,8 +202,6 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Sets up the coroutine for accepting a new connection.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("inet::tcp::accept");
         trace!("accept(): qd={:?}", qd);
         let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = |yielder: Yielder| -> Result<TaskHandle, Fail> {
@@ -256,8 +252,6 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Sets up the coroutine for connecting the socket to [remote].
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("inet::tcp::connect");
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
         let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
         // Check whether we need to allocate an ephemeral port.

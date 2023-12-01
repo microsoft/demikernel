@@ -90,8 +90,6 @@ impl CatpowderLibOS {
     /// IO connection represented by `qd`. This operation returns immediately with a `QToken`.
     /// The data has been written when [`wait`ing](Self::wait) on the QToken returns.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::push");
         trace!("push(): qd={:?}", qd);
         match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
@@ -105,9 +103,7 @@ impl CatpowderLibOS {
     }
 
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("catnip::pushto");
-        trace!("pushto2(): qd={:?}", qd);
+        trace!("pushto(): qd={:?}", qd);
         match self.transport.clone_sgarray(sga) {
             Ok(buf) => {
                 if buf.len() == 0 {

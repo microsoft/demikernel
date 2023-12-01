@@ -22,6 +22,7 @@ from ci.src.test_instantiator import TestInstantiator
 COMMIT_HASH: str = ""
 CONNECTION_STRING: str = ""
 TABLE_NAME = "test"
+LIBOS = ""
 
 # ======================================================================================================================
 # Utilities
@@ -68,14 +69,12 @@ def extract_performance(job_name, file):
             columns = line.split(";")
             # Workaround for LibOses which are miss behaving.
             if len(columns) == 6:
-                depth = columns[0]
-                libos = columns[1]
                 syscall = columns[2]
                 total_time = columns[3]
                 average_cycles = columns[4]
                 average_time = columns[5]
 
-                partition_key: str = "-".join([COMMIT_HASH, libos, job_name])
+                partition_key: str = "-".join([COMMIT_HASH, LIBOS, job_name])
                 row_key: str = syscall
 
                 entry: dict[str, str, str, str, str,
@@ -83,7 +82,7 @@ def extract_performance(job_name, file):
                 entry["PartitionKey"] = partition_key
                 entry["RowKey"] = row_key
                 entry["CommitHash"] = COMMIT_HASH
-                entry["LibOS"] = libos
+                entry["LibOS"] = LIBOS
                 entry["JobName"] = job_name
                 entry["Syscall"] = syscall
                 entry["TotalTime"] = float(total_time)
@@ -677,6 +676,8 @@ def main():
     CONNECTION_STRING = args.connection_string if args.connection_string != "" else CONNECTION_STRING
     global TABLE_NAME
     TABLE_NAME = args.table_name if args.table_name != "" else TABLE_NAME
+    global LIBOS
+    LIBOS = libos
 
     status: dict = run_pipeline(repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,

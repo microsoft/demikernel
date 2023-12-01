@@ -100,8 +100,6 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     /// Opens a UDP socket.
     pub fn socket(&mut self) -> Result<QDesc, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("udp::socket");
         let new_queue: SharedUdpQueue<N> = SharedUdpQueue::new(
             self.local_ipv4_addr,
             self.local_link_addr,
@@ -116,8 +114,6 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     /// Binds a UDP socket to a local endpoint address.
     pub fn bind(&mut self, qd: QDesc, mut addr: SocketAddrV4) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("udp::bind");
         trace!("bind(): qd={:?}", qd);
         // Check whether queue is already bound.
         let mut queue: SharedUdpQueue<N> = self.get_shared_queue(&qd)?;
@@ -153,8 +149,6 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     /// Closes a UDP socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("udp::close");
         trace!("close(): qd={:?}", qd);
         let mut queue: SharedUdpQueue<N> = self.runtime.free_queue::<SharedUdpQueue<N>>(&qd)?;
         queue.close()?;
@@ -163,8 +157,6 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     /// Pushes data to a remote UDP peer.
     pub fn pushto(&mut self, qd: QDesc, buf: DemiBuffer, remote: SocketAddrV4) -> Result<Pin<Box<Operation>>, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("udp::pushto");
         trace!("pushto(): qd={:?} remote={:?} bytes={:?}", qd, remote, buf.len());
         let mut queue: SharedUdpQueue<N> = self.get_shared_queue(&qd)?;
         // TODO: Allocate ephemeral port if not bound.
@@ -185,8 +177,6 @@ impl<const N: usize> SharedUdpPeer<N> {
 
     /// Pops data from a socket.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<Pin<Box<Operation>>, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("udp::pop");
         let yielder: Yielder = Yielder::new();
         let mut queue: SharedUdpQueue<N> = self.get_shared_queue(&qd)?;
 
