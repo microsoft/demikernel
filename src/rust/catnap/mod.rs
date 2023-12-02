@@ -30,7 +30,6 @@ use crate::{
         },
         queue::{
             downcast_queue,
-            NetworkQueue,
             Operation,
             OperationResult,
         },
@@ -93,10 +92,10 @@ pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS>);
 //======================================================================================================================
 
 impl CatnapLibOS {
-    pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
         Self {
             runtime: runtime.clone(),
-            transport: SharedCatnapTransport::new(runtime),
+            transport: SharedCatnapTransport::new(config, runtime),
         }
     }
 }
@@ -136,12 +135,10 @@ impl SharedCatnapLibOS {
     pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
-
+        let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
         // Check if we are binding to the wildcard address.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if local.ip() == &Ipv4Addr::UNSPECIFIED {
+        if localv4.ip() == &Ipv4Addr::UNSPECIFIED {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
@@ -156,7 +153,7 @@ impl SharedCatnapLibOS {
         }
 
         // Check wether the address is in use.
-        if self.runtime.addr_in_use(local) {
+        if self.runtime.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
@@ -166,7 +163,7 @@ impl SharedCatnapLibOS {
         self.get_shared_queue(&qd)?.bind(local)?;
         // Insert into address to queue descriptor table.
         self.runtime
-            .insert_socket_id_to_qd(SocketId::Passive(local.clone()), qd);
+            .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
         Ok(())
     }
 
@@ -218,11 +215,15 @@ impl SharedCatnapLibOS {
                 // TODO: Do we need to add this to the socket id to queue descriptor table?
                 // It is safe to call except here because the new queue is connected and it should be connected to a
                 // remote address.
-                let addr: SocketAddrV4 = new_queue
+                let addr: SocketAddr = new_queue
                     .remote()
                     .expect("An accepted socket must have a remote address");
                 let new_qd: QDesc = self.runtime.alloc_queue(new_queue);
-                (qd, OperationResult::Accept((new_qd, addr)))
+                // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+                (
+                    qd,
+                    OperationResult::Accept((new_qd, unwrap_socketaddr(addr).expect("we only support IPv4"))),
+                )
             },
             Err(e) => {
                 warn!("accept() listening_qd={:?}: {:?}", qd, &e);
@@ -238,7 +239,6 @@ impl SharedCatnapLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::connect for qd={:?}", qd);
@@ -255,7 +255,7 @@ impl SharedCatnapLibOS {
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
     /// asynchronously to connect a queue and performs any necessary multi-queue operations at the libOS-level after
     /// the connect succeeds or fails.
-    async fn connect_coroutine(self, qd: QDesc, remote: SocketAddrV4, yielder: Yielder) -> (QDesc, OperationResult) {
+    async fn connect_coroutine(self, qd: QDesc, remote: SocketAddr, yielder: Yielder) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
@@ -286,7 +286,8 @@ impl SharedCatnapLibOS {
 
         // If the queue was bound, remove from the socket id to queue descriptor table.
         if let Some(local) = queue.local() {
-            self.runtime.remove_socket_id_to_qd(&SocketId::Passive(local));
+            self.runtime
+                .remove_socket_id_to_qd(&SocketId::Passive(unwrap_socketaddr(local)?));
         }
 
         // Remove the queue from the queue table.
@@ -328,7 +329,10 @@ impl SharedCatnapLibOS {
             Ok(()) => {
                 // If the queue was bound, remove from the socket id to queue descriptor table.
                 if let Some(local) = queue.local() {
-                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(local));
+                    // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(
+                        unwrap_socketaddr(local).expect("we only support IPv4"),
+                    ));
                 }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
@@ -396,9 +400,6 @@ impl SharedCatnapLibOS {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
-
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
@@ -424,7 +425,7 @@ impl SharedCatnapLibOS {
         self,
         qd: QDesc,
         mut buf: DemiBuffer,
-        remote: SocketAddrV4,
+        remote: SocketAddr,
         yielder: Yielder,
     ) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -480,7 +481,12 @@ impl SharedCatnapLibOS {
 
         // Wait for pop to complete.
         match queue.pop_coroutine(size, yielder).await {
-            Ok((addr, buf)) => (qd, OperationResult::Pop(addr, buf)),
+            // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+            Ok((Some(addr), buf)) => (
+                qd,
+                OperationResult::Pop(Some(unwrap_socketaddr(addr).expect("we only support IPv4")), buf),
+            ),
+            Ok((None, buf)) => (qd, OperationResult::Pop(None, buf)),
             Err(e) => {
                 warn!("pop() qd={:?}: {:?}", qd, &e);
                 (qd, OperationResult::Failed(e))

@@ -61,6 +61,10 @@ use crate::{
 use ::std::{
     boxed::Box,
     collections::HashMap,
+    convert::{
+        AsMut,
+        AsRef,
+    },
     future::Future,
     mem,
     net::SocketAddrV4,
@@ -551,6 +555,7 @@ impl Default for SharedDemiRuntime {
     }
 }
 
+/// Dereferences a shared object for use.
 impl<T> Deref for SharedObject<T> {
     type Target = T;
 
@@ -559,8 +564,33 @@ impl<T> Deref for SharedObject<T> {
     }
 }
 
+/// Dereferences a mutable reference to a shared object for use. This breaks Rust's ownership model because it allows
+/// more than one mutable dereference of a shared object at a time. Demikernel requires this because multiple
+/// coroutines will have mutable references to shared objects at the same time; however, Demikernel also ensures that
+/// only one coroutine will run at a time. Due to this design, Rust's static borrow checker is not able to ensure
+/// memory safety and we have chosen not to use the dynamic borrow checker. Instead, shared objects should be used
+/// judiciously across coroutines with the understanding that the shared object may change/be mutated whenever the
+/// coroutine yields.
 impl<T> DerefMut for SharedObject<T> {
     fn deref_mut<'a>(&'a mut self) -> &'a mut Self::Target {
+        let ptr: *mut T = Rc::as_ptr(&self.0) as *mut T;
+        unsafe { &mut *ptr }
+    }
+}
+
+/// Returns a reference to the interior object, which is borrowed for directly accessing the value. Generally deref
+/// should be used unless you absolutely need to borrow the reference.
+impl<T> AsRef<T> for SharedObject<T> {
+    fn as_ref(&self) -> &T {
+        self.0.as_ref()
+    }
+}
+
+/// Returns a mutable reference to the interior object. Similar to DerefMut, this breaks Rust's ownership properties
+/// and should be considered unsafe. However, it is safe to use in Demikernel if and only if we only run one coroutine
+/// at a time.
+impl<T> AsMut<T> for SharedObject<T> {
+    fn as_mut<'a>(&'a mut self) -> &'a mut T {
         let ptr: *mut T = Rc::as_ptr(&self.0) as *mut T;
         unsafe { &mut *ptr }
     }

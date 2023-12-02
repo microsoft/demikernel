@@ -14,6 +14,7 @@ use crate::runtime::{
     SharedObject,
 };
 use ::std::{
+    collections::VecDeque,
     ops::{
         Deref,
         DerefMut,
@@ -28,7 +29,7 @@ use ::std::{
 /// This data structure implements an unbounded asynchronous queue that is hooked into the Demikernel scheduler. On
 /// pop, if the queue is empty, the coroutine will yield until there is data to be read.
 pub struct AsyncQueue<T> {
-    queue: Vec<T>,
+    queue: VecDeque<T>,
     waiters: Vec<YielderHandle>,
 }
 
@@ -44,7 +45,7 @@ impl<T> AsyncQueue<T> {
     // TODO: Enforce capacity limit and do not let queue grow past that.
     pub fn with_capacity(size: usize) -> Self {
         Self {
-            queue: Vec::<T>::with_capacity(size),
+            queue: VecDeque::<T>::with_capacity(size),
             waiters: Vec::<YielderHandle>::new(),
         }
     }
@@ -52,7 +53,14 @@ impl<T> AsyncQueue<T> {
     /// Push to a async queue. Currently async queues are unbounded, so we can synchronously push to them but we will
     /// add bounds checking in the future.
     pub fn push(&mut self, item: T) {
-        self.queue.push(item);
+        self.queue.push_back(item);
+        if let Some(mut handle) = self.waiters.pop() {
+            handle.wake_with(Ok(()));
+        }
+    }
+
+    pub fn push_front(&mut self, item: T) {
+        self.queue.push_front(item);
         if let Some(mut handle) = self.waiters.pop() {
             handle.wake_with(Ok(()));
         }
@@ -60,13 +68,13 @@ impl<T> AsyncQueue<T> {
 
     /// Pop from an async queue. If the queue is empty, this function blocks until it finds something in the queue.
     pub async fn pop(&mut self, yielder: &Yielder) -> Result<T, Fail> {
-        match self.queue.pop() {
+        match self.queue.pop_front() {
             Some(item) => Ok(item),
             None => {
                 let handle: YielderHandle = yielder.get_handle();
                 self.waiters.push(handle);
                 match yielder.yield_until_wake().await {
-                    Ok(()) => match self.queue.pop() {
+                    Ok(()) => match self.queue.pop_front() {
                         Some(item) => Ok(item),
                         None => {
                             let cause: &str = "Spurious wake up!";
@@ -80,8 +88,18 @@ impl<T> AsyncQueue<T> {
         }
     }
 
+    /// Try to get the head of the queue.
+    pub fn try_pop(&mut self) -> Option<T> {
+        self.queue.pop_front()
+    }
+
     pub fn len(&self) -> usize {
         self.queue.len()
+    }
+
+    #[allow(unused)]
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
     }
 }
 
@@ -101,7 +119,7 @@ impl<T> SharedAsyncQueue<T> {
 impl<T> Default for AsyncQueue<T> {
     fn default() -> Self {
         Self {
-            queue: Vec::<T>::new(),
+            queue: VecDeque::<T>::new(),
             waiters: Vec::<YielderHandle>::new(),
         }
     }
