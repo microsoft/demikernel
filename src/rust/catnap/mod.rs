@@ -2,6 +2,8 @@
 // Licensed under the MIT license.
 
 mod queue;
+#[cfg_attr(target_os = "linux", path = "linux/transport.rs")]
+#[cfg_attr(target_os = "windows", path = "win/transport.rs")]
 mod transport;
 
 //==============================================================================
@@ -93,8 +95,8 @@ pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS>);
 impl CatnapLibOS {
     pub fn new(_config: &Config, runtime: SharedDemiRuntime) -> Self {
         Self {
-            runtime,
-            transport: SharedCatnapTransport::default(),
+            runtime: runtime.clone(),
+            transport: SharedCatnapTransport::new(runtime),
         }
     }
 }

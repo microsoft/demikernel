@@ -8,7 +8,12 @@
 use crate::runtime::{
     fail::Fail,
     memory::DemiBuffer,
+    scheduler::{
+        Yielder,
+        YielderHandle,
+    },
     DemiRuntime,
+    SharedDemiRuntime,
     SharedObject,
 };
 use ::libc::{
@@ -32,25 +37,141 @@ use ::std::{
         DerefMut,
     },
 };
-#[cfg(target_os = "linux")]
-use libc::ENOTCONN;
-#[cfg(target_os = "windows")]
-use windows::Win32::Networking::WinSock::{
-    WSAEISCONN,
-    WSAENOTCONN,
+
+use ::std::{
+    collections::HashMap,
+    os::fd::{
+        AsRawFd,
+        RawFd,
+    },
 };
+use libc::{
+    epoll_create,
+    epoll_ctl,
+    epoll_event,
+    epoll_wait,
+    ENOTCONN,
+    EPOLLIN,
+    EPOLLOUT,
+    EPOLL_CTL_ADD,
+    EPOLL_CTL_DEL,
+};
+
+//======================================================================================================================
+// Types
+//======================================================================================================================
+
+/// Identifier used to distinguish I/O streams.
+type Id = RawFd;
+pub type SocketFd = Socket;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
 /// Underlying network transport.
-pub struct CatnapTransport {}
+pub struct CatnapTransport {
+    epoll_fd: Id,
+    handles: HashMap<Id, YielderHandle>,
+}
 
 #[derive(Clone)]
 pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 
 impl SharedCatnapTransport {
+    pub fn new(mut runtime: SharedDemiRuntime) -> Self {
+        // Create epoll.
+        // Create socket.
+        // Linux ignores the size argument, it just has to be more than 0.
+        let epoll_fd: Id = match unsafe { epoll_create(10) } {
+            fd if fd >= 0 => fd.into(),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                panic!("could not create epoll socket: {:?}", errno);
+            },
+        };
+        let me: Self = Self(SharedObject::new(CatnapTransport {
+            epoll_fd,
+            handles: HashMap::<Id, YielderHandle>::new(),
+        }));
+        let mut me2: Self = me.clone();
+        runtime
+            .insert_background_coroutine("catnap::transport::epoll", Box::pin(async move { me2.epoll().await }))
+            .expect("should be able to insert background coroutine");
+        me
+    }
+
+    /// This function registers a handler for incoming I/O on the socket. There should only be one of these per socket.
+    pub fn register_epoll(&mut self, socket: &Socket, yielder_handle: YielderHandle) -> Result<(), Fail> {
+        let id: Id = socket.as_raw_fd();
+        match self.handles.insert(id, yielder_handle) {
+            None => (),
+            Some(_) => unreachable!("Cannot overwrite an old handler"),
+        };
+        let mut epoll_event: epoll_event = epoll_event {
+            events: (EPOLLIN | EPOLLOUT) as u32,
+            u64: id as u64,
+        };
+        match unsafe { epoll_ctl(self.epoll_fd, EPOLL_CTL_ADD, id, &mut epoll_event) } {
+            0 => Ok(()),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                Err(Fail::new(errno, "failed to create epoll"))
+            },
+        }
+    }
+
+    pub fn unregister_epoll(&mut self, socket: &Socket) -> Result<(), Fail> {
+        let id: Id = socket.as_raw_fd();
+        self.handles.remove(&id);
+        let mut epoll_event: epoll_event = epoll_event {
+            events: (EPOLLIN | EPOLLOUT) as u32,
+            u64: id as u64,
+        };
+        match unsafe { epoll_ctl(self.epoll_fd, EPOLL_CTL_DEL, id, &mut epoll_event) } {
+            0 => Ok(()),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                Err(Fail::new(errno, "failed to remove epoll"))
+            },
+        }
+    }
+
+    pub async fn epoll(&mut self) {
+        let yielder: Yielder = Yielder::new();
+        loop {
+            let mut events: Vec<libc::epoll_event> = Vec::with_capacity(1024);
+            let ready_num: usize =
+                match unsafe { epoll_wait(self.epoll_fd, events.as_mut_ptr() as *mut libc::epoll_event, 1024, 0) } {
+                    result if result >= 0 => result as u32 as usize,
+                    result if result == libc::EINTR => continue,
+                    _ => {
+                        let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                        error!("epoll returned an error: {:?}", errno);
+                        break;
+                    },
+                };
+            trace!("Found some events: {:?}", ready_num);
+            while let Some(event) = events.pop() {
+                let id: Id = event.u64 as Id;
+                if event.events | (libc::EPOLLIN as u32) != 0 {
+                    // Get handler.
+                    match self.handles.get_mut(&id) {
+                        Some(handle) => handle.wake_with(Ok(())),
+                        None => {
+                            unreachable!("should have registered a handler at the same time as the epoll event")
+                        },
+                    };
+                }
+            }
+
+            match yielder.yield_once().await {
+                Ok(()) => continue,
+                Err(_) => break,
+            }
+        }
+    }
+
     pub fn socket(&self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
         // Select protocol.
         let protocol: Protocol = match typ {
@@ -138,7 +259,14 @@ impl SharedCatnapTransport {
 
     pub fn connect(&self, socket: &mut Socket, remote: SocketAddrV4) -> Result<(), Fail> {
         match socket.connect(&remote.into()) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                // Set async options in socket.
+                match socket.set_nodelay(true) {
+                    Ok(_) => {},
+                    Err(_) => warn!("cannot set TCP_NONDELAY option"),
+                }
+                Ok(())
+            },
             Err(e) => {
                 if let Some(e) = e.raw_os_error() {
                     // Extra check for Windows.
@@ -164,11 +292,6 @@ impl SharedCatnapTransport {
             Err(e) => {
                 if let Some(e) = e.raw_os_error() {
                     // Extra check for Windows.
-                    #[cfg(target_os = "windows")]
-                    if e == WSAENOTCONN.0 {
-                        return Ok(());
-                    }
-                    #[cfg(target_os = "linux")]
                     if e == ENOTCONN {
                         return Ok(());
                     }
@@ -257,12 +380,5 @@ impl Deref for SharedCatnapTransport {
 impl DerefMut for SharedCatnapTransport {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
-    }
-}
-
-impl Default for SharedCatnapTransport {
-    fn default() -> Self {
-        // Nothing to do.
-        Self(SharedObject::new(CatnapTransport {}))
     }
 }

@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    catnap::transport::SharedCatnapTransport,
+    catnap::transport::{
+        SharedCatnapTransport,
+        SocketFd,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -54,7 +57,7 @@ pub struct CatnapQueue {
     /// The state machine.
     state_machine: SocketStateMachine,
     /// Underlying socket.
-    socket: Socket,
+    socket: SocketFd,
     /// The local address to which the socket is bound.
     local: Option<SocketAddrV4>,
     /// The remote address to which the socket is connected.
