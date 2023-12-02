@@ -172,18 +172,7 @@ impl TcpEchoServer {
         let errno: i64 = qr.qr_ret;
 
         // Check if client has reset the connection.
-        if errno == libc::ECONNRESET as i64 || errno == libc::ECANCELED as i64 || errno == libc::EBADF as i64 {
-            if errno == libc::ECONNRESET as i64 {
-                println!("INFO: client reset connection (qd={:?})", qd);
-            }
-            if errno == libc::EBADF as i64 {
-                println!("INFO: client terminated connection (qd={:?})", qd);
-            } else {
-                println!(
-                    "INFO: operation cancelled, resetting connection (qd={:?}, qt={:?})",
-                    qd, qt
-                );
-            }
+        if is_closed(errno) {
             self.handle_close(qd)?;
         } else {
             println!(
@@ -272,6 +261,17 @@ impl TcpEchoServer {
             .remove(&qt)
             .ok_or(anyhow::anyhow!("unregistered queue token"))?;
         Ok(())
+    }
+}
+
+//======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+fn is_closed(ret: i64) -> bool {
+    match ret as i32 {
+        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
+        _ => false,
     }
 }
 

@@ -134,6 +134,7 @@ fn connect_to_bad_remote(libos: &mut LibOS) -> Result<()> {
     // Poll for enough time to get the connection refused.
     match libos.wait(qt, Some(Duration::from_secs(75))) {
         Ok(qr) if qr.qr_ret == libc::ECONNREFUSED as i64 => {},
+        Ok(qr) if qr.qr_ret == libc::ECONNABORTED as i64 => {},
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
