@@ -1,0 +1,23 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+# Stable Options
+max_width = 120
+merge_derives = true
+reorder_modules = true
+use_field_init_shorthand = false
+use_try_shorthand = true
+reorder_imports = true
+match_block_trailing_comma = true
+
+# Unstable Options
+unstable_features = true
+comment_width = 120
+condense_wildcard_suffixes = false
+format_strings = true
+imports_granularity = "Crate"
+reorder_impl_items = true
+empty_item_single_line = true
+imports_indent = "Block"
+imports_layout = "Vertical"
+indent_style = "Block"
