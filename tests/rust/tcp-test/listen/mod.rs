@@ -187,11 +187,14 @@ fn listen_connecting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
         Err(_) => anyhow::bail!("wait() should timeout"),
     }
 
-    // Fail to listen().
-    // TODO: Not sure if we should be able to listen after a failed connect().
+    // Fail to listen(). Socket should be closed.
     if connect_finished {
         // Succeed to listen().
-        libos.listen(sockqd, 16)?;
+        match libos.listen(sockqd, 16) {
+            Err(e) if e.errno == libc::EBADF => (),
+            Err(e) => anyhow::bail!("listen() failed with {}", e),
+            Ok(()) => anyhow::bail!("listen() on a socket that is connecting should fail"),
+        };
     } else {
         match libos.listen(sockqd, 16) {
             Err(e) if e.errno == libc::EADDRINUSE => (),

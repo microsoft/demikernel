@@ -9,10 +9,8 @@
 pub enum SocketOp {
     Bind,
     Listen,
-    Accept,
-    Accepted,
     Connect,
-    Connected,
+    Established,
     Close,
     Closed,
 }

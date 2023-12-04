@@ -140,7 +140,7 @@ impl SharedCatnapQueue {
         &mut self,
         coroutine_constructor: F,
     ) -> Result<QToken, Fail> {
-        self.state_machine.prepare(SocketOp::Accept)?;
+        self.state_machine.may_accept()?;
         let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
@@ -149,15 +149,13 @@ impl SharedCatnapQueue {
     /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
     pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<Self, Fail> {
         self.state_machine.may_accept()?;
-        self.state_machine.prepare(SocketOp::Accepted)?;
         match self.transport.clone().accept(&mut self.socket, yielder).await {
             // Operation completed.
             Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
-                self.state_machine.commit();
                 Ok(Self(SharedObject::new(CatnapQueue {
                     qtype: self.qtype,
-                    state_machine: SocketStateMachine::new_connected(),
+                    state_machine: SocketStateMachine::new_established(),
                     socket: new_socket,
                     local: None,
                     remote: Some(saddr),
@@ -168,10 +166,7 @@ impl SharedCatnapQueue {
                 // Socket has been closed.
                 Err(Fail::new(errno, "socket was closed"))
             },
-            Err(e) => {
-                self.state_machine.rollback();
-                Err(e)
-            },
+            Err(e) => Err(e),
         }
     }
 
@@ -192,18 +187,18 @@ impl SharedCatnapQueue {
     pub async fn connect_coroutine(&mut self, remote: SocketAddr, yielder: Yielder) -> Result<(), Fail> {
         // Check whether we can connect.
         self.state_machine.may_connect()?;
-        self.state_machine.prepare(SocketOp::Connected)?;
         match self.transport.clone().connect(&mut self.socket, remote, yielder).await {
             Ok(()) => {
+                // Successfully connected to remote.
+                self.state_machine.prepare(SocketOp::Established)?;
+                self.state_machine.commit();
                 self.remote = Some(remote);
                 Ok(())
             },
-            Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
-                // Socket has been closed.
-                Err(Fail::new(errno, "Socket was closed"))
-            },
             Err(e) => {
-                self.state_machine.rollback();
+                // If connect does not succeed, we close the socket.
+                self.state_machine.prepare(SocketOp::Closed)?;
+                self.state_machine.commit();
                 Err(e)
             },
         }
@@ -229,29 +224,27 @@ impl SharedCatnapQueue {
                 self.state_machine.commit();
                 Ok(())
             },
-            Err(e) => {
-                self.state_machine.rollback();
-                Err(e)
-            },
+            Err(e) => Err(e),
         }
     }
 
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
     /// to close a queue and any single-queue functionality after the close completes.
     pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Closed)?;
         match self.transport.clone().async_close(&mut self.socket, yielder).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                self.state_machine.rollback();
-                Err(e)
+            Ok(()) => {
+                self.state_machine.prepare(SocketOp::Closed)?;
+                self.state_machine.commit();
+                Ok(())
             },
+            Err(e) => Err(e),
         }
     }
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
     pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+        self.state_machine.may_push()?;
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
@@ -263,6 +256,7 @@ impl SharedCatnapQueue {
         addr: Option<SocketAddr>,
         yielder: Yielder,
     ) -> Result<(), Fail> {
+        self.state_machine.may_push()?;
         match self.transport.clone().push(&mut self.socket, buf, addr, yielder).await {
             Ok(()) => {
                 debug_assert_eq!(buf.len(), 0);
@@ -276,6 +270,7 @@ impl SharedCatnapQueue {
     /// asynchronous code necessary to pop a buffer from this queue and any single-queue functionality after the pop
     /// completes.
     pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+        self.state_machine.may_pop()?;
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
@@ -286,6 +281,7 @@ impl SharedCatnapQueue {
         size: Option<usize>,
         yielder: Yielder,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        self.state_machine.may_pop()?;
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
