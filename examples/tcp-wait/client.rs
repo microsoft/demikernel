@@ -249,8 +249,7 @@ impl TcpClient {
                         anyhow::bail!("pop() should not sucessfully receive any data");
                     }
                 },
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => {},
                 Ok(_) => anyhow::bail!("wait() should not succeed with pop() after close()"),
                 Err(_) => anyhow::bail!("wait() should not fail"),
             }
@@ -308,6 +307,17 @@ impl TcpClient {
             qr_opcode => anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode),
         }
         Ok(())
+    }
+}
+
+//======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+fn is_closed(ret: i64) -> bool {
+    match ret as i32 {
+        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
+        _ => false,
     }
 }
 

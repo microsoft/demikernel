@@ -140,7 +140,7 @@ impl TcpServer {
                         "client should not have any pending operations, but it has"
                     );
                 },
-                demi_opcode_t::DEMI_OPC_FAILED if qr.qr_ret == libc::ECONNRESET as i64 => {
+                demi_opcode_t::DEMI_OPC_FAILED if is_closed(qr.qr_ret) => {
                     let qd: QDesc = qr.qr_qd.into();
                     let _: Vec<QToken> = self.terminate_connection(qd)?;
                 },
@@ -230,6 +230,17 @@ impl TcpServer {
         self.clients_closed += 1;
         println!("{} clients closed", self.clients_closed);
         Ok(qts_cancelled)
+    }
+}
+
+//======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+fn is_closed(ret: i64) -> bool {
+    match ret as i32 {
+        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
+        _ => false,
     }
 }
 

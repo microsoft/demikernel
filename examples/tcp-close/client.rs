@@ -196,12 +196,9 @@ impl TcpClient {
                             println!("server disconnected (pop returned 0 len buffer)");
                         },
                         demi_opcode_t::DEMI_OPC_FAILED => {
-                            let errno: i64 = qr.qr_ret;
-                            demikernel::ensure_eq!(
-                                errno,
-                                libc::ECONNRESET as i64,
-                                "server should have had closed the connection, but it has not"
-                            );
+                            if !is_closed(qr.qr_ret) {
+                                anyhow::bail!("server should have had terminated the connection, but it has not")
+                            }
                             println!("server disconnected (ECONNRESET)");
                         },
                         qr_opcode => {
@@ -305,7 +302,7 @@ impl TcpClient {
 
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => (),
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET as i64 => (),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => (),
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }
@@ -318,6 +315,17 @@ impl TcpClient {
         }
         self.qds.remove(&qd);
         Ok(())
+    }
+}
+
+//======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+fn is_closed(ret: i64) -> bool {
+    match ret as i32 {
+        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
+        _ => false,
     }
 }
 

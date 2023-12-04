@@ -271,7 +271,10 @@ impl SocketStateMachine {
             )),
             SocketOp::Connected => Ok(SocketState::Connected),
             SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+            // We may enter the closed state from other states because either the state machine was incorrectly rolled
+            // back or the close cased another operation to fail.
+            // FIXME: https://github.com/microsoft/demikernel/issues/1035
+            SocketOp::Closed => Ok(SocketState::Closed),
         }
     }
 
@@ -284,7 +287,7 @@ impl SocketStateMachine {
                 Err(fail(op, &(format!("socket is already connected")), libc::EISCONN))
             },
             SocketOp::Close => Ok(SocketState::Closing),
-            SocketOp::Closed => Err(fail(op, &(format!("socket is busy")), libc::EBUSY)),
+            SocketOp::Closed => Ok(SocketState::Closed),
         }
     }
 

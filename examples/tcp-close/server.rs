@@ -156,15 +156,15 @@ impl TcpServer {
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     let qd: QDesc = qr.qr_qd.into();
-                    let errno: i64 = qr.qr_ret;
 
                     // Ensure that this error was triggered because
                     // the client has terminated the connection.
-                    assert_eq!(
-                        errno,
-                        libc::ECONNRESET as i64,
-                        "client should have had terminated the connection, but it has not"
-                    );
+                    if !is_closed(qr.qr_ret) {
+                        anyhow::bail!(
+                            "client should have had terminated the connection, but it has not: error={:?}",
+                            qr.qr_ret
+                        )
+                    }
 
                     // Handle connection termination.
                     let _: Vec<QToken> = self.handle_connection_termination(qd)?;
@@ -286,9 +286,7 @@ impl TcpServer {
 
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNRESET as i64 => {
-                    Ok(())
-                },
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => Ok(()),
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }
@@ -330,6 +328,17 @@ impl TcpServer {
         println!("{} clients closed", self.clients_closed);
 
         Ok(qts_cancelled)
+    }
+}
+
+//======================================================================================================================
+// Standalone functions
+//======================================================================================================================
+
+fn is_closed(ret: i64) -> bool {
+    match ret as i32 {
+        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
+        _ => false,
     }
 }
 
