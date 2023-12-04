@@ -14,7 +14,7 @@ repository = "https://github.com/demikernel/demikernel"
 cfg-if = "1.0.0"
 
 [build-dependencies]
-anyhow = "1.0.62"
+anyhow = "1.0.75"
 bindgen = "0.60.1"
 cc = "1.0.73"
 
