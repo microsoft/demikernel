@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use ::anyhow::Result;
-use ::bindgen::{Bindings, Builder};
-use ::cc::Build;
-use ::std::{env, path::Path};
+use anyhow::Result;
+use bindgen::{Bindings, Builder};
+use cc::Build;
+use std::{env, path::Path};
 
 #[cfg(target_os = "windows")]
 fn os_build() -> Result<()> {
-    use ::std::path::PathBuf;
+    use std::path::PathBuf;
 
     let out_dir_s: String = env::var("OUT_DIR")?;
     let out_dir: &Path = Path::new(&out_dir_s);
@@ -171,7 +171,7 @@ fn os_build() -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn os_build() -> Result<()> {
-    use ::std::process::Command;
+    use std::process::Command;
 
     let out_dir_s = env::var("OUT_DIR").unwrap();
     let out_dir = Path::new(&out_dir_s);
@@ -300,7 +300,7 @@ fn os_build() -> Result<()> {
         .allowlist_function("rte_eal_init")
         .clang_arg("-mavx")
         .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate_comments(false)
         .generate()
         .unwrap_or_else(|e| panic!("Failed to generate bindings: {:?}", e));
