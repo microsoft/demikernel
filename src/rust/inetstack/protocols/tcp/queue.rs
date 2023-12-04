@@ -140,7 +140,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
-            state_machine: SocketStateMachine::new_connected(),
+            state_machine: SocketStateMachine::new_established(),
             socket: Socket::Established(socket),
             runtime,
             transport,
@@ -183,9 +183,8 @@ impl<const N: usize> SharedTcpQueue<N> {
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
-        self.state_machine.prepare(SocketOp::Accept)?;
         Ok(self
-            .do_generic_sync_control_path_call(coroutine_constructor)?
+            .do_generic_sync_data_path_call(coroutine_constructor)?
             .get_task_id()
             .into())
     }
@@ -198,7 +197,6 @@ impl<const N: usize> SharedTcpQueue<N> {
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
         let new_socket: EstablishedSocket<N> = listening_socket.do_accept(yielder).await?;
-        self.state_machine.prepare(SocketOp::Accepted)?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
@@ -209,7 +207,6 @@ impl<const N: usize> SharedTcpQueue<N> {
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         );
-        self.state_machine.commit();
         Ok(new_queue)
     }
 
@@ -250,11 +247,19 @@ impl<const N: usize> SharedTcpQueue<N> {
             Socket::Connecting(ref connecting_socket) => connecting_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is connecting"),
         };
-        let socket: EstablishedSocket<N> = connecting_socket.connect(yielder).await?;
-        self.state_machine.prepare(SocketOp::Connected)?;
-        self.socket = Socket::Established(socket);
-        self.state_machine.commit();
-        Ok(())
+        match connecting_socket.connect(yielder).await {
+            Ok(socket) => {
+                self.state_machine.prepare(SocketOp::Established)?;
+                self.socket = Socket::Established(socket);
+                self.state_machine.commit();
+                Ok(())
+            },
+            Err(e) => {
+                self.state_machine.prepare(SocketOp::Closed)?;
+                self.state_machine.commit();
+                Err(e)
+            },
+        }
     }
 
     pub fn push<F>(&mut self, buf: DemiBuffer, coroutine_constructor: F) -> Result<QToken, Fail>
