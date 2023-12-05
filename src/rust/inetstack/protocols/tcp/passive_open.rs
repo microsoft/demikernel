@@ -168,7 +168,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         self.ready.pop(yielder).await
     }
 
-    pub fn receive(&mut self, ip_header: &Ipv4Header, header: &TcpHeader) -> Result<(), Fail> {
+    pub fn receive(&mut self, ip_header: &Ipv4Header, header: TcpHeader) -> Result<(), Fail> {
         let remote = SocketAddrV4::new(ip_header.get_src_addr(), header.src_port);
         if self.ready.endpoints.contains(&remote) {
             // TODO: What should we do if a packet shows up for a connection that hasn't been `accept`ed yet?

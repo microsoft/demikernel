@@ -391,7 +391,7 @@ impl<const N: usize> SharedControlBlock<N> {
 
     // This is the main TCP receive routine.
     //
-    pub fn receive(&mut self, header: &mut TcpHeader, mut data: DemiBuffer) {
+    pub fn receive(&mut self, mut header: TcpHeader, mut data: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.state,
@@ -615,7 +615,7 @@ impl<const N: usize> SharedControlBlock<N> {
                 self.sender.send_unacked.set(header.ack_num);
 
                 // Update our send window (SND.WND).
-                self.sender.update_send_window(header);
+                self.sender.update_send_window(&header);
 
                 if header.ack_num == send_next {
                     // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).

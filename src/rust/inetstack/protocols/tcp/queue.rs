@@ -426,11 +426,27 @@ impl<const N: usize> SharedTcpQueue<N> {
     pub fn receive(
         &mut self,
         ip_hdr: &Ipv4Header,
-        tcp_hdr: &mut TcpHeader,
-        local: &SocketAddrV4,
-        remote: &SocketAddrV4,
+        tcp_hdr: TcpHeader,
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
         buf: DemiBuffer,
     ) -> Result<(), Fail> {
+        // Generate the RST segment accordingly to the ACK field.
+        // If the incoming segment has an ACK field, the reset takes its
+        // sequence number from the ACK field of the segment, otherwise the
+        // reset has sequence number zero and the ACK field is set to the sum
+        // of the sequence number and segment length of the incoming segment.
+        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
+        let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
+            (tcp_hdr.ack_num, None)
+        } else {
+            (
+                SeqNumber::from(0),
+                Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
+            )
+        };
+
+        // Route the TCP packet to the socket.
         match self.socket {
             Socket::Established(ref mut socket) => {
                 debug!("Routing to established connection: {:?}", socket.endpoints());
@@ -439,12 +455,12 @@ impl<const N: usize> SharedTcpQueue<N> {
             },
             Socket::Connecting(ref mut socket) => {
                 debug!("Routing to connecting connection: {:?}", socket.endpoints());
-                socket.receive(&tcp_hdr);
+                socket.receive(tcp_hdr);
                 return Ok(());
             },
             Socket::Listening(ref mut socket) => {
                 debug!("Routing to passive connection: {:?}", socket.endpoint());
-                match socket.receive(ip_hdr, &tcp_hdr) {
+                match socket.receive(ip_hdr, tcp_hdr) {
                     Ok(()) => return Ok(()),
                     // Connection was refused.
                     Err(e) if e.errno == libc::ECONNREFUSED => {
@@ -467,21 +483,6 @@ impl<const N: usize> SharedTcpQueue<N> {
                 return Ok(());
             },
         }
-
-        // Generate the RST segment accordingly to the ACK field.
-        // If the incoming segment has an ACK field, the reset takes its
-        // sequence number from the ACK field of the segment, otherwise the
-        // reset has sequence number zero and the ACK field is set to the sum
-        // of the sequence number and segment length of the incoming segment.
-        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
-        let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
-            (tcp_hdr.ack_num, None)
-        } else {
-            (
-                SeqNumber::from(0),
-                Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
-            )
-        };
 
         debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
         self.send_rst(&local, &remote, seq_num, ack_num)?;
