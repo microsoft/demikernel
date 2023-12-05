@@ -282,9 +282,10 @@ fn connection_hangup<const N: usize>(
     client_qd: QDesc,
 ) -> Result<()> {
     // Send FIN: Client -> Server
-    if let Err(e) = client.tcp_close(client_qd) {
-        anyhow::bail!("client tcp_close returned error: {:?}", e);
-    }
+    let _client_qt: QToken = match client.tcp_async_close(client_qd) {
+        Ok(qt) => qt,
+        Err(e) => anyhow::bail!("client tcp_close returned error: {:?}", e),
+    };
     client.get_test_rig().poll_scheduler();
     let client_frames: VecDeque<DemiBuffer> = client.get_test_rig().pop_all_frames();
     advance_clock(Some(server), Some(client), now);
@@ -308,9 +309,10 @@ fn connection_hangup<const N: usize>(
     advance_clock(Some(server), Some(client), now);
 
     // Send FIN: Server -> Client
-    if let Err(e) = server.tcp_close(server_qd) {
-        anyhow::bail!("server tcp_close returned error: {:?}", e);
-    }
+    let _server_qt: QToken = match server.tcp_async_close(server_qd) {
+        Ok(qt) => qt,
+        Err(e) => anyhow::bail!("server tcp_close returned error: {:?}", e),
+    };
     server.get_test_rig().poll_scheduler();
     let server_frames: VecDeque<DemiBuffer> = server.get_test_rig().pop_all_frames();
     advance_clock(Some(server), Some(client), now);
@@ -336,6 +338,8 @@ fn connection_hangup<const N: usize>(
 
     client.get_test_rig().poll_scheduler();
     server.get_test_rig().poll_scheduler();
+
+    // FIXME: harvest client and server qts once close works.
 
     Ok(())
 }
