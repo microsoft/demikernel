@@ -27,7 +27,6 @@ use crate::{
         },
     },
     runtime::{
-        fail::Fail,
         memory::DemiBuffer,
         network::{
             consts::RECEIVE_BATCH_SIZE,
@@ -100,8 +99,7 @@ fn test_connection_timeout() -> Result<()> {
         .get_result()
     {
         None => Ok(()),
-        Some((_, OperationResult::Failed(Fail { errno, cause: _ }))) if errno == libc::ETIMEDOUT => Ok(()),
-        Some(result) => anyhow::bail!("connect should have timed out, instead returned: {:?}", result),
+        _ => anyhow::bail!("connect should have timed out"),
     }
 }
 

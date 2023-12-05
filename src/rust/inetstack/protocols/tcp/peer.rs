@@ -460,7 +460,7 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Processes an incoming TCP segment.
     pub fn receive(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
+        let (mut tcp_hdr, data): (TcpHeader, DemiBuffer) =
             TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
         debug!("TCP received {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
@@ -487,7 +487,7 @@ impl<const N: usize> SharedTcpPeer<N> {
 
         // Dispatch to further processing depending on the socket state.
         self.get_shared_queue(&qd)?
-            .receive(ip_hdr, tcp_hdr, local, remote, data)
+            .receive(&ip_hdr, &mut tcp_hdr, &local, &remote, data)
     }
 }
 

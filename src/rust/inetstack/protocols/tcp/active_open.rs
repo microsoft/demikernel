@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::AsyncQueue,
+    collections::async_value::AsyncValue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -39,18 +39,19 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+            YielderHandle,
+        },
+        timer::SharedTimer,
         QDesc,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
 };
-use ::futures::{
-    channel::mpsc,
-    future::FutureExt,
-    select_biased,
-};
+use ::futures::channel::mpsc;
 use ::std::{
     convert::TryInto,
     net::SocketAddrV4,
@@ -59,6 +60,7 @@ use ::std::{
         DerefMut,
     },
 };
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -73,7 +75,9 @@ pub struct ActiveOpenSocket<const N: usize> {
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    recv_queue: AsyncQueue<TcpHeader>,
+    result: AsyncValue<Result<EstablishedSocket<N>, Fail>>,
+    handle: Option<TaskHandle>,
+    yielder_handle: YielderHandle,
 }
 
 #[derive(Clone)]
@@ -88,16 +92,15 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        runtime: SharedDemiRuntime,
+        mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
-        // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
-
-        Ok(Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
+        let yielder: Yielder = Yielder::new();
+        let mut me: Self = Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
             local_isn,
             local,
             remote,
@@ -107,31 +110,39 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             tcp_config,
             arp,
             dead_socket_tx,
-            recv_queue: AsyncQueue::<TcpHeader>::default(),
-        })))
+            result: AsyncValue::<Result<EstablishedSocket<N>, Fail>>::default(),
+            handle: None,
+            yielder_handle: yielder.get_handle(),
+        }));
+
+        let handle: TaskHandle = runtime.insert_background_coroutine(
+            "Inetstack::TCP::activeopen::background",
+            Box::pin(me.clone().background(yielder)),
+        )?;
+        me.handle = Some(handle);
+        // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
+        Ok(me)
     }
 
-    pub fn receive(&mut self, header: TcpHeader) {
+    pub fn receive(&mut self, header: &TcpHeader) {
         trace!("active_open::receive");
-        self.recv_queue.push(header);
-    }
-
-    pub fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
         let expected_seq = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
         if !(header.ack && header.ack_num == expected_seq) {
-            return Err(Fail::new(libc::EAGAIN, "is not a proper ack"));
+            return;
         }
 
         // Check if our peer is refusing our connection request.
         if header.rst {
-            return Err(Fail::new(libc::ECONNREFUSED, "connection refused"));
+            self.result
+                .set(Err(Fail::new(libc::ECONNREFUSED, "connection refused")));
+            return;
         }
 
         // Bail if we didn't receive a SYN packet.
         if !header.syn {
-            return Err(Fail::new(libc::EAGAIN, "is not a syn packet"));
+            return;
         }
 
         debug!("Received SYN+ACK: {:?}", header);
@@ -200,7 +211,8 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             "Window scale: local {}, remote {}",
             local_window_scale, remote_window_scale
         );
-        Ok(EstablishedSocket::<N>::new(
+
+        let result: Result<EstablishedSocket<N>, Fail> = EstablishedSocket::<N>::new(
             self.local,
             self.remote,
             self.runtime.clone(),
@@ -219,16 +231,20 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             congestion_control::None::new,
             None,
             self.dead_socket_tx.clone(),
-        )?)
+        );
+        self.result.set(result);
+        // This will keep the coroutine from being woken later.
+        self.yielder_handle.wake_with(Ok(()));
+        let handle: TaskHandle = self.handle.take().expect("We should have allocated a background task");
+        if let Err(e) = self.runtime.remove_background_coroutine(&handle) {
+            panic!("Failed to remove active open coroutine (error={:?}", e);
+        }
     }
 
-    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
-        // Start connection handshake.
+    async fn background(mut self, yielder: Yielder) {
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
         for _ in 0..handshake_retries {
-            // Look up remote MAC address.
-            // TODO: Do we need to do this every iteration?
             let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone(), &yielder).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -237,7 +253,6 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 },
             };
 
-            // Set up SYN packet.
             let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
             tcp_hdr.syn = true;
             tcp_hdr.seq_num = self.local_isn;
@@ -258,35 +273,18 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 data: None,
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
-            // Send SYN.
             self.transport.transmit(Box::new(segment));
-
-            // Wait for either a response or timeout.
-            let yielder2: Yielder = Yielder::new();
-            let timeout_future = self.runtime.get_timer().wait(handshake_timeout, &yielder2).fuse();
-            let mut me: Self = self.clone();
-            let ack_future = me.recv_queue.pop(&yielder).fuse();
-            futures::pin_mut!(timeout_future);
-            futures::pin_mut!(ack_future);
-            select_biased! {
-                // If we received a response, process the response and either finish setting up the connection or try
-                // again.
-                result = ack_future => match result {
-                    Ok(header) => match self.process_ack(header) {
-                        Ok(socket) => return Ok(socket),
-                        Err(Fail{errno, cause:_}) if errno == libc::EAGAIN => continue,
-                        Err(e) => return Err(e),
-                    },
-                    Err(e) => return Err(e),
-                },
-                // If timeout, then we try again unless this coroutine has been canceled.
-                result = timeout_future => match result {
-                    Ok(()) => continue,
-                    Err(e) => return Err(e),
-                },
+            let clock_ref: SharedTimer = self.runtime.get_timer();
+            if let Err(e) = clock_ref.wait(handshake_timeout, &yielder).await {
+                self.result.set(Err(e));
+                return;
             }
         }
-        Err(Fail::new(libc::ETIMEDOUT, "connect handshake timed out"))
+        self.result.set(Err(Fail::new(libc::ETIMEDOUT, "handshake timeout")));
+    }
+
+    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
+        self.result.get(yielder).await?
     }
 
     /// Returns the addresses of the two ends of this connection.
