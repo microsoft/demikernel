@@ -29,6 +29,7 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
+            YielderHandle,
         },
         Operation,
         OperationResult,
@@ -212,7 +213,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
-            let yielder_handle = yielder.get_handle();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd, yielder));
             self.runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
@@ -287,7 +288,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::connect for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
-            let yielder_handle = yielder.get_handle();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, yielder));
             self.runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
@@ -324,7 +325,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
-            let yielder_handle = yielder.get_handle();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, yielder));
             self.runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
@@ -358,7 +359,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::pop for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
-            let yielder_handle = yielder.get_handle();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
             self.runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
@@ -408,7 +409,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::close for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
-            let yielder_handle = yielder.get_handle();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
             self.runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
