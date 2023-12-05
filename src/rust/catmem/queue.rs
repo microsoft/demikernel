@@ -116,12 +116,12 @@ impl SharedCatmemQueue {
 
     /// Start an asynchronous coroutine to close this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
-    pub fn async_close<F>(&mut self, insert_coroutine: F) -> Result<QToken, Fail>
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
         F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
     {
         self.ring.prepare_close()?;
-        self.do_generic_sync_control_path_call(insert_coroutine, false)
+        self.do_generic_sync_control_path_call(coroutine_constructor, false)
     }
 
     /// This function perms an async close on the target queue.
@@ -155,8 +155,11 @@ impl SharedCatmemQueue {
 
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(&mut self, insert_coroutine: F) -> Result<QToken, Fail> {
-        self.do_generic_sync_data_path_call(insert_coroutine)
+    pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
     /// This function pops a buffer of optional [size] from the queue. If the queue is connected to the push end of a
@@ -194,11 +197,11 @@ impl SharedCatmemQueue {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce(Yielder) -> Result<TaskHandle, Fail>>(
-        &mut self,
-        insert_coroutine: F,
-    ) -> Result<QToken, Fail> {
-        self.do_generic_sync_data_path_call(insert_coroutine)
+    pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+    {
+        self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then

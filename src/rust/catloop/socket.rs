@@ -161,10 +161,10 @@ impl Socket {
         Ok(())
     }
 
-    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<TaskHandle, Fail> {
+    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state.may_accept()?;
         self.do_generic_sync_control_path_call(coroutine_constructor)
     }
@@ -234,10 +234,10 @@ impl Socket {
         }
     }
 
-    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<TaskHandle, Fail> {
+    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state.prepare(SocketOp::Connect)?;
         self.do_generic_sync_control_path_call(coroutine_constructor)
     }
@@ -317,10 +317,10 @@ impl Socket {
     }
 
     /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<TaskHandle, Fail> {
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state.prepare(SocketOp::Close)?;
         Ok(self.do_generic_sync_control_path_call(coroutine_constructor)?)
     }
@@ -350,7 +350,10 @@ impl Socket {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail> {
+    pub fn push<F>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state.may_push()?;
         coroutine_constructor()
     }
@@ -367,7 +370,10 @@ impl Socket {
 
     /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail> {
+    pub fn pop<F>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state.may_pop()?;
         coroutine_constructor()
     }
@@ -396,10 +402,10 @@ impl Socket {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<TaskHandle, Fail> {
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         // Spawn coroutine.
         match coroutine_constructor() {
             // We successfully spawned the coroutine.
