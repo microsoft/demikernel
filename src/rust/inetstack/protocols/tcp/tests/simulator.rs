@@ -672,12 +672,17 @@ impl Simulation {
         let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
         let ipv4_hdr: Ipv4Header = self.build_ipv4_header();
         let tcp_hdr: TcpHeader = self.build_tcp_header(&tcp_packet);
+        let data: Option<DemiBuffer> = if tcp_packet.seqnum.win > 0 {
+            Some(Self::cook_buffer(tcp_packet.seqnum.win as usize, None))
+        } else {
+            None
+        };
 
         TcpSegment {
             ethernet2_hdr,
             ipv4_hdr,
             tcp_hdr,
-            data: None,
+            data,
             tx_checksum_offload: false,
         }
     }
