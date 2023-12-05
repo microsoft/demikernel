@@ -47,7 +47,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         QDesc,
         QToken,
@@ -61,7 +60,6 @@ use ::futures::channel::mpsc;
 use ::socket2::Type;
 use ::std::{
     any::Any,
-    collections::HashMap,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -97,7 +95,6 @@ pub struct TcpQueue<const N: usize> {
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 #[derive(Clone)]
@@ -126,7 +123,6 @@ impl<const N: usize> SharedTcpQueue<N> {
             tcp_config,
             arp,
             dead_socket_tx,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }))
     }
 
@@ -148,7 +144,6 @@ impl<const N: usize> SharedTcpQueue<N> {
             tcp_config,
             arp,
             dead_socket_tx,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         }))
     }
 
@@ -181,7 +176,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         Ok(self
             .do_generic_sync_data_path_call(coroutine_constructor)?
@@ -218,7 +213,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         coroutine_constructor: F,
     ) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
 
@@ -264,7 +259,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn push<F>(&mut self, buf: DemiBuffer, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.may_push()?;
         // Send synchronously.
@@ -284,7 +279,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.may_pop()?;
         Ok(self
@@ -303,7 +298,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
         let new_socket: Option<Socket<N>> = match self.socket {
@@ -352,14 +347,12 @@ impl<const N: usize> SharedTcpQueue<N> {
             _ => unreachable!("We do not support closing of other socket types"),
         };
         self.state_machine.prepare(SocketOp::Closed)?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         self.state_machine.commit();
         Ok(result)
     }
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
         self.state_machine.prepare(SocketOp::Close)?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "This queue was closed"));
         let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
@@ -534,45 +527,18 @@ impl<const N: usize> SharedTcpQueue<N> {
         Ok(())
     }
 
-    /// Removes an operation from the list of pending operations on this queue. This function should only be called if
-    /// add_pending_op() was previously called.
-    /// TODO: Remove this when we clean up take_result().
-    /// This function is deprecated, do not use.
-    /// FIXME: https://github.com/microsoft/demikernel/issues/888
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
-        self.pending_ops.remove(handle);
-    }
-
-    /// Adds a new operation to the list of pending operations on this queue.
-    fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
-        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
-    }
-
-    /// Cancel all currently pending operations on this queue. If the operation is not complete and the coroutine has
-    /// yielded, wake the coroutine with an error.
-    fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (handle, mut yielder_handle) in self.pending_ops.drain() {
-            if !handle.has_completed() {
-                yielder_handle.wake_with(Err(cause.clone()));
-            }
-        }
-    }
-
     /// Generic function for spawning a control-path coroutine on [self].
     fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
         // Spawn coroutine.
-        match coroutine(Yielder::new()) {
+        match coroutine() {
             // We successfully spawned the coroutine.
-            Ok(handle) => {
+            Ok(task_handle) => {
                 // Commit the operation on the socket.
-                self.add_pending_op(&handle, &yielder_handle);
                 self.state_machine.commit();
-                Ok(handle)
+                Ok(task_handle)
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -586,13 +552,9 @@ impl<const N: usize> SharedTcpQueue<N> {
     /// Generic function for spawning a data-path coroutine on [self].
     fn do_generic_sync_data_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = coroutine(yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
-        Ok(task_handle)
+        coroutine()
     }
 }
 

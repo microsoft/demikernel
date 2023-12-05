@@ -136,10 +136,10 @@ impl SharedCatnapQueue {
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
     /// synchronous functionality necessary to start an accept.
-    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state_machine.may_accept()?;
         let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
@@ -173,10 +173,10 @@ impl SharedCatnapQueue {
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
     /// connect completes.
-    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state_machine.prepare(SocketOp::Connect)?;
         let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
@@ -205,10 +205,10 @@ impl SharedCatnapQueue {
     }
 
     /// Start an asynchronous coroutine to close this queue.
-    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state_machine.prepare(SocketOp::Close)?;
         let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
@@ -243,7 +243,10 @@ impl SharedCatnapQueue {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+    pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state_machine.may_push()?;
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
@@ -269,7 +272,10 @@ impl SharedCatnapQueue {
     /// Schedules a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to pop a buffer from this queue and any single-queue functionality after the pop
     /// completes.
-    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+    pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         self.state_machine.may_pop()?;
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
@@ -299,10 +305,10 @@ impl SharedCatnapQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<TaskHandle, Fail> {
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         // Spawn coroutine.
         match coroutine_constructor() {
             // We successfully spawned the coroutine.
@@ -321,10 +327,10 @@ impl SharedCatnapQueue {
     }
 
     /// Generic function for spawning a data-path coroutine on [self].
-    fn do_generic_sync_data_path_call<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    fn do_generic_sync_data_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         let task_handle: TaskHandle = coroutine_constructor()?;
         Ok(task_handle.get_task_id().into())
     }

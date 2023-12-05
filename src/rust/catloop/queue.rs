@@ -105,10 +105,10 @@ impl SharedCatloopQueue {
 
     /// Starts a coroutine to begin accepting on this queue. This function contains all of the single-queue,
     /// synchronous functionality necessary to start an accept.
-    pub fn accept<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         let task_handle: TaskHandle = self.socket.accept(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
@@ -131,10 +131,10 @@ impl SharedCatloopQueue {
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to connect to a remote endpoint and any single-queue functionality after the
     /// connect completes.
-    pub fn connect<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         let task_handle: TaskHandle = self.socket.connect(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
@@ -152,10 +152,10 @@ impl SharedCatloopQueue {
     }
 
     /// Start an asynchronous coroutine to close this queue.
-    pub fn async_close<F: FnOnce() -> Result<TaskHandle, Fail>>(
-        &mut self,
-        coroutine_constructor: F,
-    ) -> Result<QToken, Fail> {
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         let task_handle: TaskHandle = self.socket.async_close(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
@@ -168,7 +168,10 @@ impl SharedCatloopQueue {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail> {
+    pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
         let task_handle: TaskHandle = self.socket.push(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
@@ -179,8 +182,11 @@ impl SharedCatloopQueue {
 
     /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F: FnOnce() -> Result<TaskHandle, Fail>>(&mut self, insert_coroutine: F) -> Result<QToken, Fail> {
-        let task_handle: TaskHandle = self.socket.pop(insert_coroutine)?;
+    pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    where
+        F: FnOnce() -> Result<TaskHandle, Fail>,
+    {
+        let task_handle: TaskHandle = self.socket.pop(coroutine_constructor)?;
         Ok(task_handle.get_task_id().into())
     }
 
