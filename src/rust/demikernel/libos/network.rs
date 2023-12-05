@@ -238,13 +238,13 @@ impl NetworkLibOS {
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder(libos) => libos.poll_bg_work(),
+            NetworkLibOS::Catpowder(libos) => libos.poll(),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOS::Catnap(libos) => libos.poll(),
             #[cfg(feature = "catcollar-libos")]
             NetworkLibOS::Catcollar(libos) => libos.poll(),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip(libos) => libos.poll_bg_work(),
+            NetworkLibOS::Catnip(libos) => libos.poll(),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOS::Catloop(libos) => libos.poll(),
         }

@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use crate::{
     inetstack::protocols::{
@@ -42,9 +42,13 @@ use crate::{
             QToken,
             QType,
         },
-        scheduler::TaskHandle,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         SharedBox,
         SharedDemiRuntime,
+        SharedObject,
     },
 };
 use ::libc::c_int;
@@ -54,16 +58,19 @@ use ::std::{
         SocketAddr,
         SocketAddrV4,
     },
+    ops::{
+        Deref,
+        DerefMut,
+    },
     pin::Pin,
-    time::Instant,
 };
 
 #[cfg(feature = "profiler")]
 use crate::timer;
 
-//==============================================================================
+//======================================================================================================================
 // Exports
-//==============================================================================
+//======================================================================================================================
 
 #[cfg(test)]
 pub mod test_helpers;
@@ -76,7 +83,6 @@ pub mod protocols;
 // Constants
 //======================================================================================================================
 
-const TIMER_RESOLUTION: usize = 64;
 const MAX_RECV_ITERS: usize = 2;
 
 //======================================================================================================================
@@ -89,12 +95,18 @@ pub struct InetStack<const N: usize> {
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
-    ts_iters: usize,
 }
 
-impl<const N: usize> InetStack<N> {
+#[derive(Clone)]
+pub struct SharedInetStack<const N: usize>(SharedObject<InetStack<N>>);
+
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
+
+impl<const N: usize> SharedInetStack<N> {
     pub fn new(
-        runtime: SharedDemiRuntime,
+        mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -120,19 +132,18 @@ impl<const N: usize> InetStack<N> {
             arp.clone(),
             rng_seed,
         )?;
-        Ok(Self {
+        let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack {
             arp,
             ipv4,
-            runtime,
+            runtime: runtime.clone(),
             transport,
             local_link_addr,
-            ts_iters: 0,
-        })
+        }));
+        let yielder: Yielder = Yielder::new();
+        let background_task: String = format!("inetstack::poll_recv");
+        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll_recv(yielder)))?;
+        Ok(me)
     }
-
-    //======================================================================================================================
-    // Associated Functions
-    //======================================================================================================================
 
     ///
     /// **Brief**
@@ -417,7 +428,7 @@ impl<const N: usize> InetStack<N> {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.poll_bg_work();
+            self.poll();
 
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
@@ -435,7 +446,7 @@ impl<const N: usize> InetStack<N> {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.poll_bg_work();
+            self.poll();
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
@@ -485,19 +496,10 @@ impl<const N: usize> InetStack<N> {
     /// Scheduler will poll all futures that are ready to make progress.
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
-    pub fn poll_bg_work(&mut self) {
+    pub async fn poll_recv(mut self, yielder: Yielder) {
         #[cfg(feature = "profiler")]
-        timer!("inetstack::poll_bg_work");
-        {
-            #[cfg(feature = "profiler")]
-            timer!("inetstack::poll_bg_work::poll");
-            self.runtime.poll();
-        }
-
-        {
-            #[cfg(feature = "profiler")]
-            timer!("inetstack::poll_bg_work::for");
-
+        timer!("inetstack::poll");
+        loop {
             for _ in 0..MAX_RECV_ITERS {
                 let batch = {
                     #[cfg(feature = "profiler")]
@@ -518,16 +520,35 @@ impl<const N: usize> InetStack<N> {
                         if let Err(e) = self.do_receive(pkt) {
                             warn!("Dropped packet: {:?}", e);
                         }
-                        // TODO: This is a workaround for https://github.com/demikernel/inetstack/issues/149.
-                        self.runtime.poll();
                     }
                 }
             }
+            match yielder.yield_once().await {
+                Ok(()) => continue,
+                Err(_) => break,
+            };
         }
+    }
 
-        if self.ts_iters == 0 {
-            self.runtime.advance_clock(Instant::now());
-        }
-        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
+    pub fn poll(&mut self) {
+        self.runtime.poll_and_advance_clock();
+    }
+}
+
+//======================================================================================================================
+// Trait Implementation
+//======================================================================================================================
+
+impl<const N: usize> Deref for SharedInetStack<N> {
+    type Target = InetStack<N>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<const N: usize> DerefMut for SharedInetStack<N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }

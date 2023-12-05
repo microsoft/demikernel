@@ -100,6 +100,12 @@ use self::{
 };
 
 //======================================================================================================================
+// Constants
+//======================================================================================================================
+
+const TIMER_RESOLUTION: usize = 64;
+
+//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -118,6 +124,7 @@ pub struct DemiRuntime {
     network_table: NetworkQueueTable,
     /// Currently running coroutines.
     pending_ops: HashMap<QDesc, HashMap<TaskHandle, YielderHandle>>,
+    ts_iters: usize,
 }
 
 #[derive(Clone)]
@@ -159,6 +166,7 @@ impl SharedDemiRuntime {
             timer: SharedTimer::new(now),
             network_table: NetworkQueueTable::default(),
             pending_ops: HashMap::<QDesc, HashMap<TaskHandle, YielderHandle>>::new(),
+            ts_iters: 0,
         }))
     }
 
@@ -293,6 +301,14 @@ impl SharedDemiRuntime {
                 Err(Fail::new(libc::ESRCH, &cause))
             },
         }
+    }
+
+    pub fn poll_and_advance_clock(&mut self) {
+        if self.ts_iters == 0 {
+            self.advance_clock(Instant::now());
+        }
+        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
+        self.poll()
     }
 
     /// Performs a single pool on the underlying scheduler.
