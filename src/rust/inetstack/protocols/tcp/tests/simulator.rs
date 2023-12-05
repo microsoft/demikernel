@@ -320,6 +320,7 @@ impl Simulation {
     /// Runs an event.
     fn run_event(&mut self, event: &Event) -> Result<()> {
         self.now += event.time;
+        self.engine.get_test_rig().get_runtime().advance_clock(self.now);
         println!("=================");
 
         match &event.action {
