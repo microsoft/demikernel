@@ -102,7 +102,7 @@ impl<const N: usize> EstablishedSocket<N> {
         })
     }
 
-    pub fn receive(&mut self, header: &mut TcpHeader, data: DemiBuffer) {
+    pub fn receive(&mut self, header: TcpHeader, data: DemiBuffer) {
         self.cb.receive(header, data)
     }
 
