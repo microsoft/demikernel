@@ -161,6 +161,10 @@ impl<const N: usize> SharedEngine<N> {
         self.ipv4.tcp.close(socket_fd)
     }
 
+    pub fn tcp_async_close(&mut self, socket_fd: QDesc) -> Result<QToken, Fail> {
+        self.ipv4.tcp.async_close(socket_fd)
+    }
+
     pub fn tcp_listen(&mut self, socket_fd: QDesc, backlog: usize) -> Result<(), Fail> {
         self.ipv4.tcp.listen(socket_fd, backlog)
     }
