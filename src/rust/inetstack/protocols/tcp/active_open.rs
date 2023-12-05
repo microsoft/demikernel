@@ -59,6 +59,7 @@ use ::std::{
         DerefMut,
     },
 };
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -116,8 +117,8 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         self.recv_queue.push(header);
     }
 
-    pub fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
-        let expected_seq = self.local_isn + SeqNumber::from(1);
+    fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
+        let expected_seq: SeqNumber = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
         if !(header.ack && header.ack_num == expected_seq) {
