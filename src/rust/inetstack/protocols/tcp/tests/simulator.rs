@@ -343,6 +343,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args)?,
             nettest::glue::DemikernelSyscall::Push(args) => self.run_push_syscall(args)?,
+            nettest::glue::DemikernelSyscall::Pop => self.run_pop_syscall()?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
             },
@@ -584,6 +585,23 @@ impl Simulation {
         Ok(())
     }
 
+    /// Runs a pop system call.
+    fn run_pop_syscall(&mut self) -> Result<()> {
+        // Extract remote queue descriptor.
+        let remote_qd: QDesc = match self.remote_qd {
+            Some((_, qd)) => qd.unwrap(),
+            None => {
+                anyhow::bail!("remote queue descriptor musth have been previously assigned");
+            },
+        };
+
+        let pop_qt: QToken = self.engine.tcp_pop(remote_qd)?;
+
+        self.inflight = Some(pop_qt);
+        self.engine.get_test_rig().poll_scheduler();
+        Ok(())
+    }
+
     // Build options list.
     fn build_tcp_options(&self, options: &Vec<nettest::glue::TcpOption>) -> ([TcpOptions2; MAX_TCP_OPTIONS], usize) {
         let mut option_list: Vec<TcpOptions2> = Vec::new();
@@ -711,6 +729,9 @@ impl Simulation {
                     },
                     crate::OperationResult::Connect => {
                         eprintln!("connection established (qd={:?})", qd);
+                    },
+                    crate::OperationResult::Pop(_sockaddr, _data) => {
+                        eprintln!("pop completed (qd={:?})", qd);
                     },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
