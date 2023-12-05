@@ -144,7 +144,11 @@ impl<const N: usize> SharedTcpPeer<N> {
         }
 
         // TODO: Check if we are binding to a non-local address.
-
+        if *local.ip() != self.local_ipv4_addr {
+            let cause: String = format!("cannot bind to non-local address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
+        }
         // Check whether the address is in use.
         if self.runtime.addr_in_use(local) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
