@@ -431,7 +431,12 @@ impl<const N: usize> SharedTcpQueue<N> {
         remote: SocketAddrV4,
         buf: DemiBuffer,
     ) -> Result<(), Fail> {
-        // Grab the seq number for later.
+        // Generate the RST segment accordingly to the ACK field.
+        // If the incoming segment has an ACK field, the reset takes its
+        // sequence number from the ACK field of the segment, otherwise the
+        // reset has sequence number zero and the ACK field is set to the sum
+        // of the sequence number and segment length of the incoming segment.
+        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
         let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
             (tcp_hdr.ack_num, None)
         } else {
@@ -479,12 +484,6 @@ impl<const N: usize> SharedTcpQueue<N> {
             },
         }
 
-        // Generate the RST segment accordingly to the ACK field.
-        // If the incoming segment has an ACK field, the reset takes its
-        // sequence number from the ACK field of the segment, otherwise the
-        // reset has sequence number zero and the ACK field is set to the sum
-        // of the sequence number and segment length of the incoming segment.
-        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
         debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
         self.send_rst(&local, &remote, seq_num, ack_num)?;
         Ok(())
