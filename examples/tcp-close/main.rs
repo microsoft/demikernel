@@ -12,6 +12,7 @@
 
 mod args;
 mod client;
+mod helper_functions;
 mod server;
 
 use crate::{

@@ -5,6 +5,7 @@
 // Imports
 //======================================================================================================================
 
+use crate::helper_functions;
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -101,7 +102,7 @@ impl TcpClient {
                 },
             }
 
-            self.issue_close(qd)?;
+            self.issue_close_and_deregister_qd(qd)?;
         }
 
         Ok(())
@@ -148,7 +149,7 @@ impl TcpClient {
                     println!("{} clients connected", self.clients_connected);
 
                     self.clients_closed += 1;
-                    self.issue_close(qd)?;
+                    self.issue_close_and_deregister_qd(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     anyhow::bail!("operation failed (qr_ret={:?})", qr.qr_ret)
@@ -193,7 +194,7 @@ impl TcpClient {
                             println!("server disconnected (pop returned 0 len buffer)");
                         },
                         demi_opcode_t::DEMI_OPC_FAILED => {
-                            if !is_closed(qr.qr_ret) {
+                            if !helper_functions::is_closed(qr.qr_ret) {
                                 anyhow::bail!("server should have had terminated the connection, but it has not")
                             }
                             println!("server disconnected (ECONNRESET)");
@@ -211,7 +212,7 @@ impl TcpClient {
                 },
             }
 
-            self.issue_close(qd)?;
+            self.issue_close_and_deregister_qd(qd)?;
         }
 
         Ok(())
@@ -263,7 +264,7 @@ impl TcpClient {
 
                     println!("server disconnected (pop returned 0 len buffer)");
                     self.clients_closed += 1;
-                    self.issue_close(qr.qr_qd.into())?;
+                    self.issue_close_and_deregister_qd(qr.qr_qd.into())?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     let errno: i64 = qr.qr_ret;
@@ -274,7 +275,7 @@ impl TcpClient {
                     );
                     println!("server disconnected (ECONNRESET)");
                     self.clients_closed += 1;
-                    self.issue_close(qr.qr_qd.into())?;
+                    self.issue_close_and_deregister_qd(qr.qr_qd.into())?;
                 },
                 qr_opcode => {
                     anyhow::bail!("unexpected result (qr_opcode={:?})", qr_opcode)
@@ -292,29 +293,11 @@ impl TcpClient {
         Ok(qd)
     }
 
-    /// Issues a close() operation and deregisters the queue descriptor.
-    fn issue_close(&mut self, qd: QDesc) -> Result<()> {
-        let qt: QToken = self.libos.async_close(qd)?;
-
-        match self.libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => (),
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => (),
-            Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
-            Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
-        }
+    /// Issues the close() and wait() operations, and deregisters the queue descriptor.
+    fn issue_close_and_deregister_qd(&mut self, qd: QDesc) -> Result<()> {
+        helper_functions::close_and_wait(&mut self.libos, qd)?;
         self.qds.remove(&qd);
         Ok(())
-    }
-}
-
-//======================================================================================================================
-// Standalone functions
-//======================================================================================================================
-
-fn is_closed(ret: i64) -> bool {
-    match ret as i32 {
-        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
-        _ => false,
     }
 }
 
@@ -326,7 +309,7 @@ impl Drop for TcpClient {
     // Releases all resources allocated to a pipe client.
     fn drop(&mut self) {
         for qd in self.qds.clone().drain() {
-            if let Err(e) = self.issue_close(qd) {
+            if let Err(e) = self.issue_close_and_deregister_qd(qd) {
                 println!("ERROR: close() failed (error={:?}", e);
                 println!("WARN: leaking qd={:?}", qd);
             }
