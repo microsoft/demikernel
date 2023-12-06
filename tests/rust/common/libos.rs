@@ -7,7 +7,7 @@
 
 use super::runtime::SharedDummyRuntime;
 use ::demikernel::{
-    inetstack::InetStack,
+    inetstack::SharedInetStack,
     runtime::{
         fail::Fail,
         logging,
@@ -54,7 +54,7 @@ impl DummyLibOS {
         tx: Sender<DemiBuffer>,
         rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Result<InetStack<RECEIVE_BATCH_SIZE>, Fail> {
+    ) -> Result<SharedInetStack<RECEIVE_BATCH_SIZE>, Fail> {
         let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         let transport: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx);
         let arp_config: ArpConfig = ArpConfig::new(
@@ -68,7 +68,7 @@ impl DummyLibOS {
         let tcp_config: TcpConfig = TcpConfig::default();
         let rng_seed: [u8; 32] = [0; 32];
         logging::initialize();
-        InetStack::new(
+        SharedInetStack::new(
             runtime,
             SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport)),
             link_addr,

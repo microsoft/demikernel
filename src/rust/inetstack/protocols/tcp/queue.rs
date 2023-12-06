@@ -453,7 +453,7 @@ impl<const N: usize> SharedTcpQueue<N> {
             },
             Socket::Listening(ref mut socket) => {
                 debug!("Routing to passive connection: {:?}", socket.endpoint());
-                match socket.receive(ip_hdr, tcp_hdr) {
+                match socket.receive(ip_hdr, tcp_hdr, buf) {
                     Ok(()) => return Ok(()),
                     // Connection was refused.
                     Err(e) if e.errno == libc::ECONNREFUSED => {

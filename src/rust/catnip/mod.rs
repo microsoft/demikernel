@@ -11,7 +11,7 @@ pub mod runtime;
 use self::runtime::SharedDPDKRuntime;
 use crate::{
     demikernel::config::Config,
-    inetstack::InetStack,
+    inetstack::SharedInetStack,
     runtime::{
         fail::Fail,
         libdpdk::load_mlx_driver,
@@ -58,7 +58,7 @@ use crate::timer;
 /// Catnip LibOS
 pub struct CatnipLibOS {
     runtime: SharedDemiRuntime,
-    inetstack: InetStack<RECEIVE_BATCH_SIZE>,
+    inetstack: SharedInetStack<RECEIVE_BATCH_SIZE>,
     transport: SharedDPDKRuntime,
 }
 
@@ -87,7 +87,7 @@ impl CatnipLibOS {
         let udp_config: UdpConfig = transport.get_udp_config();
         let tcp_config: TcpConfig = transport.get_tcp_config();
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: InetStack<RECEIVE_BATCH_SIZE> = InetStack::new(
+        let inetstack: SharedInetStack<RECEIVE_BATCH_SIZE> = SharedInetStack::new(
             runtime.clone(),
             SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
             link_addr,
@@ -162,7 +162,7 @@ impl CatnipLibOS {
 
 /// De-Reference Trait Implementation for Catnip LibOS
 impl Deref for CatnipLibOS {
-    type Target = InetStack<RECEIVE_BATCH_SIZE>;
+    type Target = SharedInetStack<RECEIVE_BATCH_SIZE>;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack
