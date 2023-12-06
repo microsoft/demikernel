@@ -897,6 +897,9 @@ impl Simulation {
                     crate::OperationResult::Accept(_) => {
                         anyhow::bail!("accept should complete on incoming packet (qd={:?})", qd);
                     },
+                    crate::OperationResult::Push => {
+                        warn!("push should not complete, untill the remote has acknowledged sent data");
+                    },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
                 _ => unreachable!("no operation has completed coroutine has completed, but it should"),
