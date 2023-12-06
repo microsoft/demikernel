@@ -5,17 +5,22 @@
 // Imports
 //======================================================================================================================
 
+use crate::helper_functions;
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
+    runtime::{
+        fail::Fail,
+        types::{
+            demi_opcode_t,
+            demi_qresult_t,
+        },
     },
     LibOS,
     QDesc,
     QToken,
 };
+use log::warn;
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -349,7 +354,7 @@ impl TcpEchoClient {
         let errno: i64 = qr.qr_ret;
 
         // Check if client has reset the connection.
-        if is_closed(errno) {
+        if helper_functions::is_closed(errno) {
             println!("INFO: server reset connection (qd={:?})", qd);
             self.handle_close(qd)?;
         } else {
@@ -383,7 +388,7 @@ impl TcpEchoClient {
         let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.extract_if(|_k, v| v == &qd).collect();
         let _: Vec<_> = self.qts.extract_if(|x| qts_drained.contains_key(x)).collect();
         self.clients.remove(&qd);
-        self.libos.close(qd)?;
+        helper_functions::close_and_wait(&mut self.libos, qd)?;
         println!("INFO: {} clients connected", self.clients.len());
         Ok(())
     }
@@ -401,17 +406,6 @@ impl TcpEchoClient {
             .remove(&qt)
             .ok_or(anyhow::anyhow!("unregistered queue token qt={:?}", qt))?;
         Ok(())
-    }
-}
-
-//======================================================================================================================
-// Standalone functions
-//======================================================================================================================
-
-fn is_closed(ret: i64) -> bool {
-    match ret as i32 {
-        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
-        _ => false,
     }
 }
 

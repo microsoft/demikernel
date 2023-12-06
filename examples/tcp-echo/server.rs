@@ -28,6 +28,8 @@ use std::{
     },
 };
 
+use crate::helper_functions;
+
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
 
@@ -71,14 +73,14 @@ impl TcpEchoServer {
         // Bind the socket to a local address.
         if let Err(e) = libos.bind(sockqd, local) {
             println!("ERROR: {:?}", e);
-            libos.close(sockqd)?;
+            helper_functions::close_and_wait(&mut libos, sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
         // Enable the socket to accept incoming connections.
         if let Err(e) = libos.listen(sockqd, 16) {
             println!("ERROR: {:?}", e);
-            libos.close(sockqd)?;
+            helper_functions::close_and_wait(&mut libos, sockqd)?;
             anyhow::bail!("{:?}", e);
         }
 
@@ -172,7 +174,7 @@ impl TcpEchoServer {
         let errno: i64 = qr.qr_ret;
 
         // Check if client has reset the connection.
-        if is_closed(errno) {
+        if helper_functions::is_closed(errno) {
             self.handle_close(qd)?;
         } else {
             println!(
@@ -244,7 +246,7 @@ impl TcpEchoServer {
         let qts_drained: HashMap<QToken, QDesc> = self.qts_reverse.extract_if(|_k, v| v == &qd).collect();
         let _: Vec<_> = self.qts.extract_if(|x| qts_drained.contains_key(x)).collect();
         self.clients.remove(&qd);
-        self.libos.close(qd)?;
+        helper_functions::close_and_wait(&mut self.libos, qd)?;
         Ok(())
     }
 
@@ -261,17 +263,6 @@ impl TcpEchoServer {
             .remove(&qt)
             .ok_or(anyhow::anyhow!("unregistered queue token"))?;
         Ok(())
-    }
-}
-
-//======================================================================================================================
-// Standalone functions
-//======================================================================================================================
-
-fn is_closed(ret: i64) -> bool {
-    match ret as i32 {
-        libc::ECONNRESET | libc::ENOTCONN | libc::ECANCELED | libc::EBADF => true,
-        _ => false,
     }
 }
 

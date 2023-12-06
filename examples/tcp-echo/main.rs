@@ -40,6 +40,7 @@ pub const AF_INET: i32 = libc::AF_INET;
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
 mod client;
+mod helper_functions;
 mod server;
 
 //======================================================================================================================
