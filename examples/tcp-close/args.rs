@@ -30,8 +30,6 @@ pub struct ProgramArguments {
     peer_type: Option<String>,
     /// Who closes sockets?
     who_closes: Option<String>,
-    /// Should async close?
-    should_async_close: bool,
 }
 
 impl ProgramArguments {
@@ -63,14 +61,6 @@ impl ProgramArguments {
                     .required(false)
                     .value_name("server|client")
                     .help("Sets who_closes the sockets"),
-            )
-            .arg(
-                Arg::new("should_async_close")
-                    .long("should_async_close")
-                    .value_parser(clap::value_parser!(bool))
-                    .required(false)
-                    .value_name("true|false")
-                    .help("Sets should_async_close"),
             )
             .arg(
                 Arg::new("nclients")
@@ -108,7 +98,6 @@ impl ProgramArguments {
             nclients: None,
             peer_type: None,
             who_closes: None,
-            should_async_close: false,
         };
 
         // Number of clients.
@@ -135,14 +124,6 @@ impl ProgramArguments {
             args.who_closes = Some(who_closes.to_string());
         }
 
-        // Should close sockets using async_close()/close()?
-        if let Some(should_async_close) = matches.get_one::<bool>("should_async_close") {
-            match Some(should_async_close) {
-                Some(_) => args.should_async_close = *should_async_close,
-                None => anyhow::bail!("invalid should_async_close type"),
-            }
-        }
-
         Ok(args)
     }
 
@@ -164,11 +145,6 @@ impl ProgramArguments {
     /// Returns the `peer_type` command line argument.
     pub fn who_closes(&self) -> Option<String> {
         self.who_closes.clone()
-    }
-
-    /// Returns the `should_async_close` command line argument.
-    pub fn should_async_close(&self) -> bool {
-        self.should_async_close
     }
 
     /// Returns the `run_mode` command line argument.

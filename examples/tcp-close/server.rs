@@ -60,8 +60,6 @@ pub struct TcpServer {
     clients_accepted: usize,
     /// Number of closed connections.
     clients_closed: usize,
-    /// Governs if the sockets are closed using async_close() or close().
-    should_async_close: bool,
     /// Test passed flag to allow cleanup in drop() only if the test fails.
     has_test_passed: bool,
 }
@@ -72,7 +70,7 @@ pub struct TcpServer {
 
 impl TcpServer {
     /// Creates a new TCP server.
-    pub fn new(mut libos: LibOS, local: SocketAddr, should_async_close: bool) -> Result<Self> {
+    pub fn new(mut libos: LibOS, local: SocketAddr) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
@@ -89,7 +87,6 @@ impl TcpServer {
             qts_reverse: HashMap::default(),
             clients_accepted: 0,
             clients_closed: 0,
-            should_async_close,
             has_test_passed: false,
         });
     }
@@ -178,7 +175,7 @@ impl TcpServer {
         // If close() fails, this test will fail. That is the desired behavior, because we want to test the close()
         // functionality. So this test differs from other tests. Other tests allocate resources in new() and release
         // them in the drop() function only.
-        self.issue_close(self.sockqd)?;
+        self.close_and_wait(self.sockqd)?;
 
         self.has_test_passed = true;
 
@@ -213,7 +210,7 @@ impl TcpServer {
                     let qd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
                     self.clients_accepted += 1;
                     println!("{} clients accepted, closing socket", self.clients_accepted);
-                    self.issue_close(qd)?;
+                    self.close_and_wait(qd)?;
                     self.clients_closed += 1;
                     self.issue_accept()?;
                 },
@@ -224,7 +221,7 @@ impl TcpServer {
         }
 
         // Close local socket.
-        self.issue_close(self.sockqd)?;
+        self.close_and_wait(self.sockqd)?;
 
         Ok(())
     }
@@ -279,23 +276,15 @@ impl TcpServer {
         Ok(())
     }
 
-    /// Issues a close() operation.
-    fn issue_close(&mut self, qd: QDesc) -> Result<()> {
-        if self.should_async_close {
-            let qt: QToken = self.libos.async_close(qd)?;
+    /// Issues a close() operation and waits for it to complete.
+    fn close_and_wait(&mut self, qd: QDesc) -> Result<()> {
+        let qt: QToken = self.libos.async_close(qd)?;
 
-            match self.libos.wait(qt, None) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => Ok(()),
-                Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
-                Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
-            }
-        } else {
-            match self.libos.close(qd) {
-                Ok(_) => Ok(()),
-                Err(e) if e.errno == libc::ECONNRESET => Ok(()),
-                Err(_) => anyhow::bail!("wait() should succeed with close()"),
-            }
+        match self.libos.wait(qt, None) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => Ok(()),
+            Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
+            Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
         }
     }
 
@@ -322,7 +311,7 @@ impl TcpServer {
         self.unregister_client(qd);
 
         // Close TCP socket.
-        self.issue_close(qd)?;
+        self.close_and_wait(qd)?;
 
         self.clients_closed += 1;
         println!("{} clients closed", self.clients_closed);
@@ -353,13 +342,15 @@ impl Drop for TcpServer {
         if self.has_test_passed {
             return;
         }
+        // Close all client sockets.
         for qd in self.clients.clone().drain() {
-            if let Err(e) = self.issue_close(qd) {
+            if let Err(e) = self.close_and_wait(qd) {
                 println!("ERROR: close() failed (error={:?}", e);
                 println!("WARN: leaking qd={:?}", qd);
             }
         }
-        if let Err(e) = self.libos.close(self.sockqd) {
+        // Close local socket.
+        if let Err(e) = self.close_and_wait(self.sockqd) {
             println!("ERROR: close() failed (error={:?}", e);
             println!("WARN: leaking qd={:?}", self.sockqd);
         }
