@@ -12,6 +12,7 @@
 
 mod args;
 mod client;
+mod helper_functions;
 mod server;
 
 use crate::{
@@ -44,7 +45,7 @@ fn main() -> Result<()> {
     match args.who_closes().expect("missing whocloses the socket").as_str() {
         "client" => match args.peer_type().expect("missing peer_type").as_str() {
             "client" => {
-                let mut client: TcpClient = TcpClient::new(libos, args.addr(), args.should_async_close())?;
+                let mut client: TcpClient = TcpClient::new(libos, args.addr())?;
                 let nclients: usize = args.nclients().expect("missing number of clients");
                 match args.run_mode().as_str() {
                     "sequential" => client.run_sequential(nclients),
@@ -53,14 +54,14 @@ fn main() -> Result<()> {
                 }
             },
             "server" => {
-                let mut server: TcpServer = TcpServer::new(libos, args.addr(), args.should_async_close())?;
+                let mut server: TcpServer = TcpServer::new(libos, args.addr())?;
                 server.run(args.nclients())
             },
             _ => anyhow::bail!("invalid peer type"),
         },
         "server" => match args.peer_type().expect("missing peer_type").as_str() {
             "client" => {
-                let mut client: TcpClient = TcpClient::new(libos, args.addr(), args.should_async_close())?;
+                let mut client: TcpClient = TcpClient::new(libos, args.addr())?;
                 let nclients: usize = args.nclients().expect("missing number of clients");
                 match args.run_mode().as_str() {
                     "sequential" => client.run_sequential_expecting_server_to_close_sockets(nclients),
@@ -69,7 +70,7 @@ fn main() -> Result<()> {
                 }
             },
             "server" => {
-                let mut server: TcpServer = TcpServer::new(libos, args.addr(), args.should_async_close())?;
+                let mut server: TcpServer = TcpServer::new(libos, args.addr())?;
                 server.run_close_sockets_on_accept(args.nclients())
             },
             _ => anyhow::bail!("invalid peer type"),
