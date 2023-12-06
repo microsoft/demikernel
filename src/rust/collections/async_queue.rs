@@ -14,7 +14,13 @@ use crate::runtime::{
     SharedObject,
 };
 use ::std::{
-    collections::VecDeque,
+    collections::{
+        vec_deque::{
+            Iter,
+            IterMut,
+        },
+        VecDeque,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -93,13 +99,26 @@ impl<T> AsyncQueue<T> {
         self.queue.pop_front()
     }
 
+    /// Get the length of the queue.
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
+    /// Check if the queue is empty.
     #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
+    }
+
+    /// Get an iterator over values
+    #[allow(unused)]
+    pub fn get_values(&self) -> Iter<T> {
+        self.queue.iter()
+    }
+
+    /// Get an iterator over mutable values
+    pub fn get_mut_values(&mut self) -> IterMut<T> {
+        self.queue.iter_mut()
     }
 }
 
