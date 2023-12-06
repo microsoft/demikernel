@@ -56,6 +56,8 @@ pub struct TcpClient {
     clients_connected: usize,
     /// Number of clients that closed their connection.
     clients_closed: usize,
+    /// Governs if the sockets are closed using async_close() or close().
+    should_async_close: bool,
 }
 
 //======================================================================================================================
@@ -64,7 +66,7 @@ pub struct TcpClient {
 
 impl TcpClient {
     /// Creates a new TCP client.
-    pub fn new(libos: LibOS, remote: SocketAddr) -> Result<Self> {
+    pub fn new(libos: LibOS, remote: SocketAddr, should_async_close: bool) -> Result<Self> {
         println!("Connecting to: {:?}", remote);
         Ok(Self {
             libos,
@@ -72,6 +74,7 @@ impl TcpClient {
             qds: HashSet::<QDesc>::default(),
             clients_connected: 0,
             clients_closed: 0,
+            should_async_close,
         })
     }
 
@@ -294,13 +297,21 @@ impl TcpClient {
 
     /// Issues a close() operation and deregisters the queue descriptor.
     fn issue_close(&mut self, qd: QDesc) -> Result<()> {
-        let qt: QToken = self.libos.async_close(qd)?;
+        if self.should_async_close {
+            let qt: QToken = self.libos.async_close(qd)?;
 
-        match self.libos.wait(qt, None) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => (),
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => (),
-            Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
-            Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
+            match self.libos.wait(qt, None) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => (),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => (),
+                Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
+                Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
+            }
+        } else {
+            match self.libos.close(qd) {
+                Ok(_) => (),
+                Err(e) if e.errno == libc::ECONNRESET => (),
+                Err(_) => anyhow::bail!("wait() should succeed with close()"),
+            }
         }
         self.qds.remove(&qd);
         Ok(())
