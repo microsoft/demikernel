@@ -342,7 +342,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args)?,
+            nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall()?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
@@ -572,7 +572,7 @@ impl Simulation {
     }
 
     /// Runs a push system call.
-    fn run_push_syscall(&mut self, args: &PushArgs) -> Result<()> {
+    fn run_push_syscall(&mut self, args: &PushArgs, ret: u32) -> Result<()> {
         // Extract buffer length.
         let buf_len: u16 = match args.len {
             Some(len) => len.try_into()?,
@@ -592,10 +592,18 @@ impl Simulation {
         };
 
         let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
-        let push_qt: QToken = self.engine.tcp_push(remote_qd, buf)?;
-
-        self.inflight = Some(push_qt);
-        Ok(())
+        match self.engine.tcp_push(remote_qd, buf) {
+            Ok(push_qt) => {
+                self.inflight = Some(push_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for push syscall");
+                eprintln!("run_push_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a pop system call.
