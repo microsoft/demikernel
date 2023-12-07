@@ -337,7 +337,7 @@ impl Simulation {
         println!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
             // Issue demi_socket().
-            nettest::glue::DemikernelSyscall::Socket(args, fd) => self.run_socket_syscall(args, fd.clone())?,
+            nettest::glue::DemikernelSyscall::Socket(args, ret) => self.run_socket_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
@@ -370,7 +370,7 @@ impl Simulation {
     }
 
     /// Runs a socket system call.
-    fn run_socket_syscall(&mut self, args: &SocketArgs, fd: u32) -> Result<()> {
+    fn run_socket_syscall(&mut self, args: &SocketArgs, ret: u32) -> Result<()> {
         // Check for unsupported socket domain.
         if args.domain != nettest::glue::SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
@@ -393,10 +393,18 @@ impl Simulation {
         }
 
         // Issue demi_socket().
-        let qd: QDesc = self.engine.tcp_socket()?;
-        self.local_qd = Some((fd, qd));
-
-        Ok(())
+        match self.engine.tcp_socket() {
+            Ok(qd) => {
+                self.local_qd = Some((ret, qd));
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for socket syscall");
+                eprintln!("run_socket_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a bind system call.
