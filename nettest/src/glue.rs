@@ -40,7 +40,7 @@ pub enum DemikernelSyscall {
     Accept(AcceptArgs, u32),
     Connect(ConnectArgs, u32),
     Push(PushArgs, u32),
-    Pop,
+    Pop(u32),
     Close,
     Unsupported,
 }
@@ -54,7 +54,7 @@ impl Debug for DemikernelSyscall {
             DemikernelSyscall::Accept(args, _qd) => write!(f, "demi_accept({:?})", args),
             DemikernelSyscall::Connect(args, _ok) => write!(f, "demi_connect({:?})", args),
             DemikernelSyscall::Push(args, _ret) => write!(f, "demi_push({:?})", args),
-            DemikernelSyscall::Pop => write!(f, "demi_pop"),
+            DemikernelSyscall::Pop(_ret) => write!(f, "demi_pop"),
             DemikernelSyscall::Close => write!(f, "demi_close"),
             DemikernelSyscall::Unsupported => write!(f, "Unsupported"),
         }

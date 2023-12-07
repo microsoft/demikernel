@@ -343,7 +343,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args)?,
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args)?,
-            nettest::glue::DemikernelSyscall::Pop => self.run_pop_syscall()?,
+            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall()?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
             },

@@ -92,7 +92,8 @@ Syscall -> DemikernelSyscall
             DemikernelSyscall::Push($3, ret)
       }
       | 'RECV' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Pop
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Pop(ret)
       }
       | 'CLOSE' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Close
@@ -102,7 +103,8 @@ Syscall -> DemikernelSyscall
             DemikernelSyscall::Push($3, ret)
       }
       | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Pop
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Pop(ret)
             }
       | 'GETSOCKOPT' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Unsupported
