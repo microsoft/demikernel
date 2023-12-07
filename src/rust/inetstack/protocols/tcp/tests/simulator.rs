@@ -341,7 +341,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
-            nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args)?,
+            nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args)?,
             nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall()?,
             nettest::glue::DemikernelSyscall::Unsupported => {
@@ -532,7 +532,7 @@ impl Simulation {
     }
 
     /// Runs a connect system call.
-    fn run_connect_syscall(&mut self, args: &ConnectArgs) -> Result<()> {
+    fn run_connect_syscall(&mut self, args: &ConnectArgs, ret: u32) -> Result<()> {
         // Extract local queue descriptor.
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
@@ -557,11 +557,18 @@ impl Simulation {
             },
         };
 
-        let connect_qt: QToken = self.engine.tcp_connect(local_qd, remote_addr)?;
-
-        self.inflight = Some(connect_qt);
-
-        Ok(())
+        match self.engine.tcp_connect(local_qd, remote_addr) {
+            Ok(connect_qt) => {
+                self.inflight = Some(connect_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for connect syscall");
+                eprintln!("run_accept_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a push system call.
