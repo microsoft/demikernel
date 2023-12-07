@@ -337,13 +337,13 @@ impl Simulation {
         println!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
             // Issue demi_socket().
-            nettest::glue::DemikernelSyscall::Socket(args, fd) => self.run_socket_syscall(args, fd.clone())?,
+            nettest::glue::DemikernelSyscall::Socket(args, ret) => self.run_socket_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
-            nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args)?,
-            nettest::glue::DemikernelSyscall::Push(args) => self.run_push_syscall(args)?,
-            nettest::glue::DemikernelSyscall::Pop => self.run_pop_syscall()?,
+            nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
+            nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
+            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall(ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
             },
@@ -352,6 +352,7 @@ impl Simulation {
             },
         }
 
+        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
@@ -369,7 +370,7 @@ impl Simulation {
     }
 
     /// Runs a socket system call.
-    fn run_socket_syscall(&mut self, args: &SocketArgs, fd: u32) -> Result<()> {
+    fn run_socket_syscall(&mut self, args: &SocketArgs, ret: u32) -> Result<()> {
         // Check for unsupported socket domain.
         if args.domain != nettest::glue::SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
@@ -392,10 +393,18 @@ impl Simulation {
         }
 
         // Issue demi_socket().
-        let qd: QDesc = self.engine.tcp_socket()?;
-        self.local_qd = Some((fd, qd));
-
-        Ok(())
+        match self.engine.tcp_socket() {
+            Ok(qd) => {
+                self.local_qd = Some((ret, qd));
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for socket syscall");
+                eprintln!("run_socket_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a bind system call.
@@ -510,7 +519,6 @@ impl Simulation {
                 self.remote_qd = Some((ret, None));
 
                 self.inflight = Some(accept_qt);
-                self.engine.get_test_rig().poll_scheduler();
 
                 Ok(())
             },
@@ -524,7 +532,7 @@ impl Simulation {
     }
 
     /// Runs a connect system call.
-    fn run_connect_syscall(&mut self, args: &ConnectArgs) -> Result<()> {
+    fn run_connect_syscall(&mut self, args: &ConnectArgs, ret: u32) -> Result<()> {
         // Extract local queue descriptor.
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
@@ -549,16 +557,22 @@ impl Simulation {
             },
         };
 
-        let connect_qt: QToken = self.engine.tcp_connect(local_qd, remote_addr)?;
-
-        self.inflight = Some(connect_qt);
-        self.engine.get_test_rig().poll_scheduler();
-
-        Ok(())
+        match self.engine.tcp_connect(local_qd, remote_addr) {
+            Ok(connect_qt) => {
+                self.inflight = Some(connect_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for connect syscall");
+                eprintln!("run_accept_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a push system call.
-    fn run_push_syscall(&mut self, args: &PushArgs) -> Result<()> {
+    fn run_push_syscall(&mut self, args: &PushArgs, ret: u32) -> Result<()> {
         // Extract buffer length.
         let buf_len: u16 = match args.len {
             Some(len) => len.try_into()?,
@@ -578,15 +592,22 @@ impl Simulation {
         };
 
         let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
-        let push_qt: QToken = self.engine.tcp_push(remote_qd, buf)?;
-
-        self.inflight = Some(push_qt);
-        self.engine.get_test_rig().poll_scheduler();
-        Ok(())
+        match self.engine.tcp_push(remote_qd, buf) {
+            Ok(push_qt) => {
+                self.inflight = Some(push_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for push syscall");
+                eprintln!("run_push_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self) -> Result<()> {
+    fn run_pop_syscall(&mut self, ret: u32) -> Result<()> {
         // Extract remote queue descriptor.
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
@@ -595,11 +616,18 @@ impl Simulation {
             },
         };
 
-        let pop_qt: QToken = self.engine.tcp_pop(remote_qd)?;
-
-        self.inflight = Some(pop_qt);
-        self.engine.get_test_rig().poll_scheduler();
-        Ok(())
+        match self.engine.tcp_pop(remote_qd) {
+            Ok(pop_qt) => {
+                self.inflight = Some(pop_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for pop syscall");
+                eprintln!("run_pop_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     // Build options list.
@@ -868,6 +896,9 @@ impl Simulation {
                 Some((qd, qr)) => match qr {
                     crate::OperationResult::Accept(_) => {
                         anyhow::bail!("accept should complete on incoming packet (qd={:?})", qd);
+                    },
+                    crate::OperationResult::Push => {
+                        warn!("push should not complete, untill the remote has acknowledged sent data");
                     },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
