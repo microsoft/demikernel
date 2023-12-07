@@ -352,6 +352,7 @@ impl Simulation {
             },
         }
 
+        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
@@ -510,7 +511,6 @@ impl Simulation {
                 self.remote_qd = Some((ret, None));
 
                 self.inflight = Some(accept_qt);
-                self.engine.get_test_rig().poll_scheduler();
 
                 Ok(())
             },
@@ -552,7 +552,6 @@ impl Simulation {
         let connect_qt: QToken = self.engine.tcp_connect(local_qd, remote_addr)?;
 
         self.inflight = Some(connect_qt);
-        self.engine.get_test_rig().poll_scheduler();
 
         Ok(())
     }
@@ -581,7 +580,6 @@ impl Simulation {
         let push_qt: QToken = self.engine.tcp_push(remote_qd, buf)?;
 
         self.inflight = Some(push_qt);
-        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
@@ -598,7 +596,6 @@ impl Simulation {
         let pop_qt: QToken = self.engine.tcp_pop(remote_qd)?;
 
         self.inflight = Some(pop_qt);
-        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
