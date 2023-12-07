@@ -87,8 +87,9 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_int(&$6).unwrap();
             DemikernelSyscall::Connect($3, ret)
       }
-      | 'SEND' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Unsupported
+      | 'SEND' 'LPAREN' WriteArgs 'RPAREN' 'EQUALS' Expression {
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Push($3, ret)
       }
       | 'RECV' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Pop
@@ -97,7 +98,8 @@ Syscall -> DemikernelSyscall
             DemikernelSyscall::Close
       }
       | 'WRITE' 'LPAREN' WriteArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Push($3)
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Push($3, ret)
       }
       | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Pop
