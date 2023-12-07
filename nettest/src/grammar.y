@@ -105,7 +105,11 @@ Syscall -> DemikernelSyscall
       | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_int(&$6).unwrap();
             DemikernelSyscall::Pop(ret)
-            }
+      }
+      | 'WAIT' 'LPAREN' WaitArgs 'RPAREN' 'EQUALS' Expression {
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Wait($3, ret)
+      }
       | 'GETSOCKOPT' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
             DemikernelSyscall::Unsupported
       }
@@ -193,6 +197,19 @@ WriteArgs -> glue::PushArgs
                   qd: Some(qd),
                   buf: None,
                   len: Some(len),
+            }
+      }
+      ;
+
+WaitArgs -> glue::WaitArgs
+      : 'INTEGER' 'COMMA' 'ELLIPSIS' {
+            let qd = {
+                  let v = $1.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            glue::WaitArgs {
+                  qd: Some(qd),
+                  timeout: None
             }
       }
       ;
