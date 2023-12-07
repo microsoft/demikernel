@@ -343,7 +343,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall()?,
+            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall(ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
             },
@@ -607,7 +607,7 @@ impl Simulation {
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self) -> Result<()> {
+    fn run_pop_syscall(&mut self, ret: u32) -> Result<()> {
         // Extract remote queue descriptor.
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
@@ -616,10 +616,18 @@ impl Simulation {
             },
         };
 
-        let pop_qt: QToken = self.engine.tcp_pop(remote_qd)?;
-
-        self.inflight = Some(pop_qt);
-        Ok(())
+        match self.engine.tcp_pop(remote_qd) {
+            Ok(pop_qt) => {
+                self.inflight = Some(pop_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for pop syscall");
+                eprintln!("run_pop_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
+        }
     }
 
     // Build options list.
