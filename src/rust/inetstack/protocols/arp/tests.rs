@@ -26,10 +26,7 @@ use ::futures::{
     },
     FutureExt,
 };
-use ::libc::{
-    EBADMSG,
-    ETIMEDOUT,
-};
+use ::libc::ETIMEDOUT;
 use ::std::{
     future::Future,
     task::Poll,
@@ -62,18 +59,16 @@ fn immediate_reply() -> Result<()> {
     alice.advance_clock(now);
     let request = alice.get_test_rig().pop_frame();
 
-    // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(request.clone()) {
-        Err(e) if e.errno == EBADMSG => {},
-        _ => anyhow::bail!("passing ARP request to bob should be ignored"),
-    };
-
+    // Since receive doesn't return anything, we should get an Ok here.
+    // TODO: remove  check for return value once all receives have moved to poliing.
+    bob.receive(request.clone())?;
+    // check the cache to make sure bob ignored the request.
     let cache = bob.export_arp_cache();
     crate::ensure_eq!(cache.get(&test_helpers::ALICE_IPV4), None);
 
-    if let Err(e) = carrie.receive(request) {
-        anyhow::bail!("receive returned error: {:?}", e);
-    }
+    // Since receive doesn't return anything, we should get an Ok here.
+    // TODO: remove  check for return value once all receives have moved to poliing.
+    carrie.receive(request)?;
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
     crate::ensure_eq!(cache.get(&test_helpers::ALICE_IPV4), Some(&test_helpers::ALICE_MAC));
@@ -123,17 +118,16 @@ fn slow_reply() -> Result<()> {
     let request = alice.get_test_rig().pop_frame();
 
     // bob hasn't heard of alice before, so he will ignore the request.
-    match bob.receive(request.clone()) {
-        Err(e) if e.errno == EBADMSG => {},
-        _ => anyhow::bail!("passing ARP request to bob should be ignored"),
-    };
-
+    // Since receive doesn't return anything, we should get an Ok here.
+    // TODO: remove  check for return value once all receives have moved to poliing.
+    bob.receive(request.clone())?;
+    // check the cache to make sure bob ignored the request.
     let cache = bob.export_arp_cache();
     crate::ensure_eq!(cache.get(&test_helpers::ALICE_IPV4), None);
 
-    if let Err(e) = carrie.receive(request) {
-        anyhow::bail!("receive returned error: {:?}", e);
-    }
+    // Since receive doesn't return anything, we should get an Ok here.
+    // TODO: remove  check for return value once all receives have moved to poliing.
+    carrie.receive(request)?;
 
     info!("passing ARP request to carrie...");
     let cache = carrie.export_arp_cache();
@@ -148,9 +142,9 @@ fn slow_reply() -> Result<()> {
     carrie.advance_clock(now);
     let reply = carrie.get_test_rig().pop_frame();
 
-    if let Err(e) = alice.receive(reply) {
-        anyhow::bail!("receive returned error: {:?}", e);
-    }
+    // Since receive doesn't return anything, we should get an Ok here.
+    // TODO: remove  check for return value once all receives have moved to poliing.
+    alice.receive(reply)?;
 
     now += Duration::from_micros(1);
     alice.advance_clock(now);

@@ -10,6 +10,7 @@ use super::{
     },
 };
 use crate::{
+    collections::async_queue::AsyncQueue,
     inetstack::protocols::ethernet2::{
         EtherType2,
         Ethernet2Header,
@@ -35,12 +36,10 @@ use ::futures::{
         Receiver,
         Sender,
     },
+    select_biased,
     FutureExt,
 };
-use ::libc::{
-    EBADMSG,
-    ETIMEDOUT,
-};
+use ::libc::ETIMEDOUT;
 use ::std::{
     collections::{
         HashMap,
@@ -67,12 +66,13 @@ use ::std::{
 ///
 pub struct ArpPeer<const N: usize> {
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    network: SharedBox<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
     waiters: HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>,
     arp_config: ArpConfig,
+    recv_queue: AsyncQueue<DemiBuffer>,
 }
 
 #[derive(Clone)]
@@ -82,14 +82,17 @@ pub struct SharedArpPeer<const N: usize>(SharedObject<ArpPeer<N>>);
 // Associate Functions
 //==============================================================================
 
-impl<const N: usize> ArpPeer<N> {
+impl<const N: usize> SharedArpPeer<N> {
+    /// ARP Cleanup timeout.
+    const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+
     pub fn new(
-        runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        mut runtime: SharedDemiRuntime,
+        network: SharedBox<dyn NetworkRuntime<N>>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_config: ArpConfig,
-    ) -> Result<ArpPeer<N>, Fail> {
+    ) -> Result<Self, Fail> {
         let cache: ArpCache = ArpCache::new(
             runtime.get_timer(),
             Some(arp_config.get_cache_ttl()),
@@ -97,43 +100,24 @@ impl<const N: usize> ArpPeer<N> {
             arp_config.get_disable_arp(),
         );
 
-        Ok(Self {
-            runtime,
-            transport,
+        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer::<N> {
+            runtime: runtime.clone(),
+            network,
             local_link_addr,
             local_ipv4_addr,
             cache,
             waiters: HashMap::default(),
             arp_config,
-        })
-    }
-}
-
-impl<const N: usize> SharedArpPeer<N> {
-    /// ARP Cleanup timeout.
-    const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
-
-    pub fn new(
-        mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        arp_config: ArpConfig,
-    ) -> Result<Self, Fail> {
-        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer::<N>::new(
-            runtime.clone(),
-            transport,
-            local_link_addr,
-            local_ipv4_addr,
-            arp_config,
-        )?));
-        let mut peer2: SharedArpPeer<N> = peer.clone();
+            recv_queue: AsyncQueue::<DemiBuffer>::default(),
+        }));
         // This is a future returned by the async function.
-        runtime.insert_background_coroutine(
-            "Inetstack::arp::background",
-            Box::pin(async move { peer2.background().await }),
-        )?;
+        runtime.insert_background_coroutine("Inetstack::arp::background", Box::pin(peer.clone().poll()))?;
         Ok(peer.clone())
+    }
+
+    /// Insert a packet for processing.
+    pub fn receive(&mut self, buf: DemiBuffer) {
+        self.recv_queue.push(buf)
     }
 
     /// Drops a waiter for a target IP address.
@@ -167,87 +151,105 @@ impl<const N: usize> SharedArpPeer<N> {
         rx.await.expect("Dropped waiter?")
     }
 
-    /// Background task that cleans up the ARP cache from time to time.
-    async fn background(&mut self) {
-        let yielder: Yielder = Yielder::new();
+    async fn poll(mut self) {
         loop {
-            match self.runtime.get_timer().wait(Self::ARP_CLEANUP_TIMEOUT, &yielder).await {
-                Ok(()) => continue,
-                Err(_) => break,
+            let timeout_yielder: Yielder = Yielder::new();
+            let timeout = self
+                .runtime
+                .get_timer()
+                .wait(Self::ARP_CLEANUP_TIMEOUT, &timeout_yielder)
+                .fuse();
+            let packet_yielder: Yielder = Yielder::new();
+            let mut me: Self = self.clone();
+            let packet = me.recv_queue.pop(&packet_yielder).fuse();
+            futures::pin_mut!(timeout);
+            futures::pin_mut!(packet);
+
+            let buf: DemiBuffer = select_biased! {
+                result = timeout => match result {
+                    Ok(()) => continue,
+                    Err(Fail{errno, cause:_}) if errno == libc::ETIMEDOUT => continue,
+                    Err(_) => break,
+                },
+                result = packet => match result {
+                    Ok(buf) => buf,
+                    Err(_) => break,
+                }
+            };
+            // from RFC 826:
+            // > ?Do I have the hardware type in ar$hrd?
+            // > [optionally check the hardware length ar$hln]
+            // > ?Do I speak the protocol in ar$pro?
+            // > [optionally check the protocol length ar$pln]
+            let header: ArpHeader = match ArpHeader::parse(buf) {
+                Ok(header) => header,
+                Err(e) => {
+                    let cause: String = format!("could not parse ARP header:");
+                    warn!("arp_cache::poll(): {} {:?}", &cause, e);
+                    continue;
+                },
+            };
+            debug!("Received {:?}", header);
+
+            // from RFC 826:
+            // > Merge_flag := false
+            // > If the pair <protocol type, sender protocol address> is
+            // > already in my translation table, update the sender
+            // > hardware address field of the entry with the new
+            // > information in the packet and set Merge_flag to true.
+            let merge_flag: bool = {
+                if self.cache.get(header.get_sender_protocol_addr()).is_some() {
+                    self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
+                    true
+                } else {
+                    false
+                }
+            };
+            // from RFC 826: ?Am I the target protocol address?
+            if header.get_destination_protocol_addr() != self.local_ipv4_addr {
+                if !merge_flag {
+                    // we didn't do something.
+                    let cause: String = format!("unrecognized IP address");
+                    warn!("arp_cache::poll(): {}", &cause);
+                }
+                continue;
             }
-        }
-    }
-
-    pub fn receive(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
-        // from RFC 826:
-        // > ?Do I have the hardware type in ar$hrd?
-        // > [optionally check the hardware length ar$hln]
-        // > ?Do I speak the protocol in ar$pro?
-        // > [optionally check the protocol length ar$pln]
-        let header = ArpHeader::parse(buf)?;
-        debug!("Received {:?}", header);
-
-        // from RFC 826:
-        // > Merge_flag := false
-        // > If the pair <protocol type, sender protocol address> is
-        // > already in my translation table, update the sender
-        // > hardware address field of the entry with the new
-        // > information in the packet and set Merge_flag to true.
-        let merge_flag = {
-            if self.cache.get(header.get_sender_protocol_addr()).is_some() {
+            // from RFC 826:
+            // > If Merge_flag is false, add the triplet <protocol type,
+            // > sender protocol address, sender hardware address> to
+            // > the translation table.
+            if !merge_flag {
                 self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
-                true
-            } else {
-                false
             }
-        };
-        // from RFC 826: ?Am I the target protocol address?
-        if header.get_destination_protocol_addr() != self.local_ipv4_addr {
-            if merge_flag {
-                // we did do something.
-                return Ok(());
-            } else {
-                // we didn't do anything.
-                return Err(Fail::new(EBADMSG, "unrecognized IP address"));
-            }
-        }
-        // from RFC 826:
-        // > If Merge_flag is false, add the triplet <protocol type,
-        // > sender protocol address, sender hardware address> to
-        // > the translation table.
-        if !merge_flag {
-            self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
-        }
 
-        match header.get_operation() {
-            ArpOperation::Request => {
-                // from RFC 826:
-                // > Swap hardware and protocol fields, putting the local
-                // > hardware and protocol addresses in the sender fields.
-                let reply = ArpMessage::new(
-                    Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
-                    ArpHeader::new(
-                        ArpOperation::Reply,
-                        self.local_link_addr,
-                        self.local_ipv4_addr,
-                        header.get_sender_hardware_addr(),
+            match header.get_operation() {
+                ArpOperation::Request => {
+                    // from RFC 826:
+                    // > Swap hardware and protocol fields, putting the local
+                    // > hardware and protocol addresses in the sender fields.
+                    let reply = ArpMessage::new(
+                        Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
+                        ArpHeader::new(
+                            ArpOperation::Reply,
+                            self.local_link_addr,
+                            self.local_ipv4_addr,
+                            header.get_sender_hardware_addr(),
+                            header.get_sender_protocol_addr(),
+                        ),
+                    );
+                    debug!("Responding {:?}", reply);
+                    self.network.transmit(Box::new(reply));
+                },
+                ArpOperation::Reply => {
+                    debug!(
+                        "reply from `{}/{}`",
                         header.get_sender_protocol_addr(),
-                    ),
-                );
-                debug!("Responding {:?}", reply);
-                self.transport.transmit(Box::new(reply));
-                Ok(())
-            },
-            ArpOperation::Reply => {
-                debug!(
-                    "reply from `{}/{}`",
-                    header.get_sender_protocol_addr(),
-                    header.get_sender_hardware_addr()
-                );
-                self.cache
-                    .insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
-                Ok(())
-            },
+                        header.get_sender_hardware_addr()
+                    );
+                    self.cache
+                        .insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
+                },
+            }
         }
     }
 
@@ -277,7 +279,7 @@ impl<const N: usize> SharedArpPeer<N> {
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                self.transport.transmit(Box::new(msg.clone()));
+                self.network.transmit(Box::new(msg.clone()));
                 let timer = self
                     .runtime
                     .get_timer()
