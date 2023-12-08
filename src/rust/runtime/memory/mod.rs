@@ -56,7 +56,7 @@ pub trait MemoryRuntime {
     }
 
     /// Allocates a scatter-gather array.
-    fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
         // We can't allocate more than a single buffer.
@@ -84,7 +84,7 @@ pub trait MemoryRuntime {
     }
 
     /// Releases a scatter-gather array.
-    fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {

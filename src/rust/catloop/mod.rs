@@ -34,7 +34,6 @@ use crate::{
             Yielder,
             YielderHandle,
         },
-        types::demi_qresult_t,
         Operation,
         OperationResult,
         QDesc,
@@ -124,10 +123,11 @@ impl SharedCatloopLibOS {
         };
 
         // Create fake socket.
+        let runtime: SharedDemiRuntime = self.runtime.clone();
         let catmem: SharedCatmemLibOS = self.catmem.clone();
         let qd: QDesc = self
             .runtime
-            .alloc_queue::<SharedCatloopQueue>(SharedCatloopQueue::new(qtype, catmem)?);
+            .alloc_queue::<SharedCatloopQueue>(SharedCatloopQueue::new(qtype, runtime, catmem)?);
         Ok(qd)
     }
 
@@ -469,31 +469,6 @@ impl SharedCatloopLibOS {
                 panic!("Should not return anything other than pop or error.")
             },
         }
-    }
-
-    /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.runtime.alloc_sgarray(size)
-    }
-
-    /// Releases a scatter-gather array.
-    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.runtime.free_sgarray(sga)
-    }
-
-    /// Inserts a queue token into the scheduler.
-    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt.into())
-    }
-
-    /// Constructs an operation result from a scheduler handler and queue token pair.
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
-    }
-
-    /// Polls scheduling queues.
-    pub fn poll(&mut self) {
-        self.runtime.poll()
     }
 
     fn get_queue(&self, qd: &QDesc) -> Result<SharedCatloopQueue, Fail> {

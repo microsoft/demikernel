@@ -428,7 +428,7 @@ impl<const N: usize> SharedInetStack<N> {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
+            self.runtime.poll_and_advance_clock();
 
             // The operation has completed, so extract the result and return.
             if handle.has_completed() {
@@ -446,7 +446,7 @@ impl<const N: usize> SharedInetStack<N> {
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
+            self.runtime.poll_and_advance_clock();
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
@@ -528,10 +528,6 @@ impl<const N: usize> SharedInetStack<N> {
                 Err(_) => break,
             };
         }
-    }
-
-    pub fn poll(&mut self) {
-        self.runtime.poll_and_advance_clock();
     }
 }
 

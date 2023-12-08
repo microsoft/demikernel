@@ -38,10 +38,7 @@ use crate::{
             Yielder,
             YielderHandle,
         },
-        types::{
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
+        types::demi_sgarray_t,
         QDesc,
         QToken,
         SharedDemiRuntime,
@@ -492,30 +489,6 @@ impl SharedCatnapLibOS {
                 (qd, OperationResult::Failed(e))
             },
         }
-    }
-
-    pub fn poll(&mut self) {
-        self.runtime.poll()
-    }
-
-    pub fn schedule(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt)
-    }
-
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
-    }
-
-    /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        trace!("sgalloc() size={:?}", size);
-        self.runtime.alloc_sgarray(size)
-    }
-
-    /// Frees a scatter-gather array.
-    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        trace!("sgafree()");
-        self.runtime.free_sgarray(sga)
     }
 
     /// This function gets a shared queue reference out of the I/O queue table. The type if a ref counted pointer to the

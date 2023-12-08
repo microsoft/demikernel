@@ -97,27 +97,35 @@ impl LibOS {
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
             #[cfg(all(feature = "catnap-libos"))]
-            LibOSName::Catnap => {
-                Self::NetworkLibOS(NetworkLibOS::Catnap(SharedCatnapLibOS::new(&config, runtime.clone())))
-            },
+            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap {
+                runtime: runtime.clone(),
+                libos: SharedCatnapLibOS::new(&config, runtime.clone()),
+            }),
             #[cfg(feature = "catcollar-libos")]
-            LibOSName::Catcollar => {
-                Self::NetworkLibOS(NetworkLibOS::Catcollar(CatcollarLibOS::new(&config, runtime.clone())))
-            },
+            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar {
+                runtime: runtime.clone(),
+                libos: CatcollarLibOS::new(&config, runtime.clone()),
+            }),
             #[cfg(feature = "catpowder-libos")]
-            LibOSName::Catpowder => {
-                Self::NetworkLibOS(NetworkLibOS::Catpowder(CatpowderLibOS::new(&config, runtime.clone())))
-            },
+            LibOSName::Catpowder => Self::NetworkLibOS(NetworkLibOS::Catpowder {
+                runtime: runtime.clone(),
+                libos: CatpowderLibOS::new(&config, runtime.clone()),
+            }),
             #[cfg(feature = "catnip-libos")]
-            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip(CatnipLibOS::new(&config, runtime.clone()))),
+            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip {
+                runtime: runtime.clone(),
+                libos: CatnipLibOS::new(&config, runtime.clone()),
+            }),
             #[cfg(feature = "catmem-libos")]
-            LibOSName::Catmem => {
-                Self::MemoryLibOS(MemoryLibOS::Catmem(SharedCatmemLibOS::new(&config, runtime.clone())))
-            },
+            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem {
+                runtime: runtime.clone(),
+                libos: SharedCatmemLibOS::new(&config, runtime.clone()),
+            }),
             #[cfg(feature = "catloop-libos")]
-            LibOSName::Catloop => {
-                Self::NetworkLibOS(NetworkLibOS::Catloop(SharedCatloopLibOS::new(&config, runtime.clone())))
-            },
+            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop {
+                runtime: runtime.clone(),
+                libos: SharedCatloopLibOS::new(&config, runtime.clone()),
+            }),
             _ => panic!("unsupported libos"),
         };
 
@@ -441,8 +449,8 @@ impl LibOS {
     /// Waits for any operation in an I/O queue.
     fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.schedule(qt),
-            LibOS::MemoryLibOS(libos) => libos.schedule(qt),
+            LibOS::NetworkLibOS(libos) => libos.from_task_id(qt),
+            LibOS::MemoryLibOS(libos) => libos.from_task_id(qt),
         }
     }
 

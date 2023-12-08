@@ -38,12 +38,12 @@ impl MemoryRuntime for DPDKRuntime {
     }
 
     /// Allocates a [demi_sgarray_t].
-    fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         self.mm.alloc_sgarray(size)
     }
 
     /// Releases a [demi_sgarray_t].
-    fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         self.mm.free_sgarray(sga)
     }
 
