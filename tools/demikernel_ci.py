@@ -214,7 +214,7 @@ def remote_run_windows(host: str, repository: str, is_debug: bool, target: str, 
 # Executes a cleanup command in a remote host.
 def remote_cleanup(host: str, workspace: str, is_sudo: bool, default_branch: str = "dev"):
     sudo_cmd: str = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx".format(
+    cmd = "cd {} && {} make clean && git checkout {} && git clean -fdx ; sudo -E rm -rf /dev/shm/demikernel*".format(
         workspace, sudo_cmd, default_branch)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
