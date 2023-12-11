@@ -94,7 +94,10 @@ impl<const N: usize> Peer<N> {
             return Err(Fail::new(ENOTCONN, "invalid destination address"));
         }
         match header.get_protocol() {
-            IpProtocol::ICMPv4 => self.icmpv4.receive(&header, payload),
+            IpProtocol::ICMPv4 => {
+                self.icmpv4.receive(header, payload);
+                Ok(())
+            },
             IpProtocol::TCP => self.tcp.receive(&header, payload),
             IpProtocol::UDP => self.udp.receive(&header, payload),
         }
