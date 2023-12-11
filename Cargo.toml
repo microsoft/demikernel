@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.4.3"
+version = "1.4.4"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -29,12 +29,12 @@ anyhow = "1.0.75"
 bit-iter = "1.2.0"
 cfg-if = "1.0.0"
 crc = "3.0.1"
-clap = "4.4.10"
+clap = "4.4.11"
 crossbeam-channel = "0.5.8"
 eui48 = "1.1.0"
 flexi_logger = "0.27.3"
 futures = "0.3.29"
-libc = "0.2.150"
+libc = "0.2.151"
 log = "0.4.20"
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
