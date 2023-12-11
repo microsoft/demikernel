@@ -175,18 +175,14 @@ impl NetworkLibOS {
     }
 
     /// Closes a socket.
+    #[allow(unused_variables)]
     pub fn close(&mut self, sockqd: QDesc) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
             NetworkLibOS::Catpowder { runtime: _, libos } => libos.close(sockqd),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOS::Catnap { runtime: _, libos } => libos.close(sockqd),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar { runtime: _, libos } => libos.close(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOS::Catnip { runtime: _, libos } => libos.close(sockqd),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOS::Catloop { runtime: _, libos } => libos.close(sockqd),
+            _ => Err(Fail::new(libc::ENOTSUP, "operation not supported")),
         }
     }
 

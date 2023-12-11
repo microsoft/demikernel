@@ -146,12 +146,6 @@ impl SharedCatloopQueue {
         self.socket.do_connect(remote, yielder).await
     }
 
-    /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
-    pub fn close(&mut self) -> Result<(), Fail> {
-        self.socket.close()?;
-        Ok(())
-    }
-
     /// Start an asynchronous coroutine to close this queue.
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where

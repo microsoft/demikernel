@@ -339,27 +339,6 @@ impl CatcollarLibOS {
         }
     }
 
-    /// Closes a socket.
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        trace!("close() qd={:?}", qd);
-        let fd: RawFd = self.get_queue_fd(&qd)?;
-        match unsafe { libc::close(fd) } {
-            stats if stats == 0 => {
-                // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
-                // coroutine should be able to run due to state machine checks.
-                self.runtime
-                    .free_queue::<CatcollarQueue>(&qd)
-                    .expect("queue should exist");
-                Ok(())
-            },
-            _ => {
-                let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                error!("failed to close socket (fd={:?}, errno={:?})", fd, errno);
-                Err(Fail::new(errno, "operation failed"))
-            },
-        }
-    }
-
     /// Asynchronous close
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("close() qd={:?}", qd);
