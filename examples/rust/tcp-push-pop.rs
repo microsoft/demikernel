@@ -154,7 +154,8 @@ impl TcpServer {
         self.accepted_qd = match self.libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { Some(qr.qr_value.ares.qd.into()) },
             Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
-            Ok(_) => anyhow::bail!("unexpected result"),
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("accept failed: {}", qr.qr_ret),
+            Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
         };
 
         // Perform multiple ping-pong rounds.
@@ -172,7 +173,8 @@ impl TcpServer {
             self.sga = match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
                 Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
-                Ok(_) => anyhow::bail!("unexpected result"),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("pop failed: {}", qr.qr_ret),
+                Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
             };
 
             // Sanity check received data.
@@ -253,7 +255,8 @@ impl TcpClient {
         match self.libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
             Err(e) => anyhow::bail!("operation failed: {:?}", e),
-            _ => anyhow::bail!("unexpected result"),
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("connect failed: {}", qr.qr_ret),
+            Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
         }
 
         // Issue n sends.
@@ -275,7 +278,8 @@ impl TcpClient {
 
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-                Ok(_) => anyhow::bail!("unexpected result"),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("push failed: {}", qr.qr_ret),
+                Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
                 Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
             };
             i += self.sga.expect("should be a valid sgarray").sga_segs[0].sgaseg_len as usize;

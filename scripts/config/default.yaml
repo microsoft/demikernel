@@ -24,5 +24,13 @@ catnip:
     "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
 dpdk:
   eal_init: ["", "-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto"]
+catnap:
+  tcp_keepalive:
+    enabled: false
+    time: 0
+    interval: 0
+  linger:
+    enabled: true
+    time_seconds: 0
 
 # vim: set tabstop=2 shiftwidth=2

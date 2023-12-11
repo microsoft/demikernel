@@ -78,13 +78,6 @@ use ::std::{
 };
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Networking::WinSock::{
-    WSAEALREADY,
-    WSAEINPROGRESS,
-    WSAEWOULDBLOCK,
-};
-
-#[cfg(target_os = "windows")]
 use crate::pal::functions::socketaddrv4_to_sockaddr;
 
 #[cfg(target_os = "linux")]
@@ -141,17 +134,10 @@ pub struct SharedBox<T: ?Sized>(SharedObject<Box<T>>);
 impl DemiRuntime {
     /// Checks if an operation should be retried based on the error code `err`.
     pub fn should_retry(errno: i32) -> bool {
-        #[cfg(target_os = "linux")]
         if errno == libc::EINPROGRESS || errno == libc::EWOULDBLOCK || errno == libc::EAGAIN || errno == libc::EALREADY
         {
             return true;
         }
-
-        #[cfg(target_os = "windows")]
-        if errno == WSAEWOULDBLOCK.0 || errno == WSAEINPROGRESS.0 || errno == WSAEALREADY.0 {
-            return true;
-        }
-
         false
     }
 }
