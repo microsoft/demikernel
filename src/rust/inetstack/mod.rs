@@ -141,7 +141,7 @@ impl<const N: usize> SharedInetStack<N> {
         }));
         let yielder: Yielder = Yielder::new();
         let background_task: String = format!("inetstack::poll_recv");
-        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll_recv(yielder)))?;
+        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll(yielder)))?;
         Ok(me)
     }
 
@@ -472,31 +472,10 @@ impl<const N: usize> SharedInetStack<N> {
         task.get_result().expect("Coroutine not finished")
     }
 
-    /// New incoming data has arrived. Route it to the correct parse out the Ethernet header and
-    /// allow the correct protocol to handle it. The underlying protocol will futher parse the data
-    /// and inform the correct task that its data has arrived.
-    fn do_receive(&mut self, bytes: DemiBuffer) -> Result<(), Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("inetstack::engine::receive");
-        let (header, payload) = Ethernet2Header::parse(bytes)?;
-        debug!("Engine received {:?}", header);
-        if self.local_link_addr != header.dst_addr()
-            && !header.dst_addr().is_broadcast()
-            && !header.dst_addr().is_multicast()
-        {
-            return Err(Fail::new(libc::EINVAL, "physical destination address mismatch"));
-        }
-        match header.ether_type() {
-            EtherType2::Arp => self.arp.receive(payload),
-            EtherType2::Ipv4 => self.ipv4.receive(payload),
-            EtherType2::Ipv6 => Ok(()), // Ignore for now.
-        }
-    }
-
     /// Scheduler will poll all futures that are ready to make progress.
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
-    pub async fn poll_recv(mut self, yielder: Yielder) {
+    pub async fn poll(mut self, yielder: Yielder) {
         #[cfg(feature = "profiler")]
         timer!("inetstack::poll");
         loop {
@@ -517,8 +496,32 @@ impl<const N: usize> SharedInetStack<N> {
                     }
 
                     for pkt in batch {
-                        if let Err(e) = self.do_receive(pkt) {
-                            warn!("Dropped packet: {:?}", e);
+                        let (header, payload) = match Ethernet2Header::parse(pkt) {
+                            Ok(result) => result,
+                            Err(_) => {
+                                warn!("Improperly formatted packet");
+                                continue;
+                            },
+                        };
+                        debug!("Engine received {:?}", header);
+                        if self.local_link_addr != header.dst_addr()
+                            && !header.dst_addr().is_broadcast()
+                            && !header.dst_addr().is_multicast()
+                        {
+                            continue;
+                        }
+                        match header.ether_type() {
+                            EtherType2::Arp => {
+                                // We no longer do the processing in this function, so we will not know if the packet was properly
+                                // formatted.
+                                self.arp.receive(payload);
+                            },
+                            EtherType2::Ipv4 => {
+                                if let Err(e) = self.ipv4.receive(payload) {
+                                    warn!("Dropped packet: {:?}", e);
+                                }
+                            },
+                            EtherType2::Ipv6 => continue, // Ignore for now.
                         }
                     }
                 }
