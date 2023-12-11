@@ -47,14 +47,8 @@ use crate::{
             QToken,
             QType,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
-        types::{
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
+        scheduler::Yielder,
+        types::demi_sgarray_t,
         DemiRuntime,
         SharedDemiRuntime,
     },
@@ -661,30 +655,6 @@ impl CatcollarLibOS {
                 _ => panic!("pop failed: unknown error"),
             }
         }
-    }
-
-    pub fn poll(&mut self) {
-        self.runtime.poll()
-    }
-
-    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt.into())
-    }
-
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
-    }
-
-    /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        trace!("sgalloc() size={:?}", size);
-        self.runtime.alloc_sgarray(size)
-    }
-
-    /// Frees a scatter-gather array.
-    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        trace!("sgafree()");
-        self.runtime.free_sgarray(sga)
     }
 
     fn get_shared_queue(&self, qd: &QDesc) -> Result<CatcollarQueue, Fail> {

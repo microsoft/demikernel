@@ -147,12 +147,12 @@ impl CatnipLibOS {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.transport.alloc_sgarray(size)
+        self.transport.sgaalloc(size)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.transport.free_sgarray(sga)
+        self.transport.sgafree(sga)
     }
 }
 

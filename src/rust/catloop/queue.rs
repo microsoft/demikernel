@@ -24,6 +24,7 @@ use crate::{
         OperationResult,
         QDesc,
         QToken,
+        SharedDemiRuntime,
         SharedObject,
     },
 };
@@ -60,10 +61,10 @@ pub struct SharedCatloopQueue(SharedObject<CatloopQueue>);
 
 impl CatloopQueue {
     /// Allocates a new Catloop queue.
-    pub fn new(qtype: QType, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
+    pub fn new(qtype: QType, runtime: SharedDemiRuntime, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
         Ok(Self {
             qtype,
-            socket: Socket::new(catmem)?,
+            socket: Socket::new(runtime, catmem)?,
         })
     }
 
@@ -75,8 +76,8 @@ impl CatloopQueue {
 
 impl SharedCatloopQueue {
     /// Allocates a new shared Catloop queue.
-    pub fn new(qtype: QType, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::new(CatloopQueue::new(qtype, catmem)?)))
+    pub fn new(qtype: QType, runtime: SharedDemiRuntime, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::new(CatloopQueue::new(qtype, runtime, catmem)?)))
     }
 
     /// Returns the local address to which the target queue is bound.

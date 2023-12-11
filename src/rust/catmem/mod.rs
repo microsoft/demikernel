@@ -237,20 +237,6 @@ impl SharedCatmemLibOS {
         (qd, result)
     }
 
-    pub fn from_task_id(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt.into())
-    }
-
-    /// Allocates a scatter-gather array.
-    pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.runtime.alloc_sgarray(size)
-    }
-
-    /// Releases a scatter-gather array.
-    pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.runtime.free_sgarray(sga)
-    }
-
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         let (qd, result): (QDesc, OperationResult) = self.take_result(handle);
         let qr = match result {
@@ -303,10 +289,6 @@ impl SharedCatmemLibOS {
             _ => panic!("This libOS does not support these operations"),
         };
         Ok(qr)
-    }
-
-    pub fn poll(&mut self) {
-        self.runtime.poll()
     }
 
     pub fn get_queue(&self, qd: &QDesc) -> Result<SharedCatmemQueue, Fail> {

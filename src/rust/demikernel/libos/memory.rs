@@ -17,7 +17,11 @@ use crate::runtime::{
 };
 
 #[cfg(feature = "catmem-libos")]
-use crate::catmem::SharedCatmemLibOS;
+use crate::{
+    catmem::SharedCatmemLibOS,
+    runtime::memory::MemoryRuntime,
+    runtime::SharedDemiRuntime,
+};
 
 //======================================================================================================================
 // Structures
@@ -26,7 +30,10 @@ use crate::catmem::SharedCatmemLibOS;
 /// Associated functions for Memory LibOSes.
 pub enum MemoryLibOS {
     #[cfg(feature = "catmem-libos")]
-    Catmem(SharedCatmemLibOS),
+    Catmem {
+        runtime: SharedDemiRuntime,
+        libos: SharedCatmemLibOS,
+    },
 }
 
 //======================================================================================================================
@@ -40,7 +47,7 @@ impl MemoryLibOS {
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.create_pipe(name),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.create_pipe(name),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -50,7 +57,7 @@ impl MemoryLibOS {
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.open_pipe(name),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.open_pipe(name),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -60,7 +67,7 @@ impl MemoryLibOS {
     pub fn close(&mut self, memqd: QDesc) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.close(memqd),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.close(memqd),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -70,7 +77,7 @@ impl MemoryLibOS {
     pub fn async_close(&mut self, memqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.async_close(memqd),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.async_close(memqd),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -80,7 +87,7 @@ impl MemoryLibOS {
     pub fn push(&mut self, memqd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.push(memqd, sga),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.push(memqd, sga),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -90,7 +97,7 @@ impl MemoryLibOS {
     pub fn pop(&mut self, memqd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.pop(memqd, size),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.pop(memqd, size),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -100,7 +107,7 @@ impl MemoryLibOS {
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.sgaalloc(size),
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.sgaalloc(size),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -110,17 +117,17 @@ impl MemoryLibOS {
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.sgafree(sga),
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.sgafree(sga),
             _ => unreachable!("unknown memory libos"),
         }
     }
 
     /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn from_task_id(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.from_task_id(qt),
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.from_task_id(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -129,7 +136,7 @@ impl MemoryLibOS {
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.pack_result(handle, qt),
+            MemoryLibOS::Catmem { runtime: _, libos } => libos.pack_result(handle, qt),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -139,7 +146,7 @@ impl MemoryLibOS {
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.poll(),
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.poll(),
             _ => unreachable!("unknown memory libos"),
         }
     }
