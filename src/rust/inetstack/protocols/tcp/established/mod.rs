@@ -8,12 +8,16 @@ mod rto;
 mod sender;
 
 use crate::{
+    collections::async_queue::SharedAsyncQueue,
     inetstack::{
-        protocols::tcp::{
-            congestion_control::CongestionControlConstructor,
-            established::ctrlblk::SharedControlBlock,
-            segment::TcpHeader,
-            SeqNumber,
+        protocols::{
+            ipv4::Ipv4Header,
+            tcp::{
+                congestion_control::CongestionControlConstructor,
+                established::ctrlblk::SharedControlBlock,
+                segment::TcpHeader,
+                SeqNumber,
+            },
         },
         MacAddress,
         SharedArpPeer,
@@ -41,6 +45,7 @@ use ::std::{
 #[derive(Clone)]
 pub struct EstablishedSocket<const N: usize> {
     pub cb: SharedControlBlock<N>,
+    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
     runtime: SharedDemiRuntime,
@@ -56,6 +61,7 @@ impl<const N: usize> EstablishedSocket<N> {
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
+        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
@@ -93,17 +99,18 @@ impl<const N: usize> EstablishedSocket<N> {
         );
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
-            Box::pin(background::background(cb.clone(), dead_socket_tx)),
+            Box::pin(background::background(cb.clone(), recv_queue.clone(), dead_socket_tx)),
         )?;
         Ok(Self {
             cb,
+            recv_queue,
             background: handle.clone(),
             runtime: runtime.clone(),
         })
     }
 
-    pub fn receive(&mut self, header: TcpHeader, data: DemiBuffer) {
-        self.cb.receive(header, data)
+    pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> {
+        self.recv_queue.clone()
     }
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {

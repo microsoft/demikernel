@@ -101,22 +101,14 @@ impl<const N: usize> SharedEngine<N> {
             return Err(Fail::new(EBADMSG, "physical destination address mismatch"));
         }
         match header.ether_type() {
-            EtherType2::Arp => {
-                // We no longer do the processing in this function.
-                self.arp.receive(payload);
-                // So poll the scheduler to do the processing.
-                self.test_rig.poll_scheduler();
-                Ok(())
-            },
-            EtherType2::Ipv4 => {
-                // We no longer do the processing in this function.
-                self.ipv4.receive(payload)?;
-                // So poll the scheduler to do the processing.
-                self.test_rig.poll_scheduler();
-                Ok(())
-            },
-            EtherType2::Ipv6 => Ok(()), // Ignore for now.
-        }
+            EtherType2::Arp => self.arp.receive(payload),
+            EtherType2::Ipv4 => self.ipv4.receive(payload),
+            EtherType2::Ipv6 => (), // Ignore for now.
+        };
+        // So poll the scheduler to do the processing.
+        self.test_rig.poll_scheduler();
+
+        Ok(())
     }
 
     pub async fn ipv4_ping(&mut self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {

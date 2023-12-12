@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::{
+    collections::async_queue::SharedAsyncQueue,
     inetstack::{
         protocols::{
             ethernet2::{
@@ -89,6 +90,7 @@ pub enum Socket<const N: usize> {
 pub struct TcpQueue<const N: usize> {
     state_machine: SocketStateMachine,
     socket: Socket<N>,
+    recv_queue: Option<SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
     local_link_addr: MacAddress,
@@ -117,6 +119,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
             state_machine: SocketStateMachine::new_unbound(Type::STREAM),
             socket: Socket::Unbound,
+            recv_queue: None,
             runtime,
             transport,
             local_link_addr,
@@ -135,9 +138,11 @@ impl<const N: usize> SharedTcpQueue<N> {
         arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
+        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
         Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
             state_machine: SocketStateMachine::new_established(),
             socket: Socket::Established(socket),
+            recv_queue: Some(recv_queue),
             runtime,
             transport,
             local_link_addr,
@@ -158,20 +163,32 @@ impl<const N: usize> SharedTcpQueue<N> {
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&mut self, backlog: usize, nonce: u32) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Listen)?;
-        self.socket = Socket::Listening(SharedPassiveSocket::new(
+        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        match SharedPassiveSocket::new(
             self.local()
                 .expect("If we were able to prepare, then the socket must be bound"),
             backlog,
             self.runtime.clone(),
+            recv_queue.clone(),
             self.transport.clone(),
             self.tcp_config.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.dead_socket_tx.clone(),
             nonce,
-        ));
-        self.state_machine.commit();
-        Ok(())
+        ) {
+            Ok(socket) => {
+                self.socket = Socket::Listening(socket);
+                self.state_machine.commit();
+                self.recv_queue = Some(recv_queue);
+                Ok(())
+            },
+            Err(e) => {
+                self.state_machine.abort();
+                Err(e)
+            },
+        }
     }
 
     pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
@@ -216,7 +233,8 @@ impl<const N: usize> SharedTcpQueue<N> {
         F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
-
+        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
         // Create active socket.
         self.socket = Socket::Connecting(SharedActiveOpenSocket::new(
             local_isn,
@@ -224,12 +242,13 @@ impl<const N: usize> SharedTcpQueue<N> {
             remote,
             self.runtime.clone(),
             self.transport.clone(),
+            recv_queue.clone(),
             self.tcp_config.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         )?);
-
+        self.recv_queue = Some(recv_queue);
         Ok(self
             .do_generic_sync_control_path_call(coroutine_constructor)?
             .get_task_id()
@@ -418,13 +437,20 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn receive(
         &mut self,
-        ip_hdr: &Ipv4Header,
+        ip_hdr: Ipv4Header,
         tcp_hdr: TcpHeader,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         buf: DemiBuffer,
-    ) -> Result<(), Fail> {
-        // Generate the RST segment accordingly to the ACK field.
+    ) {
+        // If this queue has an allocated receive queue, then direct the packet there.
+        if let Some(recv_queue) = self.recv_queue.as_mut() {
+            recv_queue.push((ip_hdr, tcp_hdr, buf));
+            return;
+        }
+
+        // If this is an inactive socket, then generate a RST segment.
+        // Generate the RST segment according to the ACK field.
         // If the incoming segment has an ACK field, the reset takes its
         // sequence number from the ACK field of the segment, otherwise the
         // reset has sequence number zero and the ACK field is set to the sum
@@ -439,57 +465,18 @@ impl<const N: usize> SharedTcpQueue<N> {
             )
         };
 
-        // Route the TCP packet to the socket.
-        match self.socket {
-            Socket::Established(ref mut socket) => {
-                debug!("Routing to established connection: {:?}", socket.endpoints());
-                socket.receive(tcp_hdr, buf);
-                return Ok(());
-            },
-            Socket::Connecting(ref mut socket) => {
-                debug!("Routing to connecting connection: {:?}", socket.endpoints());
-                socket.receive(tcp_hdr);
-                return Ok(());
-            },
-            Socket::Listening(ref mut socket) => {
-                debug!("Routing to passive connection: {:?}", socket.endpoint());
-                match socket.receive(ip_hdr, tcp_hdr, buf) {
-                    Ok(()) => return Ok(()),
-                    // Connection was refused.
-                    Err(e) if e.errno == libc::ECONNREFUSED => {
-                        // Fall through and send a RST segment back.
-                    },
-                    Err(e) => return Err(e),
-                }
-            },
-            // The segment is for an inactive connection.
-            Socket::Bound(addr) => {
-                debug!("Routing to inactive connection: {:?}", addr);
-                // Fall through and send a RST segment back.
-            },
-            // The segment is for a totally unbound connection.
-            Socket::Unbound => unreachable!("This socket must be at least bound for us to find it"),
-            // Fall through and send a RST segment back.
-            Socket::Closing(ref mut socket) => {
-                debug!("Routing to closing connection: {:?}", socket.endpoints());
-                socket.receive(tcp_hdr, buf);
-                return Ok(());
-            },
-        }
-
         debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
-        self.send_rst(&local, &remote, seq_num, ack_num)?;
-        Ok(())
+        self.send_rst(&local, &remote, seq_num, ack_num)
     }
 
     /// Sends a RST segment from `local` to `remote`.
-    pub fn send_rst(
+    fn send_rst(
         &mut self,
         local: &SocketAddrV4,
         remote: &SocketAddrV4,
         seq_num: SeqNumber,
         ack_num: Option<SeqNumber>,
-    ) -> Result<(), Fail> {
+    ) {
         // Query link address for destination.
         let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
             Some(link_addr) => link_addr,
@@ -498,7 +485,7 @@ impl<const N: usize> SharedTcpQueue<N> {
                 // and return an error to server side.
                 let cause: String = format!("missing ARP entry (remote={})", remote.ip());
                 error!("send_rst(): {}", &cause);
-                return Err(Fail::new(libc::EHOSTUNREACH, &cause));
+                return;
             },
         };
 
@@ -523,8 +510,6 @@ impl<const N: usize> SharedTcpQueue<N> {
         // Send it.
         let pkt: Box<TcpSegment> = Box::new(segment);
         self.transport.transmit(pkt);
-
-        Ok(())
     }
 
     /// Generic function for spawning a control-path coroutine on [self].

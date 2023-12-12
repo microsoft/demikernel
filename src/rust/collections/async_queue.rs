@@ -39,7 +39,6 @@ pub struct AsyncQueue<T> {
     waiters: Vec<YielderHandle>,
 }
 
-#[derive(Clone)]
 pub struct SharedAsyncQueue<T>(SharedObject<AsyncQueue<T>>);
 
 //======================================================================================================================
@@ -160,5 +159,11 @@ impl<T> Deref for SharedAsyncQueue<T> {
 impl<T> DerefMut for SharedAsyncQueue<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+impl<T> Clone for SharedAsyncQueue<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }

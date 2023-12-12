@@ -790,6 +790,9 @@ impl Simulation {
         self.engine.receive(buf)?;
 
         self.engine.get_test_rig().poll_scheduler();
+        // Poll the scheduler again.
+        // TODO: Remove this once we have a way to poll the scheduler until there is no more work to be done.
+        self.engine.get_test_rig().poll_scheduler();
 
         Ok(())
     }

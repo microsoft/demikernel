@@ -189,11 +189,18 @@ impl<const N: usize> SharedUdpPeer<N> {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn receive(&mut self, ipv4_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, ipv4_hdr: Ipv4Header, buf: DemiBuffer) {
         #[cfg(feature = "profiler")]
         timer!("udp::receive");
         // Parse datagram.
-        let (hdr, data): (UdpHeader, DemiBuffer) = UdpHeader::parse(ipv4_hdr, buf, self.checksum_offload)?;
+        let (hdr, data): (UdpHeader, DemiBuffer) = match UdpHeader::parse(&ipv4_hdr, buf, self.checksum_offload) {
+            Ok(result) => result,
+            Err(e) => {
+                let cause: String = format!("dropping packet: unable to parse UDP header");
+                warn!("{}: {:?}", cause, e);
+                return;
+            },
+        };
         debug!("UDP received {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
@@ -206,7 +213,11 @@ impl<const N: usize> SharedUdpPeer<N> {
                 let local: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, hdr.dest_port());
                 match self.get_queue_from_addr(&local) {
                     Some(queue) => queue,
-                    None => return Err(Fail::new(libc::ENOTCONN, "port not bound")),
+                    None => {
+                        let cause: String = format!("dropping packet: port not bound");
+                        warn!("{}: {:?}", cause, local);
+                        return;
+                    },
                 }
             },
         };

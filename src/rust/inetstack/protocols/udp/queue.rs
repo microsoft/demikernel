@@ -156,11 +156,10 @@ impl<const N: usize> SharedUdpQueue<N> {
         }
     }
 
-    pub fn receive(&mut self, remote: SocketAddrV4, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, remote: SocketAddrV4, buf: DemiBuffer) {
         // Push data to the receiver-side shared queue. This will cause the
         // associated pool operation to be ready.
         self.recv_queue.push((remote, buf));
-        Ok(())
     }
 
     pub fn is_bound(&self) -> bool {

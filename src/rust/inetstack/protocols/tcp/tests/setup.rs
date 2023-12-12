@@ -40,7 +40,6 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::libc::EBADMSG;
 use ::std::{
     net::{
         Ipv4Addr,
@@ -163,10 +162,10 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Server: SYN_RCVD state at T(2).
-    match server.receive(buf) {
-        Err(error) if error.errno == EBADMSG => Ok(()),
-        _ => anyhow::bail!("server receive should have returned an error"),
-    }
+    server.receive(buf)?;
+    // TODO: Assert that we dropped the packet.
+    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    Ok(())
 }
 
 /// Refuse a connection.
@@ -227,10 +226,10 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Server: SYN_RCVD state at T(2).
-    match server.receive(buf) {
-        Err(error) if error.errno == EBADMSG => Ok(()),
-        _ => anyhow::bail!("server receive should have returned an error"),
-    }
+    server.receive(buf)?;
+    // TODO: Assert that we dropped the packet.
+    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    Ok(())
 }
 
 /// Tests connection refuse due to missing syn.
@@ -301,10 +300,10 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
     // Server: SYN_RCVD state at T(2).
-    match server.receive(buf) {
-        Err(error) if error.errno == EBADMSG => Ok(()),
-        _ => anyhow::bail!("server receive should have returned an error"),
-    }
+    server.receive(buf)?;
+    // TODO: Assert that we dropped the packet.
+    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    Ok(())
 }
 
 /// Tests basic 3-way connection setup.
@@ -423,6 +422,7 @@ fn connection_setup_sync_rcvd_established<const N: usize>(
     bytes: DemiBuffer,
 ) -> Result<()> {
     server.receive(bytes).unwrap();
+    server.get_test_rig().poll_scheduler();
     server.get_test_rig().poll_scheduler();
     Ok(())
 }

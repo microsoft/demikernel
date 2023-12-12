@@ -469,9 +469,16 @@ impl<const N: usize> SharedTcpPeer<N> {
     }
 
     /// Processes an incoming TCP segment.
-    pub fn receive(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, ip_hdr: Ipv4Header, buf: DemiBuffer) {
         let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
-            TcpHeader::parse(ip_hdr, buf, self.tcp_config.get_rx_checksum_offload())?;
+            match TcpHeader::parse(&ip_hdr, buf, self.tcp_config.get_rx_checksum_offload()) {
+                Ok(result) => result,
+                Err(e) => {
+                    let cause: String = format!("invalid tcp header: {:?}", e);
+                    error!("receive(): {}", &cause);
+                    return;
+                },
+            };
         debug!("TCP received {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
@@ -479,7 +486,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             let cause: String = format!("invalid remote address (remote={})", remote.ip());
             error!("receive(): {}", &cause);
-            return Err(Fail::new(libc::EBADMSG, &cause));
+            return;
         }
 
         // Retrieve the queue descriptor based on the incoming segment.
@@ -490,13 +497,14 @@ impl<const N: usize> SharedTcpPeer<N> {
                 None => {
                     let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
                     error!("receive(): {}", &cause);
-                    return Err(Fail::new(libc::EBADF, &cause));
+                    return;
                 },
             },
         };
 
         // Dispatch to further processing depending on the socket state.
-        self.get_shared_queue(&qd)?
+        self.get_shared_queue(&qd)
+            .expect("queue should exist")
             .receive(ip_hdr, tcp_hdr, local, remote, data)
     }
 }

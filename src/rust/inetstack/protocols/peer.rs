@@ -25,7 +25,6 @@ use crate::{
         SharedDemiRuntime,
     },
 };
-use ::libc::ENOTCONN;
 use ::std::{
     net::Ipv4Addr,
     time::Duration,
@@ -87,19 +86,25 @@ impl<const N: usize> Peer<N> {
         })
     }
 
-    pub fn receive(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
-        let (header, payload) = Ipv4Header::parse(buf)?;
+    pub fn receive(&mut self, buf: DemiBuffer) {
+        let (header, payload) = match Ipv4Header::parse(buf) {
+            Ok(result) => result,
+            Err(e) => {
+                let cause: String = format!("Invalid destination address: {:?}", e);
+                warn!("dropping packet: {}", cause);
+                return;
+            },
+        };
         debug!("Ipv4 received {:?}", header);
         if header.get_dest_addr() != self.local_ipv4_addr && !header.get_dest_addr().is_broadcast() {
-            return Err(Fail::new(ENOTCONN, "invalid destination address"));
+            let cause: String = format!("Invalid destination address");
+            warn!("dropping packet: {}", cause);
+            return;
         }
         match header.get_protocol() {
-            IpProtocol::ICMPv4 => {
-                self.icmpv4.receive(header, payload);
-                Ok(())
-            },
-            IpProtocol::TCP => self.tcp.receive(&header, payload),
-            IpProtocol::UDP => self.udp.receive(&header, payload),
+            IpProtocol::ICMPv4 => self.icmpv4.receive(header, payload),
+            IpProtocol::TCP => self.tcp.receive(header, payload),
+            IpProtocol::UDP => self.udp.receive(header, payload),
         }
     }
 
