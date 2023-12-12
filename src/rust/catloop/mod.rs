@@ -304,31 +304,6 @@ impl SharedCatloopLibOS {
         }
     }
 
-    /// Synchronously closes a SharedCatloopQueue and its underlying Catmem queues.
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        trace!("close() qd={:?}", qd);
-
-        let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
-        queue.close()?;
-        if let Some(addr) = queue.local() {
-            if SharedDemiRuntime::is_private_ephemeral_port(addr.port()) {
-                if self.runtime.free_ephemeral_port(addr.port()).is_err() {
-                    // We fail if and only if we attempted to free a port that was not allocated.
-                    // This is unexpected, but if it happens, issue a warning and keep going,
-                    // otherwise we would leave the queue in a dangling state.
-                    warn!("close(): leaking ephemeral port (port={})", addr.port());
-                }
-            }
-            self.runtime.remove_socket_id_to_qd(&SocketId::Passive(addr));
-        }
-        // Expect is safe here because we looked up the queue to close it.
-        self.runtime
-            .free_queue::<SharedCatloopQueue>(&qd)
-            .expect("queue should exist");
-
-        Ok(())
-    }
-
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {

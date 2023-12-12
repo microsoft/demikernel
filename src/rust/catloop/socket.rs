@@ -312,26 +312,6 @@ impl Socket {
         }
     }
 
-    /// Closes this socket.
-    pub fn close(&mut self) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Close)?;
-        self.state.commit();
-        if let Some(qd) = self.catmem_qd {
-            match self.catmem.close(qd) {
-                Ok(()) => {
-                    self.state.prepare(SocketOp::Closed)?;
-                    self.state.commit();
-                    return Ok(());
-                },
-                Err(e) => {
-                    return Err(e);
-                },
-            }
-        };
-        self.state.commit();
-        Ok(())
-    }
-
     /// Asynchronously closes this socket by allocating a coroutine.
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
     where

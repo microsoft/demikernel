@@ -273,25 +273,6 @@ impl SharedCatnapLibOS {
         }
     }
 
-    /// Synchronously closes a SharedCatnapQueue and its underlying POSIX socket.
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        trace!("close() qd={:?}", qd);
-
-        let mut queue: SharedCatnapQueue = self.get_shared_queue(&qd)?;
-        // Issue close operation.
-        queue.close()?;
-
-        // If the queue was bound, remove from the socket id to queue descriptor table.
-        if let Some(local) = queue.local() {
-            self.runtime
-                .remove_socket_id_to_qd(&SocketId::Passive(unwrap_socketaddr(local)?));
-        }
-
-        // Remove the queue from the queue table.
-        self.runtime.free_queue::<SharedCatnapQueue>(&qd)?;
-        Ok(())
-    }
-
     /// Synchronous code to asynchronously close a queue. This function schedules the coroutine that asynchronously
     /// runs the close and any synchronous multi-queue functionality before the close begins.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
