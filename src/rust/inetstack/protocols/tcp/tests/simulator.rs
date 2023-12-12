@@ -667,6 +667,10 @@ impl Simulation {
                         eprintln!("push completed (qd={:?})", qd);
                         Ok(())
                     },
+                    crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
+                        eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
+                        Ok(())
+                    },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
                 _ => unreachable!("no operation has completed coroutine has completed, but it should"),
