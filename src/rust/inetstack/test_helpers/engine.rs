@@ -108,7 +108,13 @@ impl<const N: usize> SharedEngine<N> {
                 self.test_rig.poll_scheduler();
                 Ok(())
             },
-            EtherType2::Ipv4 => self.ipv4.receive(payload),
+            EtherType2::Ipv4 => {
+                // We no longer do the processing in this function.
+                self.ipv4.receive(payload)?;
+                // So poll the scheduler to do the processing.
+                self.test_rig.poll_scheduler();
+                Ok(())
+            },
             EtherType2::Ipv6 => Ok(()), // Ignore for now.
         }
     }
