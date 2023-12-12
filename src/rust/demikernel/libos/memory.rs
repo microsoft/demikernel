@@ -62,16 +62,6 @@ impl MemoryLibOS {
         }
     }
 
-    /// Closes a memory queue.
-    #[allow(unreachable_patterns, unused_variables)]
-    pub fn close(&mut self, memqd: QDesc) -> Result<(), Fail> {
-        match self {
-            #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime: _, libos } => libos.close(memqd),
-            _ => unreachable!("unknown memory libos"),
-        }
-    }
-
     /// Asynchronously closes a memory queue.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn async_close(&mut self, memqd: QDesc) -> Result<QToken, Fail> {
