@@ -1,12 +1,22 @@
+// Test for blocking write.
+
 // Establish a connection.
-  .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 3
- +.0 bind(3, ..., ...) = 0
- +.0 listen(3, 1) = 0
- +.2 accept(3, ..., ...) = 4
+ .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
++.0 bind(500, ..., ...) = 0
++.0 listen(500, 1) = 0
++.2 accept(500, ..., ...) = 0
 
 +.2 < S 0:0(0) win 65535 <mss 1450,wscale 0>
 +.0 > S. 0:0(0) ack 1 win 65535 <mss 1450,wscale 0>
 +.2 < . 1:1(0) ack 1 win 65535 <nop>
 
-+.3 write(4, ..., 64) = 1000
-+.1 > P. 1:1(64) ack 1 win 65535 <nop>
+// Connection established.
++.0 wait(500, ...) = 0
+
+// Send data.
++.1 write(501, ..., 1000) = 1000
+
++.1 > P. 1:1(1000) ack 1 win 65535 <nop>
+
+// Data sent.
++.0 wait(501, ...) = 0
