@@ -32,6 +32,7 @@ use crate::{
     catnap::transport::{
         overlapped::{
             IoCompletionPort,
+            IoWaitMode,
             OverlappedResult,
         },
         socket::{
@@ -122,7 +123,7 @@ impl SharedCatnapTransport {
     async fn run_event_processor(&mut self) {
         let yielder: Yielder = Yielder::new();
         loop {
-            if let Err(err) = self.0.iocp.process_events() {
+            if let Err(err) = self.0.iocp.process_events(IoWaitMode::PollOnly) {
                 error!("Completion port error: {}", err);
             }
 
