@@ -161,10 +161,12 @@ fn test_refuse_connection_early_rst() -> Result<()> {
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
-    // Server: SYN_RCVD state at T(2).
+    // Server: send connection reset.
     server.receive(buf)?;
-    // TODO: Assert that we dropped the packet.
-    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
+    let (_, _, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) = extract_headers(bytes.clone())?;
+    crate::ensure_eq!(tcp_header.rst, true);
+
     Ok(())
 }
 
@@ -225,10 +227,12 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
-    // Server: SYN_RCVD state at T(2).
+    // Server: send connection reset.
     server.receive(buf)?;
-    // TODO: Assert that we dropped the packet.
-    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
+    let (_, _, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) = extract_headers(bytes.clone())?;
+    crate::ensure_eq!(tcp_header.rst, true);
+
     Ok(())
 }
 
@@ -299,10 +303,12 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     // T(1) -> T(2)
     advance_clock(Some(&mut server), Some(&mut client), &mut now);
 
-    // Server: SYN_RCVD state at T(2).
+    // Server: send connection reset.
     server.receive(buf)?;
-    // TODO: Assert that we dropped the packet.
-    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
+    let (_, _, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) = extract_headers(bytes.clone())?;
+    crate::ensure_eq!(tcp_header.rst, true);
+
     Ok(())
 }
 
