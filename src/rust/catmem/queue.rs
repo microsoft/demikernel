@@ -18,7 +18,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         DemiRuntime,
         QToken,
@@ -28,7 +27,6 @@ use crate::{
 };
 use ::std::{
     any::Any,
-    collections::HashMap,
     ops::{
         Deref,
         DerefMut,
@@ -40,11 +38,9 @@ use ::std::{
 //======================================================================================================================
 
 /// This structure contains code for manipulating a single, Catmem-specific Demikernel queue. Queue state is kept in
-/// the [ring] structure, while [pending_ops] holds the map of TaskHandles and YielderHandle for currently active async
-/// functions.
+/// the [ring] structure.
 pub struct CatmemQueue {
     ring: Ring,
-    pending_ops: HashMap<TaskHandle, YielderHandle>,
 }
 
 #[derive(Clone)]
@@ -59,7 +55,6 @@ impl CatmemQueue {
     pub fn create(name: &str) -> Result<Self, Fail> {
         Ok(Self {
             ring: Ring::create(name)?,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         })
     }
 
@@ -67,7 +62,6 @@ impl CatmemQueue {
     pub fn open(name: &str) -> Result<Self, Fail> {
         Ok(Self {
             ring: Ring::open(name)?,
-            pending_ops: HashMap::<TaskHandle, YielderHandle>::new(),
         })
     }
 }
@@ -88,7 +82,6 @@ impl SharedCatmemQueue {
             self.ring.prepare_closed()?;
             self.ring.commit();
         }
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was shutdown"));
 
         Ok(())
     }
@@ -109,7 +102,6 @@ impl SharedCatmemQueue {
             }
         }
         self.ring.prepare_closed()?;
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
         self.ring.commit();
         Ok(())
     }
@@ -118,10 +110,10 @@ impl SharedCatmemQueue {
     /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.ring.prepare_close()?;
-        self.do_generic_sync_control_path_call(coroutine_constructor, false)
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// This function perms an async close on the target queue.
@@ -147,7 +139,6 @@ impl SharedCatmemQueue {
             return x;
         }
 
-        self.cancel_pending_ops(Fail::new(libc::ECANCELED, "this queue was closed"));
         self.ring.commit();
 
         Ok(())
@@ -157,7 +148,7 @@ impl SharedCatmemQueue {
     /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
@@ -199,7 +190,7 @@ impl SharedCatmemQueue {
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
     pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.do_generic_sync_data_path_call(coroutine_constructor)
     }
@@ -234,14 +225,12 @@ impl SharedCatmemQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F, add_as_pending_op: bool) -> Result<QToken, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         // Spawn coroutine.
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = match coroutine(yielder) {
+        let task_handle: TaskHandle = match coroutine() {
             // We successfully spawned the coroutine.
             Ok(handle) => {
                 // Commit the operation on the socket.
@@ -256,45 +245,16 @@ impl SharedCatmemQueue {
             },
         };
 
-        // If requested, add this operation to the list of pending operations on this queue.
-        if add_as_pending_op {
-            self.add_pending_op(&task_handle, &yielder_handle);
-        }
-
         Ok(task_handle.get_task_id().into())
     }
 
     /// Generic function for spawning a data-path coroutine on [self].
     fn do_generic_sync_data_path_call<F>(&mut self, coroutine: F) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<TaskHandle, Fail>,
     {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let task_handle: TaskHandle = coroutine(yielder)?;
-        self.add_pending_op(&task_handle, &yielder_handle);
+        let task_handle: TaskHandle = coroutine()?;
         Ok(task_handle.get_task_id().into())
-    }
-
-    /// Adds a new operation to the list of pending operations on this queue.
-    pub fn add_pending_op(&mut self, handle: &TaskHandle, yielder_handle: &YielderHandle) {
-        self.pending_ops.insert(handle.clone(), yielder_handle.clone());
-    }
-
-    /// Removes an operation from the list of pending operations on this queue.
-    pub fn remove_pending_op(&mut self, handle: &TaskHandle) {
-        self.pending_ops
-            .remove_entry(handle)
-            .expect("operation should be registered");
-    }
-
-    /// Cancels all pending operations on this queue.
-    pub fn cancel_pending_ops(&mut self, cause: Fail) {
-        for (handle, mut yielder_handle) in self.pending_ops.drain() {
-            if !handle.has_completed() {
-                yielder_handle.wake_with(Err(cause.clone()));
-            }
-        }
     }
 }
 

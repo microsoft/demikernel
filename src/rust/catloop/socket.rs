@@ -435,7 +435,7 @@ impl Socket {
         }
         // Re-acquire mutable reference.
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.catmem.pack_result(handle, qt)?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
         match qr.qr_opcode {
             // We expect a successful completion for previous pop().
             demi_opcode_t::DEMI_OPC_POP => {},
@@ -497,7 +497,7 @@ impl Socket {
         self.runtime.sgafree(sga)?;
 
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.catmem.pack_result(handle, qt)?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -545,7 +545,7 @@ impl Socket {
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
         // Get the result of the push.
-        let qr: demi_qresult_t = self.catmem.pack_result(handle, qt)?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -615,7 +615,7 @@ impl Socket {
             if handle.has_completed() {
                 // Re-acquire reference to Catmem libos.
                 // Get the result of the pop.
-                let qr: demi_qresult_t = self.catmem.pack_result(handle, qt)?;
+                let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
                 match qr.qr_opcode {
                     // We expect a successful completion for previous pop().
                     demi_opcode_t::DEMI_OPC_POP => {
@@ -671,7 +671,7 @@ impl Socket {
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.catmem.pack_result(handle, qt)?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
 
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
