@@ -27,12 +27,16 @@ use crate::{
             OperationResult,
             QDesc,
         },
-        scheduler::Yielder,
+        scheduler::{
+            TaskHandle,
+            Yielder,
+        },
         Operation,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
+    QToken,
 };
 use ::std::{
     net::{
@@ -150,9 +154,26 @@ impl<const N: usize> SharedUdpPeer<N> {
     /// Closes a UDP socket.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         trace!("close(): qd={:?}", qd);
-        let mut queue: SharedUdpQueue<N> = self.runtime.free_queue::<SharedUdpQueue<N>>(&qd)?;
-        queue.close()?;
+        self.runtime.free_queue::<SharedUdpQueue<N>>(&qd)?;
         Ok(())
+    }
+
+    /// Closes a UDP socket asynchronously.
+    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
+        let task_id: String = format!("inetstack::udp::close for qd={:?}", qd);
+        let mut runtime: SharedDemiRuntime = self.runtime.clone();
+        let coroutine: Pin<Box<Operation>> = Box::pin(async move {
+            // Expect is safe here because we looked up the queue to schedule this coroutine and no
+            // other close coroutine should be able to run due to state machine checks.
+            runtime
+                .free_queue::<SharedUdpQueue<N>>(&qd)
+                .expect("queue should exist");
+            (qd, OperationResult::Close)
+        });
+        let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
+        let qt: QToken = handle.get_task_id().into();
+        trace!("async_close() qt={:?}", qt);
+        Ok(qt)
     }
 
     /// Pushes data to a remote UDP peer.
