@@ -163,10 +163,15 @@ impl<const N: usize> SharedPassiveSocket<N> {
 
             // If not a SYN, then this packet is not for a new connection and we throw it away.
             if !tcp_hdr.syn || tcp_hdr.ack || tcp_hdr.rst {
-                let cause = "invalid flags";
-                warn!("{}", cause);
+                let cause: String = format!(
+                    "invalid TCP flags (syn={}, ack={}, rst={})",
+                    tcp_hdr.syn, tcp_hdr.ack, tcp_hdr.rst
+                );
+                warn!("poll(): {}", cause);
+                self.send_rst(&remote, tcp_hdr);
                 continue;
             }
+
             // Start a new connection.
             self.handle_new_syn(remote, tcp_hdr);
         }
