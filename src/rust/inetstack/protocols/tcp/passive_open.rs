@@ -231,7 +231,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
         // of the sequence number and segment length of the incoming segment.
         // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
         let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
-            (tcp_hdr.ack_num, None)
+            (tcp_hdr.ack_num, Some(tcp_hdr.ack_num + SeqNumber::from(1)))
         } else {
             (
                 SeqNumber::from(0),
