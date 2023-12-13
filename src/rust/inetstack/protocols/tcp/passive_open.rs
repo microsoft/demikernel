@@ -182,18 +182,8 @@ impl<const N: usize> SharedPassiveSocket<N> {
                 self.ready.len(),
                 self.max_backlog
             );
-            error!("receive(): {:?}", &cause);
-            debug!("receive(): sending RST (local={:?}, remote={:?})", self.local, remote);
-            let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
-                (tcp_hdr.ack_num, None)
-            } else {
-                (
-                    SeqNumber::from(0),
-                    Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
-                )
-            };
-            let local: SocketAddrV4 = self.local;
-            self.send_rst(&local, &remote, seq_num, ack_num);
+            warn!("handle_new_syn(): {}", cause);
+            self.send_rst(&remote, tcp_hdr);
             return;
         }
 
@@ -229,14 +219,26 @@ impl<const N: usize> SharedPassiveSocket<N> {
         self.connections.insert(remote, recv_queue);
     }
 
-    /// Sends a RST segment from `local` to `remote`.
-    fn send_rst(
-        &mut self,
-        local: &SocketAddrV4,
-        remote: &SocketAddrV4,
-        seq_num: SeqNumber,
-        ack_num: Option<SeqNumber>,
-    ) {
+    /// Sends a RST segment to `remote`.
+    fn send_rst(&mut self, remote: &SocketAddrV4, tcp_hdr: TcpHeader) {
+        debug!("send_rst(): sending RST to {:?}", remote);
+
+        // If this is an inactive socket, then generate a RST segment.
+        // Generate the RST segment according to the ACK field.
+        // If the incoming segment has an ACK field, the reset takes its
+        // sequence number from the ACK field of the segment, otherwise the
+        // reset has sequence number zero and the ACK field is set to the sum
+        // of the sequence number and segment length of the incoming segment.
+        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
+        let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
+            (tcp_hdr.ack_num, None)
+        } else {
+            (
+                SeqNumber::from(0),
+                Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
+            )
+        };
+
         // Query link address for destination.
         let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
             Some(link_addr) => link_addr,
@@ -251,7 +253,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
 
         // Create a RST segment.
         let segment: TcpSegment = {
-            let mut tcp_hdr: TcpHeader = TcpHeader::new(local.port(), remote.port());
+            let mut tcp_hdr: TcpHeader = TcpHeader::new(self.local.port(), remote.port());
             tcp_hdr.rst = true;
             tcp_hdr.seq_num = seq_num;
             if let Some(ack_num) = ack_num {
@@ -260,7 +262,7 @@ impl<const N: usize> SharedPassiveSocket<N> {
             }
             TcpSegment {
                 ethernet2_hdr: Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
-                ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+                ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                 tcp_hdr,
                 data: None,
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),

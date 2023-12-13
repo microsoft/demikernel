@@ -9,20 +9,12 @@ use crate::{
     collections::async_queue::SharedAsyncQueue,
     inetstack::{
         protocols::{
-            ethernet2::{
-                EtherType2,
-                Ethernet2Header,
-            },
-            ip::IpProtocol,
             ipv4::Ipv4Header,
             tcp::{
                 active_open::SharedActiveOpenSocket,
                 established::EstablishedSocket,
                 passive_open::SharedPassiveSocket,
-                segment::{
-                    TcpHeader,
-                    TcpSegment,
-                },
+                segment::TcpHeader,
                 SeqNumber,
             },
         },
@@ -435,81 +427,12 @@ impl<const N: usize> SharedTcpQueue<N> {
         }
     }
 
-    pub fn receive(
-        &mut self,
-        ip_hdr: Ipv4Header,
-        tcp_hdr: TcpHeader,
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
-        buf: DemiBuffer,
-    ) {
+    pub fn receive(&mut self, ip_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         // If this queue has an allocated receive queue, then direct the packet there.
         if let Some(recv_queue) = self.recv_queue.as_mut() {
             recv_queue.push((ip_hdr, tcp_hdr, buf));
             return;
         }
-
-        // If this is an inactive socket, then generate a RST segment.
-        // Generate the RST segment according to the ACK field.
-        // If the incoming segment has an ACK field, the reset takes its
-        // sequence number from the ACK field of the segment, otherwise the
-        // reset has sequence number zero and the ACK field is set to the sum
-        // of the sequence number and segment length of the incoming segment.
-        // Reference: https://datatracker.ietf.org/doc/html/rfc793#section-3.4
-        let (seq_num, ack_num): (SeqNumber, Option<SeqNumber>) = if tcp_hdr.ack {
-            (tcp_hdr.ack_num, None)
-        } else {
-            (
-                SeqNumber::from(0),
-                Some(tcp_hdr.seq_num + SeqNumber::from(tcp_hdr.compute_size() as u32)),
-            )
-        };
-
-        debug!("receive(): sending RST (local={:?}, remote={:?})", local, remote);
-        self.send_rst(&local, &remote, seq_num, ack_num)
-    }
-
-    /// Sends a RST segment from `local` to `remote`.
-    fn send_rst(
-        &mut self,
-        local: &SocketAddrV4,
-        remote: &SocketAddrV4,
-        seq_num: SeqNumber,
-        ack_num: Option<SeqNumber>,
-    ) {
-        // Query link address for destination.
-        let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
-            Some(link_addr) => link_addr,
-            None => {
-                // ARP query is unlikely to fail, but if it does, don't send the RST segment,
-                // and return an error to server side.
-                let cause: String = format!("missing ARP entry (remote={})", remote.ip());
-                error!("send_rst(): {}", &cause);
-                return;
-            },
-        };
-
-        // Create a RST segment.
-        let segment: TcpSegment = {
-            let mut tcp_hdr: TcpHeader = TcpHeader::new(local.port(), remote.port());
-            tcp_hdr.rst = true;
-            tcp_hdr.seq_num = seq_num;
-            if let Some(ack_num) = ack_num {
-                tcp_hdr.ack = true;
-                tcp_hdr.ack_num = ack_num;
-            }
-            TcpSegment {
-                ethernet2_hdr: Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
-                ipv4_hdr: Ipv4Header::new(local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
-                tcp_hdr,
-                data: None,
-                tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
-            }
-        };
-
-        // Send it.
-        let pkt: Box<TcpSegment> = Box::new(segment);
-        self.transport.transmit(pkt);
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
