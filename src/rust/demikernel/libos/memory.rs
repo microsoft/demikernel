@@ -126,7 +126,7 @@ impl MemoryLibOS {
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime: _, libos } => libos.pack_result(handle, qt),
+            MemoryLibOS::Catmem { runtime, libos } => runtime.remove_coroutine_and_get_result(&handle, qt.into()),
             _ => unreachable!("unknown memory libos"),
         }
     }

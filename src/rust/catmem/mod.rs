@@ -22,24 +22,18 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
+            YielderHandle,
         },
-        types::{
-            demi_opcode_t,
-            demi_qr_value_t,
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
+        types::demi_sgarray_t,
         Operation,
         OperationResult,
-        OperationTask,
-        QDesc,
-        QToken,
         SharedDemiRuntime,
         SharedObject,
     },
+    QDesc,
+    QToken,
 };
 use ::std::{
-    mem,
     ops::{
         Deref,
         DerefMut,
@@ -120,12 +114,16 @@ impl SharedCatmemLibOS {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+            let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
+            let yielder: Yielder = Yielder::new();
+            let yielder_handle: YielderHandle = yielder.get_handle();
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
-            let task_name: String = format!("catmem::async_close for qd={:?}", qd);
-            self.runtime.insert_coroutine(&task_name, coroutine)
+            self.runtime
+                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
         };
-        queue.async_close(coroutine)
+
+        queue.async_close(coroutine_constructor)
     }
 
     pub async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
@@ -170,13 +168,16 @@ impl SharedCatmemLibOS {
         }
 
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        // Issue pop operation.
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
+        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
-            self.runtime.insert_coroutine(&task_name, coroutine)
+            let yielder: Yielder = Yielder::new();
+            let yielder_handle: YielderHandle = yielder.get_handle();
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
+            self.runtime
+                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
         };
-        queue.push(coroutine)
+
+        queue.push(coroutine_constructor)
     }
 
     pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> (QDesc, OperationResult) {
@@ -200,13 +201,16 @@ impl SharedCatmemLibOS {
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        // Issue pop operation.
-        let coroutine = |yielder: Yielder| -> Result<TaskHandle, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
+        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
-            self.runtime.insert_coroutine(&task_name, coroutine)
+            let yielder: Yielder = Yielder::new();
+            let yielder_handle: YielderHandle = yielder.get_handle();
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
+            self.runtime
+                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
         };
-        queue.pop(coroutine)
+
+        queue.pop(coroutine_constructor)
     }
 
     pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {
@@ -222,73 +226,6 @@ impl SharedCatmemLibOS {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         (qd, OperationResult::Pop(None, buf))
-    }
-
-    /// Takes out the [OperationResult] associated with the target [TaskHandle].
-    fn take_result(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = self.runtime.remove_coroutine(&handle);
-        let (qd, result): (QDesc, OperationResult) = task.get_result().expect("The coroutine has not finished");
-
-        match self.get_queue(&qd) {
-            Ok(mut queue) => queue.remove_pending_op(&handle),
-            Err(_) => debug!("take_result(): this queue was closed (qd={:?})", qd),
-        }
-
-        (qd, result)
-    }
-
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        let (qd, result): (QDesc, OperationResult) = self.take_result(handle);
-        let qr = match result {
-            OperationResult::Push => demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
-                qr_qd: qd.into(),
-                qr_qt: qt.into(),
-                qr_ret: 0,
-                qr_value: unsafe { mem::zeroed() },
-            },
-            OperationResult::Pop(_, bytes) => match self.runtime.into_sgarray(bytes) {
-                Ok(sga) => {
-                    let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_POP,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_ret: 0,
-                        qr_value,
-                    }
-                },
-                Err(e) => {
-                    warn!("Operation Failed: {:?}", e);
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_ret: e.errno as i64,
-                        qr_value: unsafe { mem::zeroed() },
-                    }
-                },
-            },
-            OperationResult::Close => demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
-                qr_qd: qd.into(),
-                qr_qt: qt.into(),
-                qr_ret: 0,
-                qr_value: unsafe { mem::zeroed() },
-            },
-            OperationResult::Failed(e) => {
-                warn!("Operation Failed: {:?}", e);
-                demi_qresult_t {
-                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                    qr_qd: qd.into(),
-                    qr_qt: qt.into(),
-                    qr_ret: e.errno as i64,
-                    qr_value: unsafe { mem::zeroed() },
-                }
-            },
-            _ => panic!("This libOS does not support these operations"),
-        };
-        Ok(qr)
     }
 
     pub fn get_queue(&self, qd: &QDesc) -> Result<SharedCatmemQueue, Fail> {
