@@ -138,9 +138,7 @@ fn recv_data<const N: usize>(
         anyhow::bail!("receive returned error: {:?}", e);
     }
 
-    // Poll the coroutine.
     receiver.get_test_rig().poll_scheduler();
-
     // Pop completes
     match receiver
         .get_test_rig()

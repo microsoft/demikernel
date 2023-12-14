@@ -516,11 +516,7 @@ impl<const N: usize> SharedInetStack<N> {
                                 // formatted.
                                 self.arp.receive(payload);
                             },
-                            EtherType2::Ipv4 => {
-                                if let Err(e) = self.ipv4.receive(payload) {
-                                    warn!("Dropped packet: {:?}", e);
-                                }
-                            },
+                            EtherType2::Ipv4 => self.ipv4.receive(payload),
                             EtherType2::Ipv6 => continue, // Ignore for now.
                         }
                     }

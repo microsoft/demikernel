@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::AsyncQueue,
+    collections::async_queue::SharedAsyncQueue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -34,6 +34,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        memory::DemiBuffer,
         network::{
             config::TcpConfig,
             types::MacAddress,
@@ -70,11 +71,11 @@ pub struct ActiveOpenSocket<const N: usize> {
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
     transport: SharedBox<dyn NetworkRuntime<N>>,
+    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    recv_queue: AsyncQueue<TcpHeader>,
 }
 
 #[derive(Clone)]
@@ -91,6 +92,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime<N>>,
+        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
@@ -104,17 +106,12 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             remote,
             runtime: runtime.clone(),
             transport,
+            recv_queue,
             local_link_addr,
             tcp_config,
             arp,
             dead_socket_tx,
-            recv_queue: AsyncQueue::<TcpHeader>::default(),
         })))
-    }
-
-    pub fn receive(&mut self, header: TcpHeader) {
-        trace!("active_open::receive");
-        self.recv_queue.push(header);
     }
 
     fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
@@ -215,6 +212,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
             self.remote,
             self.runtime.clone(),
             self.transport.clone(),
+            self.recv_queue.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
             self.arp.clone(),
@@ -282,7 +280,7 @@ impl<const N: usize> SharedActiveOpenSocket<N> {
                 // If we received a response, process the response and either finish setting up the connection or try
                 // again.
                 result = ack_future => match result {
-                    Ok(header) => match self.process_ack(header) {
+                    Ok((_, header, _)) => match self.process_ack(header) {
                         Ok(socket) => return Ok(socket),
                         Err(Fail{errno, cause:_}) if errno == libc::EAGAIN => continue,
                         Err(e) => return Err(e),

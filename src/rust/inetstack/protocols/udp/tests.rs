@@ -24,7 +24,6 @@ use ::futures::task::{
 use ::libc::{
     EADDRINUSE,
     EBADF,
-    ENOTCONN,
 };
 use ::std::{
     convert::TryFrom,
@@ -564,11 +563,9 @@ fn udp_pop_not_bound() -> Result<()> {
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
-    match bob.receive(alice.get_test_rig().pop_frame()) {
-        Err(e) if e.errno == ENOTCONN => {},
-        _ => anyhow::bail!("receive should have failed"),
-    };
-
+    // TODO: check that Bob drops this packet.
+    // FIXME: https://github.com/microsoft/demikernel/issues/1065
+    bob.receive(alice.get_test_rig().pop_frame())?;
     // Close peers.
     alice.udp_close(alice_fd)?;
     // Bob does not have a socket.
