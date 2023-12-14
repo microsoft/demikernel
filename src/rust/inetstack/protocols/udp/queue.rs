@@ -108,11 +108,6 @@ impl<const N: usize> SharedUdpQueue<N> {
         Ok(())
     }
 
-    /// Close this UDP queue and release its resources
-    pub fn close(&mut self) -> Result<(), Fail> {
-        Ok(())
-    }
-
     pub async fn pushto(&mut self, remote: SocketAddrV4, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
         // Check that the socket is bound.
         let port: u16 = if let Some(addr) = self.local() {

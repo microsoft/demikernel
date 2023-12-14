@@ -12,7 +12,6 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
-        udp::queue::SharedUdpQueue,
         Peer,
     },
     pal::constants::{
@@ -317,23 +316,7 @@ impl<const N: usize> SharedInetStack<N> {
 
         match self.runtime.get_queue_type(&qd)? {
             QType::TcpSocket => self.ipv4.tcp.async_close(qd),
-            QType::UdpSocket => {
-                self.ipv4.udp.close(qd)?;
-                let task_id: String = format!("Inetstack::UDP::close for qd={:?}", qd);
-                let mut runtime: SharedDemiRuntime = self.runtime.clone();
-                let coroutine: Pin<Box<Operation>> = Box::pin(async move {
-                    // Expect is safe here because we looked up the queue to schedule this coroutine and no
-                    // other close coroutine should be able to run due to state machine checks.
-                    runtime
-                        .free_queue::<SharedUdpQueue<N>>(&qd)
-                        .expect("queue should exist");
-                    (qd, OperationResult::Close)
-                });
-                let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
-                let qt: QToken = handle.get_task_id().into();
-                trace!("async_close() qt={:?}", qt);
-                Ok(qt)
-            },
+            QType::UdpSocket => self.ipv4.udp.async_close(qd),
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }
@@ -410,7 +393,7 @@ impl<const N: usize> SharedInetStack<N> {
                 let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pop(qd, size)?;
                 let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 let qt: QToken = handle.get_task_id().into();
-                trace!("async_close() qt={:?}", qt);
+                trace!("pop() qt={:?}", qt);
                 Ok(qt)
             },
             _ => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
