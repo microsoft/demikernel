@@ -6,9 +6,12 @@
 +.0 listen(500, 1) = 0
 +.2 accept(500, ..., ...) = 0
 
+// Receive SYN packet.
 +.2 < S 0:0(0) win 65535 <mss 1450,wscale 0>
+// Send SYN-ACK packet.
 +.0 > S. 0:0(0) ack 1 win 65535 <mss 1450,wscale 0>
+// Receive ACK on SYN-ACK packet.
 +.2 < . 1:1(0) ack 1 win 65535 <nop>
 
-// Connection accepted.
+// Succeed to accept connection.
 +.0 wait(500, ...) = 0

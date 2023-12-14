@@ -1,6 +1,6 @@
 // Test for connect timeout.
 
-// Create socket and attempt to connect it.
+// Attempt to establish a connection.
  .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.1 connect(500, ..., ...) = 0
 
@@ -22,5 +22,5 @@
 // Retransmit SYN packet (5).
 +3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
 
-// Wait for connect to fail.
+// Fail to connect.
 +.0 wait(500, ...) = 110
