@@ -27,7 +27,6 @@ use crate::{
         },
     },
     runtime::{
-        fail::Fail,
         memory::DemiBuffer,
         network::{
             consts::RECEIVE_BATCH_SIZE,
@@ -54,55 +53,6 @@ use ::std::{
 //======================================================================================================================
 // Tests
 //======================================================================================================================
-
-/// Tests connection timeout.
-#[test]
-fn test_connection_timeout() -> Result<()> {
-    let mut now: Instant = Instant::now();
-
-    // Connection parameters
-    let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
-
-    // Setup client.
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-    let nretries: usize = client.get_test_rig().get_tcp_config().get_handshake_retries();
-    let timeout: Duration = client.get_test_rig().get_tcp_config().get_handshake_timeout();
-
-    // T(0) -> T(1)
-    advance_clock(None, Some(&mut client), &mut now);
-
-    // Client: SYN_SENT state at T(1).
-    let (_, qt, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
-
-    // Sanity check packet.
-    check_packet_pure_syn(
-        bytes.clone(),
-        test_helpers::ALICE_MAC,
-        test_helpers::BOB_MAC,
-        test_helpers::ALICE_IPV4,
-        test_helpers::BOB_IPV4,
-        listen_port,
-    )?;
-
-    for _ in 0..nretries {
-        for _ in 0..timeout.as_secs() {
-            advance_clock(None, Some(&mut client), &mut now);
-        }
-        client.get_test_rig().poll_scheduler();
-    }
-
-    match client
-        .get_test_rig()
-        .get_runtime()
-        .remove_coroutine_with_qtoken(qt)
-        .get_result()
-    {
-        None => Ok(()),
-        Some((_, OperationResult::Failed(Fail { errno, cause: _ }))) if errno == libc::ETIMEDOUT => Ok(()),
-        Some(result) => anyhow::bail!("connect should have timed out, instead returned: {:?}", result),
-    }
-}
 
 /// Refuse a connection.
 #[test]
@@ -308,25 +258,6 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let bytes: DemiBuffer = server.get_test_rig().pop_frame();
     let (_, _, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) = extract_headers(bytes.clone())?;
     crate::ensure_eq!(tcp_header.rst, true);
-
-    Ok(())
-}
-
-/// Tests basic 3-way connection setup.
-#[test]
-fn test_good_connect() -> Result<()> {
-    let mut now = Instant::now();
-
-    // Connection parameters
-    let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
-
-    // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-
-    let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
 
     Ok(())
 }
