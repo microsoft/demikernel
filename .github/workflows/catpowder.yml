@@ -56,7 +56,7 @@ jobs:
           --branch origin/${{ github.ref_name }} \
           --debug \
           --libos $LIBOS \
-          --test-unit --delay 2 \
+          --test-unit --test-system all --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
