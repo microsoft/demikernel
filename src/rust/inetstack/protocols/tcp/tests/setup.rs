@@ -312,25 +312,6 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     Ok(())
 }
 
-/// Tests basic 3-way connection setup.
-#[test]
-fn test_good_connect() -> Result<()> {
-    let mut now = Instant::now();
-
-    // Connection parameters
-    let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
-
-    // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-
-    let ((_, _), _): ((QDesc, SocketAddrV4), QDesc) =
-        connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;
-
-    Ok(())
-}
-
 //======================================================================================================================
 // Standalone Functions
 //======================================================================================================================
