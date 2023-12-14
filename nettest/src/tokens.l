@@ -15,6 +15,7 @@
 \, 'COMMA'
 S   "S"
 P   "P"
+R   "R"
 ack "ACK"
 win "WIN"
 nop "NOP"

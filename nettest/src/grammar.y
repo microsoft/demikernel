@@ -319,6 +319,11 @@ TcpFlags -> glue::TcpFlags
             flags.psh = true;
             flags
       }
+      | 'R' TcpFlags {
+            let mut flags = $2;
+            flags.rst = true;
+            flags
+      }
       ;
 
 TcpSequenceNumber -> glue::TcpSequenceNumber

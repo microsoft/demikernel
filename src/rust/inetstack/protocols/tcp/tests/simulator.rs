@@ -656,20 +656,23 @@ impl Simulation {
                         Ok(())
                     },
                     crate::OperationResult::Connect => {
-                        eprintln!("connection established (qd={:?})", qd);
+                        eprintln!("connection established as expected (qd={:?})", qd);
                         Ok(())
                     },
                     crate::OperationResult::Pop(_sockaddr, _data) => {
-                        eprintln!("pop completed (qd={:?})", qd);
+                        eprintln!("pop completed as expected (qd={:?})", qd);
                         Ok(())
                     },
                     crate::OperationResult::Push => {
-                        eprintln!("push completed (qd={:?})", qd);
+                        eprintln!("push completed as expected (qd={:?})", qd);
                         Ok(())
                     },
                     crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
                         eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                         Ok(())
+                    },
+                    crate::OperationResult::Failed(e) => {
+                        unreachable!("operation failed unexpectedly (qd={:?}, errno={:?})", qd, e.errno);
                     },
                     _ => unreachable!("unexpected operation has completed coroutine has completed"),
                 },
