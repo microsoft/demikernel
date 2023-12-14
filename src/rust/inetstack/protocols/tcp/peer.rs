@@ -505,7 +505,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Dispatch to further processing depending on the socket state.
         self.get_shared_queue(&qd)
             .expect("queue should exist")
-            .receive(ip_hdr, tcp_hdr, local, remote, data)
+            .receive(ip_hdr, tcp_hdr, data)
     }
 }
 
