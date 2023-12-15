@@ -75,8 +75,11 @@ fn do_udp_setup<const N: usize>(libos: &mut SharedInetStack<N>) -> Result<()> {
         },
     };
 
-    match libos.close(sockfd) {
-        Ok(_) => Ok(()),
+    match libos.async_close(sockfd) {
+        Ok(qt) => {
+            safe_wait2(libos, qt)?;
+            Ok(())
+        },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
 }
@@ -98,8 +101,11 @@ fn do_udp_setup_ephemeral<const N: usize>(libos: &mut SharedInetStack<N>) -> Res
         },
     };
 
-    match libos.close(sockfd) {
-        Ok(_) => Ok(()),
+    match libos.async_close(sockfd) {
+        Ok(qt) => {
+            safe_wait2(libos, qt)?;
+            Ok(())
+        },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
 }
@@ -120,8 +126,11 @@ fn do_udp_setup_wildcard_ephemeral<const N: usize>(libos: &mut SharedInetStack<N
         },
     };
 
-    match libos.close(sockfd) {
-        Ok(_) => Ok(()),
+    match libos.async_close(sockfd) {
+        Ok(qt) => {
+            safe_wait2(libos, qt)?;
+            Ok(())
+        },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
 }
@@ -168,8 +177,11 @@ fn udp_connect_loopback() -> Result<()> {
         },
     };
 
-    match libos.close(sockfd) {
-        Ok(_) => Ok(()),
+    match libos.async_close(sockfd) {
+        Ok(qt) => {
+            safe_wait2(&mut libos, qt)?;
+            Ok(())
+        },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
     }
 }
@@ -253,8 +265,11 @@ fn udp_push_remote() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
-            Ok(_) => Ok(()),
+        match libos.async_close(sockfd) {
+            Ok(qt) => {
+                safe_wait2(&mut libos, qt)?;
+                Ok(())
+            },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
     });
@@ -319,8 +334,11 @@ fn udp_push_remote() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
-            Ok(_) => Ok(()),
+        match libos.async_close(sockfd) {
+            Ok(qt) => {
+                safe_wait2(&mut libos, qt)?;
+                Ok(())
+            },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
     });
@@ -406,8 +424,11 @@ fn udp_loopback() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
-            Ok(_) => Ok(()),
+        match libos.async_close(sockfd) {
+            Ok(qt) => {
+                safe_wait2(&mut libos, qt)?;
+                Ok(())
+            },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
     });
@@ -464,8 +485,11 @@ fn udp_loopback() -> Result<()> {
         }
 
         // Close connection.
-        match libos.close(sockfd) {
-            Ok(_) => Ok(()),
+        match libos.async_close(sockfd) {
+            Ok(qt) => {
+                safe_wait2(&mut libos, qt)?;
+                Ok(())
+            },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
         }
     });

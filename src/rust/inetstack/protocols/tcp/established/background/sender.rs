@@ -168,7 +168,6 @@ pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yiel
         header.seq_num = send_next;
         if segment_data_len == 0 {
             // This buffer is the end-of-send marker.
-            debug_assert!(cb.user_is_done_sending);
             // Set FIN and adjust sequence number consumption accordingly.
             header.fin = true;
             segment_data_len = 1;

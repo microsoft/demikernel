@@ -153,10 +153,6 @@ impl<const N: usize> Sender<N> {
     //
     pub fn send(&mut self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
-        //
-        if cb.user_is_done_sending {
-            return Err(Fail::new(EINVAL, "Connection is closing"));
-        }
 
         // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
         // allow for larger send buffers, it is simpler and more practical to limit a single send to 1 GiB, which is

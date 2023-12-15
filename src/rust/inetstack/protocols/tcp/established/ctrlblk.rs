@@ -13,9 +13,9 @@ use super::{
     },
 };
 use crate::{
-    collections::{
-        async_queue::AsyncQueue,
-        async_value::AsyncValue,
+    collections::async_queue::{
+        AsyncQueue,
+        SharedAsyncQueue,
     },
     inetstack::protocols::{
         arp::SharedArpPeer,
@@ -199,9 +199,6 @@ pub struct ControlBlock<const N: usize> {
     // Receive-side state information.  TODO: Consider incorporating this directly into ControlBlock.
     receiver: Receiver,
 
-    // Whether the user has called close.
-    pub user_is_done_sending: bool,
-
     // Congestion control trait implementation we're currently using.
     // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
     cc: Box<dyn congestion_control::CongestionControl>,
@@ -213,8 +210,8 @@ pub struct ControlBlock<const N: usize> {
     // Retransmission Timeout (RTO) calculator.
     rto_calculator: RtoCalculator,
 
-    // Result of current operation. For now, this is just used for closing.
-    result: AsyncValue<Result<(), Fail>>,
+    // Incoming packets for this connection.
+    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
 }
 
 #[derive(Clone)]
@@ -240,6 +237,7 @@ impl<const N: usize> SharedControlBlock<N> {
         sender_mss: usize,
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
+        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     ) -> Self {
         let sender: Sender<N> = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self(SharedObject::<ControlBlock<N>>::new(ControlBlock::<N> {
@@ -259,11 +257,10 @@ impl<const N: usize> SharedControlBlock<N> {
             out_of_order: VecDeque::new(),
             out_of_order_fin: Option::None,
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
-            user_is_done_sending: false,
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
             retransmit_deadline: SharedWatchedValue::new(None),
             rto_calculator: RtoCalculator::new(),
-            result: AsyncValue::default(),
+            recv_queue,
         }))
     }
 
@@ -389,26 +386,112 @@ impl<const N: usize> SharedControlBlock<N> {
         self.runtime.get_now()
     }
 
-    // This is the main TCP receive routine.
-    //
-    pub fn receive(&mut self, mut header: TcpHeader, mut data: DemiBuffer) {
-        debug!(
-            "{:?} Connection Receiving {} bytes + {:?}",
-            self.state,
-            data.len(),
-            header
-        );
+    pub fn receive(&mut self, ipv4_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+        self.recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+    }
 
-        let mut should_schedule_ack: bool = false;
+    // This is the main TCP processing routine.
+    pub async fn poll(&mut self, yielder: Yielder) -> Result<!, Fail> {
+        // Normal data processing in the Established state.
+        loop {
+            let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(&yielder).await {
+                Ok((_, header, data)) if self.state == State::Established => (header, data),
+                Ok(result) => {
+                    self.recv_queue.push_front(result);
+                    let cause: String = format!(
+                        "ending receive polling loop for non-established connection (local={:?}, remote={:?})",
+                        self.local, self.remote
+                    );
+                    error!("poll(): {}", cause);
+                    return Err(Fail::new(libc::ECANCELED, &cause));
+                },
+                Err(e) => {
+                    let cause: String = format!(
+                        "ending receive polling loop for active connection (local={:?}, remote={:?})",
+                        self.local, self.remote
+                    );
+                    warn!("poll(): {:?} ({:?})", cause, e);
+                    return Err(e);
+                },
+            };
 
-        // TODO: We're probably getting "now" here in order to get a timestamp as close as possible to when we received
-        // the packet.  However, this is wasteful if we don't take a path below that actually uses it.  Review this.
-        let now: Instant = self.get_timer().now();
+            debug!(
+                "{:?} Connection Receiving {} bytes + {:?}",
+                self.state,
+                data.len(),
+                header
+            );
 
-        // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
-        // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments
-        // should be ACK'd (unless they are RSTs), and then dropped.
-        //
+            match self.process_packet(header, data) {
+                Ok(()) => (),
+                Err(e) if e.errno == libc::ECONNRESET => {
+                    self.state = State::CloseWait;
+                    let cause: String = format!(
+                        "remote closed connection, stopping processing (local={:?}, remote={:?})",
+                        self.local, self.remote
+                    );
+                    error!("poll(): {}", cause);
+                    return Err(Fail::new(libc::ECANCELED, &cause));
+                },
+                Err(e) => debug!("Dropped packet: {:?}", e),
+            }
+        }
+    }
+
+    /// This is the main function for processing an incoming packet during the Established state when the connection is
+    /// active. Each step in this function return Ok if there is further processing to be done and EBADMSG if the
+    /// packet should be dropped after the step.
+    fn process_packet(&mut self, mut header: TcpHeader, mut data: DemiBuffer) -> Result<(), Fail> {
+        let mut seg_start: SeqNumber = header.seq_num;
+
+        let mut seg_end: SeqNumber = seg_start;
+        let mut seg_len: u32 = data.len() as u32;
+
+        // Check if the segment is in the receive window and trim off everything else.
+        self.check_segment_in_window(&mut header, &mut data, &mut seg_start, &mut seg_end, &mut seg_len)?;
+        self.check_rst(&header)?;
+        self.check_syn(&header)?;
+        self.process_ack(&header)?;
+
+        // TODO: Check the URG bit.  If we decide to support this, how should we do it?
+        if header.urg {
+            warn!("Got packet with URG bit set!");
+        }
+
+        if data.len() > 0 {
+            self.process_data(&mut header, data, seg_start, seg_end, seg_len)?;
+        }
+        self.process_remote_close(&header)?;
+        // We should ACK this segment, preferably via piggybacking on a response.
+        // TODO: Consider replacing the delayed ACK timer with a simple flag.
+        if self.ack_deadline.get().is_none() {
+            // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
+            let timeout: Duration = self.ack_delay_timeout;
+            // Getting the current time is extremely cheap as it is just a variable lookup.
+            let now: Instant = self.get_timer().now();
+            self.ack_deadline.set(Some(now + timeout));
+        } else {
+            // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
+            self.ack_deadline.set(None);
+            self.send_ack();
+        }
+
+        Ok(())
+    }
+
+    // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
+    // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments
+    // should be ACK'd (unless they are RSTs), and then dropped.
+    // Returns Ok if further processing is needed and EBADMSG if the packet is not within the receive window.
+
+    fn check_segment_in_window(
+        &mut self,
+        header: &mut TcpHeader,
+        data: &mut DemiBuffer,
+        seg_start: &mut SeqNumber,
+        seg_end: &mut SeqNumber,
+        seg_len: &mut u32,
+    ) -> Result<(), Fail> {
         // [From RFC 793]
         // There are four cases for the acceptability test for an incoming segment:
         //
@@ -428,18 +511,14 @@ impl<const N: usize> SharedControlBlock<N> {
         // Review: We don't need all of these intermediate variables in the fast path.  It might be more efficient to
         // rework this to calculate some of them only when needed, even if we need to (re)do it in multiple places.
 
-        let mut seg_start: SeqNumber = header.seq_num;
-
-        let mut seg_end: SeqNumber = seg_start;
-        let mut seg_len: u32 = data.len() as u32;
         if header.syn {
-            seg_len += 1;
+            *seg_len += 1;
         }
         if header.fin {
-            seg_len += 1;
+            *seg_len += 1;
         }
-        if seg_len > 0 {
-            seg_end = seg_start + SeqNumber::from(seg_len - 1);
+        if *seg_len > 0 {
+            *seg_end = *seg_start + SeqNumber::from(*seg_len - 1);
         }
 
         let receive_next: SeqNumber = self.receiver.receive_next;
@@ -448,28 +527,27 @@ impl<const N: usize> SharedControlBlock<N> {
 
         // Check if this segment fits in our receive window.
         // In the optimal case it starts at RCV.NXT, so we check for that first.
-        //
-        if seg_start != receive_next {
+        if *seg_start != receive_next {
             // The start of this segment is not what we expected.  See if it comes before or after.
-            //
-            if seg_start < receive_next {
+            if *seg_start < receive_next {
                 // This segment contains duplicate data (i.e. data we've already received).
                 // See if it is a complete duplicate, or if some of the data is new.
-                //
-                if seg_end < receive_next {
+                if *seg_end < receive_next {
                     // This is an entirely duplicate (i.e. old) segment.  ACK (if not RST) and drop.
                     //
                     if !header.rst {
                         self.send_ack();
                     }
-                    return;
+                    let cause: String = format!("duplicate packet");
+                    error!("check_segment_in_window(): {}", cause);
+                    return Err(Fail::new(libc::EBADMSG, &cause));
                 } else {
                     // Some of this segment's data is new.  Cut the duplicate data off of the front.
                     // If there is a SYN at the start of this segment, remove it too.
                     //
-                    let mut duplicate: u32 = u32::from(receive_next - seg_start);
-                    seg_start = seg_start + SeqNumber::from(duplicate);
-                    seg_len -= duplicate;
+                    let mut duplicate: u32 = u32::from(receive_next - *seg_start);
+                    *seg_start = *seg_start + SeqNumber::from(duplicate);
+                    *seg_len -= duplicate;
                     if header.syn {
                         header.syn = false;
                         duplicate -= 1;
@@ -481,13 +559,15 @@ impl<const N: usize> SharedControlBlock<N> {
                 // This segment contains entirely new data, but is later in the sequence than what we're expecting.
                 // See if any part of the data fits within our receive window.
                 //
-                if seg_start >= after_receive_window {
+                if *seg_start >= after_receive_window {
                     // This segment is completely outside of our window.  ACK (if not RST) and drop.
                     //
                     if !header.rst {
                         self.send_ack();
                     }
-                    return;
+                    let cause: String = format!("packet outside of receive window");
+                    error!("check_segment_in_window(): {}", cause);
+                    return Err(Fail::new(libc::EBADMSG, &cause));
                 }
 
                 // At least the beginning of this segment is in the window.  We'll check the end below.
@@ -496,14 +576,13 @@ impl<const N: usize> SharedControlBlock<N> {
 
         // The start of the segment is in the window.
         // Check that the end of the segment is in the window, and trim it down if it is not.
-        //
-        if seg_len > 0 && seg_end >= after_receive_window {
-            let mut excess: u32 = u32::from(seg_end - after_receive_window);
+        if *seg_len > 0 && *seg_end >= after_receive_window {
+            let mut excess: u32 = u32::from(*seg_end - after_receive_window);
             excess += 1;
             // TODO: If we end up (after receive handling rewrite is complete) not needing seg_end and seg_len after
             // this, remove these two lines adjusting them as they're being computed needlessly.
-            seg_end = seg_end - SeqNumber::from(excess);
-            seg_len -= excess;
+            *seg_end = *seg_end - SeqNumber::from(excess);
+            *seg_len -= excess;
             if header.fin {
                 header.fin = false;
                 excess -= 1;
@@ -517,45 +596,28 @@ impl<const N: usize> SharedControlBlock<N> {
         // this point, and only proceed onwards if seg_start == receive_next.  But we process any RSTs, SYNs, or ACKs
         // we receive (as long as they're in the window) as we receive them, even if they're out-of-order.  It's only
         // when we get to processing the data (and FIN) that we store aside any out-of-order segments for later.
-        debug_assert!(receive_next <= seg_start && seg_end < after_receive_window);
+        debug_assert!(receive_next <= *seg_start && *seg_end < after_receive_window);
+        Ok(())
+    }
 
-        // Check the RST bit.
+    // Check the RST bit.
+    fn check_rst(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         if header.rst {
             // TODO: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
             // segment doesn't start precisely on RCV.NXT.
 
             // Our peer has given up.  Shut the connection down hard.
             info!("Received RST");
-            match self.state {
-                // Data transfer states.
-                State::Established | State::FinWait1 | State::FinWait2 | State::CloseWait => {
-                    // TODO: Return all outstanding user Receive and Send requests with "reset" responses.
-                    // TODO: Flush all segment queues.
-
-                    // Enter Closed state.
-                    self.state = State::Closed;
-
-                    // TODO: Delete the ControlBlock.
-                    return;
-                },
-
-                // Closing states.
-                State::Closing | State::LastAck | State::TimeWait => {
-                    // Enter Closed state.
-                    self.state = State::Closed;
-
-                    // TODO: Delete the ControlBlock.
-                    self.result.set(Ok(()));
-                    return;
-                },
-
-                // Should never happen.
-                state => panic!("Bad TCP state {:?}", state),
-            }
-
-            // Note: We should never get here.
+            // TODO: Schedule a close coroutine.
+            let cause: String = format!("remote reset connection");
+            info!("check_rst(): {}", cause);
+            return Err(Fail::new(libc::ECONNRESET, &cause));
         }
+        Ok(())
+    }
 
+    // Check the SYN bit.
+    fn check_syn(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         // Note: RFC 793 says to check security/compartment and precedence next, but those are largely deprecated.
 
         // Check the SYN bit.
@@ -563,32 +625,31 @@ impl<const N: usize> SharedControlBlock<N> {
             // TODO: RFC 5961 "Blind Reset Attack Using the SYN Bit" prevention would have us always ACK and drop here.
 
             // Receiving a SYN here is an error.
-            warn!("Received in-window SYN on established connection.");
+            let cause: String = format!("Received in-window SYN on established connection.");
+            error!("{}", cause);
             // TODO: Send Reset.
             // TODO: Return all outstanding Receive and Send requests with "reset" responses.
             // TODO: Flush all segment queues.
 
-            // Enter Closed state.
-            self.state = State::Closed;
-
-            // TODO: Delete the ControlBlock.
-            return;
+            // TODO: Start the close coroutine
+            return Err(Fail::new(libc::EBADMSG, &cause));
         }
+        Ok(())
+    }
 
-        // Check the ACK bit.
+    // Check the ACK bit.
+    fn process_ack(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         if !header.ack {
             // All segments on established connections should be ACKs.  Drop this segment.
-            warn!("Received non-ACK segment on established connection.");
-            return;
+            let cause: String = format!("Received non-ACK segment on established connection");
+            error!("{}", cause);
+            return Err(Fail::new(libc::EBADMSG, &cause));
         }
 
         // TODO: RFC 5961 "Blind Data Injection Attack" prevention would have us perform additional ACK validation
         // checks here.
 
         // Process the ACK.
-        // Note: We process valid ACKs while in any synchronized state, even though there shouldn't be anything to do
-        // in some states (e.g. TIME-WAIT) as it is more wasteful to always check that we're not in TIME-WAIT.
-        //
         // Start by checking that the ACK acknowledges something new.
         // TODO: Look into removing Watched types.
         //
@@ -604,6 +665,10 @@ impl<const N: usize> SharedControlBlock<N> {
 
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
+                // Does not matter when we get this since the clock will not move between the beginning of packet
+                // processing and now without a call to advance_clock.
+                let now: Instant = self.get_timer().now();
+
                 // This segment acknowledges new data (possibly and/or FIN).
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
 
@@ -622,29 +687,6 @@ impl<const N: usize> SharedControlBlock<N> {
 
                     // Since we no longer have anything outstanding, we can turn off the retransmit timer.
                     self.retransmit_deadline.set(None);
-
-                    // Some states require additional processing.
-                    match self.state {
-                        State::Established => (), // Common case.  Nothing more to do.
-                        State::FinWait1 => {
-                            // Our FIN is now ACK'd, so enter FIN-WAIT-2.
-                            self.state = State::FinWait2;
-                        },
-                        State::Closing => {
-                            // Our FIN is now ACK'd, so enter TIME-WAIT.
-                            self.state = State::TimeWait;
-                        },
-                        State::LastAck => {
-                            // Our FIN is now ACK'd, so this connection can be safely closed.  In LAST-ACK state we
-                            // were just waiting for all of our sent data (including FIN) to be ACK'd, so now that it
-                            // is, we can delete our state (we maintained it in case we needed to retransmit something,
-                            // but we had already sent everything we're ever going to send (incl. FIN) at least once).
-                            self.state = State::Closed;
-                            self.result.set(Ok(()));
-                        },
-                        // TODO: Handle TimeWait to Closed transition.
-                        _ => (),
-                    }
                 } else {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
                     // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
@@ -655,22 +697,33 @@ impl<const N: usize> SharedControlBlock<N> {
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
-                warn!("Received segment acknowledging data we have yet to send!");
+                let cause: String = format!("Received segment acknowledging data we have yet to send!");
+                warn!("{}", cause);
                 self.send_ack();
-                return;
+                return Err(Fail::new(libc::EBADMSG, &cause));
             }
         } else {
             // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
             // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
+            let cause: String = format!(
+                "duplicate ack: current ack={:?} received ack={:?}",
+                send_unacknowledged, header.ack_num
+            );
+            warn!("{}", cause);
         }
+        Ok(())
+    }
 
-        // TODO: Check the URG bit.  If we decide to support this, how should we do it?
-        if header.urg {
-            warn!("Got packet with URG bit set!");
-        }
-
+    fn process_data(
+        &mut self,
+        header: &mut TcpHeader,
+        data: DemiBuffer,
+        seg_start: SeqNumber,
+        mut seg_end: SeqNumber,
+        mut seg_len: u32,
+    ) -> Result<(), Fail> {
         // We can only process in-order data (or FIN).  Check for out-of-order segment.
-        if seg_start != receive_next {
+        if seg_start != self.receiver.receive_next {
             debug!("Received out-of-order segment");
             // This segment is out-of-order.  If it carries data, and/or a FIN, we should store it for later processing
             // after the "hole" in the sequence number space has been filled.
@@ -695,110 +748,12 @@ impl<const N: usize> SharedControlBlock<N> {
             }
 
             // We're done with this out-of-order segment.
-            return;
-        }
-
-        // Process the segment text (if any).
-        if !data.is_empty() {
-            match self.state {
-                State::Established | State::FinWait1 | State::FinWait2 => {
-                    // We can only legitimately receive data in ESTABLISHED, FIN-WAIT-1, and FIN-WAIT-2.
-                    header.fin |= self.receive_data(seg_start, data);
-                    should_schedule_ack = true;
-                },
-                state => warn!("Ignoring data received after FIN (in state {:?}).", state),
-            }
-        }
-
-        // Check the FIN bit.
-        if header.fin {
-            trace!("Received FIN");
-
-            // Advance RCV.NXT over the FIN.
-            self.receiver.receive_next = self.receiver.receive_next + SeqNumber::from(1);
-
-            match self.state {
-                State::Established => self.state = State::CloseWait,
-                State::FinWait1 => {
-                    // RFC 793 has a benign logic flaw.  It says "If our FIN has been ACKed (perhaps in this segment),
-                    // then enter TIME-WAIT, start the time-wait timer, turn off the other timers;".  But if our FIN
-                    // has been ACK'd, we'd be in FIN-WAIT-2 here as a result of processing that ACK (see ACK handling
-                    // above) and will enter TIME-WAIT in the FIN-WAIT-2 case below.  So we can skip that clause and go
-                    // straight to "otherwise enter the CLOSING state".
-                    self.state = State::Closing;
-                },
-                State::FinWait2 => {
-                    // Enter TIME-WAIT.
-                    self.state = State::TimeWait;
-                    // TODO: Start the time-wait timer and turn off the other timers.
-                },
-                State::CloseWait | State::Closing | State::LastAck => (), // Remain in current state.
-                State::TimeWait => {
-                    // TODO: Remain in TIME-WAIT.  Restart the 2 MSL time-wait timeout.
-                },
-                state => panic!("Bad TCP state {:?}", state), // Should never happen.
-            }
-
-            // Push empty buffer.
-            // TODO: set err bit and wake
-            self.receiver.push(DemiBuffer::new(0));
-
-            // Since we consumed the FIN we ACK immediately rather than opportunistically.
-            // TODO: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
-            self.send_ack();
-
-            return;
-        }
-
-        // Check if we need to ACK soon.
-        if should_schedule_ack {
-            // We should ACK this segment, preferably via piggybacking on a response.
-            // TODO: Consider replacing the delayed ACK timer with a simple flag.
-            if self.ack_deadline.get().is_none() {
-                // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
-                let timeout: Duration = self.ack_delay_timeout;
-                self.ack_deadline.set(Some(now + timeout));
-            } else {
-                // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
-                self.ack_deadline.set(None);
-                self.send_ack();
-            }
-        }
-    }
-
-    /// Handle the user's close request.
-    ///
-    /// In TCP parlance, a user's close request means "I have no more data to send".  The user may continue to receive
-    /// data on this connection until their peer also closes.
-    ///
-    /// Note this routine will only be called for connections with a ControlBlock (i.e. in state ESTABLISHED or later).
-    ///
-    ///
-    pub fn close(&mut self) -> Result<(), Fail> {
-        // Check to see if close has already been called, as we should only do this once.
-        if self.user_is_done_sending {
-            // Review: Should we return an error here instead?  RFC 793 recommends a "connection closing" error.
             return Ok(());
         }
 
-        // In the normal case, we'll be in either ESTABLISHED or CLOSE_WAIT here (depending upon whether we've received
-        // a FIN from our peer yet).  Queue up a FIN to be sent, and attempt to send it immediately (if possible).  We
-        // only change state to FIN-WAIT-1 or LAST_ACK after we've actually been able to send the FIN.
-        // The emit function updates the state.
-        debug_assert!((self.state == State::Established) || (self.state == State::CloseWait));
-
-        // Send a FIN.
-        let fin_buf: DemiBuffer = DemiBuffer::new(0);
-        self.send(fin_buf).expect("send failed");
-
-        // Remember that the user has called close.
-        self.user_is_done_sending = true;
-
+        // We can only legitimately receive data in ESTABLISHED, FIN-WAIT-1, and FIN-WAIT-2.
+        header.fin |= self.receive_data(seg_start, data);
         Ok(())
-    }
-
-    pub async fn async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        self.result.get(yielder).await?
     }
 
     /// Fetch a TCP header filling out various values based on our current state.
@@ -1094,6 +1049,122 @@ impl<const N: usize> SharedControlBlock<N> {
         }
 
         false
+    }
+
+    fn process_remote_close(&mut self, header: &TcpHeader) -> Result<(), Fail> {
+        if header.fin {
+            trace!("Received FIN");
+            // 2. Push empty buffer to indicate EOF.
+            // TODO: set err bit and wake.
+            self.receiver.push(DemiBuffer::new(0));
+
+            // 3. Advance RCV.NXT over the FIN.
+            self.receiver.receive_next = self.receiver.receive_next + SeqNumber::from(1);
+
+            // 4. Since we consumed the FIN we ACK immediately rather than opportunistically.
+            // TODO: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
+            self.send_ack();
+            let cause: String = format!("connection received FIN");
+            info!("process_remote_close(): {}", cause);
+            return Err(Fail::new(libc::ECONNRESET, &cause));
+        }
+
+        Ok(())
+    }
+
+    /// Send a fin by pushing a zero-length DemiBuffer to the sender function.
+    fn send_fin(&mut self) {
+        // Construct FIN.
+        let fin_buf: DemiBuffer = DemiBuffer::new(0);
+        // Send.
+        if let Err(e) = self.send(fin_buf) {
+            warn!("send_fin(): failed to send fin ({:?})", e);
+        }
+    }
+
+    // This coroutine runs the close protocol.
+    pub async fn close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        // Assert we are in a valid state and move to new state.
+        match self.state {
+            State::Established => self.local_close(yielder).await,
+            State::CloseWait => self.remote_already_closed(yielder).await,
+            _ => {
+                let cause: String = format!("socket is already closing");
+                error!("close(): {}", cause);
+                Err(Fail::new(libc::EBADF, &cause))
+            },
+        }
+    }
+
+    async fn local_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        // 0. Set state.
+        self.state = State::FinWait1;
+        // 1. Send FIN.
+        self.send_fin();
+
+        while self.state != State::TimeWait {
+            // Wait for next packet.
+            let (_, header, _) = self.recv_queue.pop(&yielder).await?;
+
+            // Check ACK.
+            self.state = match self.process_ack(&header) {
+                // Got ACK to our FIN.
+                Ok(()) => match self.state {
+                    State::FinWait1 => State::FinWait2,
+                    State::FinWait2 => State::FinWait2,
+                    State::Closing => State::TimeWait,
+                    state => unreachable!("Cannot be in any other state at this point: {:?}", state),
+                },
+                // Don't do anything if this is an unexpected message.
+                Err(_) => self.state,
+            };
+
+            // TODO: Receive data in the FINWAIT-1 and FINWAIT-2 states.
+
+            // Check FIN.
+            self.state = match self.process_remote_close(&header) {
+                // No FIN, keep waiting.
+                Ok(()) => self.state,
+                // Found FIN, move to next state.
+                Err(e) if e.errno == libc::ECONNRESET => match self.state {
+                    State::FinWait1 => State::Closing,
+                    State::FinWait2 => State::TimeWait,
+                    state => unreachable!("Cannot be in any other state: {:?}", state),
+                },
+                // Some other error, stop close protocol.
+                Err(e) => return Err(e),
+            }
+        }
+
+        // TODO: Get 2MSL value or linger option if set.
+        // TODO: Turn this on when our tests support it.
+        // let timeout_yielder: Yielder = Yielder::new();
+        // self.runtime
+        //     .get_timer()
+        //     .wait(Duration::from_secs(1), &timeout_yielder)
+        //     .await?;
+
+        self.state = State::Closed;
+        Ok(())
+    }
+
+    async fn remote_already_closed(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        // 0. Set state.
+        self.state = State::LastAck;
+        // 1. Send FIN.
+        self.send_fin();
+        // Wait for ACK of FIN.
+        loop {
+            // Wait for next packet.
+            let (_, header, _) = self.recv_queue.pop(&yielder).await?;
+
+            // Check ACK.
+            match self.process_ack(&header) {
+                Ok(()) => break,
+                Err(_) => (),
+            }
+        }
+        Ok(())
     }
 }
 
