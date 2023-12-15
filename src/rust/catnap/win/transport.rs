@@ -45,18 +45,13 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        network::transport::NetworkTransport,
         scheduler::Yielder,
         DemiRuntime,
         SharedDemiRuntime,
         SharedObject,
     },
 };
-
-//======================================================================================================================
-// Types
-//======================================================================================================================
-
-pub type SocketDescriptor = Socket;
 
 //======================================================================================================================
 // Structures
@@ -92,8 +87,31 @@ pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 //======================================================================================================================
 
 impl SharedCatnapTransport {
+    /// Run a coroutine which pulls the I/O completion port for events.
+    async fn run_event_processor(&mut self) {
+        let yielder: Yielder = Yielder::new();
+        loop {
+            if let Err(err) = self.0.iocp.process_events() {
+                error!("Completion port error: {}", err);
+            }
+
+            match yielder.yield_once().await {
+                Ok(()) => continue,
+                Err(_) => break,
+            }
+        }
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl NetworkTransport for SharedCatnapTransport {
+    type SocketDescriptor = Socket;
+
     /// Create a new transport instance.
-    pub fn new(config: &Config, mut runtime: SharedDemiRuntime) -> Self {
+    fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
         let config: WinConfig = WinConfig {
             keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
             linger_time: config.linger_time().expect("failed to load linger settings"),
@@ -118,23 +136,8 @@ impl SharedCatnapTransport {
         me
     }
 
-    /// Run a coroutine which pulls the I/O completion port for events.
-    async fn run_event_processor(&mut self) {
-        let yielder: Yielder = Yielder::new();
-        loop {
-            if let Err(err) = self.0.iocp.process_events() {
-                error!("Completion port error: {}", err);
-            }
-
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            }
-        }
-    }
-
     /// Create a new socket for the specified domain and type.
-    pub fn socket(&mut self, domain: socket2::Domain, typ: socket2::Type) -> Result<Socket, Fail> {
+    fn socket(&mut self, domain: socket2::Domain, typ: socket2::Type) -> Result<Socket, Fail> {
         // Select protocol.
         let protocol: IPPROTO = match typ {
             socket2::Type::STREAM => IPPROTO_TCP,
@@ -156,12 +159,12 @@ impl SharedCatnapTransport {
     }
 
     /// Synchronously shut down the specified socket.
-    pub fn close(&mut self, socket: &Socket) -> Result<(), Fail> {
+    fn hard_close(&mut self, socket: &mut Self::SocketDescriptor) -> Result<(), Fail> {
         socket.shutdown()
     }
 
     /// Asynchronously disconnect and shut down a socket.
-    pub async fn async_close(&mut self, socket: &Socket, yielder: Yielder) -> Result<(), Fail> {
+    async fn close(&mut self, socket: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
         match unsafe {
             self.0.iocp.do_io(
                 &yielder,
@@ -178,19 +181,23 @@ impl SharedCatnapTransport {
     }
 
     /// Bind a socket to a local address.
-    pub fn bind(&self, socket: &Socket, local: SocketAddr) -> Result<(), Fail> {
+    fn bind(&mut self, socket: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
         trace!("Bind to {:?}", local);
         socket.bind(local)
     }
 
     /// Listen on the specified socket.
-    pub fn listen(&mut self, socket: &mut Socket, backlog: usize) -> Result<(), Fail> {
+    fn listen(&mut self, socket: &mut Socket, backlog: usize) -> Result<(), Fail> {
         socket.listen(backlog)
     }
 
     /// Accept a connection on the specified socket. The coroutine will not finish until a connection is successfully
     /// accepted or `yielder` is cancelled.
-    pub async fn accept(&mut self, socket: &Socket, yielder: Yielder) -> Result<(Socket, SocketAddr), Fail> {
+    async fn accept(
+        &mut self,
+        socket: &mut Self::SocketDescriptor,
+        yielder: Yielder,
+    ) -> Result<(Socket, SocketAddr), Fail> {
         let start = |accept_result: Pin<&mut AcceptState>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
             socket.start_accept(accept_result, overlapped)
         };
@@ -215,7 +222,12 @@ impl SharedCatnapTransport {
     }
 
     /// Connect a socket to a remote address.
-    pub async fn connect(&mut self, socket: &Socket, remote: SocketAddr, yielder: Yielder) -> Result<(), Fail> {
+    async fn connect(
+        &mut self,
+        socket: &mut Self::SocketDescriptor,
+        remote: SocketAddr,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
         unsafe {
             self.0.iocp.do_io(
                 &yielder,
@@ -228,9 +240,9 @@ impl SharedCatnapTransport {
     }
 
     /// Pop data from the socket into `buf`. This method will return the remote address iff the socket is not connected.
-    pub async fn pop(
+    async fn pop(
         &mut self,
-        socket: &Socket,
+        socket: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
         yielder: Yielder,
@@ -265,9 +277,9 @@ impl SharedCatnapTransport {
     /// Push `buf` to the remote endpoint. `addr` is used iff the socket is not connection-oriented. For message-
     /// oriented sockets which were previously `connect`ed, `addr` overrides the previously specified remote address.
     /// For connection-oriented sockets, `addr` is ignored.
-    pub async fn push(
+    async fn push(
         &mut self,
-        socket: &Socket,
+        socket: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
         yielder: Yielder,

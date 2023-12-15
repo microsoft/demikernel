@@ -5,30 +5,27 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    catnap::transport::{
-        SharedCatnapTransport,
-        SocketDescriptor,
-    },
-    runtime::{
-        fail::Fail,
-        limits,
-        memory::DemiBuffer,
-        network::socket::{
+use crate::runtime::{
+    fail::Fail,
+    limits,
+    memory::DemiBuffer,
+    network::{
+        socket::{
             operation::SocketOp,
             state::SocketStateMachine,
         },
-        queue::{
-            IoQueue,
-            QType,
-        },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
-        QToken,
-        SharedObject,
+        transport::NetworkTransport,
     },
+    queue::{
+        IoQueue,
+        QType,
+    },
+    scheduler::{
+        TaskHandle,
+        Yielder,
+    },
+    QToken,
+    SharedObject,
 };
 use ::socket2::{
     Domain,
@@ -49,29 +46,30 @@ use ::std::{
 
 /// CatnapQueue represents a single Catnap queue. It contains all of the Catnap-specific functionality that operates on
 /// a single queue. It is stateless, all state is kept in the Socket data structure.
-pub struct CatnapQueue {
+pub struct CatnapQueue<T: NetworkTransport> {
     qtype: QType,
     /// The state machine.
     state_machine: SocketStateMachine,
     /// Underlying socket.
-    socket: SocketDescriptor,
+    socket: T::SocketDescriptor,
     /// The local address to which the socket is bound.
     local: Option<SocketAddr>,
     /// The remote address to which the socket is connected.
     remote: Option<SocketAddr>,
     /// Underlying network transport.
-    transport: SharedCatnapTransport,
+    transport: T,
 }
 
 #[derive(Clone)]
-pub struct SharedCatnapQueue(SharedObject<CatnapQueue>);
+pub struct SharedCatnapQueue<T: NetworkTransport>(SharedObject<CatnapQueue<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl CatnapQueue {
-    pub fn new(domain: Domain, typ: Type, mut transport: SharedCatnapTransport) -> Result<Self, Fail> {
+/// Associate Functions for Catnap LibOS
+impl<T: NetworkTransport> SharedCatnapQueue<T> {
+    pub fn new(domain: Domain, typ: Type, transport: &mut T) -> Result<Self, Fail> {
         // This was previously checked in the LibOS layer.
         debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
 
@@ -82,22 +80,15 @@ impl CatnapQueue {
             _ => unreachable!("Invalid socket type (typ={:?})", typ),
         };
 
-        let socket: SocketDescriptor = transport.socket(domain, typ)?;
-        Ok(Self {
+        let socket: T::SocketDescriptor = transport.socket(domain, typ)?;
+        Ok(Self(SharedObject::new(CatnapQueue::<T> {
             qtype,
             state_machine: SocketStateMachine::new_unbound(typ),
             socket,
             local: None,
             remote: None,
-            transport,
-        })
-    }
-}
-
-/// Associate Functions for Catnap LibOS
-impl SharedCatnapQueue {
-    pub fn new(domain: Domain, typ: Type, transport: SharedCatnapTransport) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::new(CatnapQueue::new(domain, typ, transport)?)))
+            transport: transport.clone(),
+        })))
     }
 
     /// Binds the target queue to `local` address.
@@ -205,7 +196,7 @@ impl SharedCatnapQueue {
     }
 
     /// Start an asynchronous coroutine to close this queue.
-    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
+    pub fn close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
         F: FnOnce() -> Result<TaskHandle, Fail>,
     {
@@ -215,10 +206,10 @@ impl SharedCatnapQueue {
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
-    pub fn close(&mut self) -> Result<(), Fail> {
+    pub fn hard_close(&mut self) -> Result<(), Fail> {
         self.state_machine.prepare(SocketOp::Close)?;
         self.state_machine.commit();
-        match self.transport.clone().close(&mut self.socket) {
+        match self.transport.clone().hard_close(&mut self.socket) {
             Ok(()) => {
                 self.state_machine.prepare(SocketOp::Closed)?;
                 self.state_machine.commit();
@@ -231,7 +222,7 @@ impl SharedCatnapQueue {
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
     /// to close a queue and any single-queue functionality after the close completes.
     pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        match self.transport.clone().async_close(&mut self.socket, yielder).await {
+        match self.transport.clone().close(&mut self.socket, yielder).await {
             Ok(()) => {
                 self.state_machine.prepare(SocketOp::Closed)?;
                 self.state_machine.commit();
@@ -348,7 +339,7 @@ impl SharedCatnapQueue {
 // Trait implementation
 //======================================================================================================================
 
-impl IoQueue for SharedCatnapQueue {
+impl<T: NetworkTransport> IoQueue for SharedCatnapQueue<T> {
     fn get_qtype(&self) -> crate::QType {
         self.qtype
     }
@@ -366,15 +357,15 @@ impl IoQueue for SharedCatnapQueue {
     }
 }
 
-impl Deref for SharedCatnapQueue {
-    type Target = CatnapQueue;
+impl<T: NetworkTransport> Deref for SharedCatnapQueue<T> {
+    type Target = CatnapQueue<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedCatnapQueue {
+impl<T: NetworkTransport> DerefMut for SharedCatnapQueue<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
