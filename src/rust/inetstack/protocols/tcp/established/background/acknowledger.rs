@@ -15,7 +15,7 @@ use ::futures::future::{
 };
 use ::std::time::Instant;
 
-pub async fn acknowledger<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
+pub async fn acknowledger(mut cb: SharedControlBlock, yielder: Yielder) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK

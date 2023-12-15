@@ -18,7 +18,10 @@ pub mod types;
 
 use crate::runtime::{
     memory::DemiBuffer,
-    network::socket::SocketId,
+    network::{
+        consts::RECEIVE_BATCH_SIZE,
+        socket::SocketId,
+    },
     Fail,
     QDesc,
 };
@@ -112,10 +115,10 @@ pub trait PacketBuf {
 }
 
 /// Network Runtime
-pub trait NetworkRuntime<const N: usize> {
+pub trait NetworkRuntime {
     /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>);
 
     /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, N>;
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
 }

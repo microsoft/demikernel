@@ -25,7 +25,6 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::consts::RECEIVE_BATCH_SIZE,
         OperationResult,
         QDesc,
         QToken,
@@ -54,10 +53,10 @@ fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
 }
 
 /// This function pushes a DemiBuffer to the test engine and returns the emitted packets.
-fn send_data<const N: usize>(
+fn send_data(
     now: &mut Instant,
-    receiver: &mut SharedEngine<N>,
-    sender: &mut SharedEngine<N>,
+    receiver: &mut SharedEngine,
+    sender: &mut SharedEngine,
     sender_qd: QDesc,
     window_size: u16,
     seq_no: SeqNumber,
@@ -118,9 +117,9 @@ fn send_data<const N: usize>(
 }
 
 /// This function processes an incoming data packet.
-fn recv_data<const N: usize>(
-    receiver: &mut SharedEngine<N>,
-    sender: &mut SharedEngine<N>,
+fn recv_data(
+    receiver: &mut SharedEngine,
+    sender: &mut SharedEngine,
     receiver_qd: QDesc,
     bytes: DemiBuffer,
 ) -> Result<()> {
@@ -156,10 +155,10 @@ fn recv_data<const N: usize>(
 }
 
 /// This function checks and processes an ack packet.
-fn recv_pure_ack<const N: usize>(
+fn recv_pure_ack(
     _: &mut Instant,
-    sender: &mut SharedEngine<N>,
-    receiver: &mut SharedEngine<N>,
+    sender: &mut SharedEngine,
+    receiver: &mut SharedEngine,
     ack_num: SeqNumber,
     bytes: DemiBuffer,
 ) -> Result<()> {
@@ -189,10 +188,10 @@ fn recv_pure_ack<const N: usize>(
 }
 
 /// This function sends and receives a single DemiBuffer between the client and server.
-fn send_recv<const N: usize>(
+fn send_recv(
     now: &mut Instant,
-    server: &mut SharedEngine<N>,
-    client: &mut SharedEngine<N>,
+    server: &mut SharedEngine,
+    client: &mut SharedEngine,
     server_qd: QDesc,
     client_qd: QDesc,
     window_size: u16,
@@ -218,10 +217,10 @@ fn send_recv<const N: usize>(
 }
 
 /// This function sends a DemiBuffer between the client and server and then back from the server to the client.
-fn send_recv_round<const N: usize>(
+fn send_recv_round(
     now: &mut Instant,
-    server: &mut SharedEngine<N>,
-    client: &mut SharedEngine<N>,
+    server: &mut SharedEngine,
+    client: &mut SharedEngine,
     server_qd: QDesc,
     client_qd: QDesc,
     window_size: u16,
@@ -272,10 +271,10 @@ fn send_recv_round<const N: usize>(
 }
 
 /// This function tests the TCP close protocol.
-fn connection_hangup<const N: usize>(
+fn connection_hangup(
     now: &mut Instant,
-    server: &mut SharedEngine<N>,
-    client: &mut SharedEngine<N>,
+    server: &mut SharedEngine,
+    client: &mut SharedEngine,
     server_qd: QDesc,
     client_qd: QDesc,
 ) -> Result<()> {
@@ -357,8 +356,8 @@ pub fn test_send_recv_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
     let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -400,8 +399,8 @@ pub fn test_send_recv_round_loop() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
     let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -444,8 +443,8 @@ pub fn test_send_recv_with_delay() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
     let window_scale: u8 = client.get_test_rig().get_tcp_config().get_window_scale();
     let max_window_size: u32 = match (client.get_test_rig().get_tcp_config().get_receive_window_size() as u32)
         .checked_shl(window_scale as u32)
@@ -517,8 +516,8 @@ fn test_connect_disconnect() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
 
     let ((server_qd, addr), client_qd): ((QDesc, SocketAddrV4), QDesc) =
         connection_setup(&mut now, &mut server, &mut client, listen_port, listen_addr)?;

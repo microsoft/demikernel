@@ -9,6 +9,7 @@ use super::IoUringRuntime;
 use crate::runtime::{
     memory::DemiBuffer,
     network::{
+        consts::RECEIVE_BATCH_SIZE,
         NetworkRuntime,
         PacketBuf,
     },
@@ -20,14 +21,14 @@ use ::arrayvec::ArrayVec;
 //==============================================================================
 
 /// Network Runtime Trait Implementation for I/O User Ring Runtime
-impl<const N: usize> NetworkRuntime<N> for IoUringRuntime {
+impl NetworkRuntime for IoUringRuntime {
     // TODO: Rely on a default implementation for this.
     fn transmit(&mut self, _pkt: Box<dyn PacketBuf>) {
         unreachable!()
     }
 
     // TODO: Rely on a default implementation for this.
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         unreachable!()
     }
 }

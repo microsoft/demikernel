@@ -29,7 +29,6 @@ use crossbeam_channel::{
     Receiver,
     Sender,
 };
-use demikernel::runtime::network::consts::RECEIVE_BATCH_SIZE;
 use std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -54,7 +53,7 @@ impl DummyLibOS {
         tx: Sender<DemiBuffer>,
         rx: Receiver<DemiBuffer>,
         arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Result<SharedInetStack<RECEIVE_BATCH_SIZE>, Fail> {
+    ) -> Result<SharedInetStack, Fail> {
         let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         let transport: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx);
         let arp_config: ArpConfig = ArpConfig::new(
@@ -70,7 +69,7 @@ impl DummyLibOS {
         logging::initialize();
         SharedInetStack::new(
             runtime,
-            SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport)),
+            SharedBox::<dyn NetworkRuntime>::new(Box::new(transport)),
             link_addr,
             ipv4_addr,
             udp_config,

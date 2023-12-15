@@ -67,39 +67,39 @@ use crate::timer;
 // Structures
 //======================================================================================================================
 
-pub struct TcpPeer<const N: usize> {
+pub struct TcpPeer {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    transport: SharedBox<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
 #[derive(Clone)]
-pub struct SharedTcpPeer<const N: usize>(SharedObject<TcpPeer<N>>);
+pub struct SharedTcpPeer(SharedObject<TcpPeer>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<const N: usize> SharedTcpPeer<N> {
+impl SharedTcpPeer {
     pub fn new(
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
         let (tx, _) = mpsc::unbounded();
-        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer::<N> {
+        Ok(Self(SharedObject::<TcpPeer>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
             transport,
@@ -114,7 +114,7 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Creates a TCP socket.
     pub fn socket(&mut self) -> Result<QDesc, Fail> {
-        let new_queue: SharedTcpQueue<N> = SharedTcpQueue::<N>::new(
+        let new_queue: SharedTcpQueue = SharedTcpQueue::new(
             self.runtime.clone(),
             self.transport.clone(),
             self.local_link_addr,
@@ -122,7 +122,7 @@ impl<const N: usize> SharedTcpPeer<N> {
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         );
-        let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue<N>>(new_queue);
+        let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue>(new_queue);
         Ok(new_qd)
     }
 
@@ -188,7 +188,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         // Get bound address while checking for several issues.
         // Check if there isn't a socket listening on this address/port pair.
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         if let Some(local) = queue.local() {
             if let Some(existing_qd) = self.runtime.get_qd_from_socket_id(&SocketId::Passive(local)) {
                 if existing_qd != qd {
@@ -209,7 +209,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
 
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -227,7 +227,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue.clone(),
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -239,7 +239,7 @@ impl<const N: usize> SharedTcpPeer<N> {
                     Ok(endpoints) => endpoints,
                     Err(e) => return (qd, OperationResult::Failed(e)),
                 };
-                let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue<N>>(new_queue.clone());
+                let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue>(new_queue.clone());
                 if let Some(existing_qd) = self
                     .runtime
                     .insert_socket_id_to_qd(SocketId::Active(endpoints.0, endpoints.1), new_qd)
@@ -260,7 +260,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     /// Sets up the coroutine for connecting the socket to [remote].
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
         trace!("connect(): qd={:?} remote={:?}", qd, remote);
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         // Check whether we need to allocate an ephemeral port.
         let local: SocketAddrV4 = match queue.local() {
             Some(addr) => addr,
@@ -302,7 +302,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue<N> = match self.runtime.get_shared_queue(&qd) {
+        let mut queue: SharedTcpQueue = match self.runtime.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -321,7 +321,7 @@ impl<const N: usize> SharedTcpPeer<N> {
 
     /// Pushes immediately to the socket and returns the result asynchronously.
     pub fn push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -338,7 +338,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -355,7 +355,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     /// Sets up a coroutine for popping data from the socket.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         // Get local address bound to socket.
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::pop for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -372,7 +372,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -387,7 +387,7 @@ impl<const N: usize> SharedTcpPeer<N> {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("Closing socket: qd={:?}", qd);
 
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::close for qd={:?}", qd);
             let yielder: Yielder = Yielder::new();
@@ -404,7 +404,7 @@ impl<const N: usize> SharedTcpPeer<N> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue<N> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -425,7 +425,7 @@ impl<const N: usize> SharedTcpPeer<N> {
                 }
                 // Free the queue.
                 self.runtime
-                    .free_queue::<SharedTcpQueue<N>>(&qd)
+                    .free_queue::<SharedTcpQueue>(&qd)
                     .expect("queue should exist");
 
                 (qd, OperationResult::Close)
@@ -446,8 +446,8 @@ impl<const N: usize> SharedTcpPeer<N> {
         self.get_shared_queue(&qd)?.endpoints()
     }
 
-    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedTcpQueue<N>, Fail> {
-        self.runtime.get_shared_queue::<SharedTcpQueue<N>>(qd)
+    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedTcpQueue, Fail> {
+        self.runtime.get_shared_queue::<SharedTcpQueue>(qd)
     }
 
     /// Processes an incoming TCP segment.
@@ -495,15 +495,15 @@ impl<const N: usize> SharedTcpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<const N: usize> Deref for SharedTcpPeer<N> {
-    type Target = TcpPeer<N>;
+impl Deref for SharedTcpPeer {
+    type Target = TcpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedTcpPeer<N> {
+impl DerefMut for SharedTcpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

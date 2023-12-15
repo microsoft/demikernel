@@ -13,10 +13,7 @@ use crate::{
             SharedEngine,
         },
     },
-    runtime::network::{
-        consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
-    },
+    runtime::network::types::MacAddress,
 };
 use ::anyhow::Result;
 use ::futures::{
@@ -41,9 +38,9 @@ use ::std::{
 fn immediate_reply() -> Result<()> {
     // tests to ensure that an are request results in a reply.
     let now = Instant::now();
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice(now);
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob(now);
-    let mut carrie: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_carrie(now);
+    let mut alice: SharedEngine = test_helpers::new_alice(now);
+    let mut bob: SharedEngine = test_helpers::new_bob(now);
+    let mut carrie: SharedEngine = test_helpers::new_carrie(now);
 
     crate::ensure_eq!(
         alice.get_test_rig().get_arp_config().get_request_timeout(),
@@ -95,9 +92,9 @@ fn immediate_reply() -> Result<()> {
 fn slow_reply() -> Result<()> {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice(now);
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob(now);
-    let mut carrie: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_carrie(now);
+    let mut alice: SharedEngine = test_helpers::new_alice(now);
+    let mut bob: SharedEngine = test_helpers::new_bob(now);
+    let mut carrie: SharedEngine = test_helpers::new_carrie(now);
 
     // this test is written based on certain assumptions.
     crate::ensure_eq!(alice.get_test_rig().get_arp_config().get_retry_count() > 0, true);
@@ -161,7 +158,7 @@ fn slow_reply() -> Result<()> {
 fn no_reply() -> Result<()> {
     // tests to ensure that an are request results in a reply.
     let mut now = Instant::now();
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice(now);
+    let mut alice: SharedEngine = test_helpers::new_alice(now);
 
     crate::ensure_eq!(alice.get_test_rig().get_arp_config().get_retry_count(), 2);
     crate::ensure_eq!(

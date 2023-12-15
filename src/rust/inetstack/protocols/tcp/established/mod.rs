@@ -43,8 +43,8 @@ use ::std::{
 };
 
 #[derive(Clone)]
-pub struct EstablishedSocket<const N: usize> {
-    pub cb: SharedControlBlock<N>,
+pub struct EstablishedSocket {
+    pub cb: SharedControlBlock,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
@@ -55,16 +55,16 @@ pub struct EstablishedSocket<const N: usize> {
     background: TaskHandle,
 }
 
-impl<const N: usize> EstablishedSocket<N> {
+impl EstablishedSocket {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -145,7 +145,7 @@ impl<const N: usize> EstablishedSocket<N> {
 
 // TODO: Uncomment this once we have proper resource clean up on asynchronous close.
 // FIXME: https://github.com/microsoft/demikernel/issues/988
-// impl<const N: usize> Drop for EstablishedSocket<N> {
+// impl Drop for EstablishedSocket {
 //     fn drop(&mut self) {
 //         if let Err(e) = self.runtime.remove_background_coroutine(&self.background) {
 //             panic!("Failed to drop established socket (error={})", e);

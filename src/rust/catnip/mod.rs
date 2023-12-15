@@ -22,7 +22,6 @@ use crate::{
                 TcpConfig,
                 UdpConfig,
             },
-            consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             NetworkRuntime,
         },
@@ -58,7 +57,7 @@ use crate::timer;
 /// Catnip LibOS
 pub struct CatnipLibOS {
     runtime: SharedDemiRuntime,
-    inetstack: SharedInetStack<RECEIVE_BATCH_SIZE>,
+    inetstack: SharedInetStack,
     transport: SharedDPDKRuntime,
 }
 
@@ -87,9 +86,9 @@ impl CatnipLibOS {
         let udp_config: UdpConfig = transport.get_udp_config();
         let tcp_config: TcpConfig = transport.get_tcp_config();
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: SharedInetStack<RECEIVE_BATCH_SIZE> = SharedInetStack::new(
+        let inetstack: SharedInetStack = SharedInetStack::new(
             runtime.clone(),
-            SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
+            SharedBox::<dyn NetworkRuntime>::new(Box::new(transport.clone())),
             link_addr,
             ip_addr,
             udp_config,
@@ -162,7 +161,7 @@ impl CatnipLibOS {
 
 /// De-Reference Trait Implementation for Catnip LibOS
 impl Deref for CatnipLibOS {
-    type Target = SharedInetStack<RECEIVE_BATCH_SIZE>;
+    type Target = SharedInetStack;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack
