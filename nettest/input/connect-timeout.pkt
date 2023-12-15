@@ -19,8 +19,5 @@
 // Retransmit SYN packet (4).
 +3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
 
-// Retransmit SYN packet (5).
-+3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
-
 // Fail to connect.
-+.0 wait(500, ...) = 110
++3 wait(500, ...) = 110

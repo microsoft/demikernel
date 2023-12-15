@@ -352,7 +352,6 @@ impl Simulation {
             },
         }
 
-        self.engine.get_test_rig().poll_scheduler();
         Ok(())
     }
 
@@ -640,6 +639,8 @@ impl Simulation {
             },
         };
 
+        self.engine.get_test_rig().poll_scheduler();
+
         match self.operation_has_completed() {
             Ok(Some(qt)) => match self
                 .engine
@@ -900,20 +901,18 @@ impl Simulation {
 
         let frames: VecDeque<DemiBuffer> = self.engine.get_test_rig().pop_all_frames();
 
-        if frames.len() >= 1 {
-            // FIXME: We currently do not support multi-frame segments.
-            crate::ensure_eq!(frames.len(), 1);
+        // FIXME: We currently do not support multi-frame segments.
+        crate::ensure_eq!(frames.len(), 1);
 
-            for bytes in &frames {
-                let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
-                self.check_ethernet2_header(&eth2_header)?;
+        for bytes in &frames {
+            let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
+            self.check_ethernet2_header(&eth2_header)?;
 
-                let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
-                self.check_ipv4_header(&ipv4_header)?;
+            let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
+            self.check_ipv4_header(&ipv4_header)?;
 
-                let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
-                self.check_tcp_header(&tcp_header, &tcp_packet)?;
-            }
+            let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+            self.check_tcp_header(&tcp_header, &tcp_packet)?;
         }
 
         Ok(())
