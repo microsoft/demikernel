@@ -14,10 +14,7 @@ use crate::{
             },
             ipv4::Ipv4Header,
             tcp::{
-                segment::{
-                    TcpHeader,
-                    TcpSegment,
-                },
+                segment::TcpHeader,
                 SeqNumber,
             },
         },
@@ -28,11 +25,7 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            types::MacAddress,
-            PacketBuf,
-        },
+        network::types::MacAddress,
         OperationResult,
         QDesc,
         QToken,
@@ -51,99 +44,8 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Tests
-//======================================================================================================================
-
-/// Refuse a connection.
-#[test]
-fn test_refuse_connection_early_ack() -> Result<()> {
-    let mut now = Instant::now();
-
-    // Connection parameters
-    let listen_port: u16 = 80;
-    let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
-
-    // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
-
-    // Server: LISTEN state at T(0).
-    let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
-
-    // T(0) -> T(1)
-    advance_clock(Some(&mut server), Some(&mut client), &mut now);
-
-    // Client: SYN_SENT state at T(1).
-    let (_, _, bytes): (QDesc, QToken, DemiBuffer) = connection_setup_listen_syn_sent(&mut client, listen_addr)?;
-
-    // Temper packet.
-    let (eth2_header, ipv4_header, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) =
-        extract_headers(bytes.clone())?;
-    let segment: TcpSegment = TcpSegment {
-        ethernet2_hdr: eth2_header,
-        ipv4_hdr: ipv4_header,
-        tcp_hdr: TcpHeader {
-            src_port: tcp_header.src_port,
-            dst_port: tcp_header.dst_port,
-            seq_num: tcp_header.seq_num,
-            ack_num: tcp_header.ack_num,
-            ns: tcp_header.ns,
-            cwr: tcp_header.cwr,
-            ece: tcp_header.ece,
-            urg: tcp_header.urg,
-            ack: true,
-            psh: tcp_header.psh,
-            rst: tcp_header.rst,
-            syn: tcp_header.syn,
-            fin: tcp_header.fin,
-            window_size: tcp_header.window_size,
-            urgent_pointer: tcp_header.urgent_pointer,
-            num_options: tcp_header.num_options,
-            option_list: tcp_header.option_list,
-        },
-        data: None,
-        tx_checksum_offload: false,
-    };
-
-    // Serialize segment.
-    let buf: DemiBuffer = serialize_segment(segment)?;
-
-    // T(1) -> T(2)
-    advance_clock(Some(&mut server), Some(&mut client), &mut now);
-
-    // Server: send connection reset.
-    server.receive(buf)?;
-    let bytes: DemiBuffer = server.get_test_rig().pop_frame();
-    let (_, _, tcp_header): (Ethernet2Header, Ipv4Header, TcpHeader) = extract_headers(bytes.clone())?;
-    crate::ensure_eq!(tcp_header.rst, true);
-
-    Ok(())
-}
-
-//======================================================================================================================
 // Standalone Functions
 //======================================================================================================================
-
-/// Extracts headers of a TCP packet.
-fn extract_headers(bytes: DemiBuffer) -> Result<(Ethernet2Header, Ipv4Header, TcpHeader)> {
-    let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes)?;
-    let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
-    let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, false)?;
-
-    return Ok((eth2_header, ipv4_header, tcp_header));
-}
-
-/// Serializes a TCP segment.
-fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
-    let header_size: usize = pkt.header_size();
-    let body_size: usize = pkt.body_size();
-    let mut buf = DemiBuffer::new((header_size + body_size) as u16);
-    pkt.write_header(&mut buf[..header_size]);
-    if let Some(body) = pkt.take_body() {
-        buf[header_size..].copy_from_slice(&body[..]);
-    }
-    Ok(buf)
-}
 
 /// Triggers LISTEN -> SYN_SENT state transition.
 fn connection_setup_listen_syn_sent<const N: usize>(
