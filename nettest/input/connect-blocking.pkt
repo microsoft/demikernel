@@ -5,11 +5,11 @@
 +.2 connect(500, ..., ...) = 0
 
 // Send SYN packet.
-+.0 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++.0 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 // Receive SYN-ACK packet.
-+.1 < S. 0:0(0) ack 1 win 65535 <mss 1450, wscale 0>
++.1 < S. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
 // Send ACK on SYN-ACK packet.
-+.0 > . 1:1(0) ack 1 win 65535 <nop>
++.0 > . seq 1(0) ack 1 win 65535 <nop>
 
 // Succeed to establish connection.
 +.0 wait(500, ...) = 0

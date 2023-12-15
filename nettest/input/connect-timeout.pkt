@@ -5,19 +5,19 @@
 +.1 connect(500, ..., ...) = 0
 
 // Send SYN packet.
-+.0 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++.0 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 
 // Retransmit SYN packet (1).
-+3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++3 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 
 // Retransmit SYN packet (2).
-+3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++3 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 
 // Retransmit SYN packet (3).
-+3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++3 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 
 // Retransmit SYN packet (4).
-+3 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++3 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 
 // Fail to connect.
 +3 wait(500, ...) = 110

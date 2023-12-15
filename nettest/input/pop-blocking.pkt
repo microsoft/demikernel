@@ -7,11 +7,11 @@
 +.2 accept(500, ..., ...) = 0
 
 // Receive SYN packet.
-+.2 < S 0:0(0) win 65535 <mss 1450,wscale 0>
++.2 < S seq 0(0) win 65535 <mss 1450,wscale 0>
 // Send SYN-ACK packet.
-+.0 > S. 0:0(0) ack 1 win 65535 <mss 1450,wscale 0>
++.0 > S. seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
 // Receive ACK on SYN-ACK packet.
-+.2 < . 1:1(0) ack 1 win 65535 <nop>
++.2 < . seq 1(0) ack 1 win 65535 <nop>
 
 // Succeed to accept connection.
 +.0 wait(500, ...) = 0
@@ -20,9 +20,9 @@
 +.1 read(501, ..., 1000) = 1000
 
 // Receive data packet.
-+.1 < P. 1:1001(1000) ack 1 win 65535 <nop>
++.1 < P. seq 1(1000) ack 1 win 65535 <nop>
 // Send ACK packet.
-+.1 > . 1:1(0) ack 1001 win 65535 <nop>
++.1 > . seq 1(0) ack 1001 win 65535 <nop>
 
 // Data read.
 +.0 wait(501, ...) = 0
