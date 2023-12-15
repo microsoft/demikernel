@@ -255,24 +255,6 @@ impl LibOS {
         result
     }
 
-    #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-    /// Closes an I/O queue.
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        let result: Result<(), Fail> = {
-            #[cfg(feature = "profiler")]
-            timer!("demikernel::close");
-            match self {
-                LibOS::NetworkLibOS(libos) => libos.close(qd),
-                LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "close() is not supported on memory liboses")),
-            }
-        };
-
-        self.poll();
-
-        result
-    }
-
-    #[cfg(not(any(feature = "catpowder-libos", feature = "catnip-libos")))]
     /// Closes an I/O queue.
     /// async_close() + wait() achieves the same effect as synchronous close.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {

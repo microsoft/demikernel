@@ -384,24 +384,6 @@ impl<const N: usize> SharedTcpPeer<N> {
     }
 
     /// Closes a TCP socket.
-    pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
-        trace!("Closing socket: qd={:?}", qd);
-        // TODO: Currently we do not handle close correctly because we continue to receive packets at this point to finish the TCP close protocol.
-        // 1. We do not remove the endpoint from the addresses table
-        // 2. We do not remove the queue from the queue table.
-        // As a result, we have stale closed queues that are labelled as closing. We should clean these up.
-        // look up socket
-        let mut queue: SharedTcpQueue<N> = self.get_shared_queue(&qd)?;
-        if let Some(socket_id) = queue.close()? {
-            match self.runtime.remove_socket_id_to_qd(&socket_id) {
-                Some(existing_qd) if existing_qd == qd => {},
-                _ => return Err(Fail::new(libc::EINVAL, "socket id did not map to this qd!")),
-            };
-        }
-        Ok(())
-    }
-
-    /// Closes a TCP socket.
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("Closing socket: qd={:?}", qd);
 

@@ -314,10 +314,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         self.state_machine.prepare(SocketOp::Close)?;
         let new_socket: Option<Socket<N>> = match self.socket {
             // Closing an active socket.
-            Socket::Established(ref mut socket) => {
-                socket.close()?;
-                Some(Socket::Closing(socket.clone()))
-            },
+            Socket::Established(ref mut socket) => Some(Socket::Closing(socket.clone())),
             // Closing a listening socket.
             Socket::Listening(_) => {
                 let cause: String = format!("cannot close a listening socket");
@@ -350,7 +347,7 @@ impl<const N: usize> SharedTcpQueue<N> {
     pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<Option<SocketId>, Fail> {
         let result: Option<SocketId> = match self.socket {
             Socket::Closing(ref mut socket) => {
-                socket.async_close(yielder).await?;
+                socket.close(yielder).await?;
                 Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1))
             },
             Socket::Bound(addr) => Some(SocketId::Passive(addr)),
@@ -360,49 +357,6 @@ impl<const N: usize> SharedTcpQueue<N> {
         self.state_machine.prepare(SocketOp::Closed)?;
         self.state_machine.commit();
         Ok(result)
-    }
-
-    pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
-        let new_socket: Option<Socket<N>> = match self.socket {
-            // Closing an active socket.
-            Socket::Established(ref mut socket) => {
-                socket.close()?;
-                Some(Socket::Closing(socket.clone()))
-            },
-            // Closing a listening socket.
-            Socket::Listening(_) => {
-                let cause: String = format!("cannot close a listening socket");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            // Closing a connecting socket.
-            Socket::Connecting(_) => {
-                let cause: String = format!("cannot close a connecting socket");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            // Closing a closing socket.
-            Socket::Closing(_) => {
-                let cause: String = format!("cannot close a socket that is closing");
-                error!("do_close(): {}", &cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            _ => None,
-        };
-        if let Some(socket) = new_socket {
-            self.socket = socket;
-        }
-        self.state_machine.commit();
-        self.state_machine.prepare(SocketOp::Closed)?;
-        self.state_machine.commit();
-        match self.socket {
-            // Cannot remove this from the address table until close finishes.
-            Socket::Closing(_) => Ok(None),
-            Socket::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
-            Socket::Unbound => Ok(None),
-            _ => unreachable!("We do not support closing of other socket types"),
-        }
     }
 
     pub fn remote_mss(&self) -> Result<usize, Fail> {

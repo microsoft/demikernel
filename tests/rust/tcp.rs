@@ -758,7 +758,7 @@ fn tcp_bad_close() -> Result<()> {
         };
 
         // Close bad queue descriptor.
-        match libos.close(QDesc::from(2)) {
+        match libos.async_close(QDesc::from(2)) {
             Ok(_) => anyhow::bail!("close() invalid file descriptir should fail"),
             Err(_) => (),
         };
@@ -768,7 +768,7 @@ fn tcp_bad_close() -> Result<()> {
         safe_close_passive(&mut libos, sockqd)?;
 
         // Double close queue descriptor.
-        match libos.close(qd) {
+        match libos.async_close(qd) {
             Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
         };
@@ -800,7 +800,7 @@ fn tcp_bad_close() -> Result<()> {
         }
 
         // Close bad queue descriptor.
-        match libos.close(QDesc::from(2)) {
+        match libos.async_close(QDesc::from(2)) {
             // Should not be able to close bad queue descriptor.
             Ok(_) => anyhow::bail!("close() invalid queue descriptor should fail"),
             Err(_) => (),
@@ -810,7 +810,7 @@ fn tcp_bad_close() -> Result<()> {
         safe_close_active(&mut libos, sockqd)?;
 
         // Double close queue descriptor.
-        match libos.close(sockqd) {
+        match libos.async_close(sockqd) {
             // Should not be able to double close.
             Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
@@ -1173,16 +1173,16 @@ fn safe_wait2<const N: usize>(libos: &mut SharedInetStack<N>, qt: QToken) -> Res
 
 /// Safe call to `close()` on passive socket.
 fn safe_close_passive<const N: usize>(libos: &mut SharedInetStack<N>, sockqd: QDesc) -> Result<()> {
-    match libos.close(sockqd) {
+    match libos.async_close(sockqd) {
         Ok(_) => anyhow::bail!("close() on listening socket should have failed (this is a known bug)"),
         Err(_) => Ok(()),
     }
 }
 
 /// Safe call to `close()` on active socket.
-fn safe_close_active<const N: usize>(libos: &mut SharedInetStack<N>, qd: QDesc) -> Result<()> {
-    match libos.close(qd) {
-        Ok(_) => Ok(()),
+fn safe_close_active<const N: usize>(libos: &mut SharedInetStack<N>, qd: QDesc) -> Result<(QDesc, OperationResult)> {
+    match libos.async_close(qd) {
+        Ok(qt) => safe_wait2(libos, qt),
         Err(_) => anyhow::bail!("close() on active socket has failed"),
     }
 }

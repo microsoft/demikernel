@@ -96,10 +96,11 @@ impl<const N: usize> EstablishedSocket<N> {
             sender_mss,
             cc_constructor,
             congestion_control_options,
+            recv_queue.clone(),
         );
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
-            Box::pin(background::background(cb.clone(), recv_queue.clone(), dead_socket_tx)),
+            Box::pin(background::background(cb.clone(), dead_socket_tx)),
         )?;
         Ok(Self {
             cb,
@@ -121,12 +122,8 @@ impl<const N: usize> EstablishedSocket<N> {
         self.cb.pop(size, yielder).await
     }
 
-    pub fn close(&mut self) -> Result<(), Fail> {
-        self.cb.close()
-    }
-
-    pub async fn async_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        self.cb.async_close(yielder).await
+    pub async fn close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+        self.cb.close(yielder).await
     }
 
     pub fn remote_mss(&self) -> usize {

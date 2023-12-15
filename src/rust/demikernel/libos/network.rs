@@ -174,18 +174,6 @@ impl NetworkLibOS {
         }
     }
 
-    /// Closes a socket.
-    #[allow(unused_variables)]
-    pub fn close(&mut self, sockqd: QDesc) -> Result<(), Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder { runtime: _, libos } => libos.close(sockqd),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip { runtime: _, libos } => libos.close(sockqd),
-            _ => Err(Fail::new(libc::ENOTSUP, "operation not supported")),
-        }
-    }
-
     pub fn async_close(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
