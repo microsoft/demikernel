@@ -17,6 +17,7 @@ use crate::{
         },
         memory::DemiBuffer,
         network::{
+            consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
             PacketBuf,
         },
@@ -33,7 +34,7 @@ use crate::timer;
 //==============================================================================
 
 /// Network Runtime Trait Implementation for DPDK Runtime
-impl<const N: usize> NetworkRuntime<N> for SharedDPDKRuntime {
+impl NetworkRuntime for SharedDPDKRuntime {
     fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
@@ -135,12 +136,12 @@ impl<const N: usize> NetworkRuntime<N> for SharedDPDKRuntime {
         }
     }
 
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
 
-        let mut packets: [*mut rte_mbuf; N] = unsafe { mem::zeroed() };
-        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), N as u16) };
-        assert!(nb_rx as usize <= N);
+        let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
+        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
+        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 
         {
             for &packet in &packets[..nb_rx as usize] {

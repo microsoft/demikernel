@@ -65,13 +65,13 @@ use ::std::{
 // Enumerations
 //======================================================================================================================
 
-pub enum Socket<const N: usize> {
+pub enum Socket {
     Unbound,
     Bound(SocketAddrV4),
-    Listening(SharedPassiveSocket<N>),
-    Connecting(SharedActiveOpenSocket<N>),
-    Established(EstablishedSocket<N>),
-    Closing(EstablishedSocket<N>),
+    Listening(SharedPassiveSocket),
+    Connecting(SharedActiveOpenSocket),
+    Established(EstablishedSocket),
+    Closing(EstablishedSocket),
 }
 
 //======================================================================================================================
@@ -79,36 +79,36 @@ pub enum Socket<const N: usize> {
 //======================================================================================================================
 
 /// Per-queue metadata for the TCP socket.
-pub struct TcpQueue<const N: usize> {
+pub struct TcpQueue {
     state_machine: SocketStateMachine,
-    socket: Socket<N>,
+    socket: Socket,
     recv_queue: Option<SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    transport: SharedBox<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
 #[derive(Clone)]
-pub struct SharedTcpQueue<const N: usize>(SharedObject<TcpQueue<N>>);
+pub struct SharedTcpQueue(SharedObject<TcpQueue>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<const N: usize> SharedTcpQueue<N> {
+impl SharedTcpQueue {
     /// Create a new shared queue.
     pub fn new(
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
-        Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
+        Self(SharedObject::<TcpQueue>::new(TcpQueue {
             state_machine: SocketStateMachine::new_unbound(Type::STREAM),
             socket: Socket::Unbound,
             recv_queue: None,
@@ -122,16 +122,16 @@ impl<const N: usize> SharedTcpQueue<N> {
     }
 
     pub fn new_established(
-        socket: EstablishedSocket<N>,
+        socket: EstablishedSocket,
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
-        Self(SharedObject::<TcpQueue<N>>::new(TcpQueue {
+        Self(SharedObject::<TcpQueue>::new(TcpQueue {
             state_machine: SocketStateMachine::new_established(),
             socket: Socket::Established(socket),
             recv_queue: Some(recv_queue),
@@ -193,14 +193,14 @@ impl<const N: usize> SharedTcpQueue<N> {
             .into())
     }
 
-    pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<SharedTcpQueue<N>, Fail> {
+    pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<SharedTcpQueue, Fail> {
         // Wait for a new connection on the listening socket.
         self.state_machine.may_accept()?;
-        let mut listening_socket: SharedPassiveSocket<N> = match self.socket {
+        let mut listening_socket: SharedPassiveSocket = match self.socket {
             Socket::Listening(ref listening_socket) => listening_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
-        let new_socket: EstablishedSocket<N> = listening_socket.do_accept(yielder).await?;
+        let new_socket: EstablishedSocket = listening_socket.do_accept(yielder).await?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
@@ -249,7 +249,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub async fn connect_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
         // Wait for the established socket to come back and update again.
-        let connecting_socket: SharedActiveOpenSocket<N> = match self.socket {
+        let connecting_socket: SharedActiveOpenSocket = match self.socket {
             Socket::Connecting(ref connecting_socket) => connecting_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is connecting"),
         };
@@ -312,7 +312,7 @@ impl<const N: usize> SharedTcpQueue<N> {
         F: FnOnce() -> Result<TaskHandle, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
-        let new_socket: Option<Socket<N>> = match self.socket {
+        let new_socket: Option<Socket> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
                 socket.close()?;
@@ -364,7 +364,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 
     pub fn close(&mut self) -> Result<Option<SocketId>, Fail> {
         self.state_machine.prepare(SocketOp::Close)?;
-        let new_socket: Option<Socket<N>> = match self.socket {
+        let new_socket: Option<Socket> = match self.socket {
             // Closing an active socket.
             Socket::Established(ref mut socket) => {
                 socket.close()?;
@@ -470,7 +470,7 @@ impl<const N: usize> SharedTcpQueue<N> {
 // Trait implementation
 //======================================================================================================================
 
-impl<const N: usize> IoQueue for SharedTcpQueue<N> {
+impl IoQueue for SharedTcpQueue {
     fn get_qtype(&self) -> QType {
         QType::TcpSocket
     }
@@ -488,7 +488,7 @@ impl<const N: usize> IoQueue for SharedTcpQueue<N> {
     }
 }
 
-impl<const N: usize> NetworkQueue for SharedTcpQueue<N> {
+impl NetworkQueue for SharedTcpQueue {
     /// Returns the local address to which the target queue is bound.
     fn local(&self) -> Option<SocketAddrV4> {
         match self.socket {
@@ -514,15 +514,15 @@ impl<const N: usize> NetworkQueue for SharedTcpQueue<N> {
     }
 }
 
-impl<const N: usize> Deref for SharedTcpQueue<N> {
-    type Target = TcpQueue<N>;
+impl Deref for SharedTcpQueue {
+    type Target = TcpQueue;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedTcpQueue<N> {
+impl DerefMut for SharedTcpQueue {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

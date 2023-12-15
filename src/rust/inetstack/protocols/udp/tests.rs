@@ -8,7 +8,6 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::consts::RECEIVE_BATCH_SIZE,
         queue::{
             Operation,
             OperationResult,
@@ -49,7 +48,7 @@ fn udp_bind_udp_close() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = match alice.udp_socket() {
@@ -59,7 +58,7 @@ fn udp_bind_udp_close() -> Result<()> {
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = match bob.udp_socket() {
@@ -87,14 +86,14 @@ fn udp_push_pop() -> Result<()> {
     let mut now: Instant = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -139,14 +138,14 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     let mut now: Instant = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -190,14 +189,14 @@ fn udp_ping_pong() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -274,12 +273,12 @@ fn udp_loop2_bind_udp_close() -> Result<()> {
     let mut now = Instant::now();
 
     // Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
 
     // Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
 
@@ -323,14 +322,14 @@ fn udp_loop2_push_pop() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -386,14 +385,14 @@ fn udp_loop2_ping_pong() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;
@@ -462,7 +461,7 @@ fn udp_bind_address_in_use() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
@@ -485,7 +484,7 @@ fn udp_bind_bad_file_descriptor() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = QDesc::try_from(u32::MAX)?;
@@ -508,7 +507,7 @@ fn udp_udp_close_bad_file_descriptor() -> Result<()> {
     let now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_fd: QDesc = alice.udp_socket()?;
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
@@ -540,14 +539,14 @@ fn udp_pop_not_bound() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port = 80;
     let alice_addr = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port = 80;
     let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     // Bob does not create a socket.
@@ -582,14 +581,14 @@ fn udp_push_bad_file_descriptor() -> Result<()> {
     let mut now = Instant::now();
 
     // Setup Alice.
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
     let alice_port: u16 = 80;
     let alice_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::ALICE_IPV4, alice_port);
     let alice_fd: QDesc = alice.udp_socket()?;
     alice.udp_bind(alice_fd, alice_addr)?;
 
     // Setup Bob.
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
     let bob_port: u16 = 80;
     let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
     let bob_fd: QDesc = bob.udp_socket()?;

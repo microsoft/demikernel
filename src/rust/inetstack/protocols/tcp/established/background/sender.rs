@@ -24,7 +24,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<const N: usize>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
+pub async fn sender(mut cb: SharedControlBlock, yielder: Yielder) -> Result<!, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.

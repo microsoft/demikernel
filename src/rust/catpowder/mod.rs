@@ -15,10 +15,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-        },
+        network::NetworkRuntime,
         scheduler::TaskHandle,
         types::{
             demi_qresult_t,
@@ -49,7 +46,7 @@ use crate::timer;
 /// Catpowder LibOS
 pub struct CatpowderLibOS {
     runtime: SharedDemiRuntime,
-    inetstack: SharedInetStack<RECEIVE_BATCH_SIZE>,
+    inetstack: SharedInetStack,
     transport: LinuxRuntime,
 }
 
@@ -68,9 +65,9 @@ impl CatpowderLibOS {
             HashMap::default(),
         );
         let rng_seed: [u8; 32] = [0; 32];
-        let inetstack: SharedInetStack<RECEIVE_BATCH_SIZE> = SharedInetStack::new(
+        let inetstack: SharedInetStack = SharedInetStack::new(
             runtime.clone(),
-            SharedBox::<dyn NetworkRuntime<RECEIVE_BATCH_SIZE>>::new(Box::new(transport.clone())),
+            SharedBox::<dyn NetworkRuntime>::new(Box::new(transport.clone())),
             transport.get_link_addr(),
             transport.get_ip_addr(),
             transport.get_udp_config(),
@@ -142,7 +139,7 @@ impl CatpowderLibOS {
 
 /// De-Reference Trait Implementation for Catpowder LibOS
 impl Deref for CatpowderLibOS {
-    type Target = SharedInetStack<RECEIVE_BATCH_SIZE>;
+    type Target = SharedInetStack;
 
     fn deref(&self) -> &Self::Target {
         &self.inetstack

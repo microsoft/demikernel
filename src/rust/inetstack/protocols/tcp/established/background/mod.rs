@@ -31,8 +31,8 @@ use ::futures::{
     FutureExt,
 };
 
-pub async fn background<const N: usize>(
-    cb: SharedControlBlock<N>,
+pub async fn background(
+    cb: SharedControlBlock,
     mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 ) {
@@ -49,7 +49,7 @@ pub async fn background<const N: usize>(
     futures::pin_mut!(sender);
 
     let yielder_receiver: Yielder = Yielder::new();
-    let mut cb2: SharedControlBlock<N> = cb.clone();
+    let mut cb2: SharedControlBlock = cb.clone();
     let receiver = async move {
         loop {
             match recv_queue.pop(&yielder_receiver).await {

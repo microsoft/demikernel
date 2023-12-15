@@ -151,11 +151,11 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // TODO: Make all public fields in this structure private.
-pub struct ControlBlock<const N: usize> {
+pub struct ControlBlock {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    transport: SharedBox<dyn NetworkRuntime>,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
     local_link_addr: MacAddress,
@@ -163,10 +163,10 @@ pub struct ControlBlock<const N: usize> {
 
     // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
 
     // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
-    sender: Sender<N>,
+    sender: Sender,
 
     // TCP Connection State.
     state: State,
@@ -218,18 +218,18 @@ pub struct ControlBlock<const N: usize> {
 }
 
 #[derive(Clone)]
-pub struct SharedControlBlock<const N: usize>(SharedObject<ControlBlock<N>>);
+pub struct SharedControlBlock(SharedObject<ControlBlock>);
 //==============================================================================
 
-impl<const N: usize> SharedControlBlock<N> {
+impl SharedControlBlock {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -241,8 +241,8 @@ impl<const N: usize> SharedControlBlock<N> {
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
     ) -> Self {
-        let sender: Sender<N> = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
-        Self(SharedObject::<ControlBlock<N>>::new(ControlBlock::<N> {
+        let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
+        Self(SharedObject::<ControlBlock>::new(ControlBlock {
             local,
             remote,
             runtime,
@@ -276,7 +276,7 @@ impl<const N: usize> SharedControlBlock<N> {
     }
 
     // TODO: Remove this.  ARP doesn't belong at this layer.
-    pub fn arp(&self) -> SharedArpPeer<N> {
+    pub fn arp(&self) -> SharedArpPeer {
         self.arp.clone()
     }
 
@@ -1101,15 +1101,15 @@ impl<const N: usize> SharedControlBlock<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<const N: usize> Deref for SharedControlBlock<N> {
-    type Target = ControlBlock<N>;
+impl Deref for SharedControlBlock {
+    type Target = ControlBlock;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedControlBlock<N> {
+impl DerefMut for SharedControlBlock {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

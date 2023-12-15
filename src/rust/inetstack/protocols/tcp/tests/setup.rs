@@ -29,7 +29,6 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::{
-            consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             PacketBuf,
         },
@@ -64,8 +63,8 @@ fn test_refuse_connection_early_ack() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
     let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
@@ -130,8 +129,8 @@ fn test_refuse_connection_missing_syn() -> Result<()> {
     let listen_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, listen_port);
 
     // Setup peers.
-    let mut server: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
-    let mut client: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut server: SharedEngine = test_helpers::new_bob2(now);
+    let mut client: SharedEngine = test_helpers::new_alice2(now);
 
     // Server: LISTEN state at T(0).
     let _: QToken = connection_setup_closed_listen(&mut server, listen_addr)?;
@@ -222,8 +221,8 @@ fn serialize_segment(pkt: TcpSegment) -> Result<DemiBuffer> {
 }
 
 /// Triggers LISTEN -> SYN_SENT state transition.
-fn connection_setup_listen_syn_sent<const N: usize>(
-    client: &mut SharedEngine<N>,
+fn connection_setup_listen_syn_sent(
+    client: &mut SharedEngine,
     listen_addr: SocketAddrV4,
 ) -> Result<(QDesc, QToken, DemiBuffer)> {
     // Issue CONNECT operation.
@@ -243,10 +242,7 @@ fn connection_setup_listen_syn_sent<const N: usize>(
 }
 
 /// Triggers CLOSED -> LISTEN state transition.
-fn connection_setup_closed_listen<const N: usize>(
-    server: &mut SharedEngine<N>,
-    listen_addr: SocketAddrV4,
-) -> Result<QToken> {
+fn connection_setup_closed_listen(server: &mut SharedEngine, listen_addr: SocketAddrV4) -> Result<QToken> {
     // Issue ACCEPT operation.
     let socket_fd: QDesc = match server.tcp_socket() {
         Ok(fd) => fd,
@@ -267,10 +263,7 @@ fn connection_setup_closed_listen<const N: usize>(
 }
 
 /// Triggers LISTEN -> SYN_RCVD state transition.
-fn connection_setup_listen_syn_rcvd<const N: usize>(
-    server: &mut SharedEngine<N>,
-    bytes: DemiBuffer,
-) -> Result<DemiBuffer> {
+fn connection_setup_listen_syn_rcvd(server: &mut SharedEngine, bytes: DemiBuffer) -> Result<DemiBuffer> {
     // SYN_RCVD state.
     server.receive(bytes).unwrap();
     server.get_test_rig().poll_scheduler();
@@ -278,20 +271,14 @@ fn connection_setup_listen_syn_rcvd<const N: usize>(
 }
 
 /// Triggers SYN_SENT -> ESTABLISHED state transition.
-fn connection_setup_syn_sent_established<const N: usize>(
-    client: &mut SharedEngine<N>,
-    bytes: DemiBuffer,
-) -> Result<DemiBuffer> {
+fn connection_setup_syn_sent_established(client: &mut SharedEngine, bytes: DemiBuffer) -> Result<DemiBuffer> {
     client.receive(bytes).unwrap();
     client.get_test_rig().poll_scheduler();
     Ok(client.get_test_rig().pop_frame())
 }
 
 /// Triggers SYN_RCVD -> ESTABLISHED state transition.
-fn connection_setup_sync_rcvd_established<const N: usize>(
-    server: &mut SharedEngine<N>,
-    bytes: DemiBuffer,
-) -> Result<()> {
+fn connection_setup_sync_rcvd_established(server: &mut SharedEngine, bytes: DemiBuffer) -> Result<()> {
     server.receive(bytes).unwrap();
     server.get_test_rig().poll_scheduler();
     server.get_test_rig().poll_scheduler();
@@ -378,11 +365,7 @@ fn check_packet_pure_ack_on_syn_ack(
 }
 
 /// Advances clock by one second.
-pub fn advance_clock<const N: usize>(
-    server: Option<&mut SharedEngine<N>>,
-    client: Option<&mut SharedEngine<N>>,
-    now: &mut Instant,
-) {
+pub fn advance_clock(server: Option<&mut SharedEngine>, client: Option<&mut SharedEngine>, now: &mut Instant) {
     *now += Duration::from_secs(1);
     if let Some(server) = server {
         server.advance_clock(*now);
@@ -393,10 +376,10 @@ pub fn advance_clock<const N: usize>(
 }
 
 /// Runs 3-way connection setup.
-pub fn connection_setup<const N: usize>(
+pub fn connection_setup(
     now: &mut Instant,
-    server: &mut SharedEngine<N>,
-    client: &mut SharedEngine<N>,
+    server: &mut SharedEngine,
+    client: &mut SharedEngine,
     listen_port: u16,
     listen_addr: SocketAddrV4,
 ) -> Result<((QDesc, SocketAddrV4), QDesc)> {

@@ -22,7 +22,6 @@ use crate::{
             TcpConfig,
             UdpConfig,
         },
-        consts::RECEIVE_BATCH_SIZE,
     },
     MacAddress,
     QToken,
@@ -182,7 +181,7 @@ struct Simulation {
     remote_port: u16,
     local_qd: Option<(u32, QDesc)>,
     remote_qd: Option<(u32, Option<QDesc>)>,
-    engine: SharedEngine<RECEIVE_BATCH_SIZE>,
+    engine: SharedEngine,
     now: Instant,
     inflight: Option<QToken>,
     steps: Vec<String>,
@@ -228,7 +227,7 @@ impl Simulation {
             local_mac.clone(),
             local_ipv4.clone(),
         );
-        let local: SharedEngine<RECEIVE_BATCH_SIZE> = SharedEngine::new(test_rig)?;
+        let local: SharedEngine = SharedEngine::new(test_rig)?;
 
         println!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
         println!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);

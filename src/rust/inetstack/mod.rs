@@ -88,25 +88,25 @@ const MAX_RECV_ITERS: usize = 2;
 // Structures
 //======================================================================================================================
 
-pub struct InetStack<const N: usize> {
-    arp: SharedArpPeer<N>,
-    ipv4: Peer<N>,
+pub struct InetStack {
+    arp: SharedArpPeer,
+    ipv4: Peer,
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    transport: SharedBox<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack<const N: usize>(SharedObject<InetStack<N>>);
+pub struct SharedInetStack(SharedObject<InetStack>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<const N: usize> SharedInetStack<N> {
+impl SharedInetStack {
     pub fn new(
         mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,
@@ -114,14 +114,14 @@ impl<const N: usize> SharedInetStack<N> {
         rng_seed: [u8; 32],
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let arp: SharedArpPeer<N> = SharedArpPeer::new(
+        let arp: SharedArpPeer = SharedArpPeer::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
             local_ipv4_addr,
             arp_config,
         )?;
-        let ipv4: Peer<N> = Peer::new(
+        let ipv4: Peer = Peer::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -131,7 +131,7 @@ impl<const N: usize> SharedInetStack<N> {
             arp.clone(),
             rng_seed,
         )?;
-        let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack {
+        let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
             arp,
             ipv4,
             runtime: runtime.clone(),
@@ -517,15 +517,15 @@ impl<const N: usize> SharedInetStack<N> {
 // Trait Implementation
 //======================================================================================================================
 
-impl<const N: usize> Deref for SharedInetStack<N> {
-    type Target = InetStack<N>;
+impl Deref for SharedInetStack {
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedInetStack<N> {
+impl DerefMut for SharedInetStack {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

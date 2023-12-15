@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    inetstack::test_helpers::{
-        self,
-        SharedEngine,
-    },
-    runtime::network::consts::RECEIVE_BATCH_SIZE,
+use crate::inetstack::test_helpers::{
+    self,
+    SharedEngine,
 };
 use ::anyhow::Result;
 use ::futures::task::{
@@ -32,9 +29,9 @@ fn ipv4_ping() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
 
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
 
     // Alice pings Bob.
     let mut alice2 = alice.clone();
@@ -75,9 +72,9 @@ fn ipv4_ping_loop() -> Result<()> {
     let mut ctx = Context::from_waker(noop_waker_ref());
     let mut now = Instant::now();
 
-    let mut alice: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_alice2(now);
+    let mut alice: SharedEngine = test_helpers::new_alice2(now);
 
-    let mut bob: SharedEngine<RECEIVE_BATCH_SIZE> = test_helpers::new_bob2(now);
+    let mut bob: SharedEngine = test_helpers::new_bob2(now);
 
     for _ in 1..1000 {
         // Alice pings Bob.
