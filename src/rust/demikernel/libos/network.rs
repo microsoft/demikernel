@@ -27,7 +27,10 @@ use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::SharedCatloopLibOS;
 #[cfg(all(feature = "catnap-libos"))]
-use crate::catnap::SharedCatnapLibOS;
+use crate::catnap::{
+    transport::SharedCatnapTransport,
+    SharedCatnapLibOS,
+};
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -47,7 +50,7 @@ pub enum NetworkLibOS {
     #[cfg(all(feature = "catnap-libos"))]
     Catnap {
         runtime: SharedDemiRuntime,
-        libos: SharedCatnapLibOS,
+        libos: SharedCatnapLibOS<SharedCatnapTransport>,
     },
     #[cfg(feature = "catcollar-libos")]
     Catcollar {

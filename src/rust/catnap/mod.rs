@@ -4,17 +4,13 @@
 mod queue;
 #[cfg_attr(target_os = "linux", path = "linux/transport.rs")]
 #[cfg_attr(target_os = "windows", path = "win/transport.rs")]
-mod transport;
-
+pub mod transport;
 //==============================================================================
 // Imports
 //==============================================================================
 
 use crate::{
-    catnap::{
-        queue::SharedCatnapQueue,
-        transport::SharedCatnapTransport,
-    },
+    catnap::queue::SharedCatnapQueue,
     demikernel::config::Config,
     pal::constants::SOMAXCONN,
     runtime::{
@@ -82,19 +78,19 @@ pub struct CatnapLibOS<T: NetworkTransport> {
 }
 
 #[derive(Clone)]
-pub struct SharedCatnapLibOS(SharedObject<CatnapLibOS<SharedCatnapTransport>>);
+pub struct SharedCatnapLibOS<T: NetworkTransport>(SharedObject<CatnapLibOS<T>>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
 /// Associate Functions for Catnap LibOS
-impl SharedCatnapLibOS {
+impl<T: NetworkTransport> SharedCatnapLibOS<T> {
     /// Instantiates a Catnap LibOS.
     pub fn new(config: &Config, mut runtime: SharedDemiRuntime) -> Self {
-        Self(SharedObject::new(CatnapLibOS::<SharedCatnapTransport> {
+        Self(SharedObject::new(CatnapLibOS::<T> {
             runtime: runtime.clone(),
-            transport: SharedCatnapTransport::new(&config, &mut runtime),
+            transport: T::new(&config, &mut runtime),
         }))
     }
 
@@ -116,7 +112,7 @@ impl SharedCatnapLibOS {
         }
 
         // Create underlying queue.
-        let queue: SharedCatnapQueue<SharedCatnapTransport> = SharedCatnapQueue::new(domain, typ, &mut self.transport)?;
+        let queue: SharedCatnapQueue<T> = SharedCatnapQueue::new(domain, typ, &mut self.transport)?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
     }
@@ -176,7 +172,7 @@ impl SharedCatnapLibOS {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
 
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::accept for qd={:?}", qd);
             let coroutine_factory =
@@ -196,7 +192,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.get_shared_queue(&qd) {
             Ok(queue) => queue.clone(),
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -230,7 +226,7 @@ impl SharedCatnapLibOS {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::connect for qd={:?}", qd);
             let coroutine_factory =
@@ -250,7 +246,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.get_shared_queue(&qd) {
             Ok(queue) => queue.clone(),
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -272,7 +268,7 @@ impl SharedCatnapLibOS {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
 
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::close for qd={:?}", qd);
             let coroutine_factory =
@@ -292,7 +288,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.runtime.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.runtime.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -310,7 +306,7 @@ impl SharedCatnapLibOS {
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
                 // checks.
                 self.runtime
-                    .free_queue::<SharedCatnapQueue<SharedCatnapTransport>>(&qd)
+                    .free_queue::<SharedCatnapQueue<T>>(&qd)
                     .expect("queue should exist");
                 (qd, OperationResult::Close)
             },
@@ -332,7 +328,7 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         };
 
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::push for qd={:?}", qd);
             let coroutine_factory =
@@ -352,7 +348,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -377,7 +373,7 @@ impl SharedCatnapLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
 
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::pushto for qd={:?}", qd);
             let coroutine_factory =
@@ -403,7 +399,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -426,7 +422,7 @@ impl SharedCatnapLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = self.get_shared_queue(&qd)?;
+        let mut queue: SharedCatnapQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catnap::pop for qd={:?}", qd);
             let coroutine_factory =
@@ -446,7 +442,7 @@ impl SharedCatnapLibOS {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedCatnapQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedCatnapQueue<SharedCatnapTransport> = match self.get_shared_queue(&qd) {
+        let mut queue: SharedCatnapQueue<T> = match self.get_shared_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
@@ -468,9 +464,8 @@ impl SharedCatnapLibOS {
 
     /// This function gets a shared queue reference out of the I/O queue table. The type if a ref counted pointer to the
     /// queue itself.
-    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedCatnapQueue<SharedCatnapTransport>, Fail> {
-        self.runtime
-            .get_shared_queue::<SharedCatnapQueue<SharedCatnapTransport>>(qd)
+    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedCatnapQueue<T>, Fail> {
+        self.runtime.get_shared_queue::<SharedCatnapQueue<T>>(qd)
     }
 }
 
@@ -482,7 +477,7 @@ impl<T: NetworkTransport> Drop for CatnapLibOS<T> {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
         for boxed_queue in self.runtime.get_mut_qtable().drain() {
-            match downcast_queue::<SharedCatnapQueue<SharedCatnapTransport>>(boxed_queue) {
+            match downcast_queue::<SharedCatnapQueue<T>>(boxed_queue) {
                 Ok(mut queue) => {
                     if let Err(e) = queue.hard_close() {
                         error!("close() failed (error={:?}", e);
@@ -496,15 +491,15 @@ impl<T: NetworkTransport> Drop for CatnapLibOS<T> {
     }
 }
 
-impl Deref for SharedCatnapLibOS {
-    type Target = CatnapLibOS<SharedCatnapTransport>;
+impl<T: NetworkTransport> Deref for SharedCatnapLibOS<T> {
+    type Target = CatnapLibOS<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedCatnapLibOS {
+impl<T: NetworkTransport> DerefMut for SharedCatnapLibOS<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
