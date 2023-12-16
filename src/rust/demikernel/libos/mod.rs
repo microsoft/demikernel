@@ -14,6 +14,8 @@ use self::{
     name::LibOSName,
     network::NetworkLibOS,
 };
+#[cfg(all(feature = "catnap-libos"))]
+use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
 use crate::{
     demikernel::config::Config,
     runtime::{
@@ -47,7 +49,7 @@ use crate::catloop::SharedCatloopLibOS;
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::SharedCatmemLibOS;
 #[cfg(all(feature = "catnap-libos"))]
-use crate::catnap::SharedCatnapLibOS;
+use crate::catnap::transport::SharedCatnapTransport;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -99,7 +101,7 @@ impl LibOS {
             #[cfg(all(feature = "catnap-libos"))]
             LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap {
                 runtime: runtime.clone(),
-                libos: SharedCatnapLibOS::new(&config, runtime.clone()),
+                libos: SharedNetworkLibOS::<SharedCatnapTransport>::new(&config, runtime.clone()),
             }),
             #[cfg(feature = "catcollar-libos")]
             LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar {

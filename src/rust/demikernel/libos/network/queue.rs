@@ -44,9 +44,10 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// CatnapQueue represents a single Catnap queue. It contains all of the Catnap-specific functionality that operates on
-/// a single queue. It is stateless, all state is kept in the Socket data structure.
-pub struct CatnapQueue<T: NetworkTransport> {
+/// NetworkQueue represents a single network-connected queue. It contains all of the Catnap-specific functionality that
+/// operates on a single queue. It is stateless, all state is kept in the Socket data structure inside the
+/// NetworkTransport.
+pub struct NetworkQueue<T: NetworkTransport> {
     qtype: QType,
     /// The state machine.
     state_machine: SocketStateMachine,
@@ -61,14 +62,14 @@ pub struct CatnapQueue<T: NetworkTransport> {
 }
 
 #[derive(Clone)]
-pub struct SharedCatnapQueue<T: NetworkTransport>(SharedObject<CatnapQueue<T>>);
+pub struct SharedNetworkQueue<T: NetworkTransport>(SharedObject<NetworkQueue<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
 /// Associate Functions for Catnap LibOS
-impl<T: NetworkTransport> SharedCatnapQueue<T> {
+impl<T: NetworkTransport> SharedNetworkQueue<T> {
     pub fn new(domain: Domain, typ: Type, transport: &mut T) -> Result<Self, Fail> {
         // This was previously checked in the LibOS layer.
         debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
@@ -81,7 +82,7 @@ impl<T: NetworkTransport> SharedCatnapQueue<T> {
         };
 
         let socket: T::SocketDescriptor = transport.socket(domain, typ)?;
-        Ok(Self(SharedObject::new(CatnapQueue::<T> {
+        Ok(Self(SharedObject::new(NetworkQueue::<T> {
             qtype,
             state_machine: SocketStateMachine::new_unbound(typ),
             socket,
@@ -144,7 +145,7 @@ impl<T: NetworkTransport> SharedCatnapQueue<T> {
             // Operation completed.
             Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
-                Ok(Self(SharedObject::new(CatnapQueue {
+                Ok(Self(SharedObject::new(NetworkQueue {
                     qtype: self.qtype,
                     state_machine: SocketStateMachine::new_established(),
                     socket: new_socket,
@@ -339,7 +340,7 @@ impl<T: NetworkTransport> SharedCatnapQueue<T> {
 // Trait implementation
 //======================================================================================================================
 
-impl<T: NetworkTransport> IoQueue for SharedCatnapQueue<T> {
+impl<T: NetworkTransport> IoQueue for SharedNetworkQueue<T> {
     fn get_qtype(&self) -> crate::QType {
         self.qtype
     }
@@ -357,15 +358,15 @@ impl<T: NetworkTransport> IoQueue for SharedCatnapQueue<T> {
     }
 }
 
-impl<T: NetworkTransport> Deref for SharedCatnapQueue<T> {
-    type Target = CatnapQueue<T>;
+impl<T: NetworkTransport> Deref for SharedNetworkQueue<T> {
+    type Target = NetworkQueue<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<T: NetworkTransport> DerefMut for SharedCatnapQueue<T> {
+impl<T: NetworkTransport> DerefMut for SharedNetworkQueue<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
