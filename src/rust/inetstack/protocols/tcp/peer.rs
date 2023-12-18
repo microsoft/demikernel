@@ -29,7 +29,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         Operation,
         OperationResult,
