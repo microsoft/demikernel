@@ -22,7 +22,6 @@ use crate::{
         scheduler::{
             TaskHandle,
             Yielder,
-            YielderHandle,
         },
         types::demi_sgarray_t,
         Operation,
@@ -116,11 +115,11 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.async_close(coroutine_constructor)
@@ -170,11 +169,11 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catmem::push for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.push(coroutine_constructor)
@@ -203,11 +202,11 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("Catmem::pop for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.pop(coroutine_constructor)
