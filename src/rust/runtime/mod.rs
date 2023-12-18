@@ -84,7 +84,10 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 use self::{
-    scheduler::YielderHandle,
+    scheduler::{
+        Yielder,
+        YielderHandle,
+    },
     types::{
         demi_accept_result_t,
         demi_qr_value_t,
@@ -161,7 +164,7 @@ impl SharedDemiRuntime {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
+            Some(task_handle) => Ok(task_handle),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
                 error!("insert_coroutine(): {}", cause);
@@ -170,15 +173,20 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Inserts the `coroutine` named `task_name` into the scheduler. This function also tracks the qd, coroutine and
-    /// it's yielder_handle.
-    pub fn insert_coroutine_with_tracking(
+    /// The coroutine factory is a function that takes a yielder and returns a future. The future is then inserted into
+    /// the scheduler.
+    pub fn insert_coroutine_with_tracking<F>(
         &mut self,
         task_name: &str,
-        coroutine: Pin<Box<Operation>>,
-        yielder_handle: YielderHandle,
+        coroutine_factory: F,
         qd: QDesc,
-    ) -> Result<TaskHandle, Fail> {
+    ) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let coroutine: Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
         match self.insert_coroutine(task_name, coroutine) {
             Ok(task_handle) => {
                 // This allows to keep track of currently running coroutines.
