@@ -212,11 +212,11 @@ impl SharedTcpPeer {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.accept(coroutine_constructor)
@@ -287,11 +287,11 @@ impl SharedTcpPeer {
         let local_isn: SeqNumber = self.isn_generator.generate(&local, &remote);
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::connect for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.connect(local, remote, local_isn, coroutine_constructor)
@@ -324,11 +324,11 @@ impl SharedTcpPeer {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.push(buf, coroutine_constructor)
@@ -358,11 +358,11 @@ impl SharedTcpPeer {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::pop for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.pop(coroutine_constructor)
@@ -390,11 +390,11 @@ impl SharedTcpPeer {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::close for qd={:?}", qd);
-            let yielder: Yielder = Yielder::new();
-            let yielder_handle: YielderHandle = yielder.get_handle();
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd, yielder));
-            self.runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine, yielder_handle, qd)
+            let coroutine_factory =
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
+            self.clone()
+                .runtime
+                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
         };
 
         queue.async_close(coroutine_constructor)
