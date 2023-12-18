@@ -47,10 +47,7 @@ use crate::{
             QToken,
             QType,
         },
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
+        scheduler::Yielder,
         types::demi_sgarray_t,
         DemiRuntime,
         SharedDemiRuntime,
@@ -204,16 +201,15 @@ impl CatcollarLibOS {
         trace!("accept(): qd={:?}", qd);
 
         let fd: RawFd = self.get_queue_fd(&qd)?;
-
-        // Issue accept operation.
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder));
-        let task_id: String = format!("Catcollar::accept for qd={:?}", qd);
+        let task_name: String = format!("Catcollar::accept for qd={:?}", qd);
+        let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+            Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder))
+        };
 
         Ok(self
             .runtime
-            .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+            .clone()
+            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -294,18 +290,17 @@ impl CatcollarLibOS {
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
 
-        // Issue connect operation.
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let fd: RawFd = self.get_queue_fd(&qd)?;
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::connect_coroutine(qd, fd, remote, yielder));
-        let task_id: String = format!("Catcollar::connect for qd={:?}", qd);
+        let task_name: String = format!("Catcollar::connect for qd={:?}", qd);
+        let coroutine_factory =
+            |yielder| -> Pin<Box<Operation>> { Box::pin(Self::connect_coroutine(qd, fd, remote, yielder)) };
 
         Ok(self
             .runtime
-            .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+            .clone()
+            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -358,14 +353,14 @@ impl CatcollarLibOS {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("close() qd={:?}", qd);
         let fd: RawFd = self.get_queue_fd(&qd)?;
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<Operation>> = Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder));
-        let task_id: String = format!("Catcollar::close for qd={:?}", qd);
+        let task_name: String = format!("Catcollar::close for qd={:?}", qd);
+        let coroutine_factory =
+            |yielder| -> Pin<Box<Operation>> { Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder)) };
 
         Ok(self
             .runtime
-            .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+            .clone()
+            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -429,18 +424,16 @@ impl CatcollarLibOS {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
 
-        // Issue push operation.
         let fd: RawFd = self.get_queue_fd(&qd)?;
-        // Issue operation.
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<Operation>> =
-            Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder));
-        let task_id: String = format!("Catcollar::push for qd={:?}", qd);
+        let task_name: String = format!("Catcollar::push for qd={:?}", qd);
+        let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+            Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder))
+        };
 
         Ok(self
             .runtime
-            .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+            .clone()
+            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -507,24 +500,23 @@ impl CatcollarLibOS {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                // Issue push operation.
                 let fd: RawFd = self.get_queue_fd(&qd)?;
-                // Issue operation.
-                let yielder: Yielder = Yielder::new();
-                let yielder_handle: YielderHandle = yielder.get_handle();
-                let coroutine: Pin<Box<Operation>> = Box::pin(Self::pushto_coroutine(
-                    self.transport.clone(),
-                    qd,
-                    fd,
-                    remote,
-                    buf,
-                    yielder,
-                ));
-                let task_id: String = format!("Catcollar::pushto for qd={:?}", qd);
+                let task_name: String = format!("Catcollar::pushto for qd={:?}", qd);
+                let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+                    Box::pin(Self::pushto_coroutine(
+                        self.transport.clone(),
+                        qd,
+                        fd,
+                        remote,
+                        buf,
+                        yielder,
+                    ))
+                };
 
                 Ok(self
                     .runtime
-                    .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+                    .clone()
+                    .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
                     .get_task_id()
                     .into())
             },
@@ -601,18 +593,16 @@ impl CatcollarLibOS {
             DemiBuffer::new(size as u16)
         };
 
-        // Issue pop operation.
-        // Issue push operation.
         let fd: RawFd = self.get_queue_fd(&qd)?;
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<Operation>> =
-            Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder));
-        let task_id: String = format!("Catcollar::pop for qd={:?}", qd);
+        let task_name: String = format!("Catcollar::pop for qd={:?}", qd);
+        let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+            Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder))
+        };
 
         Ok(self
             .runtime
-            .insert_coroutine_with_tracking(&task_id, coroutine, yielder_handle, qd)?
+            .clone()
+            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
