@@ -113,7 +113,6 @@ impl Scheduler {
             Some(pin_slab_index) => *pin_slab_index,
             None => return None,
         };
-        self.tasks.get(pin_slab_index)?;
         let (waker_page_ref, waker_page_offset) = {
             let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
