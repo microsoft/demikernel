@@ -98,6 +98,9 @@ pub struct CatnapTransport {
 #[derive(Clone)]
 pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 
+/// Short-hand for our socket descriptor.
+type SockDesc = <SharedCatnapTransport as NetworkTransport>::SocketDescriptor;
+
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
@@ -364,11 +367,7 @@ impl SharedSocketData {
 impl SharedCatnapTransport {
     /// This function registers a handler for incoming and outgoing I/O on the socket. There should only be one of
     /// these per socket.
-    fn register_epoll(
-        &mut self,
-        sd: &<SharedCatnapTransport as NetworkTransport>::SocketDescriptor,
-        events: u32,
-    ) -> Result<(), Fail> {
+    fn register_epoll(&mut self, sd: &SockDesc, events: u32) -> Result<(), Fail> {
         let fd: RawFd = self.raw_fd_from_sd(sd);
         let mut epoll_event: libc::epoll_event = libc::epoll_event {
             events,
@@ -386,11 +385,7 @@ impl SharedCatnapTransport {
     }
 
     /// THis function removes the handlers for incoming and outgoing I/O on the socket.
-    fn unregister_epoll(
-        &mut self,
-        sd: &<SharedCatnapTransport as NetworkTransport>::SocketDescriptor,
-        events: u32,
-    ) -> Result<(), Fail> {
+    fn unregister_epoll(&mut self, sd: &SockDesc, events: u32) -> Result<(), Fail> {
         let fd: RawFd = self.raw_fd_from_sd(sd);
         let mut epoll_event: libc::epoll_event = libc::epoll_event {
             events,
@@ -477,7 +472,7 @@ impl SharedCatnapTransport {
     }
 
     /// Internal function to get the raw file descriptor from a socket, given the socket descriptor.
-    fn raw_fd_from_sd(&self, sd: &<SharedCatnapTransport as NetworkTransport>::SocketDescriptor) -> RawFd {
+    fn raw_fd_from_sd(&self, sd: &SockDesc) -> RawFd {
         self.socket_table
             .get(*sd)
             .expect("shoudld have been allocated")
@@ -485,15 +480,12 @@ impl SharedCatnapTransport {
     }
 
     /// Internal function to get the Socket from the metadata structure, given the socket descriptor.
-    fn socket_from_sd(&mut self, sd: &<SharedCatnapTransport as NetworkTransport>::SocketDescriptor) -> &mut Socket {
+    fn socket_from_sd(&mut self, sd: &SockDesc) -> &mut Socket {
         self.data_from_sd(sd).get_mut_socket()
     }
 
     /// Internal function to get the metadata for the socket, given the socket descriptor.
-    fn data_from_sd(
-        &mut self,
-        sd: &<SharedCatnapTransport as NetworkTransport>::SocketDescriptor,
-    ) -> &mut SharedSocketData {
+    fn data_from_sd(&mut self, sd: &SockDesc) -> &mut SharedSocketData {
         self.socket_table.get_mut(*sd).expect("should have been allocated")
     }
 }
