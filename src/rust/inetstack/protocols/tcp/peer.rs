@@ -215,7 +215,7 @@ impl SharedTcpPeer {
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, yielder)) };
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
         queue.accept(coroutine_constructor)
@@ -290,7 +290,7 @@ impl SharedTcpPeer {
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, yielder)) };
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
         queue.connect(local, remote, local_isn, coroutine_constructor)
@@ -327,7 +327,7 @@ impl SharedTcpPeer {
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, yielder)) };
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
         queue.push(buf, coroutine_constructor)
@@ -361,7 +361,7 @@ impl SharedTcpPeer {
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
         queue.pop(coroutine_constructor)
@@ -393,7 +393,7 @@ impl SharedTcpPeer {
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
         queue.async_close(coroutine_constructor)

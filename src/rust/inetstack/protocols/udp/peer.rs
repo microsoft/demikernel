@@ -173,7 +173,7 @@ impl SharedUdpPeer {
         let task_handle: TaskHandle =
             self.clone()
                 .runtime
-                .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?;
+                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?;
 
         let qt: QToken = task_handle.get_task_id().into();
 

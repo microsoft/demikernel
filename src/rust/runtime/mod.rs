@@ -173,31 +173,9 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Inserts the `coroutine` named `task_name` into the scheduler. This function also tracks the qd, coroutine and
-    /// it's yielder_handle.
-    pub fn insert_coroutine_with_tracking(
-        &mut self,
-        task_name: &str,
-        coroutine: Pin<Box<Operation>>,
-        yielder_handle: YielderHandle,
-        qd: QDesc,
-    ) -> Result<TaskHandle, Fail> {
-        match self.insert_coroutine(task_name, coroutine) {
-            Ok(task_handle) => {
-                // This allows to keep track of currently running coroutines.
-                self.pending_ops
-                    .entry(qd)
-                    .or_insert(HashMap::new())
-                    .insert(task_handle.clone(), yielder_handle.clone());
-                Ok(task_handle)
-            },
-            Err(e) => Err(e),
-        }
-    }
-
     /// The coroutine factory is a function that takes a yielder and returns a future. The future is then inserted into
     /// the scheduler.
-    pub fn insert_coroutine_with_tracking_callback<F>(
+    pub fn insert_coroutine_with_tracking<F>(
         &mut self,
         task_name: &str,
         coroutine_factory: F,

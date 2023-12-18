@@ -209,7 +209,7 @@ impl CatcollarLibOS {
         Ok(self
             .runtime
             .clone()
-            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -300,7 +300,7 @@ impl CatcollarLibOS {
         Ok(self
             .runtime
             .clone()
-            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -360,7 +360,7 @@ impl CatcollarLibOS {
         Ok(self
             .runtime
             .clone()
-            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -433,7 +433,7 @@ impl CatcollarLibOS {
         Ok(self
             .runtime
             .clone()
-            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
@@ -516,7 +516,7 @@ impl CatcollarLibOS {
                 Ok(self
                     .runtime
                     .clone()
-                    .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+                    .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
                     .get_task_id()
                     .into())
             },
@@ -602,7 +602,7 @@ impl CatcollarLibOS {
         Ok(self
             .runtime
             .clone()
-            .insert_coroutine_with_tracking_callback(&task_name, coroutine_factory, qd)?
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
             .get_task_id()
             .into())
     }
