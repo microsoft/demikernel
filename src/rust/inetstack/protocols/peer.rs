@@ -33,26 +33,26 @@ use ::std::{
 #[cfg(test)]
 use crate::runtime::QDesc;
 
-pub struct Peer<const N: usize> {
+pub struct Peer {
     local_ipv4_addr: Ipv4Addr,
-    icmpv4: SharedIcmpv4Peer<N>,
-    pub tcp: SharedTcpPeer<N>,
-    pub udp: SharedUdpPeer<N>,
+    icmpv4: SharedIcmpv4Peer,
+    pub tcp: SharedTcpPeer,
+    pub udp: SharedUdpPeer,
 }
 
-impl<const N: usize> Peer<N> {
+impl Peer {
     pub fn new(
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
+        transport: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let udp_offload_checksum: bool = udp_config.get_tx_checksum_offload();
-        let udp: SharedUdpPeer<N> = SharedUdpPeer::new(
+        let udp: SharedUdpPeer = SharedUdpPeer::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -60,7 +60,7 @@ impl<const N: usize> Peer<N> {
             udp_offload_checksum,
             arp.clone(),
         )?;
-        let icmpv4: SharedIcmpv4Peer<N> = SharedIcmpv4Peer::new(
+        let icmpv4: SharedIcmpv4Peer = SharedIcmpv4Peer::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -68,7 +68,7 @@ impl<const N: usize> Peer<N> {
             arp.clone(),
             rng_seed,
         )?;
-        let tcp: SharedTcpPeer<N> = SharedTcpPeer::new(
+        let tcp: SharedTcpPeer = SharedTcpPeer::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -114,7 +114,7 @@ impl<const N: usize> Peer<N> {
 }
 
 #[cfg(test)]
-impl<const N: usize> Peer<N> {
+impl Peer {
     pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
         self.tcp.remote_mss(fd)
     }

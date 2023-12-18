@@ -51,16 +51,16 @@ use ::std::{
 
 use super::SharedTestRuntime;
 
-pub struct Engine<const N: usize> {
+pub struct Engine {
     test_rig: SharedTestRuntime,
-    arp: SharedArpPeer<N>,
-    ipv4: Peer<N>,
+    arp: SharedArpPeer,
+    ipv4: Peer,
 }
 
 #[derive(Clone)]
-pub struct SharedEngine<const N: usize>(SharedObject<Engine<N>>);
+pub struct SharedEngine(SharedObject<Engine>);
 
-impl<const N: usize> SharedEngine<N> {
+impl SharedEngine {
     pub fn new(test_rig: SharedTestRuntime) -> Result<Self, Fail> {
         let link_addr: MacAddress = test_rig.get_link_addr();
         let ipv4_addr: Ipv4Addr = test_rig.get_ip_addr();
@@ -68,7 +68,7 @@ impl<const N: usize> SharedEngine<N> {
         let udp_config: UdpConfig = test_rig.get_udp_config();
         let tcp_config: TcpConfig = test_rig.get_tcp_config();
 
-        let boxed_test_rig: SharedBox<dyn NetworkRuntime<N>> = SharedBox::new(Box::new(test_rig.clone()));
+        let boxed_test_rig: SharedBox<dyn NetworkRuntime> = SharedBox::new(Box::new(test_rig.clone()));
         let arp = SharedArpPeer::new(
             test_rig.get_runtime(),
             boxed_test_rig.clone(),
@@ -87,7 +87,7 @@ impl<const N: usize> SharedEngine<N> {
             arp.clone(),
             rng_seed,
         )?;
-        Ok(Self(SharedObject::<Engine<N>>::new(Engine { test_rig, arp, ipv4 })))
+        Ok(Self(SharedObject::<Engine>::new(Engine { test_rig, arp, ipv4 })))
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
@@ -116,12 +116,12 @@ impl<const N: usize> SharedEngine<N> {
     }
 
     pub fn udp_pushto(&self, qd: QDesc, buf: DemiBuffer, to: SocketAddrV4) -> Result<Pin<Box<Operation>>, Fail> {
-        let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
+        let mut udp: SharedUdpPeer = self.ipv4.udp.clone();
         udp.pushto(qd, buf, to)
     }
 
     pub fn udp_pop(&self, qd: QDesc) -> Result<Pin<Box<Operation>>, Fail> {
-        let mut udp: SharedUdpPeer<N> = self.ipv4.udp.clone();
+        let mut udp: SharedUdpPeer = self.ipv4.udp.clone();
         udp.pop(qd, None)
     }
 
@@ -190,15 +190,15 @@ impl<const N: usize> SharedEngine<N> {
     }
 }
 
-impl<const N: usize> Deref for SharedEngine<N> {
-    type Target = Engine<N>;
+impl Deref for SharedEngine {
+    type Target = Engine;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedEngine<N> {
+impl DerefMut for SharedEngine {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

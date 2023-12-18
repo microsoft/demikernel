@@ -64,9 +64,9 @@ use ::std::{
 ///
 /// Arp Peer
 ///
-pub struct ArpPeer<const N: usize> {
+pub struct ArpPeer {
     runtime: SharedDemiRuntime,
-    network: SharedBox<dyn NetworkRuntime<N>>,
+    network: SharedBox<dyn NetworkRuntime>,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
@@ -76,19 +76,19 @@ pub struct ArpPeer<const N: usize> {
 }
 
 #[derive(Clone)]
-pub struct SharedArpPeer<const N: usize>(SharedObject<ArpPeer<N>>);
+pub struct SharedArpPeer(SharedObject<ArpPeer>);
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl<const N: usize> SharedArpPeer<N> {
+impl SharedArpPeer {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
     pub fn new(
         mut runtime: SharedDemiRuntime,
-        network: SharedBox<dyn NetworkRuntime<N>>,
+        network: SharedBox<dyn NetworkRuntime>,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         arp_config: ArpConfig,
@@ -100,7 +100,7 @@ impl<const N: usize> SharedArpPeer<N> {
             arp_config.get_disable_arp(),
         );
 
-        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer::<N> {
+        let peer: SharedArpPeer = Self(SharedObject::<ArpPeer>::new(ArpPeer {
             runtime: runtime.clone(),
             network,
             local_link_addr,
@@ -271,7 +271,7 @@ impl<const N: usize> SharedArpPeer<N> {
                 ipv4_addr,
             ),
         );
-        let mut peer: SharedArpPeer<N> = self.clone();
+        let mut peer: SharedArpPeer = self.clone();
         let mut arp_response = Box::pin(peer.do_wait_link_addr(ipv4_addr).fuse());
 
         // from TCP/IP illustrated, chapter 4:
@@ -313,15 +313,15 @@ impl<const N: usize> SharedArpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<const N: usize> Deref for SharedArpPeer<N> {
-    type Target = ArpPeer<N>;
+impl Deref for SharedArpPeer {
+    type Target = ArpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedArpPeer<N> {
+impl DerefMut for SharedArpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

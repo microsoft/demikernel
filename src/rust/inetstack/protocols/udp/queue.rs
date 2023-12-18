@@ -67,29 +67,29 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// Per-queue metadata for a UDP socket.
-pub struct UdpQueue<const N: usize> {
+pub struct UdpQueue {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
     local_link_addr: MacAddress,
-    transport: SharedBox<dyn NetworkRuntime<N>>,
+    transport: SharedBox<dyn NetworkRuntime>,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     checksum_offload: bool,
 }
 #[derive(Clone)]
-pub struct SharedUdpQueue<const N: usize>(SharedObject<UdpQueue<N>>);
+pub struct SharedUdpQueue(SharedObject<UdpQueue>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<const N: usize> SharedUdpQueue<N> {
+impl SharedUdpQueue {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
-        transport: SharedBox<dyn NetworkRuntime<N>>,
-        arp: SharedArpPeer<N>,
+        transport: SharedBox<dyn NetworkRuntime>,
+        arp: SharedArpPeer,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
         Ok(Self(SharedObject::new(UdpQueue {
@@ -167,7 +167,7 @@ impl<const N: usize> SharedUdpQueue<N> {
 //======================================================================================================================
 
 /// IoQueue Trait Implementation for UDP Queues.
-impl<const N: usize> IoQueue for SharedUdpQueue<N> {
+impl IoQueue for SharedUdpQueue {
     fn get_qtype(&self) -> crate::QType {
         crate::QType::UdpSocket
     }
@@ -185,21 +185,21 @@ impl<const N: usize> IoQueue for SharedUdpQueue<N> {
     }
 }
 
-impl<const N: usize> Deref for SharedUdpQueue<N> {
-    type Target = UdpQueue<N>;
+impl Deref for SharedUdpQueue {
+    type Target = UdpQueue;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<const N: usize> DerefMut for SharedUdpQueue<N> {
+impl DerefMut for SharedUdpQueue {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<const N: usize> NetworkQueue for SharedUdpQueue<N> {
+impl NetworkQueue for SharedUdpQueue {
     /// Returns the local address to which the target queue is bound.
     fn local(&self) -> Option<SocketAddrV4> {
         self.bound

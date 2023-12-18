@@ -10,6 +10,7 @@ use ::crossbeam_channel;
 use ::demikernel::runtime::{
     memory::DemiBuffer,
     network::{
+        consts::RECEIVE_BATCH_SIZE,
         NetworkRuntime,
         PacketBuf,
     },
@@ -59,7 +60,7 @@ impl SharedDummyRuntime {
 //==============================================================================
 
 /// Network Runtime Trait Implementation for Dummy Runtime
-impl<const N: usize> NetworkRuntime<N> for SharedDummyRuntime {
+impl NetworkRuntime for SharedDummyRuntime {
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
@@ -76,7 +77,7 @@ impl<const N: usize> NetworkRuntime<N> for SharedDummyRuntime {
         self.outgoing.try_send(buf).unwrap();
     }
 
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, N> {
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.try_recv().ok() {
             out.push(buf);
