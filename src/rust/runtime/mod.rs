@@ -84,7 +84,10 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 use self::{
-    scheduler::YielderHandle,
+    scheduler::{
+        Yielder,
+        YielderHandle,
+    },
     types::{
         demi_accept_result_t,
         demi_qr_value_t,
@@ -161,7 +164,7 @@ impl SharedDemiRuntime {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
+            Some(task_handle) => Ok(task_handle),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
                 error!("insert_coroutine(): {}", cause);
@@ -179,6 +182,33 @@ impl SharedDemiRuntime {
         yielder_handle: YielderHandle,
         qd: QDesc,
     ) -> Result<TaskHandle, Fail> {
+        match self.insert_coroutine(task_name, coroutine) {
+            Ok(task_handle) => {
+                // This allows to keep track of currently running coroutines.
+                self.pending_ops
+                    .entry(qd)
+                    .or_insert(HashMap::new())
+                    .insert(task_handle.clone(), yielder_handle.clone());
+                Ok(task_handle)
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The coroutine factory is a function that takes a yielder and returns a future. The future is then inserted into
+    /// the scheduler.
+    pub fn insert_coroutine_with_tracking_callback<F>(
+        &mut self,
+        task_name: &str,
+        coroutine_factory: F,
+        qd: QDesc,
+    ) -> Result<TaskHandle, Fail>
+    where
+        F: FnOnce(Yielder) -> Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>>,
+    {
+        let yielder: Yielder = Yielder::new();
+        let yielder_handle: YielderHandle = yielder.get_handle();
+        let coroutine: Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
         match self.insert_coroutine(task_name, coroutine) {
             Ok(task_handle) => {
                 // This allows to keep track of currently running coroutines.
