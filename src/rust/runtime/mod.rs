@@ -214,7 +214,12 @@ impl SharedDemiRuntime {
 
     /// Removes a coroutine from the underlying scheduler given its associated [QToken] `qt`.
     pub fn remove_coroutine_with_qtoken(&mut self, qt: QToken) -> OperationTask {
-        self.remove_coroutine(&self.scheduler.from_task_id(qt.into()).expect("coroutine should exist"))
+        self.remove_coroutine(
+            &self
+                .scheduler
+                .get_task_handle(qt.into())
+                .expect("coroutine should exist"),
+        )
     }
 
     /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
@@ -311,12 +316,12 @@ impl SharedDemiRuntime {
     }
 
     /// Retrieves the [TaskHandle] associated with the given [QToken] `qt`.
-    pub fn from_task_id(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.scheduler.from_task_id(qt.into()) {
+    pub fn get_task_handle(&self, qt: QToken) -> Result<TaskHandle, Fail> {
+        match self.scheduler.get_task_handle(qt.into()) {
             Some(handle) => Ok(handle),
             None => {
                 let cause: String = format!("invalid queue token (qt={:?})", &qt);
-                error!("from_task_id(): {}", cause);
+                error!("get_task_handle(): {}", cause);
                 Err(Fail::new(libc::EINVAL, &cause))
             },
         }

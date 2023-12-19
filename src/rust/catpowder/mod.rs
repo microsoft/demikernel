@@ -115,7 +115,7 @@ impl CatpowderLibOS {
     }
 
     pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt.into())
+        self.runtime.get_task_handle(qt.into())
     }
 
     pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {

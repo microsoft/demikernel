@@ -387,7 +387,7 @@ impl SharedInetStack {
         trace!("wait2(): qt={:?}", qt);
 
         // Retrieve associated schedule handle.
-        let handle: TaskHandle = self.runtime.from_task_id(qt.into())?;
+        let handle: TaskHandle = self.runtime.get_task_handle(qt.into())?;
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -415,7 +415,7 @@ impl SharedInetStack {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let handle: TaskHandle = self.runtime.from_task_id(qt.into())?;
+                let handle: TaskHandle = self.runtime.get_task_handle(qt.into())?;
 
                 // Found one, so extract the result and return.
                 if handle.has_completed() {

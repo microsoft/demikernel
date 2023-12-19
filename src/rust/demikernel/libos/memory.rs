@@ -114,10 +114,10 @@ impl MemoryLibOS {
 
     /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn from_task_id(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn get_task_handle(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.from_task_id(qt),
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.get_task_handle(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }

@@ -263,18 +263,18 @@ impl NetworkLibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn from_task_id(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn get_task_handle(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder { runtime, libos: _ } => runtime.from_task_id(qt),
+            NetworkLibOS::Catpowder { runtime, libos: _ } => runtime.get_task_handle(qt),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.from_task_id(qt),
+            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.get_task_handle(qt),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar { runtime, libos: _ } => runtime.from_task_id(qt),
+            NetworkLibOS::Catcollar { runtime, libos: _ } => runtime.get_task_handle(qt),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.from_task_id(qt),
+            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.get_task_handle(qt),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.from_task_id(qt),
+            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.get_task_handle(qt),
         }
     }
 

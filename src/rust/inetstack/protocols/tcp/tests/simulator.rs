@@ -16,12 +16,10 @@ use crate::{
         },
         test_helpers::SharedTestRuntime,
     },
-    runtime::network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
-        },
+    runtime::network::config::{
+        ArpConfig,
+        TcpConfig,
+        UdpConfig,
     },
     MacAddress,
     QToken,
@@ -882,7 +880,7 @@ impl Simulation {
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<Option<QToken>> {
         let has_completed: bool = match self.inflight {
-            Some(qt) => match self.engine.get_test_rig().get_runtime().from_task_id(qt.clone()) {
+            Some(qt) => match self.engine.get_test_rig().get_runtime().get_task_handle(qt.clone()) {
                 Ok(task_handle) => task_handle.has_completed(),
                 Err(e) => anyhow::bail!("{:?}", e),
             },

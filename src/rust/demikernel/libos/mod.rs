@@ -379,7 +379,7 @@ impl LibOS {
         trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
 
         // Retrieve associated schedule handle.
-        let handle: TaskHandle = self.schedule(qt)?;
+        let handle: TaskHandle = self.get_task_handle(qt)?;
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -411,10 +411,10 @@ impl LibOS {
             for (i, &qt) in qts.iter().enumerate() {
                 // Retrieve associated schedule handle.
                 // TODO: move this out of the loop.
-                let handle: TaskHandle = self.schedule(qt)?;
+                let handle: TaskHandle = self.get_task_handle(qt)?;
 
-                // Found one, so extract the result and return.
                 if handle.has_completed() {
+                    // Found one, so extract the result and return.
                     return Ok((i, self.pack_result(handle, qt)?));
                 }
             }
@@ -462,10 +462,10 @@ impl LibOS {
     }
 
     /// Waits for any operation in an I/O queue.
-    fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    fn get_task_handle(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.from_task_id(qt),
-            LibOS::MemoryLibOS(libos) => libos.from_task_id(qt),
+            LibOS::NetworkLibOS(libos) => libos.get_task_handle(qt),
+            LibOS::MemoryLibOS(libos) => libos.get_task_handle(qt),
         }
     }
 

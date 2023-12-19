@@ -425,7 +425,7 @@ impl Socket {
         let qt: QToken = self.catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
         let handle: TaskHandle = {
             // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
+            self.runtime.get_task_handle(qt)?
         };
         // Yield until pop completes.
         while !handle.has_completed() {
@@ -484,7 +484,7 @@ impl Socket {
         let qt: QToken = self.catmem.push(catmem_qd, &sga)?;
         let handle: TaskHandle = {
             // Get the task handle from the task id.
-            self.runtime.from_task_id(qt)?
+            self.runtime.get_task_handle(qt)?
         };
 
         // Wait for push to complete.
@@ -533,7 +533,7 @@ impl Socket {
         trace!("Send connection request qtoken={:?}", qt);
         let handle: TaskHandle = {
             // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
+            self.runtime.get_task_handle(qt)?
         };
 
         // Yield until push completes.
@@ -596,7 +596,7 @@ impl Socket {
 
         let handle: TaskHandle = {
             // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
+            self.runtime.get_task_handle(qt)?
         };
 
         loop {
@@ -659,7 +659,7 @@ impl Socket {
         trace!("Send ack qtoken={:?}", qt);
         let handle: TaskHandle = {
             // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
+            self.runtime.get_task_handle(qt)?
         };
 
         // Yield until push completes.
