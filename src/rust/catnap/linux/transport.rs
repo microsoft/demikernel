@@ -12,6 +12,7 @@ use crate::{
         fail::Fail,
         limits,
         memory::DemiBuffer,
+        network::transport::NetworkTransport,
         scheduler::{
             Yielder,
             YielderHandle,
@@ -58,13 +59,6 @@ use ::std::{
 const EPOLL_BATCH_SIZE: usize = 1024;
 
 //======================================================================================================================
-// Types
-//======================================================================================================================
-
-/// Identifier used to distinguish I/O streams.
-pub type SocketDescriptor = usize;
-
-//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -103,6 +97,9 @@ pub struct CatnapTransport {
 /// Shared network transport across coroutines.
 #[derive(Clone)]
 pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
+
+/// Short-hand for our socket descriptor.
+type SockDesc = <SharedCatnapTransport as NetworkTransport>::SocketDescriptor;
 
 //======================================================================================================================
 // Implementations
@@ -368,39 +365,9 @@ impl SharedSocketData {
 }
 
 impl SharedCatnapTransport {
-    /// Create a new Linux-based network transport.
-    pub fn new(_config: &Config, mut runtime: SharedDemiRuntime) -> Self {
-        // Create epoll socket.
-        // Linux ignores the size argument to epoll, it just has to be more than 0.
-        let epoll_fd: RawFd = match unsafe { libc::epoll_create(10) } {
-            fd if fd >= 0 => fd.into(),
-            _ => {
-                let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                panic!("could not create epoll socket: {:?}", errno);
-            },
-        };
-
-        // Set up background task for polling epoll API.
-        let yielder: Yielder = Yielder::new();
-        let background_task: YielderHandle = yielder.get_handle();
-        let me: Self = Self(SharedObject::new(CatnapTransport {
-            epoll_fd,
-            socket_table: Slab::<SharedSocketData>::new(),
-            background_task,
-        }));
-        let mut me2: Self = me.clone();
-        runtime
-            .insert_background_coroutine(
-                "catnap::transport::epoll",
-                Box::pin(async move { me2.poll(yielder).await }),
-            )
-            .expect("should be able to insert background coroutine");
-        me
-    }
-
     /// This function registers a handler for incoming and outgoing I/O on the socket. There should only be one of
     /// these per socket.
-    fn register_epoll(&mut self, sd: &SocketDescriptor, events: u32) -> Result<(), Fail> {
+    fn register_epoll(&mut self, sd: &SockDesc, events: u32) -> Result<(), Fail> {
         let fd: RawFd = self.raw_fd_from_sd(sd);
         let mut epoll_event: libc::epoll_event = libc::epoll_event {
             events,
@@ -418,7 +385,7 @@ impl SharedCatnapTransport {
     }
 
     /// THis function removes the handlers for incoming and outgoing I/O on the socket.
-    fn unregister_epoll(&mut self, sd: &SocketDescriptor, events: u32) -> Result<(), Fail> {
+    fn unregister_epoll(&mut self, sd: &SockDesc, events: u32) -> Result<(), Fail> {
         let fd: RawFd = self.raw_fd_from_sd(sd);
         let mut epoll_event: libc::epoll_event = libc::epoll_event {
             events,
@@ -440,7 +407,7 @@ impl SharedCatnapTransport {
     }
 
     /// Background function for checking for epoll events.
-    pub async fn poll(&mut self, yielder: Yielder) {
+    async fn poll(&mut self, yielder: Yielder) {
         let mut events: Vec<libc::epoll_event> = Vec::with_capacity(EPOLL_BATCH_SIZE);
         loop {
             match unsafe {
@@ -504,249 +471,8 @@ impl SharedCatnapTransport {
         }
     }
 
-    /// Creates a new socket on the underlying network transport. We only support IPv4 and UDP and TCP sockets for now.
-    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<SocketDescriptor, Fail> {
-        // Select protocol.
-        let protocol: Protocol = match typ {
-            Type::STREAM => Protocol::TCP,
-            Type::DGRAM => Protocol::UDP,
-            _ => {
-                return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
-            },
-        };
-
-        // Create socket.
-        let socket: Socket = match socket2::Socket::new(domain, typ, Some(protocol)) {
-            Ok(socket) => {
-                // Set socket options.
-                if let Err(e) = socket.set_reuse_address(true) {
-                    let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
-                    socket.shutdown(Shutdown::Both)?;
-                    error!("new(): {}", cause);
-                    return Err(Fail::new(get_libc_err(e), &cause));
-                }
-                if let Err(e) = socket.set_nonblocking(true) {
-                    let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
-                    socket.shutdown(Shutdown::Both)?;
-                    error!("new(): {}", cause);
-                    return Err(Fail::new(get_libc_err(e), &cause));
-                }
-
-                // Set TCP socket options
-                if typ == Type::STREAM {
-                    if let Err(e) = socket.set_nodelay(true) {
-                        let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
-                        socket.shutdown(Shutdown::Both)?;
-                        error!("new(): {}", cause);
-                        return Err(Fail::new(get_libc_err(e), &cause));
-                    }
-                }
-
-                socket
-            },
-            Err(e) => {
-                let cause: String = format!("failed to create socket: {:?}", e);
-                error!("{}", cause);
-                return Err(Fail::new(get_libc_err(e), &cause));
-            },
-        };
-        let sd: SocketDescriptor = match typ {
-            Type::STREAM => self.socket_table.insert(SharedSocketData::new_inactive(socket)),
-            Type::DGRAM => {
-                let new_sd: SocketDescriptor = self.socket_table.insert(SharedSocketData::new_active(socket));
-                self.register_epoll(&new_sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
-                new_sd
-            },
-            _ => unreachable!("We should have returned an error by now"),
-        };
-        Ok(sd)
-    }
-
-    /// Binds a socket to [local] on the underlying network transport.
-    pub fn bind(&mut self, sd: &mut SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
-        trace!("Bind to {:?}", local);
-        let socket: &mut Socket = self.socket_from_sd(sd);
-        if let Err(e) = socket.bind(&local.into()) {
-            let cause: String = format!("failed to bind socket: {:?}", e);
-            error!("bind(): {}", cause);
-            Err(Fail::new(get_libc_err(e), &cause))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Sets a socket to passive listening on the underlying transport and registers it to accept incoming connections
-    /// with epoll.
-    pub fn listen(&mut self, sd: &mut SocketDescriptor, backlog: usize) -> Result<(), Fail> {
-        trace!("Listen to");
-        if let Err(e) = self.socket_from_sd(sd).listen(backlog as i32) {
-            let cause: String = format!("failed to listen on socket: {:?}", e);
-            error!("listen(): {}", cause);
-            return Err(Fail::new(get_libc_err(e), &cause));
-        }
-
-        // Update socket state.
-        self.data_from_sd(sd).move_socket_to_passive();
-        self.register_epoll(&sd, libc::EPOLLIN as u32)?;
-
-        Ok(())
-    }
-
-    /// Accept the next incoming connection. This function blocks until a new connection arrives from the underlying
-    /// transport.
-    pub async fn accept(
-        &mut self,
-        sd: &mut SocketDescriptor,
-        yielder: Yielder,
-    ) -> Result<(SocketDescriptor, SocketAddr), Fail> {
-        let (new_socket, addr) = self.data_from_sd(sd).accept(yielder).await?;
-        // Set socket options.
-        if let Err(e) = new_socket.set_reuse_address(true) {
-            let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
-            new_socket.shutdown(Shutdown::Both)?;
-            error!("accept(): {}", cause);
-            return Err(Fail::new(get_libc_err(e), &cause));
-        }
-        if let Err(e) = new_socket.set_nodelay(true) {
-            let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
-            new_socket.shutdown(Shutdown::Both)?;
-            error!("accept(): {}", cause);
-            return Err(Fail::new(get_libc_err(e), &cause));
-        }
-        if let Err(e) = new_socket.set_nonblocking(true) {
-            let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
-            self.socket_from_sd(sd).shutdown(Shutdown::Both)?;
-            error!("accept(): {}", cause);
-            return Err(Fail::new(get_libc_err(e), &cause));
-        }
-
-        let new_data: SharedSocketData = SharedSocketData::new_active(new_socket);
-        let new_sd: usize = self.socket_table.insert(new_data);
-        self.register_epoll(&new_sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
-        Ok((new_sd, addr))
-    }
-
-    /// Connect to [remote] through the underlying transport. This function blocks until the connect succeeds or fails
-    /// with an error.
-    pub async fn connect(
-        &mut self,
-        sd: &mut SocketDescriptor,
-        remote: SocketAddr,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
-        self.data_from_sd(sd).move_socket_to_active();
-        self.register_epoll(&sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
-
-        loop {
-            match self.socket_from_sd(sd).connect(&remote.into()) {
-                Ok(()) => return Ok(()),
-                Err(e) => {
-                    // Check the return error code.
-                    let errno: i32 = get_libc_err(e);
-                    if DemiRuntime::should_retry(errno) {
-                        self.data_from_sd(sd).push(None, DemiBuffer::new(0), &yielder).await?;
-                    } else {
-                        let cause: String = format!("failed to connect on socket: {:?}", errno);
-                        error!("connect(): {}", cause);
-                        return Err(Fail::new(errno, &cause));
-                    }
-                },
-            }
-        }
-    }
-
-    /// Close the socket on the underlying transport. Also unregisters the socket with epoll.
-    pub fn close(&mut self, sd: &mut SocketDescriptor) -> Result<(), Fail> {
-        let data: &mut SharedSocketData = self.data_from_sd(sd);
-        // Close the socket.
-        match data.get_socket().shutdown(Shutdown::Both) {
-            Ok(()) => (),
-            Err(e) => {
-                let errno: i32 = get_libc_err(e);
-                // Close finished, so clean up and exit
-                match errno {
-                    libc::ENOTCONN => (),
-                    errno if DemiRuntime::should_retry(errno) => {
-                        return Err(Fail::new(libc::EAGAIN, "operaton not complete yet"))
-                    },
-                    errno => return Err(Fail::new(errno, "operation failed")),
-                }
-            },
-        }
-        // Check whether we need to remove epoll events.
-        match data.deref_mut() {
-            SocketData::Active(_) => self.unregister_epoll(sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?,
-            SocketData::Passive(_) => self.unregister_epoll(sd, libc::EPOLLIN as u32)?,
-            _ => (),
-        };
-        self.socket_table.remove(*sd);
-        Ok(())
-    }
-
-    /// Close the socket and block until close completes.
-    pub async fn async_close(&mut self, sd: &mut SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
-        let data: &mut SharedSocketData = self.data_from_sd(sd);
-        loop {
-            // Close the socket.
-            match data.get_socket().shutdown(Shutdown::Both) {
-                Ok(()) => break,
-                Err(e) => {
-                    let errno: i32 = get_libc_err(e);
-                    // Close finished, so clean up and exit
-                    match errno {
-                        libc::ENOTCONN => break,
-                        errno if DemiRuntime::should_retry(errno) => {
-                            // Wait for a new incoming event.
-                            data.pop(&mut DemiBuffer::new(0), 0, &yielder).await?;
-                            continue;
-                        },
-                        errno => return Err(Fail::new(errno, "operation failed")),
-                    }
-                },
-            }
-        }
-        // Check whether we need to remove epoll events.
-        match data.deref_mut() {
-            SocketData::Active(_) => self.unregister_epoll(sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?,
-            SocketData::Passive(_) => self.unregister_epoll(sd, libc::EPOLLIN as u32)?,
-            _ => (),
-        };
-        self.socket_table.remove(*sd);
-        Ok(())
-    }
-
-    /// Push [buf] to the underlying transport. This function blocks until the entire buffer has been written to the
-    /// socket. Returns Ok if successfully sent and an error if not.
-    pub async fn push(
-        &mut self,
-        sd: &mut SocketDescriptor,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
-        {
-            self.data_from_sd(sd).push(addr, buf.clone(), &yielder).await?;
-            // Clear out the original buffer.
-            buf.trim(buf.len()).expect("Should be able to empty the buffer");
-            Ok(())
-        }
-    }
-
-    /// Pop a [buf] of at most [size] from the underlying transport. This function blocks until the socket has data to
-    /// be read. For connected (i.e., TCP) sockets, this function returns Ok(None). For datagram (i.e., UDP) sockets,
-    /// this function returns the remote address that is the source of the incoming data.
-    pub async fn pop(
-        &mut self,
-        sd: &mut SocketDescriptor,
-        buf: &mut DemiBuffer,
-        size: usize,
-        yielder: Yielder,
-    ) -> Result<Option<SocketAddr>, Fail> {
-        self.data_from_sd(sd).pop(buf, size, &yielder).await
-    }
-
     /// Internal function to get the raw file descriptor from a socket, given the socket descriptor.
-    fn raw_fd_from_sd(&self, sd: &SocketDescriptor) -> RawFd {
+    fn raw_fd_from_sd(&self, sd: &SockDesc) -> RawFd {
         self.socket_table
             .get(*sd)
             .expect("shoudld have been allocated")
@@ -754,12 +480,12 @@ impl SharedCatnapTransport {
     }
 
     /// Internal function to get the Socket from the metadata structure, given the socket descriptor.
-    fn socket_from_sd(&mut self, sd: &SocketDescriptor) -> &mut Socket {
+    fn socket_from_sd(&mut self, sd: &SockDesc) -> &mut Socket {
         self.data_from_sd(sd).get_mut_socket()
     }
 
     /// Internal function to get the metadata for the socket, given the socket descriptor.
-    fn data_from_sd(&mut self, sd: &SocketDescriptor) -> &mut SharedSocketData {
+    fn data_from_sd(&mut self, sd: &SockDesc) -> &mut SharedSocketData {
         self.socket_table.get_mut(*sd).expect("should have been allocated")
     }
 }
@@ -849,5 +575,280 @@ impl AsRef<SocketData> for SharedSocketData {
 impl AsMut<SocketData> for SharedSocketData {
     fn as_mut(&mut self) -> &mut SocketData {
         self.0.as_mut()
+    }
+}
+
+impl NetworkTransport for SharedCatnapTransport {
+    type SocketDescriptor = usize;
+
+    /// Create a new Linux-based network transport.
+    fn new(_config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
+        // Create epoll socket.
+        // Linux ignores the size argument to epoll, it just has to be more than 0.
+        let epoll_fd: RawFd = match unsafe { libc::epoll_create(10) } {
+            fd if fd >= 0 => fd.into(),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                panic!("could not create epoll socket: {:?}", errno);
+            },
+        };
+
+        // Set up background task for polling epoll API.
+        let yielder: Yielder = Yielder::new();
+        let background_task: YielderHandle = yielder.get_handle();
+        let me: Self = Self(SharedObject::new(CatnapTransport {
+            epoll_fd,
+            socket_table: Slab::<SharedSocketData>::new(),
+            background_task,
+        }));
+        let mut me2: Self = me.clone();
+        runtime
+            .insert_background_coroutine(
+                "catnap::transport::epoll",
+                Box::pin(async move { me2.poll(yielder).await }),
+            )
+            .expect("should be able to insert background coroutine");
+        me
+    }
+
+    /// Creates a new socket on the underlying network transport. We only support IPv4 and UDP and TCP sockets for now.
+    fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
+        // Select protocol.
+        let protocol: Protocol = match typ {
+            Type::STREAM => Protocol::TCP,
+            Type::DGRAM => Protocol::UDP,
+            _ => {
+                return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
+            },
+        };
+
+        // Create socket.
+        let socket: Socket = match socket2::Socket::new(domain, typ, Some(protocol)) {
+            Ok(socket) => {
+                // Set socket options.
+                if let Err(e) = socket.set_reuse_address(true) {
+                    let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
+                    socket.shutdown(Shutdown::Both)?;
+                    error!("new(): {}", cause);
+                    return Err(Fail::new(get_libc_err(e), &cause));
+                }
+                if let Err(e) = socket.set_nonblocking(true) {
+                    let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
+                    socket.shutdown(Shutdown::Both)?;
+                    error!("new(): {}", cause);
+                    return Err(Fail::new(get_libc_err(e), &cause));
+                }
+
+                // Set TCP socket options
+                if typ == Type::STREAM {
+                    if let Err(e) = socket.set_nodelay(true) {
+                        let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
+                        socket.shutdown(Shutdown::Both)?;
+                        error!("new(): {}", cause);
+                        return Err(Fail::new(get_libc_err(e), &cause));
+                    }
+                }
+
+                socket
+            },
+            Err(e) => {
+                let cause: String = format!("failed to create socket: {:?}", e);
+                error!("{}", cause);
+                return Err(Fail::new(get_libc_err(e), &cause));
+            },
+        };
+        let sd: Self::SocketDescriptor = match typ {
+            Type::STREAM => self.socket_table.insert(SharedSocketData::new_inactive(socket)),
+            Type::DGRAM => {
+                let new_sd: Self::SocketDescriptor = self.socket_table.insert(SharedSocketData::new_active(socket));
+                self.register_epoll(&new_sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
+                new_sd
+            },
+            _ => unreachable!("We should have returned an error by now"),
+        };
+        Ok(sd)
+    }
+
+    /// Binds a socket to [local] on the underlying network transport.
+    fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
+        trace!("Bind to {:?}", local);
+        let socket: &mut Socket = self.socket_from_sd(sd);
+        if let Err(e) = socket.bind(&local.into()) {
+            let cause: String = format!("failed to bind socket: {:?}", e);
+            error!("bind(): {}", cause);
+            Err(Fail::new(get_libc_err(e), &cause))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Sets a socket to passive listening on the underlying transport and registers it to accept incoming connections
+    /// with epoll.
+    fn listen(&mut self, sd: &mut Self::SocketDescriptor, backlog: usize) -> Result<(), Fail> {
+        trace!("Listen to");
+        if let Err(e) = self.socket_from_sd(sd).listen(backlog as i32) {
+            let cause: String = format!("failed to listen on socket: {:?}", e);
+            error!("listen(): {}", cause);
+            return Err(Fail::new(get_libc_err(e), &cause));
+        }
+
+        // Update socket state.
+        self.data_from_sd(sd).move_socket_to_passive();
+        self.register_epoll(&sd, libc::EPOLLIN as u32)?;
+
+        Ok(())
+    }
+
+    /// Accept the next incoming connection. This function blocks until a new connection arrives from the underlying
+    /// transport.
+    async fn accept(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        yielder: Yielder,
+    ) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+        let (new_socket, addr) = self.data_from_sd(sd).accept(yielder).await?;
+        // Set socket options.
+        if let Err(e) = new_socket.set_reuse_address(true) {
+            let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
+            new_socket.shutdown(Shutdown::Both)?;
+            error!("accept(): {}", cause);
+            return Err(Fail::new(get_libc_err(e), &cause));
+        }
+        if let Err(e) = new_socket.set_nodelay(true) {
+            let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
+            new_socket.shutdown(Shutdown::Both)?;
+            error!("accept(): {}", cause);
+            return Err(Fail::new(get_libc_err(e), &cause));
+        }
+        if let Err(e) = new_socket.set_nonblocking(true) {
+            let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
+            self.socket_from_sd(sd).shutdown(Shutdown::Both)?;
+            error!("accept(): {}", cause);
+            return Err(Fail::new(get_libc_err(e), &cause));
+        }
+
+        let new_data: SharedSocketData = SharedSocketData::new_active(new_socket);
+        let new_sd: usize = self.socket_table.insert(new_data);
+        self.register_epoll(&new_sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
+        Ok((new_sd, addr))
+    }
+
+    /// Connect to [remote] through the underlying transport. This function blocks until the connect succeeds or fails
+    /// with an error.
+    async fn connect(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        remote: SocketAddr,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        self.data_from_sd(sd).move_socket_to_active();
+        self.register_epoll(&sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
+
+        loop {
+            match self.socket_from_sd(sd).connect(&remote.into()) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    // Check the return error code.
+                    let errno: i32 = get_libc_err(e);
+                    if DemiRuntime::should_retry(errno) {
+                        self.data_from_sd(sd).push(None, DemiBuffer::new(0), &yielder).await?;
+                    } else {
+                        let cause: String = format!("failed to connect on socket: {:?}", errno);
+                        error!("connect(): {}", cause);
+                        return Err(Fail::new(errno, &cause));
+                    }
+                },
+            }
+        }
+    }
+
+    /// Close the socket and block until close completes.
+    async fn close(&mut self, sd: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
+        let data: &mut SharedSocketData = self.data_from_sd(sd);
+        loop {
+            // Close the socket.
+            match data.get_socket().shutdown(Shutdown::Both) {
+                Ok(()) => break,
+                Err(e) => {
+                    let errno: i32 = get_libc_err(e);
+                    // Close finished, so clean up and exit
+                    match errno {
+                        libc::ENOTCONN => break,
+                        errno if DemiRuntime::should_retry(errno) => {
+                            // Wait for a new incoming event.
+                            data.pop(&mut DemiBuffer::new(0), 0, &yielder).await?;
+                            continue;
+                        },
+                        errno => return Err(Fail::new(errno, "operation failed")),
+                    }
+                },
+            }
+        }
+        // Check whether we need to remove epoll events.
+        match data.deref_mut() {
+            SocketData::Active(_) => self.unregister_epoll(sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?,
+            SocketData::Passive(_) => self.unregister_epoll(sd, libc::EPOLLIN as u32)?,
+            _ => (),
+        };
+        self.socket_table.remove(*sd);
+        Ok(())
+    }
+
+    /// Push [buf] to the underlying transport. This function blocks until the entire buffer has been written to the
+    /// socket. Returns Ok if successfully sent and an error if not.
+    async fn push(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        buf: &mut DemiBuffer,
+        addr: Option<SocketAddr>,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        {
+            self.data_from_sd(sd).push(addr, buf.clone(), &yielder).await?;
+            // Clear out the original buffer.
+            buf.trim(buf.len()).expect("Should be able to empty the buffer");
+            Ok(())
+        }
+    }
+
+    /// Pop a [buf] of at most [size] from the underlying transport. This function blocks until the socket has data to
+    /// be read. For connected (i.e., TCP) sockets, this function returns Ok(None). For datagram (i.e., UDP) sockets,
+    /// this function returns the remote address that is the source of the incoming data.
+    async fn pop(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        buf: &mut DemiBuffer,
+        size: usize,
+        yielder: Yielder,
+    ) -> Result<Option<SocketAddr>, Fail> {
+        self.data_from_sd(sd).pop(buf, size, &yielder).await
+    }
+
+    /// Close the socket on the underlying transport. Also unregisters the socket with epoll.
+    fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
+        let data: &mut SharedSocketData = self.data_from_sd(sd);
+        // Close the socket.
+        match data.get_socket().shutdown(Shutdown::Both) {
+            Ok(()) => (),
+            Err(e) => {
+                let errno: i32 = get_libc_err(e);
+                // Close finished, so clean up and exit
+                match errno {
+                    libc::ENOTCONN => (),
+                    errno if DemiRuntime::should_retry(errno) => {
+                        return Err(Fail::new(libc::EAGAIN, "operaton not complete yet"))
+                    },
+                    errno => return Err(Fail::new(errno, "operation failed")),
+                }
+            },
+        }
+        // Check whether we need to remove epoll events.
+        match data.deref_mut() {
+            SocketData::Active(_) => self.unregister_epoll(sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?,
+            SocketData::Passive(_) => self.unregister_epoll(sd, libc::EPOLLIN as u32)?,
+            _ => (),
+        };
+        self.socket_table.remove(*sd);
+        Ok(())
     }
 }

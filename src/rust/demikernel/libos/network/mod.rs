@@ -5,7 +5,16 @@
 // Imports
 //======================================================================================================================
 
+#[cfg(all(feature = "catnap-libos"))]
+pub mod libos;
+pub mod queue;
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
+    demikernel::libos::network::libos::SharedNetworkLibOS,
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
@@ -27,7 +36,7 @@ use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::SharedCatloopLibOS;
 #[cfg(all(feature = "catnap-libos"))]
-use crate::catnap::SharedCatnapLibOS;
+use crate::catnap::transport::SharedCatnapTransport;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::CatnipLibOS;
 #[cfg(feature = "catpowder-libos")]
@@ -47,7 +56,7 @@ pub enum NetworkLibOS {
     #[cfg(all(feature = "catnap-libos"))]
     Catnap {
         runtime: SharedDemiRuntime,
-        libos: SharedCatnapLibOS,
+        libos: SharedNetworkLibOS<SharedCatnapTransport>,
     },
     #[cfg(feature = "catcollar-libos")]
     Catcollar {
