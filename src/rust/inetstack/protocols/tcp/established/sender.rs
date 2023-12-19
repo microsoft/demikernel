@@ -284,6 +284,8 @@ impl Sender {
                 if data.len() == 0 {
                     // This buffer is the end-of-send marker.  Retransmit the FIN.
                     header.fin = true;
+                } else {
+                    header.psh = true;
                 }
                 cb.emit(header, Some(data), first_hop_link_addr);
             }
