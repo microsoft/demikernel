@@ -321,10 +321,11 @@ impl SharedTcpPeer {
     /// Pushes immediately to the socket and returns the result asynchronously.
     pub fn push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
+        let nbytes: usize = buf.len();
         let coroutine_constructor = || -> Result<TaskHandle, Fail> {
             let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
             let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, yielder)) };
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, nbytes, yielder)) };
             self.clone()
                 .runtime
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -333,7 +334,7 @@ impl SharedTcpPeer {
         queue.push(buf, coroutine_constructor)
     }
 
-    async fn push_coroutine(self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
+    async fn push_coroutine(self, qd: QDesc, nbytes: usize, yielder: Yielder) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
@@ -342,8 +343,11 @@ impl SharedTcpPeer {
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Wait for push to complete.
-        match queue.push_coroutine(yielder).await {
-            Ok(()) => (qd, OperationResult::Push),
+        match queue.push_coroutine(nbytes, yielder).await {
+            Ok(()) => {
+                debug!("push(): qd={:?}: {} bytes", qd, nbytes);
+                (qd, OperationResult::Push)
+            },
             Err(e) => {
                 warn!("push() qd={:?}: {:?}", qd, &e);
                 (qd, OperationResult::Failed(e))

@@ -212,6 +212,8 @@ pub struct ControlBlock {
 
     // Incoming packets for this connection.
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+
+    ack_queue: SharedAsyncQueue<usize>,
 }
 
 #[derive(Clone)]
@@ -238,6 +240,7 @@ impl SharedControlBlock {
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: SharedAsyncQueue<usize>,
     ) -> Self {
         let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self(SharedObject::<ControlBlock>::new(ControlBlock {
@@ -261,6 +264,7 @@ impl SharedControlBlock {
             retransmit_deadline: SharedWatchedValue::new(None),
             rto_calculator: RtoCalculator::new(),
             recv_queue,
+            ack_queue,
         }))
     }
 
@@ -694,6 +698,9 @@ impl SharedControlBlock {
                     let deadline: Instant = now + self.rto_calculator.rto();
                     self.retransmit_deadline.set(Some(deadline));
                 }
+
+                let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
+                self.ack_queue.push(nbytes);
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
@@ -864,6 +871,23 @@ impl SharedControlBlock {
             self.window_scale
         );
         hdr_window_size
+    }
+
+    pub async fn push(&mut self, mut nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+        loop {
+            let n: usize = self.ack_queue.pop(&yielder).await?;
+
+            if n > nbytes {
+                self.ack_queue.push_front(n - nbytes);
+                break Ok(());
+            }
+
+            nbytes -= n;
+
+            if nbytes == 0 {
+                break Ok(());
+            }
+        }
     }
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
