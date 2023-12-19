@@ -42,6 +42,7 @@ fn os_build() -> Result<()> {
         "librte_hash",
         "librte_kvargs",
         "librte_latencystats",
+        "librte_log",
         "librte_mbuf",
         "librte_mempool",
         "librte_mempool_ring",
