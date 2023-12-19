@@ -7,16 +7,16 @@
 +.2 accept(500, ..., ...) = 0
 
 // Receive ACK packet.
-+.2 < . 0:0(0) ack 1 win 65535 <mss 1450,wscale 0>
++.2 < . seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
 // Send a RST packet.
-+.0 > R. 1:0(0) ack 2 <nop>
++.0 > R. seq 1(0) ack 2 <nop>
 
 // Receive SYN packet.
-+.2 < S 0:0(0) win 65535 <mss 1450,wscale 0>
++.2 < S seq 0(0) win 65535 <mss 1450,wscale 0>
 // Send SYN-ACK packet.
-+.0 > S. 0:0(0) ack 1 win 65535 <mss 1450,wscale 0>
++.0 > S. seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
 // Receive ACK on SYN-ACK packet.
-+.2 < . 1:1(0) ack 1 win 65535 <nop>
++.2 < . seq 1(0) ack 1 win 65535 <nop>
 
 // Succeed to accept connection.
 +.0 wait(500, ...) = 0

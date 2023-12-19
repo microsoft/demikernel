@@ -158,7 +158,6 @@ pub struct TcpFlags {
 #[derive(Clone, Debug)]
 pub struct TcpSequenceNumber {
     pub seq: u32,
-    pub ack: u32,
     pub win: u32,
 }
 

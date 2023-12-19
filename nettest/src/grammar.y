@@ -327,22 +327,17 @@ TcpFlags -> glue::TcpFlags
       ;
 
 TcpSequenceNumber -> glue::TcpSequenceNumber
-      : 'INTEGER' 'COLON' 'INTEGER' 'LPAREN' 'INTEGER' 'RPAREN' {
+      : 'SEQ' 'INTEGER' 'LPAREN' 'INTEGER' 'RPAREN' {
             let seq = {
-                  let v = $1.map_err(|_| ()).unwrap();
-                  glue::parse_int($lexer.span_str(v.span())).unwrap()
-            };
-            let ack = {
-                  let v = $3.map_err(|_| ()).unwrap();
+                  let v = $2.map_err(|_| ()).unwrap();
                   glue::parse_int($lexer.span_str(v.span())).unwrap()
             };
             let win = {
-                  let v = $5.map_err(|_| ()).unwrap();
+                  let v = $4.map_err(|_| ()).unwrap();
                   glue::parse_int($lexer.span_str(v.span())).unwrap()
             };
             glue::TcpSequenceNumber {
                   seq,
-                  ack,
                   win,
             }
       }

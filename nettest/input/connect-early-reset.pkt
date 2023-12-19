@@ -5,9 +5,9 @@
 +.2 connect(500, ..., ...) = 0
 
 // Send SYN packet.
-+.0 > S 0:0(0) win 65535 <mss 1450, wscale 0>
++.0 > S seq 0(0) win 65535 <mss 1450, wscale 0>
 // Receive a connection reset.
-+.1 < R. 0:0(0) ack 1 win 65535 <mss 1450, wscale 0>
++.1 < R. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
 
 // Fail to connect.
 +.0 wait(500, ...) = 111
