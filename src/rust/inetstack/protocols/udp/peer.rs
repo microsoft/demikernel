@@ -27,10 +27,7 @@ use crate::{
             OperationResult,
             QDesc,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         Operation,
         SharedBox,
         SharedDemiRuntime,
@@ -170,12 +167,11 @@ impl SharedUdpPeer {
                 (qd, OperationResult::Close)
             })
         };
-        let task_handle: TaskHandle =
-            self.clone()
-                .runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?;
 
-        let qt: QToken = task_handle.get_task_id().into();
+        let qt: QToken = self
+            .runtime
+            .clone()
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?;
 
         trace!("async_close() qt={:?}", qt);
         Ok(qt)

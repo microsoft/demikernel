@@ -7,7 +7,6 @@
 
 use crate::runtime::{
     fail::Fail,
-    scheduler::TaskHandle,
     types::{
         demi_qresult_t,
         demi_sgarray_t,
@@ -112,21 +111,11 @@ impl MemoryLibOS {
         }
     }
 
-    /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn from_task_id(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.from_task_id(qt),
-            _ => unreachable!("unknown memory libos"),
-        }
-    }
-
-    #[allow(unreachable_patterns, unused_variables)]
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime, libos } => runtime.remove_coroutine_and_get_result(&handle, qt.into()),
+            MemoryLibOS::Catmem { runtime, libos } => runtime.remove_coroutine_and_get_result(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }
@@ -137,6 +126,15 @@ impl MemoryLibOS {
         match self {
             #[cfg(feature = "catmem-libos")]
             MemoryLibOS::Catmem { runtime, libos: _ } => runtime.poll(),
+            _ => unreachable!("unknown memory libos"),
+        }
+    }
+
+    #[allow(unreachable_patterns, unused_variables)]
+    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
+        match self {
+            #[cfg(feature = "catmem-libos")]
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.has_completed(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }

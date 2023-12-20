@@ -5,16 +5,9 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    scheduler::page::WakerPageRef,
-};
+use crate::runtime::fail::Fail;
 use ::std::{
     cell::RefCell,
-    hash::{
-        Hash,
-        Hasher,
-    },
     rc::Rc,
     task::Waker,
 };
@@ -22,19 +15,6 @@ use ::std::{
 //==============================================================================
 // Structures
 //==============================================================================
-
-/// Task Handle
-///
-/// This is used to uniquely identify a Task in the scheduler. Used to check on the status of the coroutine.
-#[derive(Clone)]
-pub struct TaskHandle {
-    /// External identifier for this task.
-    task_id: u64,
-    /// Waker page reference for this task.
-    waker_page_ref: WakerPageRef,
-    /// The page offset for this task within the WakerPage.
-    waker_page_offset: usize,
-}
 
 /// Yield Handle
 ///
@@ -48,28 +28,6 @@ pub struct YielderHandle {
 //==============================================================================
 // Associate Functions
 //==============================================================================
-
-/// Associate Functions for Task Handlers
-impl TaskHandle {
-    /// Creates a new Task Handle.
-    pub fn new(task_id: u64, waker_page_ref: WakerPageRef, waker_page_offset: usize) -> Self {
-        Self {
-            task_id,
-            waker_page_ref,
-            waker_page_offset,
-        }
-    }
-
-    /// Queries whether or not the coroutine in the Task has completed.
-    pub fn has_completed(&self) -> bool {
-        self.waker_page_ref.has_completed(self.waker_page_offset)
-    }
-
-    /// Returns the task_id stored in the target [TaskHandle].
-    pub fn get_task_id(&self) -> u64 {
-        self.task_id
-    }
-}
 
 impl YielderHandle {
     pub fn new() -> Self {
@@ -102,20 +60,3 @@ impl YielderHandle {
         *self.waker_handle.borrow_mut() = Some(waker);
     }
 }
-
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
-impl Hash for TaskHandle {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.task_id.hash(state);
-    }
-}
-
-impl PartialEq for TaskHandle {
-    fn eq(&self, other: &Self) -> bool {
-        self.task_id == other.task_id
-    }
-}
-impl Eq for TaskHandle {}

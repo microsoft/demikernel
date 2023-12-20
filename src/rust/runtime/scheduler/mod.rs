@@ -43,10 +43,7 @@ pub mod yielder;
 //==============================================================================
 
 pub use self::{
-    handle::{
-        TaskHandle,
-        YielderHandle,
-    },
+    handle::YielderHandle,
     mutex::Mutex,
     scheduler::Scheduler,
     task::{

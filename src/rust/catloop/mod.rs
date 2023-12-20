@@ -29,10 +29,7 @@ use crate::{
             socket::SocketId,
             unwrap_socketaddr,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         Operation,
         OperationResult,
         QDesc,
@@ -210,12 +207,12 @@ impl SharedCatloopLibOS {
         // Allocate ephemeral port.
         let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::accept for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, new_port, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -270,12 +267,12 @@ impl SharedCatloopLibOS {
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
 
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, remote, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -310,12 +307,12 @@ impl SharedCatloopLibOS {
 
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         // Note that this coroutine is only inserted if we do not allocate a Catmem coroutine.
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::close for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -371,12 +368,12 @@ impl SharedCatloopLibOS {
         }
 
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::push for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -413,12 +410,12 @@ impl SharedCatloopLibOS {
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::pop for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 

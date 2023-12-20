@@ -25,11 +25,7 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::TaskHandle,
-        types::{
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
+        types::demi_sgarray_t,
         QDesc,
         QToken,
         SharedBox,
@@ -56,7 +52,6 @@ use crate::timer;
 
 /// Catnip LibOS
 pub struct CatnipLibOS {
-    runtime: SharedDemiRuntime,
     inetstack: SharedInetStack,
     transport: SharedDPDKRuntime,
 }
@@ -97,11 +92,7 @@ impl CatnipLibOS {
             arp_config,
         )
         .unwrap();
-        CatnipLibOS {
-            runtime,
-            inetstack,
-            transport,
-        }
+        CatnipLibOS { inetstack, transport }
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
@@ -128,20 +119,11 @@ impl CatnipLibOS {
                 if buf.len() == 0 {
                     return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
                 }
-                let handle: TaskHandle = self.do_pushto(qd, buf, to)?;
-                let qt: QToken = handle.get_task_id().into();
+                let qt: QToken = self.do_pushto(qd, buf, to)?;
                 Ok(qt)
             },
             Err(e) => Err(e),
         }
-    }
-
-    pub fn schedule(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
-        self.runtime.from_task_id(qt.into())
-    }
-
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        self.runtime.remove_coroutine_and_get_result(&handle, qt.into())
     }
 
     /// Allocates a scatter-gather array.

@@ -20,10 +20,7 @@ use crate::runtime::{
         IoQueue,
         QType,
     },
-    scheduler::{
-        TaskHandle,
-        Yielder,
-    },
+    scheduler::Yielder,
     QToken,
     SharedObject,
 };
@@ -130,11 +127,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// synchronous functionality necessary to start an accept.
     pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.may_accept()?;
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
@@ -167,11 +163,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// connect completes.
     pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
@@ -199,11 +194,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// Start an asynchronous coroutine to close this queue.
     pub fn close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
-        let task_handle: TaskHandle = self.do_generic_sync_control_path_call(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
@@ -237,10 +231,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
     pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.may_push()?;
-        self.do_generic_sync_data_path_call(coroutine_constructor)
+        coroutine_constructor()
     }
 
     /// Asynchronously push data to the queue. This function contains all of the single-queue, asynchronous code
@@ -266,10 +260,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// completes.
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.may_pop()?;
-        self.do_generic_sync_data_path_call(coroutine_constructor)
+        coroutine_constructor()
     }
 
     /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
@@ -297,17 +291,17 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         // Spawn coroutine.
         match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(task_handle) => {
+            Ok(qt) => {
                 // Commit the operation on the socket.
                 self.state_machine.commit();
-                Ok(task_handle)
+                Ok(qt)
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -316,15 +310,6 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
                 Err(e)
             },
         }
-    }
-
-    /// Generic function for spawning a data-path coroutine on [self].
-    fn do_generic_sync_data_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        let task_handle: TaskHandle = coroutine_constructor()?;
-        Ok(task_handle.get_task_id().into())
     }
 
     pub fn local(&self) -> Option<SocketAddr> {

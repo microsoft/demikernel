@@ -22,10 +22,7 @@ use crate::{
             QDesc,
             QToken,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         types::{
             demi_opcode_t,
             demi_qresult_t,
@@ -170,9 +167,9 @@ impl Socket {
         Ok(())
     }
 
-    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state.may_accept()?;
         self.do_generic_sync_control_path_call(coroutine_constructor)
@@ -250,9 +247,9 @@ impl Socket {
         }
     }
 
-    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state.prepare(SocketOp::Connect)?;
         self.do_generic_sync_control_path_call(coroutine_constructor)
@@ -313,12 +310,12 @@ impl Socket {
     }
 
     /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state.prepare(SocketOp::Close)?;
-        Ok(self.do_generic_sync_control_path_call(coroutine_constructor)?)
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Closes `socket`.
@@ -346,9 +343,9 @@ impl Socket {
 
     /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    pub fn push<F>(&self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state.may_push()?;
         coroutine_constructor()
@@ -366,9 +363,9 @@ impl Socket {
 
     /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F>(&self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    pub fn pop<F>(&self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state.may_pop()?;
         coroutine_constructor()
@@ -398,17 +395,17 @@ impl Socket {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<TaskHandle, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         // Spawn coroutine.
         match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(task_handle) => {
+            Ok(qt) => {
                 // Commit the operation on the socket.
                 self.state.commit();
-                Ok(task_handle)
+                Ok(qt)
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -423,19 +420,15 @@ impl Socket {
     async fn pop_request_id(&mut self, catmem_qd: QDesc, yielder: &Yielder) -> Result<RequestId, Fail> {
         // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
         let qt: QToken = self.catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
-        let handle: TaskHandle = {
-            // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
-        };
         // Yield until pop completes.
-        while !handle.has_completed() {
+        while !self.runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
         }
         // Re-acquire mutable reference.
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous pop().
             demi_opcode_t::DEMI_OPC_POP => {},
@@ -482,13 +475,9 @@ impl Socket {
 
         // Push the port number.
         let qt: QToken = self.catmem.push(catmem_qd, &sga)?;
-        let handle: TaskHandle = {
-            // Get the task handle from the task id.
-            self.runtime.from_task_id(qt)?
-        };
 
         // Wait for push to complete.
-        while !handle.has_completed() {
+        while !self.runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
@@ -497,7 +486,7 @@ impl Socket {
         self.runtime.sgafree(sga)?;
 
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -531,13 +520,8 @@ impl Socket {
         // Send to server.
         let qt: QToken = self.catmem.push(connect_qd, &sga)?;
         trace!("Send connection request qtoken={:?}", qt);
-        let handle: TaskHandle = {
-            // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
-        };
-
         // Yield until push completes.
-        while !handle.has_completed() {
+        while !self.runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
@@ -545,7 +529,7 @@ impl Socket {
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
         // Get the result of the push.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -594,11 +578,6 @@ impl Socket {
         let qt: QToken = self.catmem.pop(connect_qd, Some(size))?;
         trace!("Read port qtoken={:?}", qt);
 
-        let handle: TaskHandle = {
-            // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
-        };
-
         loop {
             // Send the connection request to the server.
             self.send_connection_request(connect_qd, request_id, &yielder).await?;
@@ -606,16 +585,16 @@ impl Socket {
             // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
             for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
                 match yielder.yield_once().await {
-                    Ok(()) if handle.has_completed() => break,
+                    Ok(()) if self.runtime.has_completed(qt)? => break,
                     Ok(()) => continue,
                     Err(e) => return Err(e),
                 }
             }
             // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
-            if handle.has_completed() {
+            if self.runtime.has_completed(qt)? {
                 // Re-acquire reference to Catmem libos.
                 // Get the result of the pop.
-                let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
+                let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
                 match qr.qr_opcode {
                     // We expect a successful completion for previous pop().
                     demi_opcode_t::DEMI_OPC_POP => {
@@ -657,13 +636,9 @@ impl Socket {
         // Send to server through new pipe.
         let qt: QToken = self.catmem.push(new_qd, &sga)?;
         trace!("Send ack qtoken={:?}", qt);
-        let handle: TaskHandle = {
-            // Get scheduler handle from the task id.
-            self.runtime.from_task_id(qt)?
-        };
 
         // Yield until push completes.
-        while !handle.has_completed() {
+        while !self.runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
@@ -671,7 +646,7 @@ impl Socket {
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(&handle, qt.into())?;
+        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
 
         match qr.qr_opcode {
             // We expect a successful completion for previous push().

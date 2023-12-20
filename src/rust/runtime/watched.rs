@@ -57,8 +57,8 @@ impl<T: Copy> SharedWatchedValue<T> {
     pub fn modify(&mut self, f: impl FnOnce(T) -> T) {
         // Update the value
         self.value = f(self.value);
-        while let Some(mut handle) = self.waiters.pop() {
-            handle.wake_with(Ok(()));
+        while let Some(mut yielder_handle) = self.waiters.pop() {
+            yielder_handle.wake_with(Ok(()));
         }
     }
 

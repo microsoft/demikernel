@@ -405,7 +405,6 @@ mod tests {
         ensure_eq,
         runtime::scheduler::{
             Scheduler,
-            TaskHandle,
             TaskWithResult,
         },
     };
@@ -666,12 +665,12 @@ mod tests {
         });
 
         let mut scheduler: Scheduler = Scheduler::default();
-        let server_handle: TaskHandle = scheduler
+        let server_handle: u64 = scheduler
             .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
         let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(&server_handle).unwrap().as_any())
+            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(server_handle).unwrap().as_any())
                 .get_result()
                 .unwrap()
         };
@@ -680,7 +679,7 @@ mod tests {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
                 scheduler.poll();
-                if server_handle.has_completed() {
+                if let Some(true) = scheduler.has_completed(server_handle) {
                     return Err(get_server_result(scheduler).unwrap_err());
                 }
             }
@@ -715,7 +714,10 @@ mod tests {
 
         std::mem::drop(client_handle);
 
-        while !server_handle.has_completed() {
+        loop {
+            if let Some(true) = scheduler.has_completed(server_handle) {
+                break;
+            }
             iocp.get_mut().process_events()?;
             scheduler.poll();
         }
@@ -772,12 +774,12 @@ mod tests {
         });
 
         let mut scheduler: Scheduler = Scheduler::default();
-        let server_handle: TaskHandle = scheduler
+        let server_handle: u64 = scheduler
             .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
         let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(&server_handle).unwrap().as_any())
+            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(server_handle).unwrap().as_any())
                 .get_result()
                 .unwrap()
         };
@@ -786,7 +788,7 @@ mod tests {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
                 scheduler.poll();
-                if server_handle.has_completed() {
+                if let Some(true) = scheduler.has_completed(server_handle) {
                     return Err(get_server_result(scheduler).unwrap_err());
                 }
             }
@@ -797,7 +799,10 @@ mod tests {
 
         yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "I/O cancelled")));
 
-        while !server_handle.has_completed() {
+        loop {
+            if let Some(true) = scheduler.has_completed(server_handle) {
+                break;
+            }
             iocp.get_mut().process_events()?;
             scheduler.poll();
         }

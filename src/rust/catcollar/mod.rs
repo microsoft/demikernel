@@ -206,12 +206,9 @@ impl CatcollarLibOS {
             Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder))
         };
 
-        Ok(self
-            .runtime
+        self.runtime
             .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-            .get_task_id()
-            .into())
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     async fn accept_coroutine(
@@ -297,12 +294,9 @@ impl CatcollarLibOS {
         let coroutine_factory =
             |yielder| -> Pin<Box<Operation>> { Box::pin(Self::connect_coroutine(qd, fd, remote, yielder)) };
 
-        Ok(self
-            .runtime
+        self.runtime
             .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-            .get_task_id()
-            .into())
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     async fn connect_coroutine(
@@ -357,12 +351,9 @@ impl CatcollarLibOS {
         let coroutine_factory =
             |yielder| -> Pin<Box<Operation>> { Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder)) };
 
-        Ok(self
-            .runtime
+        self.runtime
             .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-            .get_task_id()
-            .into())
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     async fn close_coroutine(
@@ -430,12 +421,9 @@ impl CatcollarLibOS {
             Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder))
         };
 
-        Ok(self
-            .runtime
+        self.runtime
             .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-            .get_task_id()
-            .into())
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     async fn push_coroutine(
@@ -513,12 +501,9 @@ impl CatcollarLibOS {
                     ))
                 };
 
-                Ok(self
-                    .runtime
+                self.runtime
                     .clone()
-                    .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-                    .get_task_id()
-                    .into())
+                    .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
             },
             Err(e) => Err(e),
         }
@@ -599,12 +584,9 @@ impl CatcollarLibOS {
             Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder))
         };
 
-        Ok(self
-            .runtime
+        self.runtime
             .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)?
-            .get_task_id()
-            .into())
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     async fn pop_coroutine(

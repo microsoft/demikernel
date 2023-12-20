@@ -32,8 +32,8 @@ pub struct AsyncValue<T> {
 impl<T: Clone> AsyncValue<T> {
     pub fn set(&mut self, item: T) {
         self.value = Some(item);
-        if let Some(mut handle) = self.waiter.take() {
-            handle.wake_with(Ok(()));
+        if let Some(mut yielder_handle) = self.waiter.take() {
+            yielder_handle.wake_with(Ok(()));
         }
     }
 
@@ -41,8 +41,8 @@ impl<T: Clone> AsyncValue<T> {
         match self.value.take() {
             Some(item) => Ok(item),
             None => {
-                let handle: YielderHandle = yielder.get_handle();
-                self.waiter = Some(handle);
+                let yielder_handle: YielderHandle = yielder.get_handle();
+                self.waiter = Some(yielder_handle);
                 match yielder.yield_until_wake().await {
                     Ok(()) => match self.value.take() {
                         Some(item) => Ok(item),

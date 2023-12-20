@@ -139,10 +139,10 @@ impl ActiveSocketData {
     /// buffer for write to indicate that we want to know when the socket is ready for writing but do not have data to
     /// write (i.e., to detect when connect finishes).
     pub fn poll_send(&mut self) {
-        if let Some((addr, mut buf, mut handle)) = self.send_queue.try_pop() {
+        if let Some((addr, mut buf, mut yielder_handle)) = self.send_queue.try_pop() {
             // A dummy request to detect when the socket has connected.
             if buf.is_empty() {
-                handle.wake_with(Ok(()));
+                yielder_handle.wake_with(Ok(()));
                 return;
             }
             // Try to send the buffer.
@@ -158,21 +158,21 @@ impl ActiveSocketData {
                         .expect("OS should not have sent more bytes than in the buffer");
                     if buf.is_empty() {
                         // Done sending this buffer
-                        handle.wake_with(Ok(()))
+                        yielder_handle.wake_with(Ok(()))
                     } else {
                         // Only sent part of the buffer so try again later.
-                        self.send_queue.push_front((addr, buf, handle));
+                        self.send_queue.push_front((addr, buf, yielder_handle));
                     }
                 },
                 Err(e) => {
                     let errno: i32 = get_libc_err(e);
                     if DemiRuntime::should_retry(errno) {
                         // Put the buffer back and try again later.
-                        self.send_queue.push_front((addr, buf, handle));
+                        self.send_queue.push_front((addr, buf, yielder_handle));
                     } else {
                         let cause: String = format!("failed to send on socket: {:?}", errno);
                         error!("poll_send(): {}", cause);
-                        handle.wake_with(Err(Fail::new(errno, &cause)))
+                        yielder_handle.wake_with(Err(Fail::new(errno, &cause)))
                     }
                 },
             }
