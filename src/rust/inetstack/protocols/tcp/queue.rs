@@ -37,10 +37,7 @@ use crate::{
             IoQueue,
             NetworkQueue,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         QDesc,
         QToken,
         QType,
@@ -183,16 +180,6 @@ impl SharedTcpQueue {
         }
     }
 
-    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        Ok(self
-            .do_generic_sync_data_path_call(coroutine_constructor)?
-            .get_task_id()
-            .into())
-    }
-
     pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<SharedTcpQueue, Fail> {
         // Wait for a new connection on the listening socket.
         self.state_machine.may_accept()?;
@@ -222,7 +209,7 @@ impl SharedTcpQueue {
         coroutine_constructor: F,
     ) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.prepare(SocketOp::Connect)?;
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
@@ -243,10 +230,8 @@ impl SharedTcpQueue {
             self.dead_socket_tx.clone(),
         )?);
         self.recv_queue = Some(recv_queue);
-        Ok(self
-            .do_generic_sync_control_path_call(coroutine_constructor)?
-            .get_task_id()
-            .into())
+
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     pub async fn connect_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
@@ -272,7 +257,7 @@ impl SharedTcpQueue {
 
     pub fn push<F>(&mut self, buf: DemiBuffer, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.may_push()?;
         // Send synchronously.
@@ -280,10 +265,8 @@ impl SharedTcpQueue {
             Socket::Established(ref mut socket) => socket.send(buf)?,
             _ => unreachable!("State machine check should ensure that this socket is connected"),
         };
-        Ok(self
-            .do_generic_sync_data_path_call(coroutine_constructor)?
-            .get_task_id()
-            .into())
+
+        coroutine_constructor()
     }
 
     pub async fn push_coroutine(&mut self, nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
@@ -296,13 +279,10 @@ impl SharedTcpQueue {
 
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.may_pop()?;
-        Ok(self
-            .do_generic_sync_data_path_call(coroutine_constructor)?
-            .get_task_id()
-            .into())
+        coroutine_constructor()
     }
 
     pub async fn pop_coroutine(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
@@ -315,7 +295,7 @@ impl SharedTcpQueue {
 
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.state_machine.prepare(SocketOp::Close)?;
         let new_socket: Option<Socket> = match self.socket {
@@ -344,10 +324,8 @@ impl SharedTcpQueue {
         if let Some(socket) = new_socket {
             self.socket = socket;
         }
-        Ok(self
-            .do_generic_sync_control_path_call(coroutine_constructor)?
-            .get_task_id()
-            .into())
+
+        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<Option<SocketId>, Fail> {
@@ -396,17 +374,17 @@ impl SharedTcpQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         // Spawn coroutine.
-        match coroutine() {
+        match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(task_handle) => {
+            Ok(qt) => {
                 // Commit the operation on the socket.
                 self.state_machine.commit();
-                Ok(task_handle)
+                Ok(qt)
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -415,14 +393,6 @@ impl SharedTcpQueue {
                 Err(e)
             },
         }
-    }
-
-    /// Generic function for spawning a data-path coroutine on [self].
-    fn do_generic_sync_data_path_call<F>(&mut self, coroutine: F) -> Result<TaskHandle, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        coroutine()
     }
 }
 

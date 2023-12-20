@@ -27,14 +27,12 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
         network::NetworkRuntime,
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         QDesc,
         SharedBox,
         SharedDemiRuntime,
     },
+    QToken,
 };
 use ::futures::channel::mpsc;
 use ::std::{
@@ -52,7 +50,7 @@ pub struct EstablishedSocket {
     /// The background co-routines handles various tasks, such as retransmission and acknowledging.
     /// We annotate it as unused because the compiler believes that it is never called which is not the case.
     #[allow(unused)]
-    background: TaskHandle,
+    background_task_qt: QToken,
 }
 
 impl EstablishedSocket {
@@ -100,14 +98,14 @@ impl EstablishedSocket {
             recv_queue.clone(),
             ack_queue.clone(),
         );
-        let handle: TaskHandle = runtime.insert_background_coroutine(
+        let qt: QToken = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
             Box::pin(background::background(cb.clone(), dead_socket_tx)),
         )?;
         Ok(Self {
             cb,
             recv_queue,
-            background: handle.clone(),
+            background_task_qt: qt.clone(),
             runtime: runtime.clone(),
         })
     }
@@ -153,7 +151,7 @@ impl EstablishedSocket {
 // FIXME: https://github.com/microsoft/demikernel/issues/988
 // impl Drop for EstablishedSocket {
 //     fn drop(&mut self) {
-//         if let Err(e) = self.runtime.remove_background_coroutine(&self.background) {
+//         if let Err(e) = self.runtime.remove_background_coroutine(self.background_task_qt) {
 //             panic!("Failed to drop established socket (error={})", e);
 //         }
 //     }

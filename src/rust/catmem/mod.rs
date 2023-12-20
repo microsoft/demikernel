@@ -19,10 +19,7 @@ use crate::{
             MemoryRuntime,
         },
         queue::downcast_queue,
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         types::demi_sgarray_t,
         Operation,
         OperationResult,
@@ -113,12 +110,12 @@ impl SharedCatmemLibOS {
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("async_close() qd={:?}", qd);
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -166,17 +163,13 @@ impl SharedCatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
-            let task_name: String = format!("Catmem::push for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
-            self.clone()
-                .runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
+        let task_name: String = format!("Catmem::push for qd={:?}", qd);
+        let coroutine_factory =
+            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
 
-        queue.push(coroutine_constructor)
+        self.runtime
+            .clone()
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> (QDesc, OperationResult) {
@@ -199,17 +192,13 @@ impl SharedCatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
-            let task_name: String = format!("Catmem::pop for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
-            self.clone()
-                .runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
+        let task_name: String = format!("Catmem::pop for qd={:?}", qd);
+        let coroutine_factory =
+            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
 
-        queue.pop(coroutine_constructor)
+        self.runtime
+            .clone()
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {

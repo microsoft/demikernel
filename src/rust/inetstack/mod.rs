@@ -41,10 +41,7 @@ use crate::{
             QToken,
             QType,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         SharedBox,
         SharedDemiRuntime,
         SharedObject,
@@ -327,7 +324,7 @@ impl SharedInetStack {
 
     /// Pushes a buffer to a UDP socket.
     /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddr) -> Result<TaskHandle, Fail> {
+    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddr) -> Result<QToken, Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let to: SocketAddrV4 = unwrap_socketaddr(to)?;
 
@@ -352,8 +349,7 @@ impl SharedInetStack {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
         // Issue operation.
-        let handle: TaskHandle = self.do_pushto(qd, buf, remote)?;
-        let qt: QToken = handle.get_task_id().into();
+        let qt: QToken = self.do_pushto(qd, buf, remote)?;
         trace!("pushto2() qt={:?}", qt);
         Ok(qt)
     }
@@ -371,8 +367,7 @@ impl SharedInetStack {
             QType::UdpSocket => {
                 let task_id: String = format!("Inetstack::UDP::pop for qd={:?}", qd);
                 let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pop(qd, size)?;
-                let handle: TaskHandle = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
-                let qt: QToken = handle.get_task_id().into();
+                let qt: QToken = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
                 trace!("pop() qt={:?}", qt);
                 Ok(qt)
             },
@@ -386,17 +381,14 @@ impl SharedInetStack {
     pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
         trace!("wait2(): qt={:?}", qt);
 
-        // Retrieve associated schedule handle.
-        let handle: TaskHandle = self.runtime.get_task_handle(qt.into())?;
-
         loop {
             // Poll first, so as to give pending operations a chance to complete.
             self.runtime.poll_and_advance_clock();
 
-            // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
+            if self.runtime.has_completed(qt)? {
+                // The operation has completed, so extract the result and return.
                 trace!("wait2() qt={:?} completed!", qt);
-                return Ok(self.take_operation(handle));
+                return Ok(self.take_operation(qt));
             }
         }
     }
@@ -413,25 +405,20 @@ impl SharedInetStack {
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
-                // Retrieve associated schedule handle.
-                // TODO: move this out of the loop.
-                let handle: TaskHandle = self.runtime.get_task_handle(qt.into())?;
-
-                // Found one, so extract the result and return.
-                if handle.has_completed() {
-                    let (qd, r): (QDesc, OperationResult) = self.take_operation(handle);
+                if self.runtime.has_completed(qt)? {
+                    // Found one, so extract the result and return.
+                    let (qd, r): (QDesc, OperationResult) = self.take_operation(qt);
                     return Ok((i, qd, r));
                 }
             }
         }
     }
 
-    /// Given a handle representing a task in our scheduler. Return the results of this future
-    /// and the file descriptor for this connection.
-    ///
+    /// Given a token representing a task in the scheduler. Return the results of this future and the file descriptor
+    /// for this connection.
     /// This function will panic if the specified future had not completed or is _background_ future.
-    pub fn take_operation(&mut self, handle: TaskHandle) -> (QDesc, OperationResult) {
-        let task: OperationTask = self.runtime.remove_coroutine(&handle);
+    pub fn take_operation(&mut self, qt: QToken) -> (QDesc, OperationResult) {
+        let task: OperationTask = self.runtime.remove_coroutine(qt);
         task.get_result().expect("Coroutine not finished")
     }
 

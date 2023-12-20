@@ -26,10 +26,7 @@ use crate::{
             NetworkRuntime,
         },
         queue::NetworkQueue,
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         Operation,
         OperationResult,
         QDesc,
@@ -208,17 +205,13 @@ impl SharedTcpPeer {
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
 
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
-            let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, yielder)) };
-            self.clone()
-                .runtime
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
+        let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
+        let coroutine_factory =
+            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, yielder)) };
 
-        queue.accept(coroutine_constructor)
+        self.runtime
+            .clone()
+            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
     }
 
     /// Runs until a new connection is accepted.
@@ -284,12 +277,12 @@ impl SharedTcpPeer {
             );
         }
         let local_isn: SeqNumber = self.isn_generator.generate(&local, &remote);
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("inetstack::tcp::connect for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -322,12 +315,12 @@ impl SharedTcpPeer {
     pub fn push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
         let nbytes: usize = buf.len();
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, nbytes, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -359,12 +352,12 @@ impl SharedTcpPeer {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         // Get local address bound to socket.
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("inetstack::tcp::pop for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 
@@ -391,12 +384,12 @@ impl SharedTcpPeer {
         trace!("Closing socket: qd={:?}", qd);
 
         let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let coroutine_constructor = || -> Result<TaskHandle, Fail> {
+        let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("inetstack::tcp::close for qd={:?}", qd);
             let coroutine_factory =
                 |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
-            self.clone()
-                .runtime
+            self.runtime
+                .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
         };
 

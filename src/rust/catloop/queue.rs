@@ -17,10 +17,7 @@ use crate::{
             NetworkQueue,
             QType,
         },
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         OperationResult,
         QDesc,
         QToken,
@@ -108,10 +105,9 @@ impl SharedCatloopQueue {
     /// synchronous functionality necessary to start an accept.
     pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
-        let task_handle: TaskHandle = self.socket.accept(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.socket.accept(coroutine_constructor)
     }
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
@@ -134,10 +130,9 @@ impl SharedCatloopQueue {
     /// connect completes.
     pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
-        let task_handle: TaskHandle = self.socket.connect(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.socket.connect(coroutine_constructor)
     }
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
@@ -149,10 +144,9 @@ impl SharedCatloopQueue {
     /// Start an asynchronous coroutine to close this queue.
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
-        let task_handle: TaskHandle = self.socket.async_close(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.socket.async_close(coroutine_constructor)
     }
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
@@ -165,10 +159,9 @@ impl SharedCatloopQueue {
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
     pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
-        let task_handle: TaskHandle = self.socket.push(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.socket.push(coroutine_constructor)
     }
 
     pub async fn do_push(&mut self, buf: DemiBuffer, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
@@ -179,10 +172,9 @@ impl SharedCatloopQueue {
     /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
-        let task_handle: TaskHandle = self.socket.pop(coroutine_constructor)?;
-        Ok(task_handle.get_task_id().into())
+        self.socket.pop(coroutine_constructor)
     }
 
     pub async fn do_pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {

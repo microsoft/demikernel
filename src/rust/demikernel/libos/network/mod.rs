@@ -13,13 +13,13 @@ pub mod queue;
 // Imports
 //======================================================================================================================
 
+#[cfg(all(feature = "catnap-libos"))]
+use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
 use crate::{
-    demikernel::libos::network::libos::SharedNetworkLibOS,
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
-        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -262,38 +262,18 @@ impl NetworkLibOS {
         }
     }
 
-    /// Waits for any operation in an I/O queue.
-    pub fn get_task_handle(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    pub fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder { runtime, libos: _ } => runtime.get_task_handle(qt),
+            NetworkLibOS::Catpowder { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.get_task_handle(qt),
+            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar { runtime, libos: _ } => runtime.get_task_handle(qt),
+            NetworkLibOS::Catcollar { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.get_task_handle(qt),
+            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.get_task_handle(qt),
-        }
-    }
-
-    pub fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOS::Catpowder { runtime, libos: _ } => {
-                runtime.remove_coroutine_and_get_result(&handle, qt.into())
-            },
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(&handle, qt.into()),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOS::Catcollar { runtime, libos: _ } => {
-                runtime.remove_coroutine_and_get_result(&handle, qt.into())
-            },
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(&handle, qt.into()),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(&handle, qt.into()),
+            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
         }
     }
 
@@ -330,6 +310,21 @@ impl NetworkLibOS {
             NetworkLibOS::Catnip { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOS::Catloop { runtime, libos: _ } => runtime.sgafree(sga),
+        }
+    }
+
+    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOS::Catpowder { runtime, libos: _ } => runtime.has_completed(qt),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOS::Catnap { runtime, libos: _ } => runtime.has_completed(qt),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOS::Catcollar { runtime, libos: _ } => runtime.has_completed(qt),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOS::Catnip { runtime, libos: _ } => runtime.has_completed(qt),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOS::Catloop { runtime, libos: _ } => runtime.has_completed(qt),
         }
     }
 }

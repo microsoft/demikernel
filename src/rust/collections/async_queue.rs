@@ -59,15 +59,15 @@ impl<T> AsyncQueue<T> {
     /// add bounds checking in the future.
     pub fn push(&mut self, item: T) {
         self.queue.push_back(item);
-        if let Some(mut handle) = self.waiters.pop() {
-            handle.wake_with(Ok(()));
+        if let Some(mut yielder_handle) = self.waiters.pop() {
+            yielder_handle.wake_with(Ok(()));
         }
     }
 
     pub fn push_front(&mut self, item: T) {
         self.queue.push_front(item);
-        if let Some(mut handle) = self.waiters.pop() {
-            handle.wake_with(Ok(()));
+        if let Some(mut yielder_handle) = self.waiters.pop() {
+            yielder_handle.wake_with(Ok(()));
         }
     }
 
@@ -76,8 +76,8 @@ impl<T> AsyncQueue<T> {
         match self.queue.pop_front() {
             Some(item) => Ok(item),
             None => {
-                let handle: YielderHandle = yielder.get_handle();
-                self.waiters.push(handle);
+                let yielder_handle: YielderHandle = yielder.get_handle();
+                self.waiters.push(yielder_handle);
                 match yielder.yield_until_wake().await {
                     Ok(()) => match self.queue.pop_front() {
                         Some(item) => Ok(item),

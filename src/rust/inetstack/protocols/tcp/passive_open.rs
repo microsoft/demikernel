@@ -43,7 +43,6 @@ use crate::{
             NetworkRuntime,
         },
         scheduler::{
-            TaskHandle,
             Yielder,
             YielderHandle,
         },
@@ -52,6 +51,7 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
+    QToken,
 };
 use ::futures::{
     channel::mpsc,
@@ -92,7 +92,7 @@ pub struct PassiveSocket {
     arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     yielder_handle: YielderHandle,
-    task_handle: Option<TaskHandle>,
+    background_task_qt: Option<QToken>,
 }
 
 #[derive(Clone)]
@@ -130,11 +130,11 @@ impl SharedPassiveSocket {
             arp,
             dead_socket_tx,
             yielder_handle: yielder.get_handle(),
-            task_handle: None,
+            background_task_qt: None,
         }));
-        let handle =
+        let qt: QToken =
             runtime.insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll(yielder)))?;
-        me.task_handle = Some(handle);
+        me.background_task_qt = Some(qt);
         Ok(me)
     }
 
@@ -215,7 +215,7 @@ impl SharedPassiveSocket {
             .runtime
             .insert_background_coroutine("Inetstack::TCP::passiveopen::background", Box::pin(future))
         {
-            Ok(handle) => handle,
+            Ok(qt) => qt,
             Err(e) => {
                 let cause = "Could not allocate coroutine for passive open";
                 error!("{}: {:?}", cause, e);
@@ -501,10 +501,10 @@ impl DerefMut for SharedPassiveSocket {
 
 impl Drop for PassiveSocket {
     fn drop(&mut self) {
-        if let Some(handle) = self.task_handle.take() {
+        if let Some(qt) = self.background_task_qt.take() {
             self.yielder_handle
                 .wake_with(Err(Fail::new(libc::ECANCELED, "Socket is closing")));
-            if let Err(e) = self.runtime.remove_background_coroutine(&handle) {
+            if let Err(e) = self.runtime.remove_background_coroutine(qt) {
                 warn!("Could not remove background coroutine: {:?}", e);
             }
         }

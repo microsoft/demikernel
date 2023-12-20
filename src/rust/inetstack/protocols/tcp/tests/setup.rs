@@ -270,7 +270,7 @@ pub fn connection_setup(
     let (server_fd, addr): (QDesc, SocketAddrV4) = match server
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine_with_qtoken(accept_qt)
+        .remove_coroutine(accept_qt)
         .get_result()
     {
         Some((_, crate::OperationResult::Accept((server_fd, addr)))) => (server_fd, addr),
@@ -279,7 +279,7 @@ pub fn connection_setup(
     match client
         .get_test_rig()
         .get_runtime()
-        .remove_coroutine_with_qtoken(connect_qt)
+        .remove_coroutine(connect_qt)
         .get_result()
     {
         Some((_, OperationResult::Connect)) => {},

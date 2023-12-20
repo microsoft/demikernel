@@ -15,10 +15,7 @@ use crate::{
         limits,
         memory::DemiBuffer,
         queue::IoQueue,
-        scheduler::{
-            TaskHandle,
-            Yielder,
-        },
+        scheduler::Yielder,
         DemiRuntime,
         QToken,
         QType,
@@ -110,7 +107,7 @@ impl SharedCatmemQueue {
     /// asynchronous code necessary to run a close and any single-queue functionality after the close completes.
     pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         self.ring.prepare_close()?;
         self.do_generic_sync_control_path_call(coroutine_constructor)
@@ -142,15 +139,6 @@ impl SharedCatmemQueue {
         self.ring.commit();
 
         Ok(())
-    }
-
-    /// Schedule a coroutine to pop from this queue. This function contains all of the single-queue,
-    /// asynchronous code necessary to pop a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        self.do_generic_sync_data_path_call(coroutine_constructor)
     }
 
     /// This function pops a buffer of optional [size] from the queue. If the queue is connected to the push end of a
@@ -186,15 +174,6 @@ impl SharedCatmemQueue {
         Ok((buf, eof))
     }
 
-    /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
-    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        self.do_generic_sync_data_path_call(coroutine_constructor)
-    }
-
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
     /// this function returns an error.
     pub async fn do_push(&mut self, mut buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
@@ -225,17 +204,17 @@ impl SharedCatmemQueue {
     }
 
     /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine: F) -> Result<QToken, Fail>
+    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
     where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
+        F: FnOnce() -> Result<QToken, Fail>,
     {
         // Spawn coroutine.
-        let task_handle: TaskHandle = match coroutine() {
+        let qt: QToken = match coroutine_constructor() {
             // We successfully spawned the coroutine.
-            Ok(handle) => {
+            Ok(qt) => {
                 // Commit the operation on the socket.
                 self.ring.commit();
-                handle
+                qt
             },
             // We failed to spawn the coroutine.
             Err(e) => {
@@ -245,16 +224,7 @@ impl SharedCatmemQueue {
             },
         };
 
-        Ok(task_handle.get_task_id().into())
-    }
-
-    /// Generic function for spawning a data-path coroutine on [self].
-    fn do_generic_sync_data_path_call<F>(&mut self, coroutine: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<TaskHandle, Fail>,
-    {
-        let task_handle: TaskHandle = coroutine()?;
-        Ok(task_handle.get_task_id().into())
+        Ok(qt)
     }
 }
 

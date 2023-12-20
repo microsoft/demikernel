@@ -22,7 +22,6 @@ use crate::{
         fail::Fail,
         limits,
         logging,
-        scheduler::TaskHandle,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -378,16 +377,13 @@ impl LibOS {
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
         trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
 
-        // Retrieve associated schedule handle.
-        let handle: TaskHandle = self.get_task_handle(qt)?;
-
         loop {
             // Poll first, so as to give pending operations a chance to complete.
             self.poll();
 
             // The operation has completed, so extract the result and return.
-            if handle.has_completed() {
-                return Ok(self.pack_result(handle, qt)?);
+            if self.has_completed(qt)? {
+                return Ok(self.get_result(qt)?);
             }
 
             if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
@@ -409,13 +405,8 @@ impl LibOS {
 
             // Search for any operation that has completed.
             for (i, &qt) in qts.iter().enumerate() {
-                // Retrieve associated schedule handle.
-                // TODO: move this out of the loop.
-                let handle: TaskHandle = self.get_task_handle(qt)?;
-
-                if handle.has_completed() {
-                    // Found one, so extract the result and return.
-                    return Ok((i, self.pack_result(handle, qt)?));
+                if self.has_completed(qt)? {
+                    return Ok((i, self.get_result(qt)?));
                 }
             }
 
@@ -461,21 +452,21 @@ impl LibOS {
         result
     }
 
-    /// Waits for any operation in an I/O queue.
-    fn get_task_handle(&mut self, qt: QToken) -> Result<TaskHandle, Fail> {
+    /// Returns whether the operation associated with the given QToken has completed.
+    fn has_completed(&mut self, qt: QToken) -> Result<bool, Fail> {
         match self {
-            LibOS::NetworkLibOS(libos) => libos.get_task_handle(qt),
-            LibOS::MemoryLibOS(libos) => libos.get_task_handle(qt),
+            LibOS::NetworkLibOS(libos) => libos.has_completed(qt),
+            LibOS::MemoryLibOS(libos) => libos.has_completed(qt),
         }
     }
 
-    fn pack_result(&mut self, handle: TaskHandle, qt: QToken) -> Result<demi_qresult_t, Fail> {
+    fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
         #[cfg(feature = "profiler")]
-        timer!("demikernel::pack_result");
+        timer!("demikernel::get_result");
 
         match self {
-            LibOS::NetworkLibOS(libos) => libos.pack_result(handle, qt),
-            LibOS::MemoryLibOS(libos) => libos.pack_result(handle, qt),
+            LibOS::NetworkLibOS(libos) => libos.get_result(qt),
+            LibOS::MemoryLibOS(libos) => libos.get_result(qt),
         }
     }
 

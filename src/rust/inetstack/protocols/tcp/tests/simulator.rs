@@ -644,7 +644,7 @@ impl Simulation {
                 .engine
                 .get_test_rig()
                 .get_runtime()
-                .remove_coroutine_with_qtoken(qt)
+                .remove_coroutine(qt)
                 .get_result()
             {
                 Some((qd, qr)) if args_qd == qd => match qr {
@@ -880,8 +880,8 @@ impl Simulation {
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<Option<QToken>> {
         let has_completed: bool = match self.inflight {
-            Some(qt) => match self.engine.get_test_rig().get_runtime().get_task_handle(qt.clone()) {
-                Ok(task_handle) => task_handle.has_completed(),
+            Some(qt) => match self.engine.get_test_rig().get_runtime().has_completed(qt.clone()) {
+                Ok(has_completed) => has_completed,
                 Err(e) => anyhow::bail!("{:?}", e),
             },
             None => anyhow::bail!("should have an inflight queue token"),

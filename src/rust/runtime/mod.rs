@@ -52,7 +52,6 @@ use crate::{
         scheduler::{
             Scheduler,
             Task,
-            TaskHandle,
         },
         timer::SharedTimer,
         types::demi_opcode_t,
@@ -119,7 +118,7 @@ pub struct DemiRuntime {
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
     network_table: NetworkQueueTable,
     /// Currently running coroutines.
-    pending_ops: HashMap<QDesc, HashMap<TaskHandle, YielderHandle>>,
+    pending_ops: HashMap<QDesc, HashMap<QToken, YielderHandle>>,
     ts_iters: usize,
 }
 
@@ -154,17 +153,17 @@ impl SharedDemiRuntime {
             ephemeral_ports: EphemeralPorts::default(),
             timer: SharedTimer::new(now),
             network_table: NetworkQueueTable::default(),
-            pending_ops: HashMap::<QDesc, HashMap<TaskHandle, YielderHandle>>::new(),
+            pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
             ts_iters: 0,
         }))
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<TaskHandle, Fail> {
+    pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
-            Some(task_handle) => Ok(task_handle),
+            Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
                 error!("insert_coroutine(): {}", cause);
@@ -180,7 +179,7 @@ impl SharedDemiRuntime {
         task_name: &str,
         coroutine_factory: F,
         qd: QDesc,
-    ) -> Result<TaskHandle, Fail>
+    ) -> Result<QToken, Fail>
     where
         F: FnOnce(Yielder) -> Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>>,
     {
@@ -188,71 +187,56 @@ impl SharedDemiRuntime {
         let yielder_handle: YielderHandle = yielder.get_handle();
         let coroutine: Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
         match self.insert_coroutine(task_name, coroutine) {
-            Ok(task_handle) => {
+            Ok(qt) => {
                 // This allows to keep track of currently running coroutines.
                 self.pending_ops
                     .entry(qd)
                     .or_insert(HashMap::new())
-                    .insert(task_handle.clone(), yielder_handle.clone());
-                Ok(task_handle)
+                    .insert(qt, yielder_handle.clone());
+                Ok(qt)
             },
             Err(e) => Err(e),
         }
     }
 
-    /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`.
-    pub fn remove_coroutine(&mut self, handle: &TaskHandle) -> OperationTask {
+    /// Removes a coroutine from the underlying scheduler given its associated QToken.
+    pub fn remove_coroutine(&mut self, qt: QToken) -> OperationTask {
         // 1. Remove Task from scheduler.
         let boxed_task: Box<dyn Task> = self
             .scheduler
-            .remove(handle)
+            .remove(qt.into())
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         trace!("Removing coroutine: {:?}", boxed_task.get_name());
         OperationTask::from(boxed_task.as_any())
     }
 
-    /// Removes a coroutine from the underlying scheduler given its associated [QToken] `qt`.
-    pub fn remove_coroutine_with_qtoken(&mut self, qt: QToken) -> OperationTask {
-        self.remove_coroutine(
-            &self
-                .scheduler
-                .get_task_handle(qt.into())
-                .expect("coroutine should exist"),
-        )
-    }
-
-    /// Removes a coroutine from the underlying scheduler given its associated [TaskHandle] `handle`
-    /// and gets the result immediately.
-    pub fn remove_coroutine_and_get_result(&mut self, handle: &TaskHandle, qt: u64) -> Result<demi_qresult_t, Fail> {
-        let operation_task: OperationTask = self.remove_coroutine(handle);
+    /// Removes a coroutine from the underlying scheduler given its associated QToken and gets the result immediately.
+    pub fn remove_coroutine_and_get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
+        let operation_task: OperationTask = self.remove_coroutine(qt);
         let (qd, result) = operation_task.get_result().expect("coroutine not finished");
-        self.cancel_or_remove_pending_ops_as_needed(&result, &qd, handle);
-        Ok(self.pack_result(result, qd, qt))
+        self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
+        let result: demi_qresult_t = self.create_result(result, qd, qt);
+        Ok(result)
     }
 
     /// When the queue is closed, we need to cancel all pending ops. When the coroutine is removed, we only need to
-    /// cancel the pending op associated with the handle.
-    fn cancel_or_remove_pending_ops_as_needed(
-        &mut self,
-        result: &OperationResult,
-        qd: &QDesc,
-        task_handle: &TaskHandle,
-    ) {
+    /// cancel the pending op associated with the qtoken.
+    fn cancel_or_remove_pending_ops_as_needed(&mut self, result: &OperationResult, qd: QDesc, qt: QToken) {
         match result {
             OperationResult::Close => {
-                self.cancel_all_pending_ops_for_queue(qd);
+                self.cancel_all_pending_ops_for_queue(&qd);
             },
             _ => {
-                self.cancel_pending_op(qd, task_handle);
+                self.cancel_pending_op(&qd, &qt);
             },
         }
     }
 
     /// Cancel pending op because the coroutine was removed.
-    fn cancel_pending_op(&mut self, qd: &QDesc, task_handle: &TaskHandle) {
+    fn cancel_pending_op(&mut self, qd: &QDesc, qt: &QToken) {
         if let Some(inner_hash_map) = self.pending_ops.get_mut(&qd) {
-            inner_hash_map.remove(task_handle);
+            inner_hash_map.remove(qt);
         }
     }
 
@@ -260,8 +244,8 @@ impl SharedDemiRuntime {
     fn cancel_all_pending_ops_for_queue(&mut self, qd: &QDesc) {
         if let Some(inner_hash_map) = &mut self.pending_ops.remove(&qd) {
             let drain = inner_hash_map.drain();
-            for (handle, mut yielder_handle) in drain {
-                if !handle.has_completed() {
+            for (qt, mut yielder_handle) in drain {
+                if let Ok(false) = self.has_completed(qt) {
                     yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
                 }
             }
@@ -273,11 +257,11 @@ impl SharedDemiRuntime {
         &mut self,
         task_name: &str,
         coroutine: Pin<Box<dyn Future<Output = ()>>>,
-    ) -> Result<TaskHandle, Fail> {
+    ) -> Result<QToken, Fail> {
         trace!("Inserting background coroutine: {:?}", task_name);
         let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
         match self.scheduler.insert(task) {
-            Some(handle) => Ok(handle),
+            Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
                 error!("insert_background_coroutine(): {}", cause);
@@ -286,16 +270,16 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Removes the background `coroutine` associated with `handle`. Since background coroutines do not return a result
+    /// Removes the background `coroutine` associated with `qt`. Since background coroutines do not return a result
     /// there is no need to cast it.
-    pub fn remove_background_coroutine(&mut self, handle: &TaskHandle) -> Result<(), Fail> {
-        match self.scheduler.remove(handle) {
+    pub fn remove_background_coroutine(&mut self, qt: QToken) -> Result<(), Fail> {
+        match self.scheduler.remove(qt.into()) {
             Some(boxed_task) => {
                 trace!("Removing background coroutine: {:?}", boxed_task.get_name());
                 Ok(())
             },
             None => {
-                let cause: String = format!("cannot remove coroutine (task_id={:?})", &handle.get_task_id());
+                let cause: String = format!("cannot remove coroutine (task_id={:?})", qt);
                 error!("remove_background_coroutine(): {}", cause);
                 Err(Fail::new(libc::ESRCH, &cause))
             },
@@ -313,18 +297,6 @@ impl SharedDemiRuntime {
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
         self.scheduler.poll()
-    }
-
-    /// Retrieves the [TaskHandle] associated with the given [QToken] `qt`.
-    pub fn get_task_handle(&self, qt: QToken) -> Result<TaskHandle, Fail> {
-        match self.scheduler.get_task_handle(qt.into()) {
-            Some(handle) => Ok(handle),
-            None => {
-                let cause: String = format!("invalid queue token (qt={:?})", &qt);
-                error!("get_task_handle(): {}", cause);
-                Err(Fail::new(libc::EINVAL, &cause))
-            },
-        }
     }
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
@@ -467,12 +439,12 @@ impl SharedDemiRuntime {
         self.network_table.addr_in_use(local)
     }
 
-    pub fn pack_result(&self, result: OperationResult, qd: QDesc, qt: u64) -> demi_qresult_t {
+    pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {
         match result {
             OperationResult::Connect => demi_qresult_t {
                 qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
                 qr_qd: qd.into(),
-                qr_qt: qt,
+                qr_qt: qt.into(),
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
@@ -487,7 +459,7 @@ impl SharedDemiRuntime {
                 demi_qresult_t {
                     qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
                     qr_qd: qd.into(),
-                    qr_qt: qt,
+                    qr_qt: qt.into(),
                     qr_ret: 0,
                     qr_value,
                 }
@@ -495,7 +467,7 @@ impl SharedDemiRuntime {
             OperationResult::Push => demi_qresult_t {
                 qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
                 qr_qd: qd.into(),
-                qr_qt: qt,
+                qr_qt: qt.into(),
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
@@ -508,7 +480,7 @@ impl SharedDemiRuntime {
                     demi_qresult_t {
                         qr_opcode: demi_opcode_t::DEMI_OPC_POP,
                         qr_qd: qd.into(),
-                        qr_qt: qt,
+                        qr_qt: qt.into(),
                         qr_ret: 0,
                         qr_value,
                     }
@@ -518,7 +490,7 @@ impl SharedDemiRuntime {
                     demi_qresult_t {
                         qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                         qr_qd: qd.into(),
-                        qr_qt: qt,
+                        qr_qt: qt.into(),
                         qr_ret: e.errno as i64,
                         qr_value: unsafe { mem::zeroed() },
                     }
@@ -527,7 +499,7 @@ impl SharedDemiRuntime {
             OperationResult::Close => demi_qresult_t {
                 qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
                 qr_qd: qd.into(),
-                qr_qt: qt,
+                qr_qt: qt.into(),
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
@@ -536,10 +508,21 @@ impl SharedDemiRuntime {
                 demi_qresult_t {
                     qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
                     qr_qd: qd.into(),
-                    qr_qt: qt,
+                    qr_qt: qt.into(),
                     qr_ret: e.errno as i64,
                     qr_value: unsafe { mem::zeroed() },
                 }
+            },
+        }
+    }
+
+    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
+        match self.scheduler.has_completed(qt.into()) {
+            Some(has_completed) => Ok(has_completed),
+            None => {
+                let cause: String = format!("invalid scheduler task id (qt={:?})", &qt);
+                error!("has_completed(): {}", cause);
+                Err(Fail::new(libc::EINVAL, &cause))
             },
         }
     }
