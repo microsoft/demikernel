@@ -3,6 +3,35 @@
  * Licensed under the MIT license.
  */
 
+#include <rte_config.h>
+
+/*
+ * work around bug in dpdk headers where the toolchain preprocessor
+ * definition used to build dpdk retained and incorrectly directs
+ * conditional compilation during application build.
+ */
+#undef RTE_TOOLCHAIN
+#ifdef RTE_TOOLCHAIN_CLANG
+#undef RTE_TOOLCHAIN_CLANG
+#endif
+#ifdef RTE_TOOLCHAIN_GCC
+#undef RTE_TOOLCHAIN_GCC
+#endif
+#ifdef RTE_TOOLCHAIN_MSVC
+#undef RTE_TOOLCHAIN_MSVC
+#endif
+
+#ifdef __clang__
+#define RTE_TOOLCHAIN "clang"
+#define RTE_TOOLCHAIN_CLANG 1
+#elif __GNUC__
+#define RTE_TOOLCHAIN "gcc"
+#define RTE_TOOLCHAIN_GCC 1
+#elif _MSC_VER
+#define RTE_TOOLCHAIN "msvc"
+#define RTE_TOOLCHAIN_MSVC 1
+#endif
+
 #include <rte_errno.h>
 #include <rte_ethdev.h>
 #include <rte_ether.h>
