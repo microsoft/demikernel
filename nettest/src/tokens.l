@@ -13,6 +13,7 @@
 \+ "PLUS"
 \- "MINUS"
 \, 'COMMA'
+F   "F"
 S   "S"
 P   "P"
 R   "R"

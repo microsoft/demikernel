@@ -95,8 +95,9 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_int(&$6).unwrap();
             DemikernelSyscall::Pop(ret)
       }
-      | 'CLOSE' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            DemikernelSyscall::Close
+      | 'CLOSE' 'LPAREN' CloseArgs 'RPAREN' 'EQUALS' Expression {
+            let ret = glue::parse_int(&$6).unwrap();
+            DemikernelSyscall::Close($3, ret)
       }
       | 'WRITE' 'LPAREN' WriteArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_int(&$6).unwrap();
@@ -214,6 +215,18 @@ WaitArgs -> glue::WaitArgs
       }
       ;
 
+CloseArgs -> glue::CloseArgs
+      : 'INTEGER' {
+            let qd = {
+                  let v = $1.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            glue::CloseArgs {
+                  qd,
+            }
+      }
+      ;
+
 OptionalEndTime -> Option<std::time::Duration>
       : {
             None
@@ -307,6 +320,11 @@ TcpFlags -> glue::TcpFlags
       | 'DOT' TcpFlags {
             let mut flags = $2;
             flags.ack = true;
+            flags
+      }
+      | 'F' TcpFlags {
+            let mut flags = $2;
+            flags.fin = true;
             flags
       }
       | 'S' TcpFlags {

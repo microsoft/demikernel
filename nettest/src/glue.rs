@@ -41,7 +41,7 @@ pub enum DemikernelSyscall {
     Connect(ConnectArgs, u32),
     Push(PushArgs, u32),
     Pop(u32),
-    Close,
+    Close(CloseArgs, u32),
     Wait(WaitArgs, u32),
     Unsupported,
 }
@@ -56,7 +56,7 @@ impl Debug for DemikernelSyscall {
             DemikernelSyscall::Connect(args, _ok) => write!(f, "demi_connect({:?})", args),
             DemikernelSyscall::Push(args, _ret) => write!(f, "demi_push({:?})", args),
             DemikernelSyscall::Pop(_ret) => write!(f, "demi_pop"),
-            DemikernelSyscall::Close => write!(f, "demi_close"),
+            DemikernelSyscall::Close(args, _ret) => write!(f, "demi_close({:?})", args),
             DemikernelSyscall::Wait(args, _ret) => write!(f, "demi_wait({:?})", args),
             DemikernelSyscall::Unsupported => write!(f, "Unsupported"),
         }
@@ -122,6 +122,11 @@ pub struct PushArgs {
 pub struct WaitArgs {
     pub qd: Option<u32>,
     pub timeout: Option<Duration>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CloseArgs {
+    pub qd: u32,
 }
 
 #[derive(Clone, Debug)]
