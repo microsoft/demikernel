@@ -78,7 +78,7 @@ const MAX_OUT_OF_ORDER: usize = 16;
 // Note: This ControlBlock structure is only used after we've reached the ESTABLISHED state, so states LISTEN,
 // SYN_RCVD, and SYN_SENT aren't included here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum State {
+enum State {
     Established,
     FinWait1,
     FinWait2,
@@ -106,10 +106,10 @@ struct Receiver {
     //
 
     // Sequence number of next byte of data in the unread queue.
-    pub reader_next: SeqNumber,
+    reader_next: SeqNumber,
 
     // Sequence number of the next byte of data (or FIN) that we expect to receive.  In RFC 793 terms, this is RCV.NXT.
-    pub receive_next: SeqNumber,
+    receive_next: SeqNumber,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
     recv_queue: AsyncQueue<DemiBuffer>,
@@ -212,6 +212,8 @@ pub struct ControlBlock {
 
     // Incoming packets for this connection.
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+
+    ack_queue: SharedAsyncQueue<usize>,
 }
 
 #[derive(Clone)]
@@ -238,6 +240,7 @@ impl SharedControlBlock {
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: SharedAsyncQueue<usize>,
     ) -> Self {
         let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self(SharedObject::<ControlBlock>::new(ControlBlock {
@@ -261,6 +264,7 @@ impl SharedControlBlock {
             retransmit_deadline: SharedWatchedValue::new(None),
             rto_calculator: RtoCalculator::new(),
             recv_queue,
+            ack_queue,
         }))
     }
 
@@ -694,6 +698,9 @@ impl SharedControlBlock {
                     let deadline: Instant = now + self.rto_calculator.rto();
                     self.retransmit_deadline.set(Some(deadline));
                 }
+
+                let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
+                self.ack_queue.push(nbytes);
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
@@ -852,7 +859,7 @@ impl SharedControlBlock {
         self.receive_buffer_size - bytes_unread
     }
 
-    pub fn hdr_window_size(&self) -> u16 {
+    fn hdr_window_size(&self) -> u16 {
         let window_size: u32 = self.get_receive_window_size();
         let hdr_window_size: u16 = (window_size >> self.window_scale)
             .try_into()
@@ -864,6 +871,23 @@ impl SharedControlBlock {
             self.window_scale
         );
         hdr_window_size
+    }
+
+    pub async fn push(&mut self, mut nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+        loop {
+            let n: usize = self.ack_queue.pop(&yielder).await?;
+
+            if n > nbytes {
+                self.ack_queue.push_front(n - nbytes);
+                break Ok(());
+            }
+
+            nbytes -= n;
+
+            if nbytes == 0 {
+                break Ok(());
+            }
+        }
     }
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
@@ -879,7 +903,7 @@ impl SharedControlBlock {
 
     // This routine remembers that we have received an out-of-order FIN.
     //
-    pub fn store_out_of_order_fin(&mut self, fin: SeqNumber) {
+    fn store_out_of_order_fin(&mut self, fin: SeqNumber) {
         self.out_of_order_fin = Some(fin);
     }
 
@@ -887,12 +911,7 @@ impl SharedControlBlock {
     // If the new segment had a FIN it has been removed prior to this routine being called.
     // Note: Since this is not the "fast path", this is written for clarity over efficiency.
     //
-    pub fn store_out_of_order_segment(
-        &mut self,
-        mut new_start: SeqNumber,
-        mut new_end: SeqNumber,
-        mut buf: DemiBuffer,
-    ) {
+    fn store_out_of_order_segment(&mut self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: DemiBuffer) {
         let mut action_index: usize = self.out_of_order.len();
         let mut another_pass_neeeded: bool = true;
 
@@ -995,7 +1014,7 @@ impl SharedControlBlock {
     //
     // Returns true if a previously out-of-order segment containing a FIN has now been received.
     //
-    pub fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) -> bool {
+    fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) -> bool {
         let recv_next: SeqNumber = self.receiver.receive_next;
 
         // This routine should only be called with in-order segment data.

@@ -62,6 +62,7 @@ impl EstablishedSocket {
         mut runtime: SharedDemiRuntime,
         transport: SharedBox<dyn NetworkRuntime>,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: SharedAsyncQueue<usize>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         arp: SharedArpPeer,
@@ -97,6 +98,7 @@ impl EstablishedSocket {
             cc_constructor,
             congestion_control_options,
             recv_queue.clone(),
+            ack_queue.clone(),
         );
         let handle: TaskHandle = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
@@ -116,6 +118,10 @@ impl EstablishedSocket {
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         self.cb.send(buf)
+    }
+
+    pub async fn push(&mut self, nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+        self.cb.push(nbytes, yielder).await
     }
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {

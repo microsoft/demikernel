@@ -201,12 +201,14 @@ impl SharedPassiveSocket {
         let yielder: Yielder = Yielder::new();
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         let future = self.clone().send_syn_ack_and_wait_for_ack(
             remote,
             remote_isn,
             local_isn,
             tcp_hdr,
             recv_queue.clone(),
+            ack_queue,
             yielder,
         );
         match self
@@ -286,6 +288,7 @@ impl SharedPassiveSocket {
         local_isn: SeqNumber,
         tcp_hdr: TcpHeader,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: SharedAsyncQueue<usize>,
         yielder: Yielder,
     ) {
         // Set up new inflight accept connection.
@@ -327,6 +330,7 @@ impl SharedPassiveSocket {
                 .clone()
                 .wait_for_ack(
                     recv_queue.clone(),
+                    ack_queue.clone(),
                     remote,
                     local_isn,
                     remote_isn,
@@ -407,6 +411,7 @@ impl SharedPassiveSocket {
     async fn wait_for_ack(
         self,
         mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: SharedAsyncQueue<usize>,
         remote: SocketAddrV4,
         local_isn: SeqNumber,
         remote_isn: SeqNumber,
@@ -455,6 +460,7 @@ impl SharedPassiveSocket {
             self.runtime.clone(),
             self.transport.clone(),
             recv_queue.clone(),
+            ack_queue,
             self.local_link_addr,
             self.tcp_config.clone(),
             self.arp.clone(),

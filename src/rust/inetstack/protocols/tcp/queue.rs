@@ -227,6 +227,7 @@ impl SharedTcpQueue {
         self.state_machine.prepare(SocketOp::Connect)?;
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         // Create active socket.
         self.socket = Socket::Connecting(SharedActiveOpenSocket::new(
             local_isn,
@@ -235,6 +236,7 @@ impl SharedTcpQueue {
             self.runtime.clone(),
             self.transport.clone(),
             recv_queue.clone(),
+            ack_queue,
             self.tcp_config.clone(),
             self.local_link_addr,
             self.arp.clone(),
@@ -284,8 +286,12 @@ impl SharedTcpQueue {
             .into())
     }
 
-    pub async fn push_coroutine(&mut self, _yielder: Yielder) -> Result<(), Fail> {
-        Ok(())
+    pub async fn push_coroutine(&mut self, nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+        self.state_machine.may_push()?;
+        match self.socket {
+            Socket::Established(ref mut socket) => socket.push(nbytes, yielder).await,
+            _ => unreachable!("State machine check should ensure that this socket is connected"),
+        }
     }
 
     pub fn pop<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
