@@ -28,6 +28,7 @@ use anyhow::Result;
 use nettest::glue::{
     AcceptArgs,
     BindArgs,
+    CloseArgs,
     ConnectArgs,
     Event,
     ListenArgs,
@@ -342,11 +343,9 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall(ret.clone())?,
             nettest::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
+            nettest::glue::DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
                 eprintln!("Unsupported syscall");
-            },
-            _ => {
-                eprintln!("Unimplemented syscall");
             },
         }
 
@@ -677,6 +676,24 @@ impl Simulation {
                 _ => unreachable!("no operation has completed coroutine has completed, but it should"),
             },
             _ => unreachable!("no operation has completed coroutine has completed, but it should"),
+        }
+    }
+
+    fn run_close_syscall(&mut self, args: &CloseArgs, ret: u32) -> Result<()> {
+        // Extract queue descriptor.
+        let args_qd: QDesc = args.qd.into();
+
+        match self.engine.tcp_async_close(args_qd) {
+            Ok(close_qt) => {
+                self.inflight = Some(close_qt);
+                Ok(())
+            },
+            Err(err) if ret as i32 == err.errno => Ok(()),
+            _ => {
+                let cause: String = format!("unexpected return for close syscall");
+                eprintln!("run_close_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
         }
     }
 
