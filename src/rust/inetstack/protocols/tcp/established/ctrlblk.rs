@@ -78,7 +78,7 @@ const MAX_OUT_OF_ORDER: usize = 16;
 // Note: This ControlBlock structure is only used after we've reached the ESTABLISHED state, so states LISTEN,
 // SYN_RCVD, and SYN_SENT aren't included here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum State {
+enum State {
     Established,
     FinWait1,
     FinWait2,
@@ -106,10 +106,10 @@ struct Receiver {
     //
 
     // Sequence number of next byte of data in the unread queue.
-    pub reader_next: SeqNumber,
+    reader_next: SeqNumber,
 
     // Sequence number of the next byte of data (or FIN) that we expect to receive.  In RFC 793 terms, this is RCV.NXT.
-    pub receive_next: SeqNumber,
+    receive_next: SeqNumber,
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
     recv_queue: AsyncQueue<DemiBuffer>,
@@ -859,7 +859,7 @@ impl SharedControlBlock {
         self.receive_buffer_size - bytes_unread
     }
 
-    pub fn hdr_window_size(&self) -> u16 {
+    fn hdr_window_size(&self) -> u16 {
         let window_size: u32 = self.get_receive_window_size();
         let hdr_window_size: u16 = (window_size >> self.window_scale)
             .try_into()
@@ -903,7 +903,7 @@ impl SharedControlBlock {
 
     // This routine remembers that we have received an out-of-order FIN.
     //
-    pub fn store_out_of_order_fin(&mut self, fin: SeqNumber) {
+    fn store_out_of_order_fin(&mut self, fin: SeqNumber) {
         self.out_of_order_fin = Some(fin);
     }
 
@@ -911,12 +911,7 @@ impl SharedControlBlock {
     // If the new segment had a FIN it has been removed prior to this routine being called.
     // Note: Since this is not the "fast path", this is written for clarity over efficiency.
     //
-    pub fn store_out_of_order_segment(
-        &mut self,
-        mut new_start: SeqNumber,
-        mut new_end: SeqNumber,
-        mut buf: DemiBuffer,
-    ) {
+    fn store_out_of_order_segment(&mut self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: DemiBuffer) {
         let mut action_index: usize = self.out_of_order.len();
         let mut another_pass_neeeded: bool = true;
 
@@ -1019,7 +1014,7 @@ impl SharedControlBlock {
     //
     // Returns true if a previously out-of-order segment containing a FIN has now been received.
     //
-    pub fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) -> bool {
+    fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) -> bool {
         let recv_next: SeqNumber = self.receiver.receive_next;
 
         // This routine should only be called with in-order segment data.
