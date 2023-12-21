@@ -5,13 +5,12 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    runtime::fail::Fail,
-    MacAddress,
-};
-#[cfg(feature = "catnip-libos")]
+#[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
+use crate::runtime::fail::Fail;
+use crate::MacAddress;
+#[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
 use ::anyhow::Error;
-#[cfg(feature = "catnip-libos")]
+#[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
 use ::std::{
     collections::HashMap,
     ffi::CString,
@@ -99,7 +98,7 @@ impl Config {
         local_link_addr
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Reads the "ARP table" parameter from the underlying configuration file.
     pub fn arp_table(&self) -> HashMap<Ipv4Addr, MacAddress> {
         // FIXME: this function should return a Result.
@@ -123,7 +122,7 @@ impl Config {
         arp_table
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Reads the "DPDK EAL" parameter from the underlying configuration file.
     pub fn eal_init_args(&self) -> Vec<CString> {
         // FIXME: this function should return a Result.
@@ -142,7 +141,7 @@ impl Config {
         }
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Reads the "ARP Disable" parameter from the underlying configuration file.
     pub fn disable_arp(&self) -> bool {
         // TODO: this should be unified with arp_table().
@@ -154,7 +153,7 @@ impl Config {
         disable_arp
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "MTU" parameter from environment variables.
     pub fn mtu(&self) -> Result<u16, Fail> {
         match ::std::env::var("MTU") {
@@ -166,7 +165,7 @@ impl Config {
         }
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "MSS" parameter from environment variables.
     pub fn mss(&self) -> Result<usize, Fail> {
         // FIXME: this function should return a Result.
@@ -179,19 +178,19 @@ impl Config {
         }
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "TCP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn tcp_checksum_offload(&self) -> bool {
         ::std::env::var("TCP_CHECKSUM_OFFLOAD").is_ok()
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "UDP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn udp_checksum_offload(&self) -> bool {
         ::std::env::var("UDP_CHECKSUM_OFFLOAD").is_ok()
     }
 
-    #[cfg(feature = "catnip-libos")]
+    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "USE_JUMBO" parameter from environment variables.
     pub fn use_jumbo_frames(&self) -> bool {
         ::std::env::var("USE_JUMBO").is_ok()
