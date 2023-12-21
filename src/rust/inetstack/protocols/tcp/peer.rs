@@ -11,8 +11,8 @@ use crate::{
         ipv4::Ipv4Header,
         tcp::{
             isn_generator::IsnGenerator,
-            queue::SharedTcpQueue,
             segment::TcpHeader,
+            socket::SharedTcpSocket,
             SeqNumber,
         },
     },
@@ -25,13 +25,8 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        queue::NetworkQueue,
         scheduler::Yielder,
-        Operation,
-        OperationResult,
         QDesc,
-        QToken,
-        SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -44,16 +39,16 @@ use ::rand::{
 };
 
 use ::std::{
+    collections::HashMap,
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
     },
     ops::{
         Deref,
         DerefMut,
     },
-    pin::Pin,
-    time::Duration,
 };
 
 #[cfg(feature = "profiler")]
@@ -63,39 +58,40 @@ use crate::timer;
 // Structures
 //======================================================================================================================
 
-pub struct TcpPeer {
+pub struct TcpPeer<N: NetworkRuntime> {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    transport: SharedBox<dyn NetworkRuntime>,
+    transport: N,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
-    arp: SharedArpPeer,
+    arp: SharedArpPeer<N>,
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+    addresses: HashMap<SocketId, SharedTcpSocket<N>>,
 }
 
 #[derive(Clone)]
-pub struct SharedTcpPeer(SharedObject<TcpPeer>);
+pub struct SharedTcpPeer<N: NetworkRuntime>(SharedObject<TcpPeer<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedTcpPeer {
+impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
         let (tx, _) = mpsc::unbounded();
-        Ok(Self(SharedObject::<TcpPeer>::new(TcpPeer {
+        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
             transport,
@@ -105,156 +101,58 @@ impl SharedTcpPeer {
             arp,
             rng,
             dead_socket_tx: tx,
+            addresses: HashMap::<SocketId, SharedTcpSocket<N>>::new(),
         })))
     }
 
     /// Creates a TCP socket.
-    pub fn socket(&mut self) -> Result<QDesc, Fail> {
-        let new_queue: SharedTcpQueue = SharedTcpQueue::new(
+    pub fn socket(&mut self) -> Result<SharedTcpSocket<N>, Fail> {
+        Ok(SharedTcpSocket::<N>::new(
             self.runtime.clone(),
             self.transport.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
             self.arp.clone(),
             self.dead_socket_tx.clone(),
-        );
-        let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue>(new_queue);
-        Ok(new_qd)
+        ))
     }
 
     /// Binds a socket to a local address supplied by [local].
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddrV4) -> Result<(), Fail> {
-        // Check if we are binding to the wildcard address.
-        // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if local.ip() == &Ipv4Addr::UNSPECIFIED {
-            let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
-        }
-
-        // Check if we are binding to the wildcard port.
-        // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if local.port() == 0 {
-            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
-        }
-
-        // TODO: Check if we are binding to a non-local address.
-        if *local.ip() != self.local_ipv4_addr {
-            let cause: String = format!("cannot bind to non-local address (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
-        }
-        // Check whether the address is in use.
-        if self.runtime.addr_in_use(local) {
-            let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
-            error!("bind(): {}", &cause);
-            return Err(Fail::new(libc::EADDRINUSE, &cause));
-        }
-
-        // Check if this is an ephemeral port.
-        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.runtime.reserve_ephemeral_port(local.port())?
-        }
+    pub fn bind(&mut self, socket: &mut SharedTcpSocket<N>, local: SocketAddrV4) -> Result<(), Fail> {
+        // All other checks should have been done already.
+        debug_assert!(!Ipv4Addr::is_unspecified(local.ip()));
+        debug_assert!(local.port() != 0);
+        debug_assert!(self.addresses.get(&SocketId::Passive(local)).is_none());
 
         // Issue operation.
-        let ret: Result<(), Fail> = self.get_shared_queue(&qd)?.bind(local);
-
-        // Handle return value.
-        match ret {
-            Ok(x) => {
-                self.runtime.insert_socket_id_to_qd(SocketId::Passive(local), qd);
-                Ok(x)
-            },
-            Err(e) => {
-                // Rollback ephemeral port allocation.
-                if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-                    if self.runtime.free_ephemeral_port(local.port()).is_err() {
-                        warn!("bind(): leaking ephemeral port (port={})", local.port());
-                    }
-                }
-                Err(e)
-            },
-        }
+        socket.bind(local)?;
+        self.addresses.insert(SocketId::Passive(local), socket.clone());
+        Ok(())
     }
 
     // Marks the target socket as passive.
-    pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        // Get bound address while checking for several issues.
-        // Check if there isn't a socket listening on this address/port pair.
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        if let Some(local) = queue.local() {
-            if let Some(existing_qd) = self.runtime.get_qd_from_socket_id(&SocketId::Passive(local)) {
-                if existing_qd != qd {
-                    return Err(Fail::new(
-                        libc::EADDRINUSE,
-                        "another socket is already listening on the same address/port pair",
-                    ));
-                }
-            }
-            let nonce: u32 = self.rng.gen();
-            queue.listen(backlog, nonce)
-        } else {
-            Err(Fail::new(libc::EDESTADDRREQ, "socket is not bound to a local address"))
-        }
-    }
-
-    /// Sets up the coroutine for accepting a new connection.
-    pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("accept(): qd={:?}", qd);
-
-        let task_name: String = format!("inetstack::tcp::accept for qd={:?}", qd);
-        let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, yielder)) };
-
-        self.runtime
-            .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
+    pub fn listen(&mut self, socket: &mut SharedTcpSocket<N>, backlog: usize) -> Result<(), Fail> {
+        // Most checks should have been performed already
+        debug_assert!(socket.local().is_some());
+        let nonce: u32 = self.rng.gen();
+        socket.listen(backlog, nonce)
     }
 
     /// Runs until a new connection is accepted.
-    async fn accept_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
-        // Grab the queue, make sure it hasn't been closed in the meantime.
-        // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
-        // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue.clone(),
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
+    pub async fn accept(&self, socket: &mut SharedTcpSocket<N>, yielder: Yielder) -> Result<SharedTcpSocket<N>, Fail> {
         // Wait for accept to complete.
-        match queue.accept_coroutine(yielder).await {
-            Ok(new_queue) => {
-                // Handle result: If successful, allocate a new queue.
-                let endpoints: (SocketAddrV4, SocketAddrV4) = match new_queue.endpoints() {
-                    Ok(endpoints) => endpoints,
-                    Err(e) => return (qd, OperationResult::Failed(e)),
-                };
-                let new_qd: QDesc = self.runtime.alloc_queue::<SharedTcpQueue>(new_queue.clone());
-                if let Some(existing_qd) = self
-                    .runtime
-                    .insert_socket_id_to_qd(SocketId::Active(endpoints.0, endpoints.1), new_qd)
-                {
-                    // We should panic here because the ephemeral port allocator should not allocate the same port more than
-                    // once.
-                    unreachable!(
-                        "There is already a queue listening on this queue descriptor {:?}",
-                        existing_qd
-                    );
-                }
-                (qd, OperationResult::Accept((new_qd, endpoints.1)))
-            },
-            Err(e) => (qd, OperationResult::Failed(e)),
-        }
+        Ok(socket.accept(yielder).await?)
     }
 
-    /// Sets up the coroutine for connecting the socket to [remote].
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddrV4) -> Result<QToken, Fail> {
-        trace!("connect(): qd={:?} remote={:?}", qd, remote);
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
+    /// Runs until the connect to remote is made or times out.
+    pub async fn connect(
+        &mut self,
+        socket: &mut SharedTcpSocket<N>,
+        remote: SocketAddrV4,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
         // Check whether we need to allocate an ephemeral port.
-        let local: SocketAddrV4 = match queue.local() {
+        let local: SocketAddrV4 = match socket.local() {
             Some(addr) => addr,
             None => {
                 // TODO: we should free this when closing.
@@ -265,185 +163,75 @@ impl SharedTcpPeer {
         };
         // Insert the connection to receive incoming packets for this address pair.
         // Should we remove the passive entry for the local address if the socket was previously bound?
-        if let Some(existing_qd) = self
-            .runtime
-            .insert_socket_id_to_qd(SocketId::Active(local, remote.clone()), qd)
+        if self
+            .addresses
+            .insert(SocketId::Active(local, remote.clone()), socket.clone())
+            .is_some()
         {
             // We should panic here because the ephemeral port allocator should not allocate the same port more than
             // once.
             unreachable!(
-                "There is already a queue listening on this queue descriptor {:?}",
-                existing_qd
+                "There is already a socket listening on this address: {:?} {:?}",
+                local, remote
             );
         }
         let local_isn: SeqNumber = self.isn_generator.generate(&local, &remote);
-        let coroutine_constructor = || -> Result<QToken, Fail> {
-            let task_name: String = format!("inetstack::tcp::connect for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, yielder)) };
-            self.runtime
-                .clone()
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
-
-        queue.connect(local, remote, local_isn, coroutine_constructor)
-    }
-
-    /// Runs until the connect to remote is made or times out.
-    async fn connect_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
-        // Grab the queue, make sure it hasn't been closed in the meantime.
-        // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
-        // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue = match self.runtime.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
-        let (local, remote): (SocketAddrV4, SocketAddrV4) = queue
-            .endpoints()
-            .expect("We should have allocated endpoints when we allocated the coroutine");
         // Wait for connect to complete.
-        match queue.connect_coroutine(yielder).await {
-            Ok(()) => (qd, OperationResult::Connect),
-            Err(e) => {
-                self.runtime.remove_socket_id_to_qd(&SocketId::Active(local, remote));
-                (qd, OperationResult::Failed(e))
-            },
+        if let Err(e) = socket.connect(local, remote, local_isn, yielder).await {
+            self.addresses.remove(&SocketId::Active(local, remote.clone()));
+            Err(e)
+        } else {
+            Ok(())
         }
     }
 
     /// Pushes immediately to the socket and returns the result asynchronously.
-    pub fn push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let nbytes: usize = buf.len();
-        let coroutine_constructor = || -> Result<QToken, Fail> {
-            let task_name: String = format!("inetstack::tcp::push for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, nbytes, yielder)) };
-            self.runtime
-                .clone()
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
-
-        queue.push(buf, coroutine_constructor)
-    }
-
-    async fn push_coroutine(self, qd: QDesc, nbytes: usize, yielder: Yielder) -> (QDesc, OperationResult) {
-        // Grab the queue, make sure it hasn't been closed in the meantime.
-        // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
-        // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
+    pub async fn push(
+        &self,
+        socket: &mut SharedTcpSocket<N>,
+        buf: &mut DemiBuffer,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        // TODO: Remove this copy after merging with the transport trait.
         // Wait for push to complete.
-        match queue.push_coroutine(nbytes, yielder).await {
-            Ok(()) => {
-                debug!("push(): qd={:?}: {} bytes", qd, nbytes);
-                (qd, OperationResult::Push)
-            },
-            Err(e) => {
-                warn!("push() qd={:?}: {:?}", qd, &e);
-                (qd, OperationResult::Failed(e))
-            },
-        }
+        socket.push(buf.clone(), yielder).await?;
+        buf.trim(buf.len())
     }
 
     /// Sets up a coroutine for popping data from the socket.
-    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        // Get local address bound to socket.
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let coroutine_constructor = || -> Result<QToken, Fail> {
-            let task_name: String = format!("inetstack::tcp::pop for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
-            self.runtime
-                .clone()
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
-
-        queue.pop(coroutine_constructor)
-    }
-
-    async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {
+    pub async fn pop(
+        &self,
+        socket: &mut SharedTcpSocket<N>,
+        buf: &mut DemiBuffer,
+        size: usize,
+        yielder: Yielder,
+    ) -> Result<Option<SocketAddr>, Fail> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
-        // Wait for pop to complete.
-        match queue.pop_coroutine(size, yielder).await {
-            Ok(buf) => (qd, OperationResult::Pop(None, buf)),
-            Err(e) => (qd, OperationResult::Failed(e)),
-        }
+        let incoming: DemiBuffer = socket.pop(Some(size), yielder).await?;
+        let len: usize = incoming.len();
+        // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
+        buf.trim(size - len)?;
+        buf.copy_from_slice(&incoming[0..len]);
+        Ok(None)
     }
 
     /// Closes a TCP socket.
-    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("Closing socket: qd={:?}", qd);
-
-        let mut queue: SharedTcpQueue = self.get_shared_queue(&qd)?;
-        let coroutine_constructor = || -> Result<QToken, Fail> {
-            let task_name: String = format!("inetstack::tcp::close for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
-            self.runtime
-                .clone()
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
-        };
-
-        queue.async_close(coroutine_constructor)
-    }
-
-    async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
-        // Grab the queue, make sure it hasn't been closed in the meantime.
-        // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
-        // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
-        let mut queue: SharedTcpQueue = match self.get_shared_queue(&qd) {
-            Ok(queue) => queue,
-            Err(e) => return (qd, OperationResult::Failed(e)),
-        };
+    pub async fn close(&mut self, socket: &mut SharedTcpSocket<N>, yielder: Yielder) -> Result<(), Fail> {
         // Wait for close to complete.
         // Handle result: If unsuccessful, free the new queue descriptor.
-        match queue.close_coroutine(yielder).await {
-            Ok(socket_id) => {
-                if let Some(socket_id) = socket_id {
-                    match self.runtime.remove_socket_id_to_qd(&socket_id) {
-                        Some(existing_qd) if existing_qd == qd => {},
-                        _ => {
-                            return (
-                                qd,
-                                OperationResult::Failed(Fail::new(libc::EINVAL, "socket id did not map to this qd!")),
-                            )
-                        },
-                    }
-                }
-                // Free the queue.
-                self.runtime
-                    .free_queue::<SharedTcpQueue>(&qd)
-                    .expect("queue should exist");
-
-                (qd, OperationResult::Close)
-            },
-            Err(e) => (qd, OperationResult::Failed(e)),
+        if let Some(socket_id) = socket.close(yielder).await? {
+            self.addresses.remove(&socket_id);
         }
+        Ok(())
     }
 
-    pub fn remote_mss(&self, qd: QDesc) -> Result<usize, Fail> {
-        self.get_shared_queue(&qd)?.remote_mss()
-    }
-
-    pub fn current_rto(&self, qd: QDesc) -> Result<Duration, Fail> {
-        self.get_shared_queue(&qd)?.current_rto()
-    }
-
-    pub fn endpoints(&self, qd: QDesc) -> Result<(SocketAddrV4, SocketAddrV4), Fail> {
-        self.get_shared_queue(&qd)?.endpoints()
-    }
-
-    fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedTcpQueue, Fail> {
-        self.runtime.get_shared_queue::<SharedTcpQueue>(qd)
+    pub fn hard_close(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<(), Fail> {
+        if let Some(socket_id) = socket.hard_close()? {
+            self.addresses.remove(&socket_id);
+        }
+        Ok(())
     }
 
     /// Processes an incoming TCP segment.
@@ -468,10 +256,10 @@ impl SharedTcpPeer {
         }
 
         // Retrieve the queue descriptor based on the incoming segment.
-        let qd: QDesc = match self.runtime.get_qd_from_socket_id(&SocketId::Active(local, remote)) {
-            Some(qdesc) => qdesc,
-            None => match self.runtime.get_qd_from_socket_id(&SocketId::Passive(local)) {
-                Some(qdesc) => qdesc,
+        let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
+            Some(socket) => socket,
+            None => match self.addresses.get_mut(&SocketId::Passive(local)) {
+                Some(socket) => socket,
                 None => {
                     let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
                     error!("receive(): {}", &cause);
@@ -481,9 +269,7 @@ impl SharedTcpPeer {
         };
 
         // Dispatch to further processing depending on the socket state.
-        self.get_shared_queue(&qd)
-            .expect("queue should exist")
-            .receive(ip_hdr, tcp_hdr, data)
+        socket.receive(ip_hdr, tcp_hdr, data)
     }
 }
 
@@ -491,15 +277,15 @@ impl SharedTcpPeer {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedTcpPeer {
-    type Target = TcpPeer;
+impl<N: NetworkRuntime> Deref for SharedTcpPeer<N> {
+    type Target = TcpPeer<N>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedTcpPeer {
+impl<N: NetworkRuntime> DerefMut for SharedTcpPeer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

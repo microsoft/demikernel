@@ -7,7 +7,10 @@
 
 use crate::runtime::{
     logging,
-    memory::DemiBuffer,
+    memory::{
+        DemiBuffer,
+        MemoryRuntime,
+    },
     network::{
         config::{
             ArpConfig,
@@ -117,21 +120,6 @@ impl SharedTestRuntime {
         self.ipv4_addr
     }
 
-    /// Get the arp configuration options for the runtime.
-    pub fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    /// Get the udp configuration options for the runtime.
-    pub fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
-    }
-
-    /// Get the tcp configuration options for the runtime.
-    pub fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
-    }
-
     /// Get the runtime's clock.
     pub fn get_timer(&self) -> SharedTimer {
         self.runtime.get_timer()
@@ -177,6 +165,18 @@ impl NetworkRuntime for SharedTestRuntime {
         }
         out
     }
+
+    fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
+    }
+
+    fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
+    }
 }
 
 //======================================================================================================================
@@ -196,3 +196,5 @@ impl DerefMut for SharedTestRuntime {
         self.0.deref_mut()
     }
 }
+
+impl MemoryRuntime for SharedTestRuntime {}

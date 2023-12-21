@@ -9,7 +9,7 @@
 
 mod datagram;
 pub mod peer;
-pub mod queue;
+pub mod socket;
 
 #[cfg(test)]
 mod tests;

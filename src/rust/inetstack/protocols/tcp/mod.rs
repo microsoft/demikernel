@@ -7,9 +7,9 @@ mod established;
 mod isn_generator;
 mod passive_open;
 pub mod peer;
-pub mod queue;
 pub mod segment;
 mod sequence_number;
+pub mod socket;
 
 #[cfg(test)]
 mod tests;

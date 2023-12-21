@@ -42,7 +42,6 @@ use crate::{
         },
         scheduler::Yielder,
         QDesc,
-        SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -65,44 +64,44 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct ActiveOpenSocket {
+pub struct ActiveOpenSocket<N: NetworkRuntime> {
     local_isn: SeqNumber,
     local: SocketAddrV4,
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime>,
+    transport: N,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     ack_queue: SharedAsyncQueue<usize>,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
-    arp: SharedArpPeer,
+    arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
 #[derive(Clone)]
-pub struct SharedActiveOpenSocket(SharedObject<ActiveOpenSocket>);
+pub struct SharedActiveOpenSocket<N: NetworkRuntime>(SharedObject<ActiveOpenSocket<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedActiveOpenSocket {
+impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
 
-        Ok(Self(SharedObject::<ActiveOpenSocket>::new(ActiveOpenSocket {
+        Ok(Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
             local_isn,
             local,
             remote,
@@ -117,7 +116,7 @@ impl SharedActiveOpenSocket {
         })))
     }
 
-    fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket, Fail> {
+    fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
         let expected_seq: SeqNumber = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
@@ -234,7 +233,7 @@ impl SharedActiveOpenSocket {
         )?)
     }
 
-    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket, Fail> {
+    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
@@ -314,15 +313,15 @@ impl SharedActiveOpenSocket {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedActiveOpenSocket {
-    type Target = ActiveOpenSocket;
+impl<N: NetworkRuntime> Deref for SharedActiveOpenSocket<N> {
+    type Target = ActiveOpenSocket<N>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedActiveOpenSocket {
+impl<N: NetworkRuntime> DerefMut for SharedActiveOpenSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

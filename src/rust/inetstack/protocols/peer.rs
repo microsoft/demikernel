@@ -21,7 +21,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        SharedBox,
         SharedDemiRuntime,
     },
 };
@@ -31,28 +30,28 @@ use ::std::{
 };
 
 #[cfg(test)]
-use crate::runtime::QDesc;
+use crate::inetstack::protocols::tcp::socket::SharedTcpSocket;
 
-pub struct Peer {
+pub struct Peer<N: NetworkRuntime> {
     local_ipv4_addr: Ipv4Addr,
-    icmpv4: SharedIcmpv4Peer,
-    pub tcp: SharedTcpPeer,
-    pub udp: SharedUdpPeer,
+    icmpv4: SharedIcmpv4Peer<N>,
+    pub tcp: SharedTcpPeer<N>,
+    pub udp: SharedUdpPeer<N>,
 }
 
-impl Peer {
+impl<N: NetworkRuntime> Peer<N> {
     pub fn new(
         runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
         udp_config: UdpConfig,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let udp_offload_checksum: bool = udp_config.get_tx_checksum_offload();
-        let udp: SharedUdpPeer = SharedUdpPeer::new(
+        let udp: SharedUdpPeer<N> = SharedUdpPeer::<N>::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -60,7 +59,7 @@ impl Peer {
             udp_offload_checksum,
             arp.clone(),
         )?;
-        let icmpv4: SharedIcmpv4Peer = SharedIcmpv4Peer::new(
+        let icmpv4: SharedIcmpv4Peer<N> = SharedIcmpv4Peer::<N>::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -68,7 +67,7 @@ impl Peer {
             arp.clone(),
             rng_seed,
         )?;
-        let tcp: SharedTcpPeer = SharedTcpPeer::new(
+        let tcp: SharedTcpPeer<N> = SharedTcpPeer::<N>::new(
             runtime.clone(),
             transport.clone(),
             local_link_addr,
@@ -111,15 +110,21 @@ impl Peer {
     pub async fn ping(&mut self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
         self.icmpv4.ping(dest_ipv4_addr, timeout).await
     }
+
+    /// This function is only used for testing for now.
+    /// TODO: Remove this function once our legacy tests have been disabled.
+    pub fn get_local_addr(&self) -> Ipv4Addr {
+        self.local_ipv4_addr
+    }
 }
 
 #[cfg(test)]
-impl Peer {
-    pub fn tcp_mss(&self, fd: QDesc) -> Result<usize, Fail> {
-        self.tcp.remote_mss(fd)
+impl<N: NetworkRuntime> Peer<N> {
+    pub fn tcp_mss(&self, socket: &SharedTcpSocket<N>) -> Result<usize, Fail> {
+        socket.remote_mss()
     }
 
-    pub fn tcp_rto(&self, fd: QDesc) -> Result<Duration, Fail> {
-        self.tcp.current_rto(fd)
+    pub fn tcp_rto(&self, socket: &SharedTcpSocket<N>) -> Result<Duration, Fail> {
+        socket.current_rto()
     }
 }

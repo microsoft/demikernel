@@ -6,9 +6,12 @@ use crate::inetstack::test_helpers::{
     SharedEngine,
 };
 use ::anyhow::Result;
-use ::futures::task::{
-    noop_waker_ref,
-    Context,
+use ::futures::{
+    pin_mut,
+    task::{
+        noop_waker_ref,
+        Context,
+    },
 };
 use ::std::{
     future::Future,
@@ -34,8 +37,9 @@ fn ipv4_ping() -> Result<()> {
     let mut bob: SharedEngine = test_helpers::new_bob2(now);
 
     // Alice pings Bob.
-    let mut alice2 = alice.clone();
-    let mut ping_fut = Box::pin(alice2.ipv4_ping(test_helpers::BOB_IPV4, None));
+    let mut alice_transport = alice.get_transport();
+    let ping_fut = alice_transport.ping(test_helpers::BOB_IPV4, None);
+    pin_mut!(ping_fut);
     match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
         Poll::Pending => {},
         _ => anyhow::bail!("Ping should not complete"),
@@ -46,18 +50,18 @@ fn ipv4_ping() -> Result<()> {
     bob.advance_clock(now);
 
     // Bob receives ping request from Alice.
-    bob.receive(alice.get_test_rig().pop_frame())?;
+    bob.receive(alice.pop_frame())?;
 
     // Bob replies to Alice.
-    bob.get_test_rig().poll_scheduler();
+    bob.poll();
 
     now += Duration::from_secs(1);
     alice.advance_clock(now);
     bob.advance_clock(now);
 
     // Alice receives reply from Bob.
-    alice.receive(bob.get_test_rig().pop_frame())?;
-    alice.get_test_rig().poll_scheduler();
+    alice.receive(bob.pop_frame())?;
+    alice.poll();
     let latency: Duration = match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
         Poll::Ready(Ok(latency)) => latency,
         _ => anyhow::bail!("Ping should have completed"),
@@ -78,8 +82,9 @@ fn ipv4_ping_loop() -> Result<()> {
 
     for _ in 1..1000 {
         // Alice pings Bob.
-        let mut alice2 = alice.clone();
-        let mut ping_fut = Box::pin(alice2.ipv4_ping(test_helpers::BOB_IPV4, None));
+        let mut alice_transport = alice.get_transport();
+        let ping_fut = alice_transport.ping(test_helpers::BOB_IPV4, None);
+        pin_mut!(ping_fut);
         match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
             Poll::Pending => {},
             _ => anyhow::bail!("Ping should not have completed"),
@@ -90,18 +95,18 @@ fn ipv4_ping_loop() -> Result<()> {
         bob.advance_clock(now);
 
         // Bob receives ping request from Alice.
-        bob.receive(alice.get_test_rig().pop_frame()).unwrap();
+        bob.receive(alice.pop_frame()).unwrap();
 
         // Bob replies to Alice.
-        bob.get_test_rig().poll_scheduler();
+        bob.poll();
 
         now += Duration::from_secs(1);
         alice.advance_clock(now);
         bob.advance_clock(now);
 
         // Alice receives reply from Bob.
-        alice.receive(bob.get_test_rig().pop_frame()).unwrap();
-        alice.get_test_rig().poll_scheduler();
+        alice.receive(bob.pop_frame()).unwrap();
+        alice.poll();
         let latency: Duration = match Future::poll(Pin::new(&mut ping_fut), &mut ctx) {
             Poll::Ready(Ok(latency)) => latency,
             _ => anyhow::bail!("Ping should have completed"),

@@ -25,21 +25,18 @@ use crate::{
         memory::DemiBuffer,
         network::{
             types::MacAddress,
+            unwrap_socketaddr,
             NetworkRuntime,
         },
-        queue::{
-            IoQueue,
-            NetworkQueue,
-        },
         scheduler::Yielder,
-        SharedBox,
         SharedObject,
     },
 };
 use ::std::{
-    any::Any,
+    fmt::Debug,
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
     },
     ops::{
@@ -67,36 +64,36 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// Per-queue metadata for a UDP socket.
-pub struct UdpQueue {
+pub struct UdpSocket<N: NetworkRuntime> {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
     local_link_addr: MacAddress,
-    transport: SharedBox<dyn NetworkRuntime>,
+    network: N,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
-    arp: SharedArpPeer,
+    arp: SharedArpPeer<N>,
     checksum_offload: bool,
 }
 #[derive(Clone)]
-pub struct SharedUdpQueue(SharedObject<UdpQueue>);
+pub struct SharedUdpSocket<N: NetworkRuntime>(SharedObject<UdpSocket<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedUdpQueue {
+impl<N: NetworkRuntime> SharedUdpSocket<N> {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
-        transport: SharedBox<dyn NetworkRuntime>,
-        arp: SharedArpPeer,
+        network: N,
+        arp: SharedArpPeer<N>,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::new(UdpQueue {
+        Ok(Self(SharedObject::new(UdpSocket::<N> {
             local_ipv4_addr,
             bound: None,
             local_link_addr,
-            transport,
+            network,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
             arp,
             checksum_offload,
@@ -108,7 +105,14 @@ impl SharedUdpQueue {
         Ok(())
     }
 
-    pub async fn pushto(&mut self, remote: SocketAddrV4, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn push(&mut self, remote: Option<SocketAddr>, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+        let remote: SocketAddrV4 = if let Some(remote) = remote {
+            unwrap_socketaddr(remote)?
+        } else {
+            let cause: String = format!("udp socket requires a remote address");
+            error!("pushto(): {}", &cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
+        };
         // Check that the socket is bound.
         let port: u16 = if let Some(addr) = self.local() {
             addr.port()
@@ -127,14 +131,11 @@ impl SharedUdpQueue {
             buf,
             self.checksum_offload,
         );
-        self.transport.transmit(Box::new(datagram));
+        self.network.transmit(Box::new(datagram));
         Ok(())
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
-        const MAX_POP_SIZE: usize = 9000;
-        let size: usize = size.unwrap_or(MAX_POP_SIZE);
-
+    pub async fn pop(&mut self, size: usize, yielder: Yielder) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
         loop {
             match self.recv_queue.pop(&yielder).await {
                 Ok(msg) => {
@@ -160,54 +161,39 @@ impl SharedUdpQueue {
     pub fn is_bound(&self) -> bool {
         self.bound.is_some()
     }
+
+    /// Returns the local address to which the target queue is bound.
+    pub fn local(&self) -> Option<SocketAddrV4> {
+        self.bound
+    }
+
+    /// Returns the remote address to which the target queue is connected to.
+    /// TODO: Add later if we support connected UDP sockets.
+    pub fn remote(&self) -> Option<SocketAddrV4> {
+        None
+    }
 }
 
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
 
-/// IoQueue Trait Implementation for UDP Queues.
-impl IoQueue for SharedUdpQueue {
-    fn get_qtype(&self) -> crate::QType {
-        crate::QType::UdpSocket
-    }
-
-    fn as_any_ref(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn as_any(self: Box<Self>) -> Box<dyn Any> {
-        self
-    }
-}
-
-impl Deref for SharedUdpQueue {
-    type Target = UdpQueue;
+impl<N: NetworkRuntime> Deref for SharedUdpSocket<N> {
+    type Target = UdpSocket<N>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedUdpQueue {
+impl<N: NetworkRuntime> DerefMut for SharedUdpSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl NetworkQueue for SharedUdpQueue {
-    /// Returns the local address to which the target queue is bound.
-    fn local(&self) -> Option<SocketAddrV4> {
-        self.bound
-    }
-
-    /// Returns the remote address to which the target queue is connected to.
-    /// TODO: Add later if we support connected UDP sockets.
-    fn remote(&self) -> Option<SocketAddrV4> {
-        None
+impl<N: NetworkRuntime> Debug for SharedUdpSocket<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UDP socket local={:?} remote={:?}", self.local(), self.remote())
     }
 }

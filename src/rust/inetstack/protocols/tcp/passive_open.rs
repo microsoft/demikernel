@@ -47,7 +47,6 @@ use crate::{
             YielderHandle,
         },
         QDesc,
-        SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -78,48 +77,48 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct PassiveSocket {
+pub struct PassiveSocket<N: NetworkRuntime> {
     connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
-    ready: AsyncQueue<Result<EstablishedSocket, Fail>>,
+    ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
     max_backlog: usize,
     isn_generator: IsnGenerator,
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime>,
+    transport: N,
     tcp_config: TcpConfig,
     local_link_addr: MacAddress,
-    arp: SharedArpPeer,
+    arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     yielder_handle: YielderHandle,
     background_task_qt: Option<QToken>,
 }
 
 #[derive(Clone)]
-pub struct SharedPassiveSocket(SharedObject<PassiveSocket>);
+pub struct SharedPassiveSocket<N: NetworkRuntime>(SharedObject<PassiveSocket<N>>);
 
 //======================================================================================================================
 // Associated Function
 //======================================================================================================================
 
-impl SharedPassiveSocket {
+impl<N: NetworkRuntime> SharedPassiveSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
         mut runtime: SharedDemiRuntime,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         tcp_config: TcpConfig,
         local_link_addr: MacAddress,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
         let yielder: Yielder = Yielder::new();
-        let mut me: Self = Self(SharedObject::<PassiveSocket>::new(PassiveSocket {
+        let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
             connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
-            ready: AsyncQueue::<Result<EstablishedSocket, Fail>>::default(),
+            ready: AsyncQueue::<Result<EstablishedSocket<N>, Fail>>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
@@ -144,7 +143,7 @@ impl SharedPassiveSocket {
     }
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
-    pub async fn do_accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket, Fail> {
+    pub async fn do_accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
         self.ready.pop(&yielder).await?
     }
 
@@ -419,7 +418,7 @@ impl SharedPassiveSocket {
         remote_window_scale: Option<u8>,
         mss: usize,
         yielder: &Yielder,
-    ) -> Result<EstablishedSocket, Fail> {
+    ) -> Result<EstablishedSocket<N>, Fail> {
         let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(&yielder).await?;
         debug!("Received ACK: {:?}", tcp_hdr);
 
@@ -454,7 +453,7 @@ impl SharedPassiveSocket {
             recv_queue.push((ipv4_hdr, tcp_hdr, buf));
         }
 
-        let new_socket: EstablishedSocket = EstablishedSocket::new(
+        let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::new(
             self.local,
             remote,
             self.runtime.clone(),
@@ -485,21 +484,21 @@ impl SharedPassiveSocket {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedPassiveSocket {
-    type Target = PassiveSocket;
+impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
+    type Target = PassiveSocket<N>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedPassiveSocket {
+impl<N: NetworkRuntime> DerefMut for SharedPassiveSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl Drop for PassiveSocket {
+impl<N: NetworkRuntime> Drop for PassiveSocket<N> {
     fn drop(&mut self) {
         if let Some(qt) = self.background_task_qt.take() {
             self.yielder_handle
