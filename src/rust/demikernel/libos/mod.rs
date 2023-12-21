@@ -12,12 +12,20 @@ pub mod network;
 use self::{
     memory::MemoryLibOS,
     name::LibOSName,
-    network::NetworkLibOS,
+    network::NetworkLibOSWrapper,
 };
-#[cfg(all(feature = "catnap-libos"))]
-use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
+#[cfg(feature = "catnip-libos")]
+use crate::catnip::runtime::SharedDPDKRuntime;
+#[cfg(feature = "catpowder-libos")]
+use crate::catpowder::runtime::LinuxRuntime;
+#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
+use crate::inetstack::SharedInetStack;
+
 use crate::{
-    demikernel::config::Config,
+    demikernel::{
+        config::Config,
+        libos::network::libos::SharedNetworkLibOS,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -49,11 +57,7 @@ use crate::catloop::SharedCatloopLibOS;
 use crate::catmem::SharedCatmemLibOS;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::transport::SharedCatnapTransport;
-#[cfg(feature = "catnip-libos")]
-use crate::catnip::CatnipLibOS;
-#[cfg(feature = "catpowder-libos")]
-use crate::catpowder::CatpowderLibOS;
-
+#[cfg(all(feature = "catpowder-libos"))]
 #[cfg(feature = "profiler")]
 use crate::timer;
 
@@ -64,7 +68,7 @@ use crate::timer;
 /// LibOS
 pub enum LibOS {
     /// Network LibOS
-    NetworkLibOS(NetworkLibOS),
+    NetworkLibOS(NetworkLibOSWrapper),
     /// Memory LibOS
     MemoryLibOS(MemoryLibOS),
 }
@@ -93,37 +97,54 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-        let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
             #[cfg(all(feature = "catnap-libos"))]
-            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOS::Catnap {
+            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap {
                 runtime: runtime.clone(),
-                libos: SharedNetworkLibOS::<SharedCatnapTransport>::new(&config, runtime.clone()),
+                libos: SharedNetworkLibOS::<SharedCatnapTransport>::new(
+                    runtime.clone(),
+                    SharedCatnapTransport::new(&config, &mut runtime),
+                ),
             }),
             #[cfg(feature = "catcollar-libos")]
-            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOS::Catcollar {
+            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOSWrapper::Catcollar {
                 runtime: runtime.clone(),
                 libos: CatcollarLibOS::new(&config, runtime.clone()),
             }),
             #[cfg(feature = "catpowder-libos")]
-            LibOSName::Catpowder => Self::NetworkLibOS(NetworkLibOS::Catpowder {
-                runtime: runtime.clone(),
-                libos: CatpowderLibOS::new(&config, runtime.clone()),
-            }),
+            LibOSName::Catpowder => {
+                // TODO: Remove some of these clones once we are done merging the libOSes.
+                let transport: LinuxRuntime = LinuxRuntime::new(config.clone());
+                // This is our transport for Catpowder.
+                let inetstack: SharedInetStack<LinuxRuntime> =
+                    SharedInetStack::<LinuxRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder {
+                    runtime: runtime.clone(),
+                    libos: SharedNetworkLibOS::<SharedInetStack<LinuxRuntime>>::new(runtime.clone(), inetstack),
+                })
+            },
             #[cfg(feature = "catnip-libos")]
-            LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip {
-                runtime: runtime.clone(),
-                libos: CatnipLibOS::new(&config, runtime.clone())?,
-            }),
+            LibOSName::Catnip => {
+                // TODO: Remove some of these clones once we are done merging the libOSes.
+                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(config.clone())?;
+                let inetstack: SharedInetStack<SharedDPDKRuntime> =
+                    SharedInetStack::<SharedDPDKRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
+
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip {
+                    runtime: runtime.clone(),
+                    libos: SharedNetworkLibOS::<SharedInetStack<SharedDPDKRuntime>>::new(runtime.clone(), inetstack),
+                })
+            },
             #[cfg(feature = "catmem-libos")]
             LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem {
                 runtime: runtime.clone(),
                 libos: SharedCatmemLibOS::new(&config, runtime.clone()),
             }),
             #[cfg(feature = "catloop-libos")]
-            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOS::Catloop {
+            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop {
                 runtime: runtime.clone(),
                 libos: SharedCatloopLibOS::new(&config, runtime.clone()),
             }),
