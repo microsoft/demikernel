@@ -92,6 +92,7 @@ pub struct CatnapTransport {
     epoll_fd: RawFd,
     socket_table: Slab<SharedSocketData>,
     background_task: YielderHandle,
+    runtime: SharedDemiRuntime,
 }
 
 /// Shared network transport across coroutines.
@@ -365,6 +366,37 @@ impl SharedSocketData {
 }
 
 impl SharedCatnapTransport {
+    /// Create a new Linux-based network transport.
+    pub fn new(_config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
+        // Create epoll socket.
+        // Linux ignores the size argument to epoll, it just has to be more than 0.
+        let epoll_fd: RawFd = match unsafe { libc::epoll_create(10) } {
+            fd if fd >= 0 => fd.into(),
+            _ => {
+                let errno: libc::c_int = unsafe { *libc::__errno_location() };
+                panic!("could not create epoll socket: {:?}", errno);
+            },
+        };
+
+        // Set up background task for polling epoll API.
+        let yielder: Yielder = Yielder::new();
+        let background_task: YielderHandle = yielder.get_handle();
+        let me: Self = Self(SharedObject::new(CatnapTransport {
+            epoll_fd,
+            socket_table: Slab::<SharedSocketData>::new(),
+            background_task,
+            runtime: runtime.clone(),
+        }));
+        let mut me2: Self = me.clone();
+        runtime
+            .insert_background_coroutine(
+                "catnap::transport::epoll",
+                Box::pin(async move { me2.poll(yielder).await }),
+            )
+            .expect("should be able to insert background coroutine");
+        me
+    }
+
     /// This function registers a handler for incoming and outgoing I/O on the socket. There should only be one of
     /// these per socket.
     fn register_epoll(&mut self, sd: &SockDesc, events: u32) -> Result<(), Fail> {
@@ -580,36 +612,6 @@ impl AsMut<SocketData> for SharedSocketData {
 
 impl NetworkTransport for SharedCatnapTransport {
     type SocketDescriptor = usize;
-
-    /// Create a new Linux-based network transport.
-    fn new(_config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
-        // Create epoll socket.
-        // Linux ignores the size argument to epoll, it just has to be more than 0.
-        let epoll_fd: RawFd = match unsafe { libc::epoll_create(10) } {
-            fd if fd >= 0 => fd.into(),
-            _ => {
-                let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                panic!("could not create epoll socket: {:?}", errno);
-            },
-        };
-
-        // Set up background task for polling epoll API.
-        let yielder: Yielder = Yielder::new();
-        let background_task: YielderHandle = yielder.get_handle();
-        let me: Self = Self(SharedObject::new(CatnapTransport {
-            epoll_fd,
-            socket_table: Slab::<SharedSocketData>::new(),
-            background_task,
-        }));
-        let mut me2: Self = me.clone();
-        runtime
-            .insert_background_coroutine(
-                "catnap::transport::epoll",
-                Box::pin(async move { me2.poll(yielder).await }),
-            )
-            .expect("should be able to insert background coroutine");
-        me
-    }
 
     /// Creates a new socket on the underlying network transport. We only support IPv4 and UDP and TCP sockets for now.
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
@@ -850,5 +852,9 @@ impl NetworkTransport for SharedCatnapTransport {
         };
         self.socket_table.remove(*sd);
         Ok(())
+    }
+
+    fn get_runtime(&self) -> &SharedDemiRuntime {
+        &self.runtime
     }
 }
