@@ -1,9 +1,18 @@
-/// Transport API. This represents a higher level network API with full socket functionality.
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
-    demikernel::config::Config,
+    demi_sgarray_t,
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         scheduler::Yielder,
         SharedDemiRuntime,
     },
@@ -25,9 +34,6 @@ use ::std::{
 /// communication using sockets.
 pub trait NetworkTransport: Clone + 'static {
     type SocketDescriptor: Debug;
-
-    /// Create a new network transport.
-    fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self;
 
     /// Create a socket using the network transport layer.
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail>;
@@ -81,4 +87,25 @@ pub trait NetworkTransport: Clone + 'static {
         sd: &mut Self::SocketDescriptor,
         yielder: Yielder,
     ) -> impl std::future::Future<Output = Result<(), Fail>>;
+
+    /// Pull the common runtime out of the transport. We only need this because traits do not support members.
+    fn get_runtime(&self) -> &SharedDemiRuntime;
+}
+
+impl<N: NetworkTransport> MemoryRuntime for N {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.get_runtime().clone_sgarray(sga)
+    }
+
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.get_runtime().into_sgarray(buf)
+    }
+
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.get_runtime().sgaalloc(size)
+    }
+
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.get_runtime().sgafree(sga)
+    }
 }

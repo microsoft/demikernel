@@ -18,8 +18,16 @@ pub mod types;
 //======================================================================================================================
 
 use crate::runtime::{
-    memory::DemiBuffer,
+    memory::{
+        DemiBuffer,
+        MemoryRuntime,
+    },
     network::{
+        config::{
+            ArpConfig,
+            TcpConfig,
+            UdpConfig,
+        },
         consts::RECEIVE_BATCH_SIZE,
         socket::SocketId,
     },
@@ -116,10 +124,17 @@ pub trait PacketBuf {
 }
 
 /// Network Runtime
-pub trait NetworkRuntime {
+pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
     /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>);
 
     /// Receives a batch of [DemiBuffer].
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
+
+    /// Gets the UDP config options.
+    fn get_udp_config(&self) -> UdpConfig;
+
+    fn get_tcp_config(&self) -> TcpConfig;
+
+    fn get_arp_config(&self) -> ArpConfig;
 }
