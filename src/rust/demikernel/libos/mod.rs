@@ -115,7 +115,7 @@ impl LibOS {
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => Self::NetworkLibOS(NetworkLibOS::Catnip {
                 runtime: runtime.clone(),
-                libos: CatnipLibOS::new(&config, runtime.clone()),
+                libos: CatnipLibOS::new(&config, runtime.clone())?,
             }),
             #[cfg(feature = "catmem-libos")]
             LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem {

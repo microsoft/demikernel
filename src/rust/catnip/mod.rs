@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod config;
 pub mod runtime;
 
 //==============================================================================
@@ -62,7 +61,7 @@ pub struct CatnipLibOS {
 
 /// Associate Functions for Catnip LibOS
 impl CatnipLibOS {
-    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Result<Self, Fail> {
         load_mlx_driver();
         let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(
             config.local_ipv4_addr(),
@@ -70,8 +69,8 @@ impl CatnipLibOS {
             config.arp_table(),
             config.disable_arp(),
             config.use_jumbo_frames(),
-            config.mtu(),
-            config.mss(),
+            config.mtu()?,
+            config.mss()?,
             config.tcp_checksum_offload(),
             config.udp_checksum_offload(),
         );
@@ -92,7 +91,7 @@ impl CatnipLibOS {
             arp_config,
         )
         .unwrap();
-        CatnipLibOS { inetstack, transport }
+        Ok(CatnipLibOS { inetstack, transport })
     }
 
     /// Create a push request for Demikernel to asynchronously write data from `sga` to the
