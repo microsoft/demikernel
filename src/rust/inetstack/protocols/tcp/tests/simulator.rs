@@ -585,6 +585,10 @@ impl Simulation {
         match self.engine.tcp_push(remote_qd, buf) {
             Ok(push_qt) => {
                 self.inflight = Some(push_qt);
+                // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
+                // TODO: Remove this once we separate the poll and advance clock functions.
+                self.engine.poll();
+
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
