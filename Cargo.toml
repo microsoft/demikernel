@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.4.5"
+version = "1.4.6"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -24,8 +24,8 @@ license-file = "LICENSE.txt"
 
 # Third Party
 arrayvec = "0.7.4"
-async-trait = "0.1.74"
-anyhow = "1.0.75"
+async-trait = "0.1.75"
+anyhow = "1.0.76"
 bit-iter = "1.2.0"
 cfg-if = "1.0.0"
 crc = "3.0.1"
