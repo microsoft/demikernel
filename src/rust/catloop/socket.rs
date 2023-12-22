@@ -56,6 +56,7 @@ use ::std::{
 /// This was chosen arbitrarily.
 const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
 /// Seed number for generating request IDs.
+#[cfg(debug_assertions)]
 const REQUEST_ID_SEED: u64 = 95;
 
 //======================================================================================================================
