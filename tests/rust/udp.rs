@@ -98,11 +98,10 @@ fn do_udp_setup_ephemeral(libos: &mut DummyLibOS) -> Result<()> {
     };
     match libos.bind(sockfd, local) {
         Ok(_) => (),
-        Err(_) => {
-            // Is this suppose to fail or succeed?
+        Err(e) => {
             // Close socket on error.
             // FIXME: https://github.com/demikernel/demikernel/issues/633
-            //anyhow::bail!("bind() failed: {:?}", e)
+            anyhow::bail!("bind() failed: {:?}", e)
         },
     };
 
@@ -124,11 +123,10 @@ fn do_udp_setup_wildcard_ephemeral(libos: &mut DummyLibOS) -> Result<()> {
     };
     match libos.bind(sockfd, local) {
         Ok(_) => (),
-        Err(_) => {
-            // Is this suppose to fail or succeed?
+        Err(e) => {
             // Close socket on error.
             // FIXME: https://github.com/demikernel/demikernel/issues/633
-            // anyhow::bail!("bind() failed: {:?}", e)
+            anyhow::bail!("bind() failed: {:?}", e)
         },
     };
 

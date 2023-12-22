@@ -49,8 +49,6 @@ use crate::timer;
 
 /// UDP Peer
 pub struct UdpPeer<N: NetworkRuntime> {
-    /// Shared Demikernel runtime.
-    runtime: SharedDemiRuntime,
     /// Underlying transport.
     transport: N,
     /// Underlying ARP peer.
@@ -76,7 +74,7 @@ pub struct SharedUdpPeer<N: NetworkRuntime>(SharedObject<UdpPeer<N>>);
 
 impl<N: NetworkRuntime> SharedUdpPeer<N> {
     pub fn new(
-        runtime: SharedDemiRuntime,
+        _runtime: SharedDemiRuntime,
         transport: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
@@ -84,7 +82,6 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
         Ok(Self(SharedObject::<UdpPeer<N>>::new(UdpPeer {
-            runtime,
             transport,
             arp,
             local_link_addr,
@@ -106,37 +103,16 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
     }
 
     /// Binds a UDP socket to a local endpoint address.
-    pub fn bind(&mut self, socket: &mut SharedUdpSocket<N>, mut addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, socket: &mut SharedUdpSocket<N>, addr: SocketAddrV4) -> Result<(), Fail> {
         if let Some(_) = socket.local() {
             let cause: String = format!("cannot bind to already bound socket");
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
-        // Check if this is an ephemeral port or a wildcard one.
-        let alloc_port: Option<u16> = if SharedDemiRuntime::is_private_ephemeral_port(addr.port()) {
-            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-            self.runtime.reserve_ephemeral_port(addr.port())?;
-            Some(addr.port())
-        } else if addr.port() == 0 {
-            // Allocate ephemeral port.
-            // TODO: we should free this when closing.
-            let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
-            addr.set_port(new_port);
-            Some(new_port)
-        } else {
-            None
-        };
-
-        if let Err(e) = socket.bind(addr) {
-            if let Some(port) = alloc_port {
-                self.runtime.free_ephemeral_port(port)?;
-            }
-            Err(e)
-        } else {
-            self.addresses.insert(addr.clone(), socket.clone());
-            Ok(())
-        }
+        socket.bind(addr)?;
+        self.addresses.insert(addr.clone(), socket.clone());
+        Ok(())
     }
 
     /// Closes a UDP socket.
@@ -206,12 +182,12 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
 
-        let socket: &mut SharedUdpSocket<N> = match self.get_queue_from_addr(&local) {
+        let socket: &mut SharedUdpSocket<N> = match self.get_socket_from_addr(&local) {
             Some(queue) => queue,
             None => {
                 // Handle wildcard address.
                 let local: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, hdr.dest_port());
-                match self.get_queue_from_addr(&local) {
+                match self.get_socket_from_addr(&local) {
                     Some(queue) => queue,
                     None => {
                         let cause: String = format!("dropping packet: port not bound");
@@ -225,7 +201,7 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         socket.receive(remote, data)
     }
 
-    fn get_queue_from_addr(&mut self, local: &SocketAddrV4) -> Option<&mut SharedUdpSocket<N>> {
+    fn get_socket_from_addr(&mut self, local: &SocketAddrV4) -> Option<&mut SharedUdpSocket<N>> {
         self.addresses.get_mut(local)
     }
 }

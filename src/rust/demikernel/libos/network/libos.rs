@@ -110,12 +110,11 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedNetworkQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
-        // Check if we are binding to the wildcard address.
-        // Only for TCP?
+        // Check if we are binding to the wildcard address. We only support this for UDP sockets right now.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
         if localv4.ip() == &Ipv4Addr::UNSPECIFIED && self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
@@ -123,19 +122,26 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        // Check if we are binding to the wildcard port.
-        // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if local.port() == 0 {
-            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
-        }
-
         // Check if this is an ephemeral port.
         if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-            // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+            // Allocate ephemeral port from the pool.
             self.runtime.reserve_ephemeral_port(local.port())?
         }
+
+        // Check if we are binding to the wildcard port. We only support this for UDP sockets right now.
+        // FIXME: https://github.com/demikernel/demikernel/issues/582
+        if local.port() == 0 {
+            if self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
+                let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            } else {
+                // Allocate an ephemeral port.
+                let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
+                local.set_port(new_port);
+            }
+        }
+
         // Check wether the address is in use.
         if self.runtime.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
@@ -145,6 +151,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         // Issue bind operation.
         if let Err(e) = self.get_shared_queue(&qd)?.bind(local) {
+            trace!("error");
             // Rollback ephemeral port allocation.
             if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
                 if self.runtime.free_ephemeral_port(local.port()).is_err() {
@@ -153,6 +160,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             }
             Err(e)
         } else {
+            trace!("ok");
             // Insert into address to queue descriptor table.
             self.runtime
                 .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
@@ -311,6 +319,17 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                     self.runtime.remove_socket_id_to_qd(&SocketId::Passive(
                         unwrap_socketaddr(local).expect("we only support IPv4"),
                     ));
+
+                    // Check if this is an ephemeral port.
+                    if SharedDemiRuntime::is_private_ephemeral_port(local.port())
+                        && queue.get_qtype() == QType::UdpSocket
+                    {
+                        // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+                        if let Err(e) = self.runtime.free_ephemeral_port(local.port()) {
+                            let cause: String = format!("close(): Could not free ephemeral port");
+                            warn!("{}: {:?}", cause, e);
+                        }
+                    }
                 }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
