@@ -325,7 +325,7 @@ impl NetworkTransport for SharedCatnapTransport {
         }
     }
 
-    fn get_runtime(&mut self) -> &mut SharedDemiRuntime {
-        &mut self.runtime
+    fn get_runtime(&self) -> &SharedDemiRuntime {
+        &self.0.runtime
     }
 }
