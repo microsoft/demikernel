@@ -8,14 +8,14 @@ mod common;
 //==============================================================================
 
 use ::anyhow::Result;
-use ::demikernel::{
-    inetstack::SharedInetStack,
-    runtime::{
-        memory::DemiBuffer,
-        OperationResult,
-        QDesc,
-        QToken,
+use ::demikernel::runtime::{
+    memory::{
+        DemiBuffer,
+        MemoryRuntime,
     },
+    OperationResult,
+    QDesc,
+    QToken,
 };
 use common::{
     arp,
@@ -46,6 +46,11 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
+use ::socket2::{
+    Domain,
+    Protocol,
+    Type,
+};
 use std::{
     net::SocketAddr,
     thread::{
@@ -59,9 +64,9 @@ use std::{
 //==============================================================================
 
 /// Opens and closes a socket using a non-ephemeral port.
-fn do_udp_setup(libos: &mut SharedInetStack) -> Result<()> {
+fn do_udp_setup(libos: &mut DummyLibOS) -> Result<()> {
     let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
-    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+    let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
         Ok(qd) => qd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
     };
@@ -76,7 +81,7 @@ fn do_udp_setup(libos: &mut SharedInetStack) -> Result<()> {
 
     match libos.async_close(sockfd) {
         Ok(qt) => {
-            safe_wait2(libos, qt)?;
+            safe_wait(libos, qt)?;
             Ok(())
         },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -84,10 +89,10 @@ fn do_udp_setup(libos: &mut SharedInetStack) -> Result<()> {
 }
 
 /// Opens and closes a socket using an ephemeral port.
-fn do_udp_setup_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
+fn do_udp_setup_ephemeral(libos: &mut DummyLibOS) -> Result<()> {
     const PORT_EPHEMERAL_BASE: u16 = 49152;
     let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_EPHEMERAL_BASE);
-    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+    let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
         Ok(qd) => qd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
     };
@@ -102,7 +107,7 @@ fn do_udp_setup_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
 
     match libos.async_close(sockfd) {
         Ok(qt) => {
-            safe_wait2(libos, qt)?;
+            safe_wait(libos, qt)?;
             Ok(())
         },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -110,9 +115,9 @@ fn do_udp_setup_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
 }
 
 /// Opens and closes a socket using wildcard ephemeral port.
-fn do_udp_setup_wildcard_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
+fn do_udp_setup_wildcard_ephemeral(libos: &mut DummyLibOS) -> Result<()> {
     let local: SocketAddr = SocketAddr::new(ALICE_IP, 0);
-    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+    let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
         Ok(qd) => qd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
     };
@@ -127,7 +132,7 @@ fn do_udp_setup_wildcard_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
 
     match libos.async_close(sockfd) {
         Ok(qt) => {
-            safe_wait2(libos, qt)?;
+            safe_wait(libos, qt)?;
             Ok(())
         },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -138,7 +143,7 @@ fn do_udp_setup_wildcard_ephemeral(libos: &mut SharedInetStack) -> Result<()> {
 #[test]
 fn udp_setup() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: SharedInetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+    let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
     };
@@ -154,7 +159,7 @@ fn udp_setup() -> Result<()> {
 #[test]
 fn udp_connect_loopback() -> Result<()> {
     let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-    let mut libos: SharedInetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+    let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
     };
@@ -163,7 +168,7 @@ fn udp_connect_loopback() -> Result<()> {
     let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
 
     // Open and close a connection.
-    let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+    let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
         Ok(qd) => qd,
         Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
     };
@@ -178,7 +183,7 @@ fn udp_connect_loopback() -> Result<()> {
 
     match libos.async_close(sockfd) {
         Ok(qt) => {
-            safe_wait2(&mut libos, qt)?;
+            safe_wait(&mut libos, qt)?;
             Ok(())
         },
         Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -202,13 +207,13 @@ fn udp_push_remote() -> Result<()> {
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: SharedInetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
         // Open connection.
-        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
             Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
@@ -221,11 +226,9 @@ fn udp_push_remote() -> Result<()> {
             },
         }
 
-        // Cook some data.
-        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
-
-        // Push data.
-        let qt: QToken = match libos.pushto2(sockfd, &bytes, bob_addr) {
+        // Cook some data and push.
+        let bytes = libos.cook_data(32)?;
+        let qt: QToken = match libos.pushto(sockfd, &bytes, bob_addr) {
             Ok(qt) => qt,
             Err(e) => {
                 // Close socket on error.
@@ -233,7 +236,7 @@ fn udp_push_remote() -> Result<()> {
                 anyhow::bail!("push() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
             _ => {
@@ -252,7 +255,7 @@ fn udp_push_remote() -> Result<()> {
                 anyhow::bail!("pop()) failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => {
@@ -265,7 +268,7 @@ fn udp_push_remote() -> Result<()> {
         // Close connection.
         match libos.async_close(sockfd) {
             Ok(qt) => {
-                safe_wait2(&mut libos, qt)?;
+                safe_wait(&mut libos, qt)?;
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -273,13 +276,13 @@ fn udp_push_remote() -> Result<()> {
     });
 
     let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: SharedInetStack = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
         // Open connection.
-        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
             Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
@@ -301,7 +304,7 @@ fn udp_push_remote() -> Result<()> {
                 anyhow::bail!("pop() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => {
@@ -312,7 +315,8 @@ fn udp_push_remote() -> Result<()> {
         };
 
         // Push data.
-        let qt: QToken = match libos.pushto2(sockfd, &bytes, alice_addr) {
+        let buf = libos.get_transport().into_sgarray(bytes)?;
+        let qt: QToken = match libos.pushto(sockfd, &buf, alice_addr) {
             Ok(qt) => qt,
             Err(e) => {
                 // Close socket on error.
@@ -320,7 +324,7 @@ fn udp_push_remote() -> Result<()> {
                 anyhow::bail!("push() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
             _ => {
@@ -333,7 +337,7 @@ fn udp_push_remote() -> Result<()> {
         // Close connection.
         match libos.async_close(sockfd) {
             Ok(qt) => {
-                safe_wait2(&mut libos, qt)?;
+                safe_wait(&mut libos, qt)?;
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -360,13 +364,13 @@ fn udp_loopback() -> Result<()> {
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-        let mut libos: SharedInetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
         // Open connection.
-        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
             Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
@@ -378,11 +382,9 @@ fn udp_loopback() -> Result<()> {
                 anyhow::bail!("bind() failed: {:?}", e)
             },
         };
-        // Cook some data.
-        let bytes: DemiBuffer = DummyLibOS::cook_data(32);
-
-        // Push data.
-        let qt: QToken = match libos.pushto2(sockfd, &bytes, bob_addr) {
+        // Cook some data and push.
+        let bytes = libos.cook_data(32)?;
+        let qt: QToken = match libos.pushto(sockfd, &bytes, bob_addr) {
             Ok(qt) => qt,
             Err(e) => {
                 // Close socket on error.
@@ -390,7 +392,7 @@ fn udp_loopback() -> Result<()> {
                 anyhow::bail!("push() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
             _ => {
@@ -409,7 +411,7 @@ fn udp_loopback() -> Result<()> {
                 anyhow::bail!("pop() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Pop(_, _) => (),
             _ => {
@@ -422,7 +424,7 @@ fn udp_loopback() -> Result<()> {
         // Close connection.
         match libos.async_close(sockfd) {
             Ok(qt) => {
-                safe_wait2(&mut libos, qt)?;
+                safe_wait(&mut libos, qt)?;
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -430,13 +432,13 @@ fn udp_loopback() -> Result<()> {
     });
 
     let bob = thread::spawn(move || {
-        let mut libos: SharedInetStack = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, bob_tx, alice_rx, arp()) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
         // Open connection.
-        let sockfd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
+        let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
             Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
@@ -457,7 +459,7 @@ fn udp_loopback() -> Result<()> {
                 anyhow::bail!("pop() failed: {:?}", e)
             },
         };
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         let bytes: DemiBuffer = match qr {
             OperationResult::Pop(_, bytes) => bytes,
             _ => {
@@ -468,8 +470,9 @@ fn udp_loopback() -> Result<()> {
         };
 
         // Push data.
-        let qt: QToken = libos.pushto2(sockfd, &bytes, alice_addr).unwrap();
-        let (_, qr): (QDesc, OperationResult) = safe_wait2(&mut libos, qt)?;
+        let buf = libos.get_transport().into_sgarray(bytes)?;
+        let qt: QToken = libos.pushto(sockfd, &buf, alice_addr).unwrap();
+        let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
         match qr {
             OperationResult::Push => (),
             _ => {
@@ -482,7 +485,7 @@ fn udp_loopback() -> Result<()> {
         // Close connection.
         match libos.async_close(sockfd) {
             Ok(qt) => {
-                safe_wait2(&mut libos, qt)?;
+                safe_wait(&mut libos, qt)?;
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -502,13 +505,13 @@ fn udp_loopback() -> Result<()> {
 //======================================================================================================================
 
 /// Safe call to `wait2()`.
-fn safe_wait2(libos: &mut SharedInetStack, qt: QToken) -> Result<(QDesc, OperationResult)> {
-    match libos.wait2(qt) {
-        Ok((qd, qr)) => Ok((qd, qr)),
-        Err(e) => {
-            // Close socket on error.
-            // FIXME: https://github.com/demikernel/demikernel/issues/633
-            anyhow::bail!("operation failed: {:?}", e.cause)
-        },
+fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
+    while !libos.get_runtime().has_completed(qt)? {
+        libos.get_runtime().poll();
+    }
+
+    match libos.get_runtime().remove_coroutine(qt).get_result() {
+        Some((qd, qr)) => Ok((qd, qr)),
+        None => unreachable!("coroutine should have a result if completed"),
     }
 }

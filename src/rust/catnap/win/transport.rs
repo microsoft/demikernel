@@ -76,6 +76,9 @@ pub struct CatnapTransport {
 
     /// Configuration values.
     config: WinConfig,
+
+    /// Shared Demikernel runtime.
+    runtime: SharedDemiRuntime,
 }
 
 /// A network transport built on top of Windows overlapped I/O.
@@ -87,6 +90,33 @@ pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 //======================================================================================================================
 
 impl SharedCatnapTransport {
+    /// Create a new transport instance.
+    pub fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
+        let config: WinConfig = WinConfig {
+            keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
+            linger_time: config.linger_time().expect("failed to load linger settings"),
+        };
+
+        let me: Self = Self(SharedObject::new(CatnapTransport {
+            winsock: WinsockRuntime::new().expect("failed to initialize WinSock"),
+            iocp: IoCompletionPort::new().expect("failed to setup I/O completion port"),
+            config,
+            runtime: runtime.clone(),
+        }));
+
+        runtime
+            .insert_background_coroutine(
+                "catnap::transport::epoll",
+                Box::pin({
+                    let mut me: Self = me.clone();
+                    async move { me.run_event_processor().await }
+                }),
+            )
+            .expect("should be able to insert background coroutine");
+
+        me
+    }
+
     /// Run a coroutine which pulls the I/O completion port for events.
     async fn run_event_processor(&mut self) {
         let yielder: Yielder = Yielder::new();
@@ -109,32 +139,6 @@ impl SharedCatnapTransport {
 
 impl NetworkTransport for SharedCatnapTransport {
     type SocketDescriptor = Socket;
-
-    /// Create a new transport instance.
-    fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
-        let config: WinConfig = WinConfig {
-            keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
-            linger_time: config.linger_time().expect("failed to load linger settings"),
-        };
-
-        let me: Self = Self(SharedObject::new(CatnapTransport {
-            winsock: WinsockRuntime::new().expect("failed to initialize WinSock"),
-            iocp: IoCompletionPort::new().expect("failed to setup I/O completion port"),
-            config,
-        }));
-
-        runtime
-            .insert_background_coroutine(
-                "catnap::transport::epoll",
-                Box::pin({
-                    let mut me: Self = me.clone();
-                    async move { me.run_event_processor().await }
-                }),
-            )
-            .expect("should be able to insert background coroutine");
-
-        me
-    }
 
     /// Create a new socket for the specified domain and type.
     fn socket(&mut self, domain: socket2::Domain, typ: socket2::Type) -> Result<Socket, Fail> {
@@ -319,5 +323,9 @@ impl NetworkTransport for SharedCatnapTransport {
                 },
             }
         }
+    }
+
+    fn get_runtime(&self) -> &SharedDemiRuntime {
+        &self.0.runtime
     }
 }

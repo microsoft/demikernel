@@ -4,6 +4,7 @@
 use super::SharedControlBlock;
 use crate::runtime::{
     fail::Fail,
+    network::NetworkRuntime,
     scheduler::Yielder,
     timer::SharedTimer,
     watched::SharedWatchedValue,
@@ -15,7 +16,7 @@ use ::futures::future::{
 };
 use ::std::time::Instant;
 
-pub async fn acknowledger(mut cb: SharedControlBlock, yielder: Yielder) -> Result<!, Fail> {
+pub async fn acknowledger<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK

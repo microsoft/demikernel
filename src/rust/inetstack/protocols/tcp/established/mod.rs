@@ -21,15 +21,16 @@ use crate::{
         },
         MacAddress,
         SharedArpPeer,
-        TcpConfig,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::NetworkRuntime,
+        network::{
+            config::TcpConfig,
+            NetworkRuntime,
+        },
         scheduler::Yielder,
         QDesc,
-        SharedBox,
         SharedDemiRuntime,
     },
     QToken,
@@ -41,8 +42,8 @@ use ::std::{
 };
 
 #[derive(Clone)]
-pub struct EstablishedSocket {
-    pub cb: SharedControlBlock,
+pub struct EstablishedSocket<N: NetworkRuntime> {
+    pub cb: SharedControlBlock<N>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
@@ -53,17 +54,17 @@ pub struct EstablishedSocket {
     background_task_qt: QToken,
 }
 
-impl EstablishedSocket {
+impl<N: NetworkRuntime> EstablishedSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,

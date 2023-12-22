@@ -6,49 +6,48 @@
 //======================================================================================================================
 
 use crate::{
+    demi_sgarray_t,
+    demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
             EtherType2,
             Ethernet2Header,
         },
+        tcp::socket::SharedTcpSocket,
+        udp::socket::SharedUdpSocket,
         Peer,
-    },
-    pal::constants::{
-        AF_INET_VALUE,
-        SOCK_DGRAM,
-        SOCK_STREAM,
     },
     runtime::{
         fail::Fail,
-        limits,
-        memory::DemiBuffer,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
+            transport::NetworkTransport,
             types::MacAddress,
             unwrap_socketaddr,
             NetworkRuntime,
         },
-        queue::{
-            Operation,
-            OperationResult,
-            OperationTask,
-            QDesc,
-            QToken,
-            QType,
-        },
         scheduler::Yielder,
-        SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
 };
-use ::libc::c_int;
+use ::socket2::{
+    Domain,
+    Type,
+};
+#[cfg(test)]
 use ::std::{
+    collections::HashMap,
+    hash::RandomState,
+    time::Duration,
+};
+
+use ::std::{
+    fmt::Debug,
     net::{
         Ipv4Addr,
         SocketAddr,
@@ -58,7 +57,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    pin::Pin,
 };
 
 #[cfg(feature = "profiler")]
@@ -85,61 +83,181 @@ const MAX_RECV_ITERS: usize = 2;
 // Structures
 //======================================================================================================================
 
-pub struct InetStack {
-    arp: SharedArpPeer,
-    ipv4: Peer,
+/// Socket Representation.
+#[derive(Clone)]
+pub enum Socket<N: NetworkRuntime> {
+    Tcp(SharedTcpSocket<N>),
+    Udp(SharedUdpSocket<N>),
+}
+
+/// Representation of a network stack designed for a network interface that expects raw ethernet frames.
+pub struct InetStack<N: NetworkRuntime> {
+    arp: SharedArpPeer<N>,
+    ipv4: Peer<N>,
     runtime: SharedDemiRuntime,
-    transport: SharedBox<dyn NetworkRuntime>,
+    network: N,
     local_link_addr: MacAddress,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack(SharedObject<InetStack>);
+pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedInetStack {
-    pub fn new(
+impl<N: NetworkRuntime> SharedInetStack<N> {
+    pub fn new(config: Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr(), config.local_ipv4_addr())
+    }
+
+    pub fn new_test(
         mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        network: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        udp_config: UdpConfig,
-        tcp_config: TcpConfig,
-        rng_seed: [u8; 32],
-        arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
-        let arp: SharedArpPeer = SharedArpPeer::new(
+        let rng_seed: [u8; 32] = [0; 32];
+        let arp: SharedArpPeer<N> = SharedArpPeer::new(
             runtime.clone(),
-            transport.clone(),
+            network.clone(),
             local_link_addr,
             local_ipv4_addr,
-            arp_config,
+            network.get_arp_config(),
         )?;
-        let ipv4: Peer = Peer::new(
+        let ipv4: Peer<N> = Peer::new(
             runtime.clone(),
-            transport.clone(),
+            network.clone(),
             local_link_addr,
             local_ipv4_addr,
-            udp_config,
-            tcp_config,
+            network.get_udp_config(),
+            network.get_tcp_config(),
             arp.clone(),
             rng_seed,
         )?;
-        let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
+        let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack::<N> {
             arp,
             ipv4,
             runtime: runtime.clone(),
-            transport,
-            local_link_addr,
+            network,
+            local_link_addr: local_link_addr,
         }));
         let yielder: Yielder = Yielder::new();
         let background_task: String = format!("inetstack::poll_recv");
         runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll(yielder)))?;
         Ok(me)
     }
+
+    /// Scheduler will poll all futures that are ready to make progress.
+    /// Then ask the runtime to receive new data which we will forward to the engine to parse and
+    /// route to the correct protocol.
+    pub async fn poll(mut self, yielder: Yielder) {
+        #[cfg(feature = "profiler")]
+        timer!("inetstack::poll");
+        loop {
+            for _ in 0..MAX_RECV_ITERS {
+                let batch = {
+                    #[cfg(feature = "profiler")]
+                    timer!("inetstack::poll_bg_work::for::receive");
+
+                    self.network.receive()
+                };
+
+                {
+                    #[cfg(feature = "profiler")]
+                    timer!("inetstack::poll_bg_work::for::for");
+
+                    if batch.is_empty() {
+                        break;
+                    }
+
+                    for pkt in batch {
+                        if let Err(e) = self.receive(pkt) {
+                            warn!("incorrectly formatted packet: {:?}", e);
+                        }
+                    }
+                }
+            }
+            match yielder.yield_once().await {
+                Ok(()) => continue,
+                Err(_) => break,
+            };
+        }
+    }
+
+    /// Generally these functions are for testing.
+    #[cfg(test)]
+    pub fn get_link_addr(&self) -> MacAddress {
+        self.local_link_addr
+    }
+
+    #[cfg(test)]
+    pub fn get_ip_addr(&self) -> Ipv4Addr {
+        self.ipv4.get_local_addr()
+    }
+
+    #[cfg(test)]
+    pub fn get_network(&self) -> N {
+        self.network.clone()
+    }
+
+    #[cfg(test)]
+    /// Schedule a ping.
+    pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
+        self.ipv4.ping(addr, timeout).await
+    }
+
+    #[cfg(test)]
+    pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+        let yielder: Yielder = Yielder::new();
+        self.arp.query(addr, &yielder).await
+    }
+
+    #[cfg(test)]
+    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
+        self.arp.export_cache()
+    }
+
+    pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        let (header, payload) = Ethernet2Header::parse(pkt)?;
+        debug!("Engine received {:?}", header);
+        if self.local_link_addr != header.dst_addr()
+            && !header.dst_addr().is_broadcast()
+            && !header.dst_addr().is_multicast()
+        {
+            warn!("dropping packet");
+            return Ok(());
+        }
+        match header.ether_type() {
+            EtherType2::Arp => self.arp.receive(payload),
+            EtherType2::Ipv4 => self.ipv4.receive(payload),
+            EtherType2::Ipv6 => (), // Ignore for now.
+        };
+        Ok(())
+    }
+}
+
+//======================================================================================================================
+// Trait Implementation
+//======================================================================================================================
+
+impl<N: NetworkRuntime> Deref for SharedInetStack<N> {
+    type Target = InetStack<N>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<N: NetworkRuntime> DerefMut for SharedInetStack<N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
+
+impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
+    // Socket data structure used by upper level libOS to identify this socket.
+    type SocketDescriptor = Socket<N>;
 
     ///
     /// **Brief**
@@ -160,19 +278,14 @@ impl SharedInetStack {
     /// Upon successful completion, a file descriptor for the newly created
     /// socket is returned. Upon failure, `Fail` is returned instead.
     ///
-    pub fn socket(&mut self, domain: c_int, socket_type: c_int, _protocol: c_int) -> Result<QDesc, Fail> {
-        trace!(
-            "socket(): domain={:?} type={:?} protocol={:?}",
-            domain,
-            socket_type,
-            _protocol
-        );
-        if domain != AF_INET_VALUE as i32 {
+    fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
+        // TODO: Remove this once we support Ipv6.
+        if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
         }
-        match socket_type {
-            SOCK_STREAM => self.ipv4.tcp.socket(),
-            SOCK_DGRAM => self.ipv4.udp.socket(),
+        match typ {
+            Type::STREAM => Ok(Socket::Tcp(self.ipv4.tcp.socket()?)),
+            Type::DGRAM => Ok(Socket::Udp(self.ipv4.udp.socket()?)),
             _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
         }
     }
@@ -188,16 +301,13 @@ impl SharedInetStack {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
-        trace!("bind(): qd={:?} local={:?}", qd, local);
-
+    fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.bind(qd, local),
-            QType::UdpSocket => self.ipv4.udp.bind(qd, local),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.bind(socket, local),
+            Socket::Udp(socket) => self.ipv4.udp.bind(socket, local),
         }
     }
 
@@ -217,16 +327,16 @@ impl SharedInetStack {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
-        trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
+    fn listen(&mut self, sd: &mut Self::SocketDescriptor, backlog: usize) -> Result<(), Fail> {
+        trace!("listen() backlog={:?}", backlog);
 
         // FIXME: https://github.com/demikernel/demikernel/issues/584
         if backlog == 0 {
             return Err(Fail::new(libc::EINVAL, "invalid backlog length"));
         }
 
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.listen(qd, backlog),
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.listen(socket, backlog),
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }
@@ -243,12 +353,20 @@ impl SharedInetStack {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("accept(): {:?}", qd);
+    async fn accept(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        yielder: Yielder,
+    ) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+        trace!("accept()");
 
         // Search for target queue descriptor.
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.accept(qd),
+        match sd {
+            Socket::Tcp(socket) => {
+                let socket = self.ipv4.tcp.accept(socket, yielder).await?;
+                let addr = socket.remote().expect("accepted socket must have an endpoint");
+                Ok((Socket::Tcp(socket), addr.into()))
+            },
             // This queue descriptor does not concern a TCP socket.
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
@@ -266,14 +384,19 @@ impl SharedInetStack {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
-        trace!("connect(): qd={:?} remote={:?}", qd, remote);
+    async fn connect(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        remote: SocketAddr,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        trace!("connect(): remote={:?}", remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.connect(qd, remote),
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.connect(socket, remote, yielder).await,
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }
@@ -288,212 +411,80 @@ impl SharedInetStack {
     /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
-    pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
-        trace!("async_close(): qd={:?}", qd);
+    async fn close(&mut self, sd: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.close(socket, yielder).await,
+            Socket::Udp(socket) => self.ipv4.udp.close(socket, yielder).await,
+        }
+    }
 
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.async_close(qd),
-            QType::UdpSocket => self.ipv4.udp.async_close(qd),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+    /// Forcibly close a socket. This should only be used on clean up.
+    fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.hard_close(socket),
+            Socket::Udp(socket) => self.ipv4.udp.hard_close(socket),
         }
     }
 
     /// Pushes a buffer to a TCP socket.
-    /// TODO: Rename this function to push() once we have a common representation across all libOSes.
-    pub fn do_push(&mut self, qd: QDesc, buf: DemiBuffer) -> Result<QToken, Fail> {
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.push(qd, buf),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+    async fn push(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        buf: &mut DemiBuffer,
+        addr: Option<SocketAddr>,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.push(socket, buf, yielder).await,
+            Socket::Udp(socket) => self.ipv4.udp.push(socket, buf, addr, yielder).await,
         }
-    }
-
-    /// Pushes raw data to a TCP socket.
-    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn push2(&mut self, qd: QDesc, data: &[u8]) -> Result<QToken, Fail> {
-        trace!("push2(): qd={:?}", qd);
-
-        // Convert raw data to a buffer representation.
-        let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
-        if buf.is_empty() {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-
-        // Issue operation.
-        self.do_push(qd, buf)
-    }
-
-    /// Pushes a buffer to a UDP socket.
-    /// TODO: Rename this function to pushto() once we have a common buffer representation across all libOSes.
-    pub fn do_pushto(&mut self, qd: QDesc, buf: DemiBuffer, to: SocketAddr) -> Result<QToken, Fail> {
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let to: SocketAddrV4 = unwrap_socketaddr(to)?;
-
-        match self.runtime.get_queue_type(&qd)? {
-            QType::UdpSocket => {
-                let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pushto(qd, buf, to)?;
-                let task_id: String = format!("Inetstack::UDP::pushto for qd={:?}", qd);
-                self.runtime.insert_coroutine(task_id.as_str(), coroutine)
-            },
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }
-    }
-
-    /// Pushes raw data to a UDP socket.
-    /// TODO: Move this function to demikernel repo once we have a common buffer representation across all libOSes.
-    pub fn pushto2(&mut self, qd: QDesc, data: &[u8], remote: SocketAddr) -> Result<QToken, Fail> {
-        trace!("pushto2(): qd={:?}", qd);
-
-        // Convert raw data to a buffer representation.
-        let buf: DemiBuffer = DemiBuffer::from_slice(data)?;
-        if buf.is_empty() {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
-        }
-        // Issue operation.
-        let qt: QToken = self.do_pushto(qd, buf, remote)?;
-        trace!("pushto2() qt={:?}", qt);
-        Ok(qt)
     }
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
     /// allocated by the application.
-    pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
-        trace!("pop() qd={:?}, size={:?}", qd, size);
-
-        // We just assert 'size' here, because it was previously checked at PDPIX layer.
-        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
-
-        match self.runtime.get_queue_type(&qd)? {
-            QType::TcpSocket => self.ipv4.tcp.pop(qd, size),
-            QType::UdpSocket => {
-                let task_id: String = format!("Inetstack::UDP::pop for qd={:?}", qd);
-                let coroutine: Pin<Box<Operation>> = self.ipv4.udp.pop(qd, size)?;
-                let qt: QToken = self.runtime.insert_coroutine(task_id.as_str(), coroutine)?;
-                trace!("pop() qt={:?}", qt);
-                Ok(qt)
-            },
-            _ => return Err(Fail::new(libc::EINVAL, "invalid queue type")),
+    async fn pop(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        buf: &mut DemiBuffer,
+        size: usize,
+        yielder: Yielder,
+    ) -> Result<Option<SocketAddr>, Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, buf, size, yielder).await,
+            Socket::Udp(socket) => self.ipv4.udp.pop(socket, buf, size, yielder).await,
         }
     }
 
-    /// Waits for an operation to complete.
-    /// This function is deprecated, do not use.
-    /// FIXME: https://github.com/microsoft/demikernel/issues/889
-    pub fn wait2(&mut self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
-        trace!("wait2(): qt={:?}", qt);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll_and_advance_clock();
-
-            if self.runtime.has_completed(qt)? {
-                // The operation has completed, so extract the result and return.
-                trace!("wait2() qt={:?} completed!", qt);
-                return Ok(self.take_operation(qt));
-            }
-        }
-    }
-
-    /// Waits for any operation to complete.
-    /// This function is deprecated, do not use.
-    /// FIXME: https://github.com/microsoft/demikernel/issues/890
-    pub fn wait_any2(&mut self, qts: &[QToken]) -> Result<(usize, QDesc, OperationResult), Fail> {
-        trace!("wait_any2(): qts={:?}", qts);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.runtime.poll_and_advance_clock();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                if self.runtime.has_completed(qt)? {
-                    // Found one, so extract the result and return.
-                    let (qd, r): (QDesc, OperationResult) = self.take_operation(qt);
-                    return Ok((i, qd, r));
-                }
-            }
-        }
-    }
-
-    /// Given a token representing a task in the scheduler. Return the results of this future and the file descriptor
-    /// for this connection.
-    /// This function will panic if the specified future had not completed or is _background_ future.
-    pub fn take_operation(&mut self, qt: QToken) -> (QDesc, OperationResult) {
-        let task: OperationTask = self.runtime.remove_coroutine(qt);
-        task.get_result().expect("Coroutine not finished")
-    }
-
-    /// Scheduler will poll all futures that are ready to make progress.
-    /// Then ask the runtime to receive new data which we will forward to the engine to parse and
-    /// route to the correct protocol.
-    pub async fn poll(mut self, yielder: Yielder) {
-        #[cfg(feature = "profiler")]
-        timer!("inetstack::poll");
-        loop {
-            for _ in 0..MAX_RECV_ITERS {
-                let batch = {
-                    #[cfg(feature = "profiler")]
-                    timer!("inetstack::poll_bg_work::for::receive");
-
-                    self.transport.receive()
-                };
-
-                {
-                    #[cfg(feature = "profiler")]
-                    timer!("inetstack::poll_bg_work::for::for");
-
-                    if batch.is_empty() {
-                        break;
-                    }
-
-                    for pkt in batch {
-                        let (header, payload) = match Ethernet2Header::parse(pkt) {
-                            Ok(result) => result,
-                            Err(_) => {
-                                warn!("Improperly formatted packet");
-                                continue;
-                            },
-                        };
-                        debug!("Engine received {:?}", header);
-                        if self.local_link_addr != header.dst_addr()
-                            && !header.dst_addr().is_broadcast()
-                            && !header.dst_addr().is_multicast()
-                        {
-                            continue;
-                        }
-                        match header.ether_type() {
-                            EtherType2::Arp => {
-                                // We no longer do the processing in this function, so we will not know if the packet was properly
-                                // formatted.
-                                self.arp.receive(payload);
-                            },
-                            EtherType2::Ipv4 => self.ipv4.receive(payload),
-                            EtherType2::Ipv6 => continue, // Ignore for now.
-                        }
-                    }
-                }
-            }
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            };
-        }
+    fn get_runtime(&self) -> &SharedDemiRuntime {
+        &self.runtime
     }
 }
 
-//======================================================================================================================
-// Trait Implementation
-//======================================================================================================================
+/// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
+/// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
+impl<N: NetworkRuntime> MemoryRuntime for InetStack<N> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.network.clone_sgarray(sga)
+    }
 
-impl Deref for SharedInetStack {
-    type Target = InetStack;
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.network.into_sgarray(buf)
+    }
 
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.network.sgaalloc(size)
+    }
+
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.network.sgafree(sga)
     }
 }
 
-impl DerefMut for SharedInetStack {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.deref_mut()
+impl<N: NetworkRuntime> Debug for Socket<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Socket::Tcp(socket) => socket.fmt(f),
+            Socket::Udp(socket) => socket.fmt(f),
+        }
     }
 }

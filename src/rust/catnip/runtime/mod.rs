@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 pub mod memory;
-mod network;
 
 //==============================================================================
 // Imports
@@ -12,60 +11,75 @@ use self::memory::{
     consts::DEFAULT_MAX_BODY_SIZE,
     MemoryManager,
 };
-use crate::runtime::{
-    libdpdk::{
-        rte_delay_us_block,
-        rte_eal_init,
-        rte_eth_conf,
-        rte_eth_dev_configure,
-        rte_eth_dev_count_avail,
-        rte_eth_dev_get_mtu,
-        rte_eth_dev_info_get,
-        rte_eth_dev_is_valid_port,
-        rte_eth_dev_set_mtu,
-        rte_eth_dev_start,
-        rte_eth_find_next_owned_by,
-        rte_eth_link,
-        rte_eth_link_get_nowait,
-        rte_eth_macaddr_get,
-        rte_eth_promiscuous_enable,
-        rte_eth_rss_ip,
-        rte_eth_rx_mq_mode_RTE_ETH_MQ_RX_RSS as RTE_ETH_MQ_RX_RSS,
-        rte_eth_rx_offload_tcp_cksum,
-        rte_eth_rx_offload_udp_cksum,
-        rte_eth_rx_queue_setup,
-        rte_eth_rxconf,
-        rte_eth_tx_mq_mode_RTE_ETH_MQ_TX_NONE as RTE_ETH_MQ_TX_NONE,
-        rte_eth_tx_offload_multi_segs,
-        rte_eth_tx_offload_tcp_cksum,
-        rte_eth_tx_offload_udp_cksum,
-        rte_eth_tx_queue_setup,
-        rte_eth_txconf,
-        rte_ether_addr,
-        RTE_ETHER_MAX_JUMBO_FRAME_LEN,
-        RTE_ETHER_MAX_LEN,
-        RTE_ETH_DEV_NO_OWNER,
-        RTE_ETH_LINK_FULL_DUPLEX,
-        RTE_ETH_LINK_UP,
-        RTE_PKTMBUF_HEADROOM,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    demikernel::config::Config,
+    inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE,
+    runtime::{
+        fail::Fail,
+        libdpdk::{
+            rte_delay_us_block,
+            rte_eal_init,
+            rte_eth_conf,
+            rte_eth_dev_configure,
+            rte_eth_dev_count_avail,
+            rte_eth_dev_get_mtu,
+            rte_eth_dev_info_get,
+            rte_eth_dev_is_valid_port,
+            rte_eth_dev_set_mtu,
+            rte_eth_dev_start,
+            rte_eth_find_next_owned_by,
+            rte_eth_link,
+            rte_eth_link_get_nowait,
+            rte_eth_macaddr_get,
+            rte_eth_promiscuous_enable,
+            rte_eth_rss_ip,
+            rte_eth_rx_burst,
+            rte_eth_rx_mq_mode_RTE_ETH_MQ_RX_RSS as RTE_ETH_MQ_RX_RSS,
+            rte_eth_rx_offload_tcp_cksum,
+            rte_eth_rx_offload_udp_cksum,
+            rte_eth_rx_queue_setup,
+            rte_eth_rxconf,
+            rte_eth_tx_burst,
+            rte_eth_tx_mq_mode_RTE_ETH_MQ_TX_NONE as RTE_ETH_MQ_TX_NONE,
+            rte_eth_tx_offload_multi_segs,
+            rte_eth_tx_offload_tcp_cksum,
+            rte_eth_tx_offload_udp_cksum,
+            rte_eth_tx_queue_setup,
+            rte_eth_txconf,
+            rte_ether_addr,
+            rte_mbuf,
+            rte_pktmbuf_chain,
+            RTE_ETHER_MAX_JUMBO_FRAME_LEN,
+            RTE_ETHER_MAX_LEN,
+            RTE_ETH_DEV_NO_OWNER,
+            RTE_ETH_LINK_FULL_DUPLEX,
+            RTE_ETH_LINK_UP,
+            RTE_PKTMBUF_HEADROOM,
         },
-        types::MacAddress,
+        memory::DemiBuffer,
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            consts::RECEIVE_BATCH_SIZE,
+            types::MacAddress,
+            NetworkRuntime,
+            PacketBuf,
+        },
+        SharedObject,
     },
-    SharedObject,
 };
+use ::arrayvec::ArrayVec;
+use ::std::mem;
+
 use ::anyhow::{
     bail,
     format_err,
     Error,
 };
 use ::std::{
-    collections::HashMap,
     ffi::CString,
     mem::MaybeUninit,
     net::Ipv4Addr,
@@ -115,23 +129,13 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
-    pub fn new(
-        ipv4_addr: Ipv4Addr,
-        eal_init_args: &[CString],
-        arp_table: HashMap<Ipv4Addr, MacAddress>,
-        disable_arp: bool,
-        use_jumbo_frames: bool,
-        mtu: u16,
-        mss: usize,
-        tcp_checksum_offload: bool,
-        udp_checksum_offload: bool,
-    ) -> Self {
+    pub fn new(config: Config) -> Result<Self, Fail> {
         let (mm, port_id, link_addr) = Self::initialize_dpdk(
-            eal_init_args,
-            use_jumbo_frames,
-            mtu,
-            tcp_checksum_offload,
-            udp_checksum_offload,
+            &config.eal_init_args(),
+            config.use_jumbo_frames(),
+            config.mtu()?,
+            config.tcp_checksum_offload(),
+            config.udp_checksum_offload(),
         )
         .unwrap();
 
@@ -139,32 +143,32 @@ impl SharedDPDKRuntime {
             Some(Duration::from_secs(15)),
             Some(Duration::from_secs(20)),
             Some(5),
-            Some(arp_table),
-            Some(disable_arp),
+            Some(config.arp_table()),
+            Some(config.disable_arp()),
         );
 
         let tcp_config = TcpConfig::new(
-            Some(mss),
+            Some(config.mss()?),
             None,
             None,
             Some(0xffff),
             Some(0),
             None,
-            Some(tcp_checksum_offload),
-            Some(tcp_checksum_offload),
+            Some(config.tcp_checksum_offload()),
+            Some(config.udp_checksum_offload()),
         );
 
-        let udp_config = UdpConfig::new(Some(udp_checksum_offload), Some(udp_checksum_offload));
+        let udp_config = UdpConfig::new(Some(config.udp_checksum_offload()), Some(config.udp_checksum_offload()));
 
-        Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
             mm,
             port_id,
             link_addr,
-            ipv4_addr,
+            ipv4_addr: config.local_ipv4_addr(),
             arp_config,
             tcp_config,
             udp_config,
-        }))
+        })))
     }
 
     /// Initializes DPDK.
@@ -409,5 +413,143 @@ impl Deref for SharedDPDKRuntime {
 impl DerefMut for SharedDPDKRuntime {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+//==============================================================================
+// Trait Implementations
+//==============================================================================
+
+/// Network Runtime Trait Implementation for DPDK Runtime
+impl NetworkRuntime for SharedDPDKRuntime {
+    fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
+        // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
+        // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
+        // prepend the headers into that mbuf and save the extra header mbuf allocation that we currently always do.
+
+        // TODO: cleanup unwrap() and expect() from this code when this function returns a Result.
+
+        // Alloc header mbuf, check header size.
+        // Serialize header.
+        // Decide if we can inline the data --
+        //   1) How much space is left?
+        //   2) Is the body small enough?
+        // If we can inline, copy and return.
+        // If we can't inline...
+        //   1) See if the body is managed => take
+        //   2) Not managed => alloc body
+        // Chain body buffer.
+
+        // First, allocate a header mbuf and write the header into it.
+        let mut header_mbuf: DemiBuffer = match self.mm.alloc_header_mbuf() {
+            Ok(mbuf) => mbuf,
+            Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
+        };
+        let header_size = buf.header_size();
+        assert!(header_size <= header_mbuf.len());
+        buf.write_header(&mut header_mbuf[..header_size]);
+
+        if let Some(body) = buf.take_body() {
+            // Next, see how much space we have remaining and inline the body if we have room.
+            let inline_space = header_mbuf.len() - header_size;
+
+            // Chain a buffer.
+            if body.len() > inline_space {
+                assert!(header_size + body.len() >= MIN_PAYLOAD_SIZE);
+
+                // We're only using the header_mbuf for, well, the header.
+                header_mbuf.trim(header_mbuf.len() - header_size).unwrap();
+
+                // Get the body mbuf.
+                let body_mbuf: *mut rte_mbuf = if body.is_dpdk_allocated() {
+                    // The body is already stored in an MBuf, just extract it from the DemiBuffer.
+                    body.into_mbuf().expect("'body' should be DPDK-allocated")
+                } else {
+                    // The body is not dpdk-allocated, allocate a DPDKBuffer and copy the body into it.
+                    let mut mbuf: DemiBuffer = match self.mm.alloc_body_mbuf() {
+                        Ok(mbuf) => mbuf,
+                        Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
+                    };
+                    assert!(mbuf.len() >= body.len());
+                    mbuf[..body.len()].copy_from_slice(&body[..]);
+                    mbuf.trim(mbuf.len() - body.len()).unwrap();
+                    mbuf.into_mbuf().expect("mbuf should not be empty")
+                };
+
+                let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf should not be empty");
+                // Safety: rte_pktmbuf_chain is a FFI that is safe to call as both of its args are valid MBuf pointers.
+                unsafe {
+                    // Attach the body MBuf onto the header MBuf's buffer chain.
+                    assert_eq!(rte_pktmbuf_chain(header_mbuf_ptr, body_mbuf), 0);
+                }
+                let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
+                assert_eq!(num_sent, 1);
+            }
+            // Otherwise, write in the inline space.
+            else {
+                let body_buf = &mut header_mbuf[header_size..(header_size + body.len())];
+                body_buf.copy_from_slice(&body[..]);
+
+                if header_size + body.len() < MIN_PAYLOAD_SIZE {
+                    let padding_bytes = MIN_PAYLOAD_SIZE - (header_size + body.len());
+                    let padding_buf = &mut header_mbuf[(header_size + body.len())..][..padding_bytes];
+                    for byte in padding_buf {
+                        *byte = 0;
+                    }
+                }
+
+                let frame_size = std::cmp::max(header_size + body.len(), MIN_PAYLOAD_SIZE);
+                header_mbuf.trim(header_mbuf.len() - frame_size).unwrap();
+
+                let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf cannot be empty");
+                let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
+                assert_eq!(num_sent, 1);
+            }
+        }
+        // No body on our packet, just send the headers.
+        else {
+            if header_size < MIN_PAYLOAD_SIZE {
+                let padding_bytes = MIN_PAYLOAD_SIZE - header_size;
+                let padding_buf = &mut header_mbuf[header_size..][..padding_bytes];
+                for byte in padding_buf {
+                    *byte = 0;
+                }
+            }
+            let frame_size = std::cmp::max(header_size, MIN_PAYLOAD_SIZE);
+            header_mbuf.trim(header_mbuf.len() - frame_size).unwrap();
+            let mut header_mbuf_ptr: *mut rte_mbuf = header_mbuf.into_mbuf().expect("mbuf cannot be empty");
+            let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
+            assert_eq!(num_sent, 1);
+        }
+    }
+
+    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+        let mut out = ArrayVec::new();
+
+        let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
+        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
+        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
+
+        {
+            for &packet in &packets[..nb_rx as usize] {
+                // Safety: `packet` is a valid pointer to a properly initialized `rte_mbuf` struct.
+                let buf: DemiBuffer = unsafe { DemiBuffer::from_mbuf(packet) };
+                out.push(buf);
+            }
+        }
+
+        out
+    }
+
+    fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
+    }
+
+    fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
     }
 }

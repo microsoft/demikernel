@@ -15,6 +15,11 @@ use crate::{
         limits,
         memory::DemiBuffer,
         network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
             consts::RECEIVE_BATCH_SIZE,
             NetworkRuntime,
             PacketBuf,
@@ -83,5 +88,18 @@ impl NetworkRuntime for LinuxRuntime {
         } else {
             ArrayVec::new()
         }
+    }
+
+    /// Configs
+    fn get_arp_config(&self) -> ArpConfig {
+        self.arp_config.clone()
+    }
+
+    fn get_tcp_config(&self) -> TcpConfig {
+        self.tcp_config.clone()
+    }
+
+    fn get_udp_config(&self) -> UdpConfig {
+        self.udp_config.clone()
     }
 }

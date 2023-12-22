@@ -13,6 +13,7 @@ use self::{
 use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::{
+        network::NetworkRuntime,
         scheduler::Yielder,
         QDesc,
     },
@@ -23,7 +24,7 @@ use ::futures::{
     FutureExt,
 };
 
-pub async fn background(cb: SharedControlBlock, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
+pub async fn background<N: NetworkRuntime>(cb: SharedControlBlock<N>, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
     let yielder_acknowledger: Yielder = Yielder::new();
     let acknowledger = acknowledger(cb.clone(), yielder_acknowledger).fuse();
     futures::pin_mut!(acknowledger);
@@ -37,7 +38,7 @@ pub async fn background(cb: SharedControlBlock, _dead_socket_tx: mpsc::Unbounded
     futures::pin_mut!(sender);
 
     let yielder_receiver: Yielder = Yielder::new();
-    let mut cb2: SharedControlBlock = cb.clone();
+    let mut cb2: SharedControlBlock<N> = cb.clone();
     let receiver = cb2.poll(yielder_receiver).fuse();
     pin_mut!(receiver);
 

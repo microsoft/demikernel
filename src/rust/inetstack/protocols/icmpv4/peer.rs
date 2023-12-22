@@ -33,7 +33,6 @@ use crate::{
             YielderHandle,
         },
         timer::UtilityMethods,
-        SharedBox,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -76,16 +75,16 @@ use ::std::{
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer {
+pub struct Icmpv4Peer<N: NetworkRuntime> {
     /// Shared DemiRuntime.
     runtime: SharedDemiRuntime,
     /// Underlying Network Transport
-    transport: SharedBox<dyn NetworkRuntime>,
+    transport: N,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
-    arp: SharedArpPeer,
+    arp: SharedArpPeer<N>,
 
     /// Incoming packets
     recv_queue: AsyncQueue<(Ipv4Header, DemiBuffer)>,
@@ -104,20 +103,20 @@ pub struct Icmpv4Peer {
 }
 
 #[derive(Clone)]
-pub struct SharedIcmpv4Peer(SharedObject<Icmpv4Peer>);
+pub struct SharedIcmpv4Peer<N: NetworkRuntime>(SharedObject<Icmpv4Peer<N>>);
 
-impl SharedIcmpv4Peer {
+impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
     pub fn new(
         mut runtime: SharedDemiRuntime,
-        transport: SharedBox<dyn NetworkRuntime>,
+        transport: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
-        arp: SharedArpPeer,
+        arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let rng: SmallRng = SmallRng::from_seed(rng_seed);
         let yielder: Yielder = Yielder::new();
-        let peer: SharedIcmpv4Peer = Self(SharedObject::new(Icmpv4Peer {
+        let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
             transport: transport.clone(),
             local_link_addr,
@@ -271,21 +270,21 @@ impl SharedIcmpv4Peer {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedIcmpv4Peer {
-    type Target = Icmpv4Peer;
+impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
+    type Target = Icmpv4Peer<N>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedIcmpv4Peer {
+impl<N: NetworkRuntime> DerefMut for SharedIcmpv4Peer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl Drop for Icmpv4Peer {
+impl<N: NetworkRuntime> Drop for Icmpv4Peer<N> {
     fn drop(&mut self) {
         self.yielder_handle
             .wake_with(Err(Fail::new(libc::ECANCELED, "Closing this peer gracefully")))

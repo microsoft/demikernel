@@ -6,10 +6,7 @@
 //==============================================================================
 
 use crate::{
-    demikernel::{
-        config::Config,
-        libos::network::queue::SharedNetworkQueue,
-    },
+    demikernel::libos::network::queue::SharedNetworkQueue,
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
@@ -25,6 +22,7 @@ use crate::{
         },
         queue::{
             downcast_queue,
+            IoQueue,
             Operation,
             OperationResult,
         },
@@ -35,6 +33,7 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
+    QType,
 };
 use ::socket2::{
     Domain,
@@ -53,9 +52,6 @@ use ::std::{
     },
     pin::Pin,
 };
-
-#[cfg(feature = "profiler")]
-use crate::timer;
 
 //======================================================================================================================
 // Structures
@@ -82,10 +78,10 @@ pub struct SharedNetworkLibOS<T: NetworkTransport>(SharedObject<NetworkLibOS<T>>
 /// Associate Functions for Catnap LibOS
 impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Instantiates a Catnap LibOS.
-    pub fn new(config: &Config, mut runtime: SharedDemiRuntime) -> Self {
+    pub fn new(runtime: SharedDemiRuntime, transport: T) -> Self {
         Self(SharedObject::new(NetworkLibOS::<T> {
             runtime: runtime.clone(),
-            transport: T::new(&config, &mut runtime),
+            transport,
         }))
     }
 
@@ -114,24 +110,36 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedNetworkQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, local: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
         let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
-        // Check if we are binding to the wildcard address.
+        // Check if we are binding to the wildcard address. We only support this for UDP sockets right now.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if localv4.ip() == &Ipv4Addr::UNSPECIFIED {
+        if localv4.ip() == &Ipv4Addr::UNSPECIFIED && self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
             let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        // Check if we are binding to the wildcard port.
+        // Check if this is an ephemeral port.
+        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
+            // Allocate ephemeral port from the pool.
+            self.runtime.reserve_ephemeral_port(local.port())?
+        }
+
+        // Check if we are binding to the wildcard port. We only support this for UDP sockets right now.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
         if local.port() == 0 {
-            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
+            if self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
+                let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            } else {
+                // Allocate an ephemeral port.
+                let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
+                local.set_port(new_port);
+            }
         }
 
         // Check wether the address is in use.
@@ -142,11 +150,22 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         }
 
         // Issue bind operation.
-        self.get_shared_queue(&qd)?.bind(local)?;
-        // Insert into address to queue descriptor table.
-        self.runtime
-            .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
-        Ok(())
+        if let Err(e) = self.get_shared_queue(&qd)?.bind(local) {
+            trace!("error");
+            // Rollback ephemeral port allocation.
+            if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
+                if self.runtime.free_ephemeral_port(local.port()).is_err() {
+                    warn!("bind(): leaking ephemeral port (port={})", local.port());
+                }
+            }
+            Err(e)
+        } else {
+            trace!("ok");
+            // Insert into address to queue descriptor table.
+            self.runtime
+                .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
+            Ok(())
+        }
     }
 
     /// Sets a SharedNetworkQueue and its underlying socket as a passive one. This function contains the libOS-level
@@ -154,8 +173,12 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
 
-        // We just assert backlog here, because it was previously checked at PDPIX layer.
-        debug_assert!((backlog > 0) && (backlog <= SOMAXCONN as usize));
+        // We use this API for testing, so we must check again.
+        if !((backlog > 0) && (backlog <= SOMAXCONN as usize)) {
+            let cause: String = format!("invalid backlog length: {:?}", backlog);
+            warn!("{}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
 
         // Issue listen operation.
         self.get_shared_queue(&qd)?.listen(backlog)
@@ -296,6 +319,17 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                     self.runtime.remove_socket_id_to_qd(&SocketId::Passive(
                         unwrap_socketaddr(local).expect("we only support IPv4"),
                     ));
+
+                    // Check if this is an ephemeral port.
+                    if SharedDemiRuntime::is_private_ephemeral_port(local.port())
+                        && queue.get_qtype() == QType::UdpSocket
+                    {
+                        // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
+                        if let Err(e) = self.runtime.free_ephemeral_port(local.port()) {
+                            let cause: String = format!("close(): Could not free ephemeral port");
+                            warn!("{}: {:?}", cause, e);
+                        }
+                    }
                 }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
@@ -316,11 +350,11 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// coroutine that asynchronously runs the push and any synchronous multi-queue functionality before the push
     /// begins.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        trace!("push() qd={:?}", qd);
-
         let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
         if buf.len() == 0 {
-            return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
+            let cause: String = format!("zero-length buffer");
+            warn!("push(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         };
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
@@ -462,6 +496,16 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     fn get_shared_queue(&self, qd: &QDesc) -> Result<SharedNetworkQueue<T>, Fail> {
         self.runtime.get_shared_queue::<SharedNetworkQueue<T>>(qd)
     }
+
+    /// This exposes the transport for testing purposes.
+    pub fn get_transport(&self) -> T {
+        self.transport.clone()
+    }
+
+    /// This exposes the transport for testing purposes.
+    pub fn get_runtime(&self) -> SharedDemiRuntime {
+        self.runtime.clone()
+    }
 }
 
 //======================================================================================================================
@@ -497,5 +541,23 @@ impl<T: NetworkTransport> Deref for SharedNetworkLibOS<T> {
 impl<T: NetworkTransport> DerefMut for SharedNetworkLibOS<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+impl<T: NetworkTransport> MemoryRuntime for SharedNetworkLibOS<T> {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.transport.clone_sgarray(sga)
+    }
+
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.transport.into_sgarray(buf)
+    }
+
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.transport.sgaalloc(size)
+    }
+
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.transport.sgafree(sga)
     }
 }

@@ -12,17 +12,20 @@ use self::rawsocket::{
     RawSocket,
     RawSocketAddr,
 };
-use crate::runtime::{
-    memory::MemoryRuntime,
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    demikernel::config::Config,
+    runtime::{
+        memory::MemoryRuntime,
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            types::MacAddress,
         },
-        types::MacAddress,
+        Runtime,
     },
-    Runtime,
 };
 use ::std::{
     collections::HashMap,
@@ -55,18 +58,18 @@ pub struct LinuxRuntime {
 /// Associate Functions for Linux Runtime
 impl LinuxRuntime {
     /// Instantiates a Linux Runtime.
-    pub fn new(link_addr: MacAddress, ipv4_addr: Ipv4Addr, ifname: &str, arp: HashMap<Ipv4Addr, MacAddress>) -> Self {
+    pub fn new(config: Config) -> Self {
         let arp_config: ArpConfig = ArpConfig::new(
             Some(Duration::from_secs(600)),
             Some(Duration::from_secs(1)),
             Some(2),
-            Some(arp),
+            Some(HashMap::<Ipv4Addr, MacAddress>::default()),
             Some(false),
         );
 
         // TODO: Make this constructor return a Result and drop expect() calls below.
         let mac_addr: [u8; 6] = [0; 6];
-        let ifindex: i32 = Self::get_ifindex(ifname).expect("could not parse ifindex");
+        let ifindex: i32 = Self::get_ifindex(&config.local_interface_name()).expect("could not parse ifindex");
         let socket: RawSocket = RawSocket::new().expect("could not create raw socket");
         let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
         socket.bind(&sockaddr).expect("could not bind raw socket");
@@ -75,8 +78,8 @@ impl LinuxRuntime {
             tcp_config: TcpConfig::default(),
             udp_config: UdpConfig::default(),
             arp_config,
-            link_addr,
-            ipv4_addr,
+            link_addr: config.local_link_addr(),
+            ipv4_addr: config.local_ipv4_addr(),
             ifindex,
             socket,
         }

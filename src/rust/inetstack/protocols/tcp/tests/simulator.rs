@@ -8,20 +8,39 @@
 use crate::{
     inetstack::{
         protocols::{
-            ethernet2::EtherType2,
+            ethernet2::{
+                EtherType2,
+                Ethernet2Header,
+            },
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
             tcp::segment::{
+                TcpHeader,
                 TcpOptions2,
+                TcpSegment,
                 MAX_TCP_OPTIONS,
             },
         },
-        test_helpers::SharedTestRuntime,
+        test_helpers::{
+            self,
+            engine::SharedEngine,
+            runtime::SharedTestRuntime,
+        },
     },
-    runtime::network::config::{
-        ArpConfig,
-        TcpConfig,
-        UdpConfig,
+    runtime::{
+        memory::DemiBuffer,
+        network::{
+            config::{
+                ArpConfig,
+                TcpConfig,
+                UdpConfig,
+            },
+            PacketBuf,
+        },
+        OperationResult,
     },
     MacAddress,
+    QDesc,
     QToken,
 };
 use anyhow::Result;
@@ -62,29 +81,6 @@ use std::{
         Duration,
         Instant,
     },
-};
-
-use crate::{
-    inetstack::{
-        protocols::{
-            ethernet2::Ethernet2Header,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
-            tcp::segment::{
-                TcpHeader,
-                TcpSegment,
-            },
-        },
-        test_helpers::{
-            self,
-            SharedEngine,
-        },
-    },
-    runtime::{
-        memory::DemiBuffer,
-        network::PacketBuf,
-    },
-    QDesc,
 };
 
 //======================================================================================================================
@@ -226,7 +222,7 @@ impl Simulation {
             local_mac.clone(),
             local_ipv4.clone(),
         );
-        let local: SharedEngine = SharedEngine::new(test_rig)?;
+        let local: SharedEngine = SharedEngine::new(test_rig, now)?;
 
         println!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
         println!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
@@ -318,7 +314,7 @@ impl Simulation {
     /// Runs an event.
     fn run_event(&mut self, event: &Event) -> Result<()> {
         self.now += event.time;
-        self.engine.get_test_rig().get_runtime().advance_clock(self.now);
+        self.engine.advance_clock(self.now);
         println!("=================");
 
         match &event.action {
@@ -589,6 +585,10 @@ impl Simulation {
         match self.engine.tcp_push(remote_qd, buf) {
             Ok(push_qt) => {
                 self.inflight = Some(push_qt);
+                // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
+                // TODO: Remove this once we separate the poll and advance clock functions.
+                self.engine.poll();
+
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -636,44 +636,33 @@ impl Simulation {
             },
         };
 
-        self.engine.get_test_rig().poll_scheduler();
-
         match self.operation_has_completed() {
-            Ok(Some(qt)) => match self
-                .engine
-                .get_test_rig()
-                .get_runtime()
-                .remove_coroutine(qt)
-                .get_result()
-            {
-                Some((qd, qr)) if args_qd == qd => match qr {
-                    crate::OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
-                        eprintln!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
-                        self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
-                        Ok(())
-                    },
-                    crate::OperationResult::Connect => {
-                        eprintln!("connection established as expected (qd={:?})", qd);
-                        Ok(())
-                    },
-                    crate::OperationResult::Pop(_sockaddr, _data) => {
-                        eprintln!("pop completed as expected (qd={:?})", qd);
-                        Ok(())
-                    },
-                    crate::OperationResult::Push => {
-                        eprintln!("push completed as expected (qd={:?})", qd);
-                        Ok(())
-                    },
-                    crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
-                        eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
-                        Ok(())
-                    },
-                    crate::OperationResult::Failed(e) => {
-                        unreachable!("operation failed unexpectedly (qd={:?}, errno={:?})", qd, e.errno);
-                    },
-                    _ => unreachable!("unexpected operation has completed coroutine has completed"),
+            Ok((qd, qr)) if args_qd == qd => match qr {
+                crate::OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
+                    eprintln!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
+                    self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
+                    Ok(())
                 },
-                _ => unreachable!("no operation has completed coroutine has completed, but it should"),
+                crate::OperationResult::Connect => {
+                    eprintln!("connection established as expected (qd={:?})", qd);
+                    Ok(())
+                },
+                crate::OperationResult::Pop(_sockaddr, _data) => {
+                    eprintln!("pop completed as expected (qd={:?})", qd);
+                    Ok(())
+                },
+                crate::OperationResult::Push => {
+                    eprintln!("push completed as expected (qd={:?})", qd);
+                    Ok(())
+                },
+                crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
+                    eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
+                    Ok(())
+                },
+                crate::OperationResult::Failed(e) => {
+                    unreachable!("operation failed unexpectedly (qd={:?}, errno={:?})", qd, e.errno);
+                },
+                _ => unreachable!("unexpected operation has completed coroutine has completed"),
             },
             _ => unreachable!("no operation has completed coroutine has completed, but it should"),
         }
@@ -807,10 +796,10 @@ impl Simulation {
         let buf: DemiBuffer = Self::serialize_segment(segment);
         self.engine.receive(buf)?;
 
-        self.engine.get_test_rig().poll_scheduler();
+        self.engine.poll();
         // Poll the scheduler again.
         // TODO: Remove this once we have a way to poll the scheduler until there is no more work to be done.
-        self.engine.get_test_rig().poll_scheduler();
+        self.engine.poll();
 
         Ok(())
     }
@@ -895,26 +884,18 @@ impl Simulation {
     }
 
     /// Checks if an operation has completed.
-    fn operation_has_completed(&mut self) -> Result<Option<QToken>> {
-        let has_completed: bool = match self.inflight {
-            Some(qt) => match self.engine.get_test_rig().get_runtime().has_completed(qt.clone()) {
-                Ok(has_completed) => has_completed,
-                Err(e) => anyhow::bail!("{:?}", e),
-            },
+    fn operation_has_completed(&mut self) -> Result<(QDesc, OperationResult)> {
+        match self.inflight.take() {
+            Some(qt) => Ok(self.engine.wait(qt)?),
             None => anyhow::bail!("should have an inflight queue token"),
-        };
-        if has_completed {
-            Ok(Some(self.inflight.take().unwrap()))
-        } else {
-            Ok(None)
         }
     }
 
     /// Runs an outgoing packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        self.engine.get_test_rig().poll_scheduler();
+        self.engine.poll();
 
-        let frames: VecDeque<DemiBuffer> = self.engine.get_test_rig().pop_all_frames();
+        let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
 
         // FIXME: We currently do not support multi-frame segments.
         crate::ensure_eq!(frames.len(), 1);
