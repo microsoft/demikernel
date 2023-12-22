@@ -74,9 +74,6 @@ use crate::{
 use ::arrayvec::ArrayVec;
 use ::std::mem;
 
-#[cfg(feature = "profiler")]
-use crate::timer;
-
 use ::anyhow::{
     bail,
     format_err,

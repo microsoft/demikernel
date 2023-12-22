@@ -20,6 +20,8 @@ use crate::catnip::runtime::SharedDPDKRuntime;
 use crate::catpowder::runtime::LinuxRuntime;
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
+#[cfg(feature = "profiler")]
+use crate::timer;
 
 use crate::{
     demikernel::{
@@ -57,9 +59,6 @@ use crate::catloop::SharedCatloopLibOS;
 use crate::catmem::SharedCatmemLibOS;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::transport::SharedCatnapTransport;
-#[cfg(all(feature = "catpowder-libos"))]
-#[cfg(feature = "profiler")]
-use crate::timer;
 
 //======================================================================================================================
 // Structures
