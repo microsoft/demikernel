@@ -109,7 +109,7 @@ static void push_wait(int qd, demi_sgarray_t *sga, demi_qresult_t *qr)
     /* Push data. */
     assert(demi_push(&qt, qd, sga) == 0);
 
-    /* Wait push operation to complete. */
+    /* Wait for push operation to complete. */
     assert(demi_wait(qr, qt, NULL) == 0);
 
     /* Parse operation result. */
