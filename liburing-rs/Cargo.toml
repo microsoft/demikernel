@@ -1,0 +1,41 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+[package]
+name = "liburing"
+version = "1.4.0"
+authors = [ "Microsoft Corporation" ]
+edition = "2021"
+description = "Rust Bindings for Liburing"
+readme = "README.md"
+homepage = "https://aka.ms/demikernel"
+repository = "https://github.com/demikernel/liburing-rs"
+license-file = "LICENSE.txt"
+
+[build-dependencies]
+bindgen = "0.60.1"
+cc = "1.0.73"
+
+# Build profile used for releases.
+[profile.release]
+opt-level = 3             # Enable all compiler optimizations.
+debug = false             # Do not include any debug info in the binary.
+debug-assertions = false  # Do not include any debug assertions in the binary.
+overflow-checks = false   # Do not check for overflows at runtime.
+lto = "fat"               # Perform link time optimizations across all dependencies (overridden).
+panic = "abort"           # Terminate the process upon panic (overridden).
+incremental = false       # Disable incremental compilation.
+codegen-units = 1         # Produce a single code generation unit (overridden).
+rpath = false             # Disable runtime search path.
+
+# Build profile used for development and debugging.
+[profile.dev]
+opt-level = 0             # Disable all compiler optimizations.
+debug = true              # Output full debug info in the binary.
+debug-assertions = true   # Include debug assertions in the binary.
+overflow-checks = true    # Check for overflows at runtime.
+lto = "off"               # Disable link time optimization (overridden).
+panic = 'unwind'          # Unwind the stack upon panic.
+incremental = true        # Incremental build.
+codegen-units = 256       # Produce multiple code generation units.
+rpath = false             # Disable runtime search path.

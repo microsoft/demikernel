@@ -1,0 +1,11 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+# Stable Options
+max_width = 120
+merge_derives = true
+reorder_modules = true
+use_field_init_shorthand = false
+use_try_shorthand = true
+reorder_imports = true
+match_block_trailing_comma = true
