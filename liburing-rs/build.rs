@@ -79,7 +79,7 @@ fn main() {
     let bindings: Bindings = builder
         .clang_arg("-mavx")
         .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .unwrap_or_else(|e| panic!("Failed to generate bindings: {:?}", e));
     let bindings_out: PathBuf = out_dir.join("bindings.rs");
