@@ -308,6 +308,15 @@ impl Simulation {
             }
         }
 
+        // Ensure that there are no more events to be processed.
+        let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
+        if !frames.is_empty() {
+            for frame in &frames {
+                eprintln!("run(): {:?}", frame);
+            }
+            anyhow::bail!("run(): unexpected outgoing frames");
+        }
+
         Ok(())
     }
 
