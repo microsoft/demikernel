@@ -14,7 +14,7 @@ license-file = "LICENSE.txt"
 
 [build-dependencies]
 bindgen = "0.69.1"
-cc = "1.0.73"
+cc = "1.0.83"
 
 # Build profile used for releases.
 [profile.release]
