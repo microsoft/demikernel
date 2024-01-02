@@ -11,9 +11,9 @@ extern crate bindgen;
 // Imports
 //==============================================================================
 
-use ::bindgen::{Bindings, Builder};
-use ::cc::Build;
-use ::std::{
+use bindgen::{Bindings, Builder};
+use cc::Build;
+use std::{
     env,
     path::{Path, PathBuf},
     process::Command,
