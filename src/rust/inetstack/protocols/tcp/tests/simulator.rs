@@ -308,6 +308,15 @@ impl Simulation {
             }
         }
 
+        // Ensure that there are no more events to be processed.
+        let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
+        if !frames.is_empty() {
+            for frame in &frames {
+                eprintln!("run(): {:?}", frame);
+            }
+            anyhow::bail!("run(): unexpected outgoing frames");
+        }
+
         Ok(())
     }
 
@@ -907,7 +916,8 @@ impl Simulation {
             let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
             self.check_ipv4_header(&ipv4_header)?;
 
-            let (tcp_header, _) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+            let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+            crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());
             self.check_tcp_header(&tcp_header, &tcp_packet)?;
         }
 
