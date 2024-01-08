@@ -152,7 +152,6 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         // Issue bind operation.
         if let Err(e) = self.get_shared_queue(&qd)?.bind(local) {
-            trace!("error");
             // Rollback ephemeral port allocation.
             if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
                 if self.runtime.free_ephemeral_port(local.port()).is_err() {
@@ -161,7 +160,6 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             }
             Err(e)
         } else {
-            trace!("ok");
             // Insert into address to queue descriptor table.
             self.runtime
                 .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
