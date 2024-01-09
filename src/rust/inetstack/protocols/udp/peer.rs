@@ -190,6 +190,10 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
                 match self.get_socket_from_addr(&local) {
                     Some(queue) => queue,
                     None => {
+                        // RFC 792 specifies that an ICMP message may be sent in response to a packet sent to an unbound
+                        // port. However, we simply drop the datagram as this could be a port-scan attack, and not
+                        // sending an ICMP message is a valid action. See https://www.rfc-editor.org/rfc/rfc792 for more
+                        // details.
                         let cause: String = format!("dropping packet: port not bound");
                         warn!("{}: {:?}", cause, local);
                         return;
