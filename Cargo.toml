@@ -45,9 +45,7 @@ x86 = "0.52.0"
 # Local crates.
 nettest = { path = "nettest" }
 dpdk-rs = { path = "dpdk-rs", optional = true }
-
-# Demikernel Organization
-liburing = { git = "https://github.com/demikernel/liburing-rs", rev = "780827ee3f805d94f9909bd47cd925ee8476a64b", optional = true }
+liburing = { path = "liburing-rs", optional = true }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]

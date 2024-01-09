@@ -91,7 +91,7 @@ impl IoUring {
             // Submit operation.
             let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
-                iov_len: len as u64,
+                iov_len: len,
             });
             let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Box<liburing::msghdr> = Box::new(liburing::msghdr {
@@ -140,7 +140,7 @@ impl IoUring {
             // Submit operation.
             let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
-                iov_len: len as u64,
+                iov_len: len,
             });
             let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Box<liburing::msghdr> = Box::new(liburing::msghdr {
@@ -181,7 +181,7 @@ impl IoUring {
             // Submit operation.
             let iov: Box<liburing::iovec> = Box::new(liburing::iovec {
                 iov_base: data_ptr as *mut c_void,
-                iov_len: len as u64,
+                iov_len: len,
             });
             let iov_ptr: *mut liburing::iovec = Box::into_raw(iov);
             let msg: Box<liburing::msghdr> = Box::new(liburing::msghdr {
