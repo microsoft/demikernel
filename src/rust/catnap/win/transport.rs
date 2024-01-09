@@ -52,6 +52,7 @@ use crate::{
         SharedObject,
     },
 };
+use ::futures::FutureExt;
 
 //======================================================================================================================
 // Structures
@@ -109,7 +110,7 @@ impl SharedCatnapTransport {
                 "catnap::transport::epoll",
                 Box::pin({
                     let mut me: Self = me.clone();
-                    async move { me.run_event_processor().await }
+                    async move { me.run_event_processor().await }.fuse()
                 }),
             )
             .expect("should be able to insert background coroutine");

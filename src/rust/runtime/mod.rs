@@ -57,6 +57,7 @@ use crate::{
         types::demi_opcode_t,
     },
 };
+use ::futures::future::FusedFuture;
 use ::std::{
     boxed::Box,
     collections::HashMap,
@@ -64,7 +65,6 @@ use ::std::{
         AsMut,
         AsRef,
     },
-    future::Future,
     mem,
     net::SocketAddrV4,
     ops::{
@@ -181,11 +181,11 @@ impl SharedDemiRuntime {
         qd: QDesc,
     ) -> Result<QToken, Fail>
     where
-        F: FnOnce(Yielder) -> Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>>,
+        F: FnOnce(Yielder) -> Pin<Box<dyn FusedFuture<Output = (QDesc, OperationResult)>>>,
     {
         let yielder: Yielder = Yielder::new();
         let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<dyn Future<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
+        let coroutine: Pin<Box<dyn FusedFuture<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
         match self.insert_coroutine(task_name, coroutine) {
             Ok(qt) => {
                 // This allows to keep track of currently running coroutines.
@@ -256,7 +256,7 @@ impl SharedDemiRuntime {
     pub fn insert_background_coroutine(
         &mut self,
         task_name: &str,
-        coroutine: Pin<Box<dyn Future<Output = ()>>>,
+        coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
     ) -> Result<QToken, Fail> {
         trace!("Inserting background coroutine: {:?}", task_name);
         let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);

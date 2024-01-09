@@ -39,6 +39,7 @@ use crate::{
     },
     QType,
 };
+use ::futures::FutureExt;
 use ::std::{
     net::{
         Ipv4Addr,
@@ -206,8 +207,9 @@ impl SharedCatloopLibOS {
         let mut queue: SharedCatloopQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::accept for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().accept_coroutine(qd, new_port, yielder)) };
+            let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+                Box::pin(self.clone().accept_coroutine(qd, new_port, yielder).fuse())
+            };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -266,8 +268,9 @@ impl SharedCatloopLibOS {
 
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::connect for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().connect_coroutine(qd, remote, yielder)) };
+            let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+                Box::pin(self.clone().connect_coroutine(qd, remote, yielder).fuse())
+            };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -307,7 +310,7 @@ impl SharedCatloopLibOS {
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::close for qd={:?}", qd);
             let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder).fuse()) };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -368,7 +371,7 @@ impl SharedCatloopLibOS {
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::push for qd={:?}", qd);
             let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder).fuse()) };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -410,7 +413,7 @@ impl SharedCatloopLibOS {
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catloop::pop for qd={:?}", qd);
             let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder).fuse()) };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)

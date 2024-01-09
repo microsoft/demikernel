@@ -410,13 +410,16 @@ mod tests {
     };
 
     use super::*;
+    use ::futures::{
+        future::FusedFuture,
+        FutureExt,
+    };
     use anyhow::{
         anyhow,
         bail,
         ensure,
         Result,
     };
-    use futures::Future;
     use windows::{
         core::{
             s,
@@ -600,69 +603,73 @@ mod tests {
         iocp.get_mut().associate_handle(server_pipe.0, COMPLETION_KEY)?;
         let iocp_ref: &mut IoCompletionPort = unsafe { &mut *iocp.get() };
 
-        let server: Pin<Box<dyn Future<Output = Result<(), Fail>>>> = Box::pin(async move {
-            let yielder: Yielder = Yielder::new();
+        let server: Pin<Box<dyn FusedFuture<Output = Result<(), Fail>>>> = Box::pin(
+            async move {
+                let yielder: Yielder = Yielder::new();
 
-            unsafe {
-                iocp_ref.do_io(
-                    &yielder,
-                    |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                        server_state.fetch_add(1, Ordering::Relaxed);
-                        is_overlapped_ok(ConnectNamedPipe(server_pipe.0, Some(overlapped)))
-                    },
-                    |_| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
-                    |result: OverlappedResult| -> Result<(), Fail> { result.ok() },
-                )
+                unsafe {
+                    iocp_ref.do_io(
+                        &yielder,
+                        |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+                            server_state.fetch_add(1, Ordering::Relaxed);
+                            is_overlapped_ok(ConnectNamedPipe(server_pipe.0, Some(overlapped)))
+                        },
+                        |_| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
+                        |result: OverlappedResult| -> Result<(), Fail> { result.ok() },
+                    )
+                }
+                .await?;
+
+                server_state.fetch_add(1, Ordering::Relaxed);
+
+                let mut buffer: Rc<Vec<u8>> =
+                    Rc::new(iter::repeat(0u8).take(BUFFER_SIZE as usize).collect::<Vec<u8>>());
+                buffer = unsafe {
+                    iocp_ref.do_io_with(
+                        buffer,
+                        &yielder,
+                        |state: Pin<&mut Rc<Vec<u8>>>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+                            let vec: &mut Vec<u8> = Rc::get_mut(state.get_mut()).unwrap();
+                            vec.resize(BUFFER_SIZE as usize, 0u8);
+                            is_overlapped_ok(ReadFile(
+                                server_pipe.0,
+                                Some(vec.as_mut_slice()),
+                                None,
+                                Some(overlapped),
+                            ))
+                        },
+                        |_, _| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
+                        |mut state: Pin<&mut Rc<Vec<u8>>>, result: OverlappedResult| -> Result<Rc<Vec<u8>>, Fail> {
+                            match result.ok() {
+                                Ok(()) => {
+                                    if result.bytes_transferred == 0 {
+                                        Err(Fail::new(libc::EINVAL, "not bytes received"))
+                                    } else {
+                                        Rc::get_mut(state.as_mut().get_mut())
+                                            .unwrap()
+                                            .resize(result.bytes_transferred as usize, 0u8);
+                                        Ok(Rc::clone(Pin::get_mut(state)))
+                                    }
+                                },
+
+                                Err(fail) => Err(fail),
+                            }
+                        },
+                    )
+                }
+                .await?;
+
+                let message: &str = std::str::from_utf8(buffer.as_slice())
+                    .map_err(|_| Fail::new(libc::EINVAL, "utf8 conversion failed"))?;
+                if message != MESSAGE {
+                    let err_msg: String = format!("expected \"{}\", got \"{}\"", MESSAGE, message);
+                    Err(Fail::new(libc::EINVAL, err_msg.as_str()))
+                } else {
+                    Ok(())
+                }
             }
-            .await?;
-
-            server_state.fetch_add(1, Ordering::Relaxed);
-
-            let mut buffer: Rc<Vec<u8>> = Rc::new(iter::repeat(0u8).take(BUFFER_SIZE as usize).collect::<Vec<u8>>());
-            buffer = unsafe {
-                iocp_ref.do_io_with(
-                    buffer,
-                    &yielder,
-                    |state: Pin<&mut Rc<Vec<u8>>>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                        let vec: &mut Vec<u8> = Rc::get_mut(state.get_mut()).unwrap();
-                        vec.resize(BUFFER_SIZE as usize, 0u8);
-                        is_overlapped_ok(ReadFile(
-                            server_pipe.0,
-                            Some(vec.as_mut_slice()),
-                            None,
-                            Some(overlapped),
-                        ))
-                    },
-                    |_, _| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
-                    |mut state: Pin<&mut Rc<Vec<u8>>>, result: OverlappedResult| -> Result<Rc<Vec<u8>>, Fail> {
-                        match result.ok() {
-                            Ok(()) => {
-                                if result.bytes_transferred == 0 {
-                                    Err(Fail::new(libc::EINVAL, "not bytes received"))
-                                } else {
-                                    Rc::get_mut(state.as_mut().get_mut())
-                                        .unwrap()
-                                        .resize(result.bytes_transferred as usize, 0u8);
-                                    Ok(Rc::clone(Pin::get_mut(state)))
-                                }
-                            },
-
-                            Err(fail) => Err(fail),
-                        }
-                    },
-                )
-            }
-            .await?;
-
-            let message: &str = std::str::from_utf8(buffer.as_slice())
-                .map_err(|_| Fail::new(libc::EINVAL, "utf8 conversion failed"))?;
-            if message != MESSAGE {
-                let err_msg: String = format!("expected \"{}\", got \"{}\"", MESSAGE, message);
-                Err(Fail::new(libc::EINVAL, err_msg.as_str()))
-            } else {
-                Ok(())
-            }
-        });
+            .fuse(),
+        );
 
         let mut scheduler: Scheduler = Scheduler::default();
         let server_handle: u64 = scheduler
@@ -754,24 +761,27 @@ mod tests {
         let yielder: Yielder = Yielder::new();
         let mut yielder_handle: YielderHandle = yielder.get_handle();
 
-        let server: Pin<Box<dyn Future<Output = Result<(), Fail>>>> = Box::pin(async move {
-            let result: Result<(), Fail> = unsafe {
-                iocp_ref.do_io(
-                    &yielder,
-                    |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                        server_state.fetch_add(1, Ordering::Relaxed);
-                        is_overlapped_ok(ConnectNamedPipe(server_pipe.0, Some(overlapped)))
-                    },
-                    |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                        CancelIoEx(server_pipe.0, Some(overlapped)).map_err(Fail::from)
-                    },
-                    |result: OverlappedResult| -> Result<(), Fail> { result.ok() },
-                )
-            }
-            .await;
+        let server: Pin<Box<dyn FusedFuture<Output = Result<(), Fail>>>> = Box::pin(
+            async move {
+                let result: Result<(), Fail> = unsafe {
+                    iocp_ref.do_io(
+                        &yielder,
+                        |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+                            server_state.fetch_add(1, Ordering::Relaxed);
+                            is_overlapped_ok(ConnectNamedPipe(server_pipe.0, Some(overlapped)))
+                        },
+                        |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
+                            CancelIoEx(server_pipe.0, Some(overlapped)).map_err(Fail::from)
+                        },
+                        |result: OverlappedResult| -> Result<(), Fail> { result.ok() },
+                    )
+                }
+                .await;
 
-            result
-        });
+                result
+            }
+            .fuse(),
+        );
 
         let mut scheduler: Scheduler = Scheduler::default();
         let server_handle: u64 = scheduler

@@ -53,6 +53,7 @@ use crate::{
         SharedDemiRuntime,
     },
 };
+use ::futures::FutureExt;
 use ::std::{
     mem,
     net::{
@@ -203,7 +204,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let task_name: String = format!("Catcollar::accept for qd={:?}", qd);
         let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
-            Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder))
+            Box::pin(Self::accept_coroutine(self.runtime.clone(), qd, fd, yielder).fuse())
         };
 
         self.runtime
@@ -292,7 +293,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let task_name: String = format!("Catcollar::connect for qd={:?}", qd);
         let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(Self::connect_coroutine(qd, fd, remote, yielder)) };
+            |yielder| -> Pin<Box<Operation>> { Box::pin(Self::connect_coroutine(qd, fd, remote, yielder).fuse()) };
 
         self.runtime
             .clone()
@@ -348,8 +349,9 @@ impl CatcollarLibOS {
         trace!("close() qd={:?}", qd);
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let task_name: String = format!("Catcollar::close for qd={:?}", qd);
-        let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder)) };
+        let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
+            Box::pin(Self::close_coroutine(self.runtime.clone(), qd, fd, yielder).fuse())
+        };
 
         self.runtime
             .clone()
@@ -418,7 +420,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let task_name: String = format!("Catcollar::push for qd={:?}", qd);
         let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
-            Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder))
+            Box::pin(Self::push_coroutine(self.transport.clone(), qd, fd, buf, yielder).fuse())
         };
 
         self.runtime
@@ -491,14 +493,7 @@ impl CatcollarLibOS {
                 let fd: RawFd = self.get_queue_fd(&qd)?;
                 let task_name: String = format!("Catcollar::pushto for qd={:?}", qd);
                 let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
-                    Box::pin(Self::pushto_coroutine(
-                        self.transport.clone(),
-                        qd,
-                        fd,
-                        remote,
-                        buf,
-                        yielder,
-                    ))
+                    Box::pin(Self::pushto_coroutine(self.transport.clone(), qd, fd, remote, buf, yielder).fuse())
                 };
 
                 self.runtime
@@ -581,7 +576,7 @@ impl CatcollarLibOS {
         let fd: RawFd = self.get_queue_fd(&qd)?;
         let task_name: String = format!("Catcollar::pop for qd={:?}", qd);
         let coroutine_factory = |yielder| -> Pin<Box<Operation>> {
-            Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder))
+            Box::pin(Self::pop_coroutine(self.transport.clone(), qd, fd, buf, yielder).fuse())
         };
 
         self.runtime

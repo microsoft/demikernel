@@ -29,6 +29,7 @@ use crate::{
     QDesc,
     QToken,
 };
+use ::futures::FutureExt;
 use ::std::{
     ops::{
         Deref,
@@ -110,7 +111,7 @@ impl SharedCatmemLibOS {
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
             let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder)) };
+                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder).fuse()) };
             self.runtime
                 .clone()
                 .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
@@ -162,7 +163,7 @@ impl SharedCatmemLibOS {
 
         let task_name: String = format!("Catmem::push for qd={:?}", qd);
         let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder)) };
+            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder).fuse()) };
 
         self.runtime
             .clone()
@@ -191,7 +192,7 @@ impl SharedCatmemLibOS {
 
         let task_name: String = format!("Catmem::pop for qd={:?}", qd);
         let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder)) };
+            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder).fuse()) };
 
         self.runtime
             .clone()
