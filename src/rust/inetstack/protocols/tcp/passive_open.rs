@@ -171,6 +171,16 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
                 continue;
             }
 
+            // Check if this SYN segment carries any data.
+            if !buf.is_empty() {
+                // RFC 793 allows connections to be established with data-carrying segments, but we do not support this.
+                // We simply drop the data and and proceed with the three-way handshake protocol, on the hope that the
+                // remote will retransmit the data after the connection is established.
+                // See: https://datatracker.ietf.org/doc/html/rfc793#section-3.4 fo more details.
+                warn!("Received SYN with data (len={})", buf.len());
+                // TODO: https://github.com/microsoft/demikernel/issues/1115
+            }
+
             // Start a new connection.
             self.handle_new_syn(remote, tcp_hdr);
         }
