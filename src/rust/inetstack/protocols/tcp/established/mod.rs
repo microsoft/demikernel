@@ -35,7 +35,10 @@ use crate::{
     },
     QToken,
 };
-use ::futures::channel::mpsc;
+use ::futures::{
+    channel::mpsc,
+    FutureExt,
+};
 use ::std::{
     net::SocketAddrV4,
     time::Duration,
@@ -101,7 +104,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         );
         let qt: QToken = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",
-            Box::pin(background::background(cb.clone(), dead_socket_tx)),
+            Box::pin(background::background(cb.clone(), dead_socket_tx).fuse()),
         )?;
         Ok(Self {
             cb,

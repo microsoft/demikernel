@@ -22,6 +22,7 @@ use crate::{
         SharedObject,
     },
 };
+use ::futures::FutureExt;
 use ::slab::Slab;
 use ::socket2::{
     Domain,
@@ -391,7 +392,7 @@ impl SharedCatnapTransport {
         runtime
             .insert_background_coroutine(
                 "catnap::transport::epoll",
-                Box::pin(async move { me2.poll(yielder).await }),
+                Box::pin(async move { me2.poll(yielder).await }.fuse()),
             )
             .expect("should be able to insert background coroutine");
         me

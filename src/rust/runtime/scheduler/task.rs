@@ -5,6 +5,7 @@
 // Imports
 //==============================================================================
 
+use ::futures::future::FusedFuture;
 use ::std::{
     any::Any,
     future::Future,
@@ -14,14 +15,13 @@ use ::std::{
         Poll,
     },
 };
-
 //==============================================================================
 // Structures
 //==============================================================================
 
 /// Task runs a single coroutine to completion and stores the result for later. Thus, it implements Future but
 /// never directly returns anything.
-pub trait Task: Future<Output = ()> + Unpin + Any {
+pub trait Task: FusedFuture<Output = ()> + Unpin + Any {
     fn get_name(&self) -> String;
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
 }
@@ -70,7 +70,7 @@ impl<R: Unpin + Clone + Any> TaskWithResult<R> {
 
 /// Define the Coroutine type and returned ResultType.
 impl<R: Unpin + Clone + Any> TaskWith for TaskWithResult<R> {
-    type Coroutine = Box<dyn Future<Output = R>>;
+    type Coroutine = Box<dyn FusedFuture<Output = R>>;
     type ResultType = R;
 }
 
@@ -108,5 +108,11 @@ impl<R: Unpin + Clone + Any> Future for TaskWithResult<R> {
         };
         self_.result = Some(result);
         Poll::Ready(())
+    }
+}
+
+impl<R: Unpin + Clone + Any> FusedFuture for TaskWithResult<R> {
+    fn is_terminated(&self) -> bool {
+        self.result.is_some()
     }
 }

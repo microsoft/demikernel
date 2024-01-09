@@ -46,6 +46,7 @@ use ::std::{
     time::Duration,
 };
 
+use ::futures::FutureExt;
 use ::std::{
     fmt::Debug,
     net::{
@@ -144,7 +145,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
         }));
         let yielder: Yielder = Yielder::new();
         let background_task: String = format!("inetstack::poll_recv");
-        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll(yielder)))?;
+        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll(yielder).fuse()))?;
         Ok(me)
     }
 
