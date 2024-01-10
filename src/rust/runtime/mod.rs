@@ -200,7 +200,7 @@ impl SharedDemiRuntime {
     }
 
     /// Removes a coroutine from the underlying scheduler given its associated QToken.
-    pub fn remove_coroutine(&mut self, qt: QToken) -> OperationTask {
+    pub fn remove_coroutine(&mut self, qt: QToken) -> (QDesc, OperationResult) {
         // 1. Remove Task from scheduler.
         let boxed_task: Box<dyn Task> = self
             .scheduler
@@ -208,14 +208,15 @@ impl SharedDemiRuntime {
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         trace!("Removing coroutine: {:?}", boxed_task.get_name());
-        OperationTask::from(boxed_task.as_any())
+        let operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
+        let (qd, result): (QDesc, OperationResult) = operation_task.get_result().expect("coroutine not finished");
+        self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
+        (qd, result)
     }
 
     /// Removes a coroutine from the underlying scheduler given its associated QToken and gets the result immediately.
     pub fn remove_coroutine_and_get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        let operation_task: OperationTask = self.remove_coroutine(qt);
-        let (qd, result) = operation_task.get_result().expect("coroutine not finished");
-        self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
+        let (qd, result): (QDesc, OperationResult) = self.remove_coroutine(qt);
         let result: demi_qresult_t = self.create_result(result, qd, qt);
         Ok(result)
     }

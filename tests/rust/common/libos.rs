@@ -99,15 +99,26 @@ impl DummyLibOS {
     }
 
     #[allow(dead_code)]
-    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<(QDesc, OperationResult), Fail> {
-        let now: Instant = Instant::now();
-        // Run for one second.
-        while !self.get_runtime().has_completed(qt)? && Instant::now() - now < timeout {
+    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<(QDesc, OperationResult), Fail> {
+        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
+        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
             self.get_runtime().poll();
-        }
-        match self.get_runtime().remove_coroutine(qt).get_result() {
-            Some(result) => Ok(result),
-            None => Err(Fail::new(libc::ETIMEDOUT, "wait timed out after one second")),
+
+            if self.get_runtime().has_completed(qt)? {
+                let (qd, result): (QDesc, OperationResult) = self.get_runtime().remove_coroutine(qt);
+                return Ok((qd, result));
+            }
+
+            // If we have a timeout, check for expiration.
+            if timeout.is_some()
+                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
+                    > timeout.expect("timeout should still be set")
+            {
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
         }
     }
 }
