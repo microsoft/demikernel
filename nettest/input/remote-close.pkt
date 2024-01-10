@@ -1,0 +1,31 @@
+// Tests for remote close.
+
+// Establish a connection.
+ .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
++.2 connect(500, ..., ...) = 0
+
+// Send SYN segment.
++.0 > S seq 0(0) win 65535 <mss 1450, wscale 0>
+// Receive SYN-ACK segment.
++.1 < S. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
+// Send ACK on SYN-ACK segment.
++.0 > . seq 1(0) ack 1 win 65535 <nop>
+
+// Succeed to establish connection.
++.0 wait(500, ...) = 0
+
+// Receive FIN segment.
++.1 < F. seq 1(0) ack 1 win 65535 <nop>
+// Send ACK on FIN segment.
++.0 > . seq 1(0) ack 2 win 65534 <nop>
+
+// Close connection.
++.2 close(500) = 0
+
+// Send FIN segment.
++.0 > F. seq 1(0) ack 2 win 65534 <nop>
+// Receive ACK on FIN segment.
++.1 < . seq 2(0) ack 2 win 65535 <nop>
+
+// Succeed to close connection immediately.
++.0 wait(500, ...) = 0

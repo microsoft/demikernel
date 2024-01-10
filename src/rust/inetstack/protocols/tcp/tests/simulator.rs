@@ -664,6 +664,10 @@ impl Simulation {
                     eprintln!("push completed as expected (qd={:?})", qd);
                     Ok(())
                 },
+                crate::OperationResult::Close => {
+                    eprintln!("close completed as expected (qd={:?})", qd);
+                    Ok(())
+                },
                 crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
                     eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
