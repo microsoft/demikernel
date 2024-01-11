@@ -404,6 +404,7 @@ mod tests {
     use crate::{
         ensure_eq,
         runtime::scheduler::{
+            scheduler::TaskId,
             Scheduler,
             TaskWithResult,
         },
@@ -672,7 +673,7 @@ mod tests {
         );
 
         let mut scheduler: Scheduler = Scheduler::default();
-        let server_handle: u64 = scheduler
+        let server_handle: TaskId = scheduler
             .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
@@ -784,7 +785,7 @@ mod tests {
         );
 
         let mut scheduler: Scheduler = Scheduler::default();
-        let server_handle: u64 = scheduler
+        let server_handle: TaskId = scheduler
             .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 

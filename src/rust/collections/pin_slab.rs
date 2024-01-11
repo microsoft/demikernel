@@ -96,6 +96,12 @@ impl<T> PinSlab<T> {
         }
     }
 
+    /// Checks whether the given slot is occupied.
+    pub fn contains(&self, key: usize) -> bool {
+        // We are just using this to check the existance of an entry in this slot or not.
+        unsafe { self.internal_get(key).is_some() }
+    }
+
     /// Insert a value into the pin slab.
     pub fn insert(&mut self, val: T) -> Option<usize> {
         let key: usize = self.next;
@@ -112,6 +118,25 @@ impl<T> PinSlab<T> {
             let entry: &mut T = self.internal_get_mut(key)?;
             Some(Pin::new_unchecked(entry))
         }
+    }
+
+    /// Get a reference to the value at the given slot.
+    #[inline(always)]
+    unsafe fn internal_get(&self, key: usize) -> Option<&T> {
+        let (slot, offset, len): (usize, usize, usize) = calculate_key(key)?;
+        let slot: NonNull<Entry<T>> = *self.slots.get(slot)?;
+
+        // Safety: all slots are fully allocated and initialized in `new_slot`.
+        // As long as we have access to it, we know that we will only find
+        // initialized entries assuming offset < len.
+        debug_assert!(offset < len);
+
+        let entry: &T = match &*slot.as_ptr().add(offset) {
+            Entry::Occupied(entry) => entry,
+            _ => return None,
+        };
+
+        Some(entry)
     }
 
     /// Get a mutable reference to the value at the given slot.

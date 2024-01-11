@@ -2,6 +2,12 @@
 // Licensed under the MIT license.
 
 //==============================================================================
+// Imports
+//==============================================================================
+
+use crate::runtime::scheduler::scheduler::TaskId;
+
+//==============================================================================
 // Structures
 //==============================================================================
 
@@ -26,5 +32,18 @@ impl From<QToken> for u64 {
     /// Converts a [QToken] to a [u64].
     fn from(value: QToken) -> Self {
         value.0
+    }
+}
+
+/// This converts a QToken to an external identifier specifically for our scheduler.
+impl From<TaskId> for QToken {
+    fn from(value: TaskId) -> Self {
+        QToken(value.into())
+    }
+}
+
+impl From<QToken> for TaskId {
+    fn from(value: QToken) -> Self {
+        TaskId(value.into())
     }
 }
