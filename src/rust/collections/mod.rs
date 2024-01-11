@@ -3,6 +3,7 @@
 
 pub mod async_queue;
 pub mod async_value;
+pub mod id_map;
 pub mod intrusive;
 pub mod pin_slab;
 

@@ -12,7 +12,10 @@
 //======================================================================================================================
 
 use crate::{
-    collections::pin_slab::PinSlab,
+    collections::{
+        id_map::IdMap,
+        pin_slab::PinSlab,
+    },
     runtime::scheduler::{
         page::{
             WakerPageRef,
@@ -26,13 +29,7 @@ use crate::{
     },
 };
 use ::bit_iter::BitIter;
-use ::rand::{
-    rngs::SmallRng,
-    RngCore,
-    SeedableRng,
-};
 use ::std::{
-    collections::HashMap,
     future::Future,
     pin::Pin,
     ptr::NonNull,
@@ -47,27 +44,26 @@ use ::std::{
 // Constants
 //======================================================================================================================
 
-/// Seed for the random number generator used to generate tokens.
-/// This value was chosen arbitrarily.
-#[cfg(debug_assertions)]
-const SCHEDULER_SEED: u64 = 42;
 const MAX_NUM_TASKS: usize = 16000;
-const MAX_RETRIES_TASK_ID_ALLOC: usize = 500;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct ExternalId(pub u64);
+#[derive(Clone, Copy, Debug)]
+struct InternalId(usize);
+
 /// Task Scheduler
 pub struct Scheduler {
+    task_ids: IdMap<ExternalId, InternalId>,
     /// Stores all the tasks that are held by the scheduler.
     tasks: PinSlab<Box<dyn Task>>,
-    /// Maps between externally meaningful ids and the index of the task in the slab.
-    task_ids: HashMap<u64, usize>,
     /// Holds the waker bits for controlling task scheduling.
     waker_page_refs: Vec<WakerPageRef>,
-    /// Small random number generator for tokens.
-    rng: SmallRng,
+    /// Holds the total number of running tasks.
+    total_num_tasks: usize,
 }
 
 //======================================================================================================================
@@ -77,24 +73,25 @@ pub struct Scheduler {
 /// Associate Functions for Scheduler
 impl Scheduler {
     /// Given a handle to a task, remove it from the scheduler
-    pub fn remove(&mut self, task_id: u64) -> Option<Box<dyn Task>> {
+    pub fn remove(&mut self, task_id: ExternalId) -> Option<Box<dyn Task>> {
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let pin_slab_index: usize = self
+        let pin_slab_index: InternalId = self
             .task_ids
             .remove(&task_id)
             .expect("Token should be in the token table");
         let (waker_page_ref, waker_page_offset): (&WakerPageRef, usize) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
+            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into());
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
         };
         waker_page_ref.clear(waker_page_offset);
-        if let Some(task) = self.tasks.remove_unpin(pin_slab_index) {
+        if let Some(task) = self.tasks.remove_unpin(pin_slab_index.into()) {
             trace!(
                 "remove(): name={:?}, id={:?}, pin_slab_index={:?}",
                 task.get_name(),
                 task_id,
                 pin_slab_index
             );
+            self.total_num_tasks = self.total_num_tasks - 1;
             Some(task)
         } else {
             warn!(
@@ -106,19 +103,19 @@ impl Scheduler {
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert<F: Task>(&mut self, future: F) -> Option<u64> {
+    pub fn insert<F: Task>(&mut self, future: F) -> Option<ExternalId> {
         self.panic_if_too_many_tasks();
 
         let task_name: String = future.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
-        let pin_slab_index: usize = self.tasks.insert(Box::new(future))?;
-        let task_id: u64 = self.get_new_task_id(pin_slab_index);
+        let pin_slab_index: InternalId = self.tasks.insert(Box::new(future))?.into();
+        let task_id: ExternalId = self.task_ids.insert_with_new_id(pin_slab_index);
 
-        self.add_new_pages_up_to_pin_slab_index(pin_slab_index);
+        self.add_new_pages_up_to_pin_slab_index(pin_slab_index.into());
 
         // Initialize the appropriate page offset.
         let (waker_page_ref, waker_page_offset): (&WakerPageRef, usize) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
+            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into());
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
         };
         waker_page_ref.initialize(waker_page_offset);
@@ -130,28 +127,14 @@ impl Scheduler {
             pin_slab_index
         );
 
+        self.total_num_tasks += 1;
         Some(task_id)
-    }
-
-    /// Generate a new id. If the id is currently in use, keep generating until we find an unused id.
-    fn get_new_task_id(&mut self, pin_slab_index: usize) -> u64 {
-        let new_task_id: u64 = 'get_id: {
-            for _ in 0..MAX_RETRIES_TASK_ID_ALLOC {
-                let new_task_id: u64 = self.rng.next_u64() as u16 as u64;
-                if !self.task_ids.contains_key(&new_task_id) {
-                    self.task_ids.insert(new_task_id, pin_slab_index);
-                    break 'get_id new_task_id;
-                }
-            }
-            panic!("Could not find a valid task id");
-        };
-        new_task_id
     }
 
     /// If the address space for task ids is close to half full, it will become increasingly difficult to avoid
     /// collisions, so we cap the number of tasks.
     fn panic_if_too_many_tasks(&self) {
-        if self.task_ids.len() > MAX_NUM_TASKS {
+        if self.total_num_tasks > MAX_NUM_TASKS {
             panic!("Too many concurrent tasks");
         }
     }
@@ -229,13 +212,13 @@ impl Scheduler {
         (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
     }
 
-    pub fn has_completed(&self, task_id: u64) -> Option<bool> {
-        let pin_slab_index: usize = match self.task_ids.get(&task_id) {
-            Some(pin_slab_index) => *pin_slab_index,
+    pub fn has_completed(&self, task_id: ExternalId) -> Option<bool> {
+        let pin_slab_index: InternalId = match self.task_ids.get(&task_id) {
+            Some(pin_slab_index) => pin_slab_index,
             None => return None,
         };
         let (waker_page_ref, waker_page_offset) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index);
+            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into());
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
         };
 
@@ -252,14 +235,47 @@ impl Default for Scheduler {
     /// Creates a scheduler with default values.
     fn default() -> Self {
         Self {
+            task_ids: IdMap::<ExternalId, InternalId>::default(),
             tasks: PinSlab::new(),
-            task_ids: HashMap::<u64, usize>::new(),
             waker_page_refs: vec![],
-            #[cfg(debug_assertions)]
-            rng: SmallRng::seed_from_u64(SCHEDULER_SEED),
-            #[cfg(not(debug_assertions))]
-            rng: SmallRng::from_entropy(),
+            total_num_tasks: 0,
         }
+    }
+}
+
+impl From<u64> for ExternalId {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ExternalId> for u64 {
+    fn from(value: ExternalId) -> Self {
+        value.0
+    }
+}
+
+impl From<usize> for InternalId {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+impl From<InternalId> for usize {
+    fn from(value: InternalId) -> Self {
+        value.0
+    }
+}
+
+impl From<u64> for InternalId {
+    fn from(value: u64) -> Self {
+        Self(value as usize)
+    }
+}
+
+impl From<InternalId> for u64 {
+    fn from(value: InternalId) -> Self {
+        value.0 as u64
     }
 }
 
@@ -270,7 +286,10 @@ impl Default for Scheduler {
 #[cfg(test)]
 mod tests {
     use crate::runtime::scheduler::{
-        scheduler::Scheduler,
+        scheduler::{
+            ExternalId,
+            Scheduler,
+        },
         task::TaskWithResult,
     };
     use ::anyhow::Result;
@@ -436,9 +455,9 @@ mod tests {
         let mut scheduler: Scheduler = Scheduler::default();
         // Arbitrarily large number.
         const NUM_TASKS: usize = 8192;
-        let mut task_ids: Vec<u64> = Vec::<u64>::with_capacity(NUM_TASKS);
+        let mut task_ids: Vec<ExternalId> = Vec::<ExternalId>::with_capacity(NUM_TASKS);
 
-        crate::ensure_eq!(true, scheduler.task_ids.is_empty());
+        crate::ensure_eq!(scheduler.total_num_tasks, 0);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val).fuse()));
@@ -454,15 +473,23 @@ mod tests {
         // Remove tasks one by one and check if remove is only removing the task requested to be removed.
         let mut curr_num_tasks: usize = NUM_TASKS;
         for i in 0..NUM_TASKS {
-            let task_id: u64 = task_ids[i];
-            crate::ensure_eq!(true, scheduler.task_ids.contains_key(&task_id));
+            let task_id: ExternalId = task_ids[i];
+            // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
+            if let Some(internal_id) = scheduler.task_ids.get(&task_id) {
+                crate::ensure_eq!(true, scheduler.tasks.get_pin_mut(internal_id.into()).is_some());
+            } else {
+                anyhow::bail!("Could not find task");
+            }
             scheduler.remove(task_id);
             curr_num_tasks = curr_num_tasks - 1;
-            crate::ensure_eq!(scheduler.task_ids.len(), curr_num_tasks);
-            crate::ensure_eq!(false, scheduler.task_ids.contains_key(&task_id));
+            crate::ensure_eq!(scheduler.total_num_tasks, curr_num_tasks);
+            // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
+            if let Some(internal_id) = scheduler.task_ids.get(&task_id) {
+                crate::ensure_eq!(false, scheduler.tasks.get_pin_mut(internal_id.into()).is_some());
+            }
         }
 
-        crate::ensure_eq!(scheduler.task_ids.is_empty(), true);
+        crate::ensure_eq!(scheduler.total_num_tasks, 0);
 
         Ok(())
     }
@@ -476,7 +503,7 @@ mod tests {
                 String::from("testing"),
                 Box::pin(black_box(DummyCoroutine::default().fuse())),
             );
-            let task_id: u64 = scheduler.insert(task).expect("couldn't insert future in scheduler");
+            let task_id: ExternalId = scheduler.insert(task).expect("couldn't insert future in scheduler");
             black_box(task_id);
         });
     }
@@ -485,7 +512,7 @@ mod tests {
     fn benchmark_poll(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
         const NUM_TASKS: usize = 1024;
-        let mut task_ids: Vec<u64> = Vec::<u64>::with_capacity(NUM_TASKS);
+        let mut task_ids: Vec<ExternalId> = Vec::<ExternalId>::with_capacity(NUM_TASKS);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val).fuse()));
