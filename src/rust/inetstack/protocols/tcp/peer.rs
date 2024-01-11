@@ -152,8 +152,6 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         let local: SocketAddrV4 = match socket.local() {
             Some(addr) => addr,
             None => {
-                // TODO: we should free this when closing.
-                // FIXME: https://github.com/microsoft/demikernel/issues/236
                 let local_port: u16 = self.runtime.alloc_ephemeral_port()?;
                 SocketAddrV4::new(self.local_ipv4_addr, local_port)
             },
@@ -214,12 +212,30 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         Ok(None)
     }
 
+    /// Frees an ephemeral port (if any) allocated to a given socket.
+    fn free_ephemeral_port(&mut self, socket_id: &SocketId) {
+        let local: &SocketAddrV4 = match socket_id {
+            SocketId::Active(local, _) => local,
+            SocketId::Passive(local) => local,
+        };
+        // Rollback ephemeral port allocation.
+        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
+            if self.runtime.free_ephemeral_port(local.port()).is_err() {
+                // We fail if and only if we attempted to free a port that was not allocated.
+                // This is unexpected, but if it happens, issue a warning and keep going,
+                // otherwise we would leave the queue in a dangling state.
+                warn!("bind(): leaking ephemeral port (port={})", local.port());
+            }
+        }
+    }
+
     /// Closes a TCP socket.
     pub async fn close(&mut self, socket: &mut SharedTcpSocket<N>, yielder: Yielder) -> Result<(), Fail> {
         // Wait for close to complete.
         // Handle result: If unsuccessful, free the new queue descriptor.
         if let Some(socket_id) = socket.close(yielder).await? {
             self.addresses.remove(&socket_id);
+            self.free_ephemeral_port(&socket_id);
         }
         Ok(())
     }
@@ -227,6 +243,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub fn hard_close(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<(), Fail> {
         if let Some(socket_id) = socket.hard_close()? {
             self.addresses.remove(&socket_id);
+            self.free_ephemeral_port(&socket_id);
         }
         Ok(())
     }
