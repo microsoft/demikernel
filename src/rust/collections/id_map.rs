@@ -21,7 +21,13 @@ use ::std::{
 //======================================================================================================================
 
 /// This flag controls whether we actually use a mapping or just directly expose internal IDs.
+/// We use a mapping for debug builds to ensure there is no reliance on internal identifiers, then remove that for
+/// release builds
+#[cfg(debug_assertions)]
 const DIRECT_MAPPING: bool = false;
+#[cfg(not(debug_assertions))]
+const DIRECT_MAPPING: bool = true;
+
 /// Seed for the random number generator used to generate tokens.
 /// This value was chosen arbitrarily.
 #[cfg(debug_assertions)]

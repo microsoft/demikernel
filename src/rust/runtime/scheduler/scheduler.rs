@@ -41,12 +41,6 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Constants
-//======================================================================================================================
-
-const MAX_NUM_TASKS: usize = 16000;
-
-//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -104,8 +98,6 @@ impl Scheduler {
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
     pub fn insert<F: Task>(&mut self, future: F) -> Option<ExternalId> {
-        self.panic_if_too_many_tasks();
-
         let task_name: String = future.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: InternalId = self.tasks.insert(Box::new(future))?.into();
@@ -129,14 +121,6 @@ impl Scheduler {
 
         self.total_num_tasks += 1;
         Some(task_id)
-    }
-
-    /// If the address space for task ids is close to half full, it will become increasingly difficult to avoid
-    /// collisions, so we cap the number of tasks.
-    fn panic_if_too_many_tasks(&self) {
-        if self.total_num_tasks > MAX_NUM_TASKS {
-            panic!("Too many concurrent tasks");
-        }
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
