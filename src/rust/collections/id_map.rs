@@ -59,6 +59,7 @@ pub struct IdMap<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Int
     /// For non-random id generation, we keep the last 2 id numbers for a Fibonacci calculation.
     last_id: u64,
     current_id: u64,
+    #[cfg(test)]
     /// For direct mapping, we keep track of the total number of mappings with a counter.
     num_mappings: usize,
 }
@@ -85,7 +86,10 @@ impl<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Cop
     /// then this is a no op.
     pub fn insert(&mut self, external_id: E, internal_id: I) -> Option<I> {
         if DIRECT_MAPPING {
-            self.num_mappings = self.num_mappings + 1;
+            #[cfg(test)]
+            {
+                self.num_mappings = self.num_mappings + 1;
+            }
             None
         } else {
             self.ids.insert(external_id, internal_id)
@@ -96,7 +100,10 @@ impl<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Cop
     /// id mapped to the external id. If we are using a direct mapping, then this is a no op.
     pub fn remove(&mut self, external_id: &E) -> Option<I> {
         if DIRECT_MAPPING {
-            self.num_mappings = self.num_mappings - 1;
+            #[cfg(test)]
+            {
+                self.num_mappings = self.num_mappings - 1;
+            }
             Some(<E as Into<u64>>::into(*external_id).into())
         } else {
             self.ids.remove(external_id)
@@ -163,6 +170,7 @@ impl<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Cop
             rng: SmallRng::seed_from_u64(SCHEDULER_SEED),
             last_id: 1,
             current_id: 2,
+            #[cfg(test)]
             num_mappings: 0,
         }
     }
