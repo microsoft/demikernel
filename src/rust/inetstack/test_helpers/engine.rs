@@ -163,7 +163,8 @@ impl SharedEngine {
         while !self.get_runtime().has_completed(qt)? {
             self.poll()
         }
-        Ok(self.get_runtime().remove_coroutine(qt).get_result().unwrap())
+        let (qd, result): (QDesc, OperationResult) = self.get_runtime().remove_coroutine(qt);
+        Ok((qd, result))
     }
 }
 

@@ -476,6 +476,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         } else {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
             self.ack_deadline.set(None);
+            trace!("process_packet(): sending ack on deadline expiration");
             self.send_ack();
         }
 
@@ -539,6 +540,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     // This is an entirely duplicate (i.e. old) segment.  ACK (if not RST) and drop.
                     //
                     if !header.rst {
+                        trace!("check_segment_in_window(): send ack on duplicate segment");
                         self.send_ack();
                     }
                     let cause: String = format!("duplicate packet");
@@ -566,6 +568,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     // This segment is completely outside of our window.  ACK (if not RST) and drop.
                     //
                     if !header.rst {
+                        trace!("check_segment_in_window(): send ack on out-of-window segment");
                         self.send_ack();
                     }
                     let cause: String = format!("packet outside of receive window");
@@ -704,18 +707,14 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
                 let cause: String = format!("Received segment acknowledging data we have yet to send!");
-                warn!("{}", cause);
+                warn!("process_ack(): {}", cause);
                 self.send_ack();
                 return Err(Fail::new(libc::EBADMSG, &cause));
             }
         } else {
             // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
             // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
-            let cause: String = format!(
-                "duplicate ack: current ack={:?} received ack={:?}",
-                send_unacknowledged, header.ack_num
-            );
-            warn!("{}", cause);
+            warn!("process_ack(): received duplicate ack ({:?})", header.ack_num);
         }
         Ok(())
     }
@@ -747,6 +746,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                             self.store_out_of_order_segment(seg_start, seg_end, data);
                         }
                         // Sending an ACK here is only a "MAY" according to the RFCs, but helpful for fast retransmit.
+                        trace!("process_data(): send ack on out-of-order segment");
                         self.send_ack();
                     },
                     state => warn!("Ignoring data received after FIN (in state {:?}).", state),
@@ -1081,6 +1081,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
             // 4. Since we consumed the FIN we ACK immediately rather than opportunistically.
             // TODO: Consider doing this opportunistically.  Note our current tests expect the immediate behavior.
+            trace!("process_remote_close(): send ack on received fin");
             self.send_ack();
             let cause: String = format!("connection received FIN");
             info!("process_remote_close(): {}", cause);

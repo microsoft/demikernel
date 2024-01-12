@@ -510,8 +510,6 @@ fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResu
         libos.get_runtime().poll();
     }
 
-    match libos.get_runtime().remove_coroutine(qt).get_result() {
-        Some((qd, qr)) => Ok((qd, qr)),
-        None => unreachable!("coroutine should have a result if completed"),
-    }
+    let (qd, result): (QDesc, OperationResult) = libos.get_runtime().remove_coroutine(qt);
+    Ok((qd, result))
 }

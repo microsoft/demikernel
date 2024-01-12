@@ -682,7 +682,7 @@ fn tcp_bad_connect() -> Result<()> {
         let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let sockqd: QDesc = safe_socket(&mut libos)?;
         let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
-        match libos.wait(qt, Duration::from_millis(10)) {
+        match libos.wait(qt, Some(Duration::from_millis(10))) {
             Err(e) if e.errno == libc::ETIMEDOUT => (),
             Ok((_, OperationResult::Connect)) => {
                 // Close socket if not error because this test cannot continue.
@@ -1152,7 +1152,7 @@ fn safe_push(libos: &mut DummyLibOS, sockqd: QDesc, bytes: demi_sgarray_t) -> Re
 
 /// Safe call to `wait2()`.
 fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
-    match libos.wait(qt, Duration::from_secs(1)) {
+    match libos.wait(qt, None) {
         Ok(result) => Ok(result),
         Err(e) => anyhow::bail!("wait failed: {:?}", e),
     }
