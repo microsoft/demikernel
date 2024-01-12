@@ -99,7 +99,7 @@ impl<T> PinSlab<T> {
     /// Checks whether the given slot is occupied.
     pub fn contains(&self, key: usize) -> bool {
         // We are just using this to check the existance of an entry in this slot or not.
-        unsafe { self.internal_get(key).is_some() }
+        self.internal_get(key).is_some()
     }
 
     /// Insert a value into the pin slab.
@@ -122,7 +122,7 @@ impl<T> PinSlab<T> {
 
     /// Get a reference to the value at the given slot.
     #[inline(always)]
-    unsafe fn internal_get(&self, key: usize) -> Option<&T> {
+    fn internal_get(&self, key: usize) -> Option<&T> {
         let (slot, offset, len): (usize, usize, usize) = calculate_key(key)?;
         let slot: NonNull<Entry<T>> = *self.slots.get(slot)?;
 
@@ -131,7 +131,7 @@ impl<T> PinSlab<T> {
         // initialized entries assuming offset < len.
         debug_assert!(offset < len);
 
-        let entry: &T = match &*slot.as_ptr().add(offset) {
+        let entry: &T = match unsafe { &*slot.as_ptr().add(offset) } {
             Entry::Occupied(entry) => entry,
             _ => return None,
         };
@@ -141,7 +141,7 @@ impl<T> PinSlab<T> {
 
     /// Get a mutable reference to the value at the given slot.
     #[inline(always)]
-    unsafe fn internal_get_mut(&mut self, key: usize) -> Option<&mut T> {
+    fn internal_get_mut(&mut self, key: usize) -> Option<&mut T> {
         let (slot, offset, len): (usize, usize, usize) = calculate_key(key)?;
         let slot: NonNull<Entry<T>> = *self.slots.get_mut(slot)?;
 
@@ -150,7 +150,7 @@ impl<T> PinSlab<T> {
         // initialized entries assuming offset < len.
         debug_assert!(offset < len);
 
-        let entry: &mut T = match &mut *slot.as_ptr().add(offset) {
+        let entry: &mut T = match unsafe { &mut *slot.as_ptr().add(offset) } {
             Entry::Occupied(entry) => entry,
             _ => return None,
         };

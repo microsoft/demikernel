@@ -56,8 +56,6 @@ pub struct Scheduler {
     tasks: PinSlab<Box<dyn Task>>,
     /// Holds the waker bits for controlling task scheduling.
     waker_page_refs: Vec<WakerPageRef>,
-    /// Holds the total number of running tasks.
-    total_num_tasks: usize,
 }
 
 //======================================================================================================================
@@ -85,7 +83,6 @@ impl Scheduler {
                 task_id,
                 pin_slab_index
             );
-            self.total_num_tasks = self.total_num_tasks - 1;
             Some(task)
         } else {
             warn!(
@@ -119,12 +116,13 @@ impl Scheduler {
             pin_slab_index
         );
 
-        self.total_num_tasks += 1;
         Some(task_id)
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
     fn get_waker_page_index_and_offset(&self, pin_slab_index: usize) -> Option<(usize, usize)> {
+        // This check ensures that the slab slot is actually occupied but trusts that the pin_slab_index is for this
+        // task.
         if !self.tasks.contains(pin_slab_index) {
             return None;
         }
@@ -205,7 +203,6 @@ impl Scheduler {
             None => return None,
         };
 
-        // Add a check here for whether the index is valid.
         let (waker_page_ref, waker_page_offset) = {
             let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into())?;
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
@@ -227,7 +224,6 @@ impl Default for Scheduler {
             task_ids: IdMap::<TaskId, InternalId>::default(),
             tasks: PinSlab::new(),
             waker_page_refs: vec![],
-            total_num_tasks: 0,
         }
     }
 }
@@ -446,7 +442,7 @@ mod tests {
         const NUM_TASKS: usize = 8192;
         let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
 
-        crate::ensure_eq!(scheduler.total_num_tasks, 0);
+        crate::ensure_eq!(scheduler.task_ids.len(), 0);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val).fuse()));
@@ -471,14 +467,14 @@ mod tests {
             }
             scheduler.remove(task_id);
             curr_num_tasks = curr_num_tasks - 1;
-            crate::ensure_eq!(scheduler.total_num_tasks, curr_num_tasks);
+            crate::ensure_eq!(scheduler.task_ids.len(), curr_num_tasks);
             // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
             if let Some(internal_id) = scheduler.task_ids.get(&task_id) {
                 crate::ensure_eq!(false, scheduler.tasks.get_pin_mut(internal_id.into()).is_some());
             }
         }
 
-        crate::ensure_eq!(scheduler.total_num_tasks, 0);
+        crate::ensure_eq!(scheduler.task_ids.len(), 0);
 
         Ok(())
     }
