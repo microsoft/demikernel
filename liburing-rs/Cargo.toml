@@ -13,7 +13,7 @@ repository = "https://github.com/demikernel/liburing-rs"
 license-file = "LICENSE.txt"
 
 [build-dependencies]
-bindgen = "0.69.1"
+bindgen = "0.69.2"
 cc = "1.0.83"
 
 # Build profile used for releases.
