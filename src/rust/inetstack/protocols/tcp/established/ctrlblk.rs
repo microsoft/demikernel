@@ -48,6 +48,7 @@ use crate::{
         SharedObject,
     },
 };
+use ::futures::channel::mpsc;
 use ::std::{
     collections::VecDeque,
     convert::TryInto,
@@ -213,6 +214,7 @@ pub struct ControlBlock<N: NetworkRuntime> {
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
 
     ack_queue: SharedAsyncQueue<usize>,
+    socket_tx: Option<mpsc::UnboundedSender<SocketAddrV4>>,
 }
 
 #[derive(Clone)]
@@ -240,6 +242,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         congestion_control_options: Option<congestion_control::Options>,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
+        socket_tx: Option<mpsc::UnboundedSender<SocketAddrV4>>,
     ) -> Self {
         let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
         Self(SharedObject::<ControlBlock<N>>::new(ControlBlock {
@@ -264,6 +267,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             rto_calculator: RtoCalculator::new(),
             recv_queue,
             ack_queue,
+            socket_tx,
         }))
     }
 
@@ -428,6 +432,15 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             match self.process_packet(header, data) {
                 Ok(()) => (),
                 Err(e) if e.errno == libc::ECONNRESET => {
+                    if let Some(socket_tx) = self.socket_tx.take() {
+                        if let Err(e) = socket_tx.unbounded_send(self.remote) {
+                            let cause: String = format!(
+                                "failed to send reset to socket, leaking connection (addr={:?}, error={:?})",
+                                self.remote, e
+                            );
+                            warn!("poll(): {}", cause);
+                        }
+                    }
                     self.state = State::CloseWait;
                     let cause: String = format!(
                         "remote closed connection, stopping processing (local={:?}, remote={:?})",
@@ -1085,6 +1098,15 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             self.send_ack();
             let cause: String = format!("connection received FIN");
             info!("process_remote_close(): {}", cause);
+            if let Some(socket_tx) = self.socket_tx.take() {
+                if let Err(e) = socket_tx.unbounded_send(self.remote) {
+                    let cause: String = format!(
+                        "failed to send reset to socket, leaking connection (addr={:?}, error={:?})",
+                        self.remote, e
+                    );
+                    warn!("poll(): {}", cause);
+                }
+            }
             return Err(Fail::new(libc::ECONNRESET, &cause));
         }
 

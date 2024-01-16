@@ -79,6 +79,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        socket_tx: Option<mpsc::UnboundedSender<SocketAddrV4>>,
     ) -> Result<Self, Fail> {
         // TODO: Maybe add the queue descriptor here.
         let cb = SharedControlBlock::new(
@@ -101,6 +102,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
             congestion_control_options,
             recv_queue.clone(),
             ack_queue.clone(),
+            socket_tx,
         );
         let qt: QToken = runtime.insert_background_coroutine(
             "Inetstack::TCP::established::background",

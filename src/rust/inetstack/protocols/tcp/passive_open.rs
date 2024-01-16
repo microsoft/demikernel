@@ -77,7 +77,17 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
+/// States of a passive socket.
+enum State {
+    /// The socket is listening for new connections.
+    Listening,
+    /// The socket is closed.
+    Closed,
+}
+
 pub struct PassiveSocket<N: NetworkRuntime> {
+    // TCP Connection State.
+    state: State,
     connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
@@ -92,6 +102,8 @@ pub struct PassiveSocket<N: NetworkRuntime> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     yielder_handle: YielderHandle,
     background_task_qt: Option<QToken>,
+    socket_tx: mpsc::UnboundedSender<SocketAddrV4>,
+    socket_rx: mpsc::UnboundedReceiver<SocketAddrV4>,
 }
 
 #[derive(Clone)]
@@ -115,7 +127,12 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         nonce: u32,
     ) -> Result<Self, Fail> {
         let yielder: Yielder = Yielder::new();
+        let (socket_tx, socket_rx): (
+            mpsc::UnboundedSender<SocketAddrV4>,
+            mpsc::UnboundedReceiver<SocketAddrV4>,
+        ) = mpsc::unbounded();
         let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
+            state: State::Listening,
             connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
             ready: AsyncQueue::<Result<EstablishedSocket<N>, Fail>>::default(),
@@ -130,6 +147,8 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             dead_socket_tx,
             yielder_handle: yielder.get_handle(),
             background_task_qt: None,
+            socket_tx,
+            socket_rx,
         }));
         let qt: QToken = runtime
             .insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll(yielder).fuse()))?;
@@ -147,12 +166,37 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         self.ready.pop(&yielder).await?
     }
 
+    // Closes the target socket.
+    pub fn close(&mut self) -> Result<(), Fail> {
+        self.state = State::Closed;
+        Ok(())
+    }
+
     async fn poll(mut self, yielder: Yielder) {
         loop {
-            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.pop(&yielder).await {
-                Ok(result) => result,
-                Err(_) => break,
+            let (ipv4_hdr, tcp_hdr, buf): (Ipv4Header, TcpHeader, DemiBuffer) =
+                match self.recv_queue.pop(&yielder).await {
+                    Ok(result) => result,
+                    Err(_) => break,
+                };
+
+            // Remove sockets that have been closed.
+            match self.socket_rx.try_next() {
+                Ok(Some(socket)) => match self.connections.remove(&socket) {
+                    Some(_recv_queue) => {},
+                    None => unreachable!("poll(): should have a matching connection"),
+                },
+                Ok(None) => unreachable!("poll(): socket_rx should not be closed"),
+                Err(_) => {},
             };
+
+            // Stop polling if the socket is closed.
+            if let State::Closed = self.state {
+                self.socket_rx.close();
+                self.socket_tx.close_channel();
+                break;
+            }
+
             let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
             if let Some(recv_queue) = self.connections.get_mut(&remote) {
                 // Packet is either for an inflight request or established connection.
@@ -487,6 +531,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             congestion_control::None::new,
             None,
             self.dead_socket_tx.clone(),
+            Some(self.socket_tx.clone()),
         )?;
 
         Ok(new_socket)
