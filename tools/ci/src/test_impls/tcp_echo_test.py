@@ -23,7 +23,7 @@ class TcpEchoTest(BaseTest):
             s["log_directory"])
 
     def __make_test_alias(self, params):
-        return f"tcp-echo-{params['run_mode']}-{params['bufsize']}"
+        return f"tcp-echo-{params['run_mode']}-{params['nclients']}-{params['bufsize']}-{params['nrequests']}"
 
     def __make_server_args(self):
         return f"--peer server --address {self.scaffolding['server_ip']}:12345"
