@@ -76,7 +76,7 @@ impl TcpEchoServer {
         }
 
         // Enable the socket to accept incoming connections.
-        if let Err(e) = libos.listen(sockqd, 16) {
+        if let Err(e) = libos.listen(sockqd, 1024) {
             println!("ERROR: {:?}", e);
             libos.close(sockqd)?;
             anyhow::bail!("{:?}", e);
@@ -206,6 +206,7 @@ impl TcpEchoServer {
 
         // Register client.
         self.clients.insert(new_qd);
+        println!("INFO: {:?} clients connected", self.clients.len(),);
 
         // Pop first packet.
         self.issue_pop(new_qd)?;

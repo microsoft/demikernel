@@ -1,4 +1,25 @@
 catcollar:
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
+    scenario1:
+      bufsize: 64
+      nclients: 1
+      nrequests: 1024
+      run_mode: sequential
+    scenario2:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
+    scenario3:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 1024
+      run_mode: sequential
   tcp_close:
     scenario0:
       nclients: 32
@@ -29,23 +50,23 @@ catloop:
     scenario0:
       bufsize: 64
       nclients: 1
-      nrequests: 100
+      nrequests: 128
       run_mode: sequential
     scenario1:
-      bufsize: 1024
-      nclients: 1
-      nrequests: 100
-      run_mode: sequential
-    scenario2:
       bufsize: 64
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
+    scenario2:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
     scenario3:
       bufsize: 1024
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
   tcp_close:
     scenario0:
       nclients: 1
@@ -105,23 +126,43 @@ catnap:
   tcp_echo:
     scenario0:
       bufsize: 64
-      nclients: 32
-      nrequests: 100
+      nclients: 1
+      nrequests: 128
       run_mode: sequential
     scenario1:
-      bufsize: 1024
-      nclients: 32
-      nrequests: 100
+      bufsize: 64
+      nclients: 1
+      nrequests: 1024
       run_mode: sequential
     scenario2:
-      bufsize: 64
-      nclients: 32
-      nrequests: 100
-      run_mode: concurrent
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
     scenario3:
       bufsize: 1024
+      nclients: 1
+      nrequests: 1024
+      run_mode: sequential
+    scenario4:
+      bufsize: 64
       nclients: 32
-      nrequests: 100
+      nrequests: 128
+      run_mode: concurrent
+    scenario5:
+      bufsize: 64
+      nclients: 32
+      nrequests: 1024
+      run_mode: concurrent
+    scenario6:
+      bufsize: 1024
+      nclients: 32
+      nrequests: 128
+      run_mode: concurrent
+    scenario7:
+      bufsize: 1024
+      nclients: 32
+      nrequests: 1024
       run_mode: concurrent
   tcp_ping_pong: {}
   tcp_push_pop: {}
@@ -155,23 +196,23 @@ catnip:
     scenario0:
       bufsize: 64
       nclients: 1
-      nrequests: 100
+      nrequests: 128
       run_mode: sequential
     scenario1:
-      bufsize: 1024
-      nclients: 1
-      nrequests: 100
-      run_mode: sequential
-    scenario2:
       bufsize: 64
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
+    scenario2:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
     scenario3:
       bufsize: 1024
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
 catpowder:
   tcp_ping_pong: {}
   tcp_push_pop: {}
@@ -181,20 +222,20 @@ catpowder:
     scenario0:
       bufsize: 64
       nclients: 1
-      nrequests: 100
+      nrequests: 128
       run_mode: sequential
     scenario1:
-      bufsize: 1024
-      nclients: 1
-      nrequests: 100
-      run_mode: sequential
-    scenario2:
       bufsize: 64
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
+    scenario2:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
     scenario3:
       bufsize: 1024
       nclients: 1
-      nrequests: 100
-      run_mode: concurrent
+      nrequests: 1024
+      run_mode: sequential
