@@ -114,12 +114,17 @@ impl TcpEchoClient {
             // Stop: enough packets were echoed.
             if let Some(nrequests) = nrequests {
                 if self.nbytes >= nclients * self.bufsize * nrequests {
+                    println!("INFO: stopping, {} bytes transferred", self.nbytes);
                     break;
                 }
             }
 
             // Stop: all clients ere disconnected.
             if self.clients.len() == 0 {
+                println!(
+                    "INFO: stopping, all clients disconnected {} bytes transferred",
+                    self.nbytes
+                );
                 break;
             }
 
@@ -200,12 +205,17 @@ impl TcpEchoClient {
             // Stop: enough packets were echoed.
             if let Some(nrequests) = nrequests {
                 if self.nbytes >= nclients * self.bufsize * nrequests {
+                    println!("INFO: stopping, {} bytes transferred", self.nbytes);
                     break;
                 }
             }
 
             // Stop: all clients ere disconnected.
             if self.clients.len() == 0 {
+                println!(
+                    "INFO: stopping, all clients disconnected {} bytes transferred",
+                    self.nbytes
+                );
                 break;
             }
 

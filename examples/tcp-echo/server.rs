@@ -206,6 +206,7 @@ impl TcpEchoServer {
 
         // Register client.
         self.clients.insert(new_qd);
+        println!("INFO: {:?} clients connected", self.clients.len(),);
 
         // Pop first packet.
         self.issue_pop(new_qd)?;
