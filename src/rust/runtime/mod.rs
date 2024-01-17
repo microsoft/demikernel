@@ -162,7 +162,7 @@ impl SharedDemiRuntime {
     pub fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert(task) {
+        match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -204,7 +204,7 @@ impl SharedDemiRuntime {
         // 1. Remove Task from scheduler.
         let boxed_task: Box<dyn Task> = self
             .scheduler
-            .remove(qt.into())
+            .remove_task(qt.into())
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         trace!("Removing coroutine: {:?}", boxed_task.get_name());
@@ -261,7 +261,7 @@ impl SharedDemiRuntime {
     ) -> Result<QToken, Fail> {
         trace!("Inserting background coroutine: {:?}", task_name);
         let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert(task) {
+        match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -274,7 +274,7 @@ impl SharedDemiRuntime {
     /// Removes the background `coroutine` associated with `qt`. Since background coroutines do not return a result
     /// there is no need to cast it.
     pub fn remove_background_coroutine(&mut self, qt: QToken) -> Result<(), Fail> {
-        match self.scheduler.remove(qt.into()) {
+        match self.scheduler.remove_task(qt.into()) {
             Some(boxed_task) => {
                 trace!("Removing background coroutine: {:?}", boxed_task.get_name());
                 Ok(())
@@ -297,7 +297,12 @@ impl SharedDemiRuntime {
 
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
-        self.scheduler.poll()
+        // Grab the number of polled tasks because this might be useful in the future.
+        // TODO: Do something with this number when scheduling.
+        // Eventually this will return actual ready tasks.
+        // FIXME: https://github.com/microsoft/demikernel/issues/1128
+        #[allow(unused)]
+        let num_ready: usize = self.scheduler.poll_all();
     }
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.

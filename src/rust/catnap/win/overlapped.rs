@@ -404,8 +404,8 @@ mod tests {
     use crate::{
         ensure_eq,
         runtime::scheduler::{
-            scheduler::TaskId,
             Scheduler,
+            TaskId,
             TaskWithResult,
         },
     };
@@ -674,11 +674,11 @@ mod tests {
 
         let mut scheduler: Scheduler = Scheduler::default();
         let server_handle: TaskId = scheduler
-            .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
+            .insert_task(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
         let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(server_handle).unwrap().as_any())
+            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove_task(server_handle).unwrap().as_any())
                 .get_result()
                 .unwrap()
         };
@@ -686,7 +686,7 @@ mod tests {
         let mut wait_for_state = |scheduler: &mut Scheduler, state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                scheduler.poll();
+                scheduler.poll_all();
                 if let Some(true) = scheduler.has_completed(server_handle) {
                     return Err(get_server_result(scheduler).unwrap_err());
                 }
@@ -727,7 +727,7 @@ mod tests {
                 break;
             }
             iocp.get_mut().process_events()?;
-            scheduler.poll();
+            scheduler.poll_all();
         }
 
         get_server_result(&mut scheduler)?;
@@ -786,11 +786,11 @@ mod tests {
 
         let mut scheduler: Scheduler = Scheduler::default();
         let server_handle: TaskId = scheduler
-            .insert(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
+            .insert_task(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
         let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove(server_handle).unwrap().as_any())
+            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove_task(server_handle).unwrap().as_any())
                 .get_result()
                 .unwrap()
         };
@@ -798,7 +798,7 @@ mod tests {
         let mut wait_for_state = |scheduler: &mut Scheduler, state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                scheduler.poll();
+                scheduler.poll_all();
                 if let Some(true) = scheduler.has_completed(server_handle) {
                     return Err(get_server_result(scheduler).unwrap_err());
                 }
@@ -815,7 +815,7 @@ mod tests {
                 break;
             }
             iocp.get_mut().process_events()?;
-            scheduler.poll();
+            scheduler.poll_all();
         }
 
         let result: Result<(), Fail> = get_server_result(&mut scheduler);
