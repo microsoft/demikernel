@@ -93,7 +93,9 @@ impl Scheduler {
         // Insert the task into the task group.
         let new_task_id: TaskId = group.insert(Box::new(task))?;
         // Add a mapping so we can use this new task id to find the task in the future.
-        self.ids.insert(new_task_id, group_id);
+        if let Some(existing) = self.ids.insert(new_task_id, group_id) {
+            panic!("should not exist an id: {:?}", existing);
+        }
         Some(new_task_id)
     }
 
@@ -191,7 +193,9 @@ impl Default for Scheduler {
         let mut ids: IdMap<TaskId, InternalId> = IdMap::<TaskId, InternalId>::default();
         let mut groups: Slab<TaskGroup> = Slab::<TaskGroup>::default();
         let internal_id: InternalId = groups.insert(group).into();
-        let current_task: TaskId = ids.insert_with_new_id(internal_id);
+        // Use 0 as a special task id for the root.
+        let current_task: TaskId = TaskId::from(0);
+        ids.insert(current_task, internal_id);
         Self {
             ids,
             groups,
