@@ -113,7 +113,7 @@ impl TcpEchoClient {
         loop {
             // Stop: enough packets were echoed.
             if let Some(nrequests) = nrequests {
-                if self.nechoed >= nrequests {
+                if self.nbytes >= nclients * self.bufsize * nrequests {
                     break;
                 }
             }
@@ -199,7 +199,7 @@ impl TcpEchoClient {
         loop {
             // Stop: enough packets were echoed.
             if let Some(nrequests) = nrequests {
-                if self.nechoed >= nrequests {
+                if self.nbytes >= nclients * self.bufsize * nrequests {
                     break;
                 }
             }
