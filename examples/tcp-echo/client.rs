@@ -119,7 +119,7 @@ impl TcpEchoClient {
                 }
             }
 
-            // Stop: all clients ere disconnected.
+            // Stop: all clients were disconnected.
             if self.clients.len() == 0 {
                 println!(
                     "INFO: stopping, all clients disconnected {} bytes transferred",
@@ -210,7 +210,7 @@ impl TcpEchoClient {
                 }
             }
 
-            // Stop: all clients ere disconnected.
+            // Stop: all clients were disconnected.
             if self.clients.len() == 0 {
                 println!(
                     "INFO: stopping, all clients disconnected {} bytes transferred",
