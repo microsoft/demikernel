@@ -233,26 +233,6 @@ catnip:
       nclients: 1
       nrequests: 1024
       run_mode: sequential
-    scenario4:
-      bufsize: 64
-      nclients: 32
-      nrequests: 128
-      run_mode: concurrent
-    scenario5:
-      bufsize: 64
-      nclients: 32
-      nrequests: 1024
-      run_mode: concurrent
-    scenario6:
-      bufsize: 1024
-      nclients: 32
-      nrequests: 128
-      run_mode: concurrent
-    scenario7:
-      bufsize: 1024
-      nclients: 32
-      nrequests: 1024
-      run_mode: concurrent
 catpowder:
   tcp_ping_pong: {}
   tcp_push_pop: {}
