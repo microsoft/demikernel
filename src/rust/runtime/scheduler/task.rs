@@ -19,11 +19,17 @@ use ::std::{
 // Structures
 //==============================================================================
 
+/// Externally visible task identifier.
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct TaskId(pub u64);
+
 /// Task runs a single coroutine to completion and stores the result for later. Thus, it implements Future but
 /// never directly returns anything.
 pub trait Task: FusedFuture<Output = ()> + Unpin + Any {
     fn get_name(&self) -> String;
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
+    fn get_id(&self) -> TaskId;
+    fn set_id(&mut self, id: TaskId);
 }
 
 /// This trait is just for convenience of having defined associated types because we cannot define them on the struct
@@ -37,6 +43,8 @@ pub trait TaskWith: From<Box<dyn Any>> {
 pub struct TaskWithResult<R: Unpin + Clone + Any> {
     /// Task name. The libOS should use this to identify the type of task.
     name: String,
+    /// Task identifier.
+    task_id: Option<TaskId>,
     /// Underlying coroutine to run.
     coroutine: Pin<<Self as TaskWith>::Coroutine>,
     /// Output value of the underlying future.
@@ -53,6 +61,7 @@ impl<R: Unpin + Clone + Any> TaskWithResult<R> {
     pub fn new(name: String, coroutine: Pin<<Self as TaskWith>::Coroutine>) -> Self {
         Self {
             name,
+            task_id: None,
             coroutine,
             result: None,
         }
@@ -67,6 +76,18 @@ impl<R: Unpin + Clone + Any> TaskWithResult<R> {
 //==============================================================================
 // Trait Implementations
 //==============================================================================
+
+impl From<u64> for TaskId {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<TaskId> for u64 {
+    fn from(value: TaskId) -> Self {
+        value.0
+    }
+}
 
 /// Define the Coroutine type and returned ResultType.
 impl<R: Unpin + Clone + Any> TaskWith for TaskWithResult<R> {
@@ -88,6 +109,14 @@ impl<R: Unpin + Clone + Any> Task for TaskWithResult<R> {
 
     fn as_any(self: Box<Self>) -> Box<dyn Any> {
         self
+    }
+
+    fn get_id(&self) -> TaskId {
+        self.task_id.expect("should have this set immediately")
+    }
+
+    fn set_id(&mut self, id: TaskId) {
+        self.task_id = Some(id);
     }
 }
 

@@ -12,203 +12,174 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        id_map::IdMap,
-        pin_slab::PinSlab,
-    },
+    collections::id_map::IdMap,
     runtime::scheduler::{
-        page::{
-            WakerPageRef,
-            WakerRef,
-        },
-        waker64::{
-            WAKER_BIT_LENGTH,
-            WAKER_BIT_LENGTH_SHIFT,
-        },
+        group::TaskGroup,
         Task,
+        TaskId,
     },
 };
-use ::bit_iter::BitIter;
-use ::std::{
-    future::Future,
-    pin::Pin,
-    ptr::NonNull,
-    task::{
-        Context,
-        Poll,
-        Waker,
-    },
-};
+use ::slab::Slab;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub struct TaskId(pub u64);
+/// Internal offset into the slab that holds the task state.
 #[derive(Clone, Copy, Debug)]
-struct InternalId(usize);
+pub struct InternalId(usize);
 
 /// Task Scheduler
 pub struct Scheduler {
-    task_ids: IdMap<TaskId, InternalId>,
-    /// Stores all the tasks that are held by the scheduler.
-    tasks: PinSlab<Box<dyn Task>>,
-    /// Holds the waker bits for controlling task scheduling.
-    waker_page_refs: Vec<WakerPageRef>,
+    ids: IdMap<TaskId, InternalId>,
+    groups: Slab<TaskGroup>,
+    current_task: TaskId,
 }
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for Scheduler
 impl Scheduler {
-    /// Given a handle to a task, remove it from the scheduler
-    pub fn remove(&mut self, task_id: TaskId) -> Option<Box<dyn Task>> {
-        // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let pin_slab_index: InternalId = self
-            .task_ids
-            .remove(&task_id)
-            .expect("Token should be in the token table");
-        let (waker_page_ref, waker_page_offset): (&WakerPageRef, usize) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into())?;
-            (&self.waker_page_refs[waker_page_index], waker_page_offset)
-        };
-        waker_page_ref.clear(waker_page_offset);
-        if let Some(task) = self.tasks.remove_unpin(pin_slab_index.into()) {
-            trace!(
-                "remove(): name={:?}, id={:?}, pin_slab_index={:?}",
-                task.get_name(),
-                task_id,
-                pin_slab_index
-            );
-            Some(task)
-        } else {
-            warn!(
-                "Unable to unpin and remove: id={:?}, pin_slab_index={:?}",
-                task_id, pin_slab_index
-            );
-            None
-        }
+    /// Creates a new task group. Returns an identifier for the group.
+    pub fn create_group(&mut self) -> TaskId {
+        let internal_id: InternalId = self.groups.insert(TaskGroup::default()).into();
+        self.ids.insert_with_new_id(internal_id)
     }
 
-    /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert<F: Task>(&mut self, future: F) -> Option<TaskId> {
-        let task_name: String = future.get_name();
-        // The pin slab index can be reverse-computed in a page index and an offset within the page.
-        let pin_slab_index: InternalId = self.tasks.insert(Box::new(future))?.into();
-        let task_id: TaskId = self.task_ids.insert_with_new_id(pin_slab_index);
-
-        self.add_new_pages_up_to_pin_slab_index(pin_slab_index.into());
-
-        // Initialize the appropriate page offset.
-        let (waker_page_ref, waker_page_offset): (&WakerPageRef, usize) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into())?;
-            (&self.waker_page_refs[waker_page_index], waker_page_offset)
-        };
-        waker_page_ref.initialize(waker_page_offset);
-
-        trace!(
-            "insert(): name={:?}, id={:?}, pin_slab_index={:?}",
-            task_name,
-            task_id,
-            pin_slab_index
-        );
-
-        Some(task_id)
-    }
-
-    /// Computes the page and page offset of a given task based on its total offset.
-    fn get_waker_page_index_and_offset(&self, pin_slab_index: usize) -> Option<(usize, usize)> {
-        // This check ensures that the slab slot is actually occupied but trusts that the pin_slab_index is for this
-        // task.
-        if !self.tasks.contains(pin_slab_index) {
-            return None;
-        }
-        let waker_page_index: usize = pin_slab_index >> WAKER_BIT_LENGTH_SHIFT;
-        let waker_page_offset: usize = Scheduler::get_waker_page_offset(pin_slab_index);
-        Some((waker_page_index, waker_page_offset))
-    }
-
-    /// Add new page(s) to hold this future's status if the current page is filled. This may result in addition of
-    /// multiple pages because of the gap between the pin slab index and the current page index.
-    fn add_new_pages_up_to_pin_slab_index(&mut self, pin_slab_index: usize) {
-        while pin_slab_index >= (self.waker_page_refs.len() << WAKER_BIT_LENGTH_SHIFT) {
-            self.waker_page_refs.push(WakerPageRef::default());
-        }
-    }
-
-    /// Poll all futures which are ready to run again. Tasks in our scheduler are notified when
-    /// relevant data or events happen. The relevant event have callback function (the waker) which
-    /// they can invoke to notify the scheduler that future should be polled again.
-    pub fn poll(&mut self) {
-        let num_waker_pages = self.get_num_waker_pages();
-        for waker_page_index in 0..num_waker_pages {
-            let notified_offsets: u64 = self.get_offsets_for_ready_tasks(waker_page_index);
-            self.poll_notified_tasks(waker_page_index, notified_offsets);
-        }
-    }
-
-    fn get_num_waker_pages(&self) -> usize {
-        self.waker_page_refs.len()
-    }
-
-    fn get_offsets_for_ready_tasks(&mut self, waker_page_index: usize) -> u64 {
-        let waker_page_ref: &mut WakerPageRef = &mut self.waker_page_refs[waker_page_index];
-        waker_page_ref.take_notified()
-    }
-
-    fn poll_notified_tasks(&mut self, waker_page_index: usize, notified_offsets: u64) {
-        for waker_page_offset in BitIter::from(notified_offsets) {
-            // Get the pinned ref.
-            let pinned_ptr = {
-                let pin_slab_index: usize = Scheduler::get_pin_slab_index(waker_page_index, waker_page_offset);
-                let pinned_ref: Pin<&mut Box<dyn Task>> = self
-                    .tasks
-                    .get_pin_mut(pin_slab_index)
-                    .expect(format!("Invalid offset: {:?}", pin_slab_index).as_str());
-                let pinned_ptr = unsafe { Pin::into_inner_unchecked(pinned_ref) as *mut _ };
-                pinned_ptr
-            };
-            let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
-
-            // Get the waker context.
-            let waker: Waker = unsafe {
-                let raw_waker: NonNull<u8> =
-                    self.waker_page_refs[waker_page_index].into_raw_waker_ref(waker_page_offset);
-                Waker::from_raw(WakerRef::new(raw_waker).into())
-            };
-            let mut waker_context: Context = Context::from_waker(&waker);
-
-            // Poll future.
-            let poll_result: Poll<()> = Future::poll(pinned_ref, &mut waker_context);
-            if let Poll::Ready(()) = poll_result {
-                self.waker_page_refs[waker_page_index].mark_completed(waker_page_offset)
+    pub fn switch_group(&mut self, group_id: TaskId) -> Option<TaskId> {
+        if let Some(internal_id) = self.ids.get(&group_id) {
+            if self.groups.contains(internal_id.into()) {
+                let old_task: TaskId = self.current_task;
+                self.current_task = group_id;
+                return Some(old_task);
             }
         }
+        None
     }
 
-    fn get_waker_page_offset(pin_slab_index: usize) -> usize {
-        pin_slab_index & (WAKER_BIT_LENGTH - 1)
+    fn get_group(&self, task_id: &TaskId) -> Option<&TaskGroup> {
+        // Get the internal id of the parent task or group.
+        let group_id: InternalId = self.ids.get(task_id)?;
+        // Use that to find the task group for this task.
+        self.groups.get(group_id.into())
     }
 
-    fn get_pin_slab_index(waker_page_index: usize, waker_page_offset: usize) -> usize {
-        (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
+    fn get_mut_group(&mut self, task_id: &TaskId) -> Option<&mut TaskGroup> {
+        // Get the internal id of the parent task or group.
+        let group_id: InternalId = self.ids.get(task_id)?;
+        // Use that to find the task group for this task.
+        self.groups.get_mut(group_id.into())
+    }
+
+    /// Removes a task group. The group id should be the one originally allocated for this group since the group should
+    /// not have any running tasks. Returns true if the task group was successfully removed.
+    pub fn remove_group(&mut self, group_id: TaskId) -> bool {
+        if let Some(internal_id) = self.ids.remove(&group_id) {
+            self.groups.remove(internal_id.into());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Insert a task into a task group. The parent id can either be the id of the group or another task in the same
+    /// group.
+    pub fn insert_task<T: Task>(&mut self, task: T) -> Option<TaskId> {
+        // Get the internal id of the parent task or group.
+        let group_id: InternalId = self.ids.get(&self.current_task)?;
+        // Use that to find the task group for this task.
+        let group: &mut TaskGroup = self.groups.get_mut(group_id.into())?;
+        // Insert the task into the task group.
+        let new_task_id: TaskId = group.insert(Box::new(task))?;
+        // Add a mapping so we can use this new task id to find the task in the future.
+        if let Some(existing) = self.ids.insert(new_task_id, group_id) {
+            panic!("should not exist an id: {:?}", existing);
+        }
+        Some(new_task_id)
+    }
+
+    /// Insert a task into a task group. The parent id can either be the id of the group or another task in the same
+    /// group.
+    pub fn insert_task_with_group_id<T: Task>(&mut self, group_id: TaskId, task: T) -> Option<TaskId> {
+        // Get the internal id of the parent task or group.
+        let group_id: InternalId = self.ids.get(&group_id)?;
+        // Use that to find the task group for this task.
+        let group: &mut TaskGroup = self.groups.get_mut(group_id.into())?;
+        // Insert the task into the task group.
+        let new_task_id: TaskId = group.insert(Box::new(task))?;
+        // Add a mapping so we can use this new task id to find the task in the future.
+        self.ids.insert(new_task_id, group_id);
+        Some(new_task_id)
+    }
+
+    pub fn remove_task(&mut self, task_id: TaskId) -> Option<Box<dyn Task>> {
+        // Use that to find the task group for this task.
+        let group: &mut TaskGroup = self.get_mut_group(&task_id)?;
+        // Remove the task into the task group.
+        let task: Box<dyn Task> = group.remove(task_id)?;
+        // Remove the task mapping.
+        self.ids.remove(&task_id)?;
+        Some(task)
+    }
+
+    fn poll(&mut self, group_index: usize) -> usize {
+        debug_assert!(group_index < self.groups.len());
+
+        let mut polled_tasks: usize = 0;
+
+        let ready_indices: Vec<usize> = self.groups[group_index].get_offsets_for_ready_tasks();
+        for pin_slab_index in ready_indices {
+            // Set the current running task for polling this task. This ensures that all tasks spawned by this task
+            // will share the same task group.
+            let old_task: TaskId = self.current_task;
+            self.current_task = self.groups[group_index].get_id(pin_slab_index);
+            self.groups[group_index].poll_notified_task(pin_slab_index);
+            // Unset the current running task.
+            self.current_task = old_task;
+            polled_tasks += 1;
+        }
+        polled_tasks
+    }
+
+    /// Poll all tasks which are ready to run once. Tasks in our scheduler are notified when
+    /// relevant data or events happen. The relevant event have callback function (the waker) which
+    /// they can invoke to notify the scheduler that future should be polled again.
+    pub fn poll_all(&mut self) -> usize {
+        let mut polled_tasks: usize = 0;
+        for i in 0..self.groups.len() {
+            polled_tasks += self.poll(i);
+        }
+        polled_tasks
+    }
+
+    /// Poll all tasks in this group that are ready to run.
+    pub fn poll_group(&mut self, group_id: TaskId) -> Option<usize> {
+        Some(self.poll(self.ids.get(&group_id)?.into()))
     }
 
     pub fn has_completed(&self, task_id: TaskId) -> Option<bool> {
-        let pin_slab_index: InternalId = match self.task_ids.get(&task_id) {
-            Some(pin_slab_index) => pin_slab_index,
-            None => return None,
-        };
+        // Use that to find the task group for this task.
+        let group: &TaskGroup = self.get_group(&task_id)?;
+        group.has_completed(task_id)
+    }
 
-        let (waker_page_ref, waker_page_offset) = {
-            let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index.into())?;
-            (&self.waker_page_refs[waker_page_index], waker_page_offset)
-        };
+    #[cfg(test)]
+    pub fn is_valid_task(&self, task_id: &TaskId) -> bool {
+        if let Some(group) = self.get_group(task_id) {
+            group.is_valid_task(&task_id)
+        } else {
+            false
+        }
+    }
 
-        Some(waker_page_ref.has_completed(waker_page_offset))
+    #[cfg(test)]
+    pub fn num_tasks(&self) -> usize {
+        let mut num_tasks: usize = 0;
+        for (_, group) in self.groups.iter() {
+            num_tasks += group.num_tasks();
+        }
+        num_tasks
     }
 }
 
@@ -216,27 +187,20 @@ impl Scheduler {
 // Trait Implementations
 //======================================================================================================================
 
-/// Default Trait Implementation for Scheduler
 impl Default for Scheduler {
-    /// Creates a scheduler with default values.
     fn default() -> Self {
+        let group: TaskGroup = TaskGroup::default();
+        let mut ids: IdMap<TaskId, InternalId> = IdMap::<TaskId, InternalId>::default();
+        let mut groups: Slab<TaskGroup> = Slab::<TaskGroup>::default();
+        let internal_id: InternalId = groups.insert(group).into();
+        // Use 0 as a special task id for the root.
+        let current_task: TaskId = TaskId::from(0);
+        ids.insert(current_task, internal_id);
         Self {
-            task_ids: IdMap::<TaskId, InternalId>::default(),
-            tasks: PinSlab::new(),
-            waker_page_refs: vec![],
+            ids,
+            groups,
+            current_task,
         }
-    }
-}
-
-impl From<u64> for TaskId {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-
-impl From<TaskId> for u64 {
-    fn from(value: TaskId) -> Self {
-        value.0
     }
 }
 
@@ -329,13 +293,13 @@ mod tests {
 
         // Insert a task and make sure the task id is not a simple counter.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert(task) else {
+        let Some(task_id) = scheduler.insert_task(task) else {
             anyhow::bail!("insert() failed")
         };
 
         // Insert another task and make sure the task id is not sequentially after the previous one.
         let task2: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id2) = scheduler.insert(task2) else {
+        let Some(task_id2) = scheduler.insert_task(task2) else {
             anyhow::bail!("insert() failed")
         };
 
@@ -350,13 +314,13 @@ mod tests {
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert(task) else {
+        let Some(task_id) = scheduler.insert_task(task) else {
             anyhow::bail!("insert() failed")
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
-        scheduler.poll();
+        scheduler.poll_all();
 
         crate::ensure_eq!(
             scheduler
@@ -375,13 +339,13 @@ mod tests {
         // Insert a single future in the scheduler. This future shall complete
         // with two poll operations.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(1).fuse()));
-        let Some(task_id) = scheduler.insert(task) else {
+        let Some(task_id) = scheduler.insert_task(task) else {
             anyhow::bail!("insert() failed")
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, this future should make a transition.
-        scheduler.poll();
+        scheduler.poll_all();
 
         crate::ensure_eq!(
             scheduler
@@ -391,7 +355,7 @@ mod tests {
         );
 
         // This shall make the future ready.
-        scheduler.poll();
+        scheduler.poll_all();
 
         crate::ensure_eq!(
             scheduler
@@ -410,10 +374,10 @@ mod tests {
 
         // Create and run a task.
         let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert(task) else {
+        let Some(task_id) = scheduler.insert_task(task) else {
             anyhow::bail!("insert() failed")
         };
-        scheduler.poll();
+        scheduler.poll_all();
 
         // Ensure that the first task has completed.
         crate::ensure_eq!(
@@ -425,7 +389,7 @@ mod tests {
 
         // Create another task.
         let task2: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id2) = scheduler.insert(task2) else {
+        let Some(task_id2) = scheduler.insert_task(task2) else {
             anyhow::bail!("insert() failed")
         };
 
@@ -438,43 +402,38 @@ mod tests {
     #[test]
     fn remove_removes_task_id() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
+
         // Arbitrarily large number.
         const NUM_TASKS: usize = 8192;
         let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
 
-        crate::ensure_eq!(scheduler.task_ids.len(), 0);
+        crate::ensure_eq!(scheduler.num_tasks(), 0);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val).fuse()));
-            let Some(task_id) = scheduler.insert(task) else {
+            let Some(task_id) = scheduler.insert_task(task) else {
                 panic!("insert() failed");
             };
             task_ids.push(task_id);
         }
 
         // This poll is required to give the opportunity for all the tasks to complete.
-        scheduler.poll();
+        scheduler.poll_all();
 
         // Remove tasks one by one and check if remove is only removing the task requested to be removed.
         let mut curr_num_tasks: usize = NUM_TASKS;
         for i in 0..NUM_TASKS {
             let task_id: TaskId = task_ids[i];
             // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
-            if let Some(internal_id) = scheduler.task_ids.get(&task_id) {
-                crate::ensure_eq!(true, scheduler.tasks.get_pin_mut(internal_id.into()).is_some());
-            } else {
-                anyhow::bail!("Could not find task");
-            }
-            scheduler.remove(task_id);
+            crate::ensure_eq!(true, scheduler.is_valid_task(&task_id));
+            scheduler.remove_task(task_id);
             curr_num_tasks = curr_num_tasks - 1;
-            crate::ensure_eq!(scheduler.task_ids.len(), curr_num_tasks);
+            crate::ensure_eq!(scheduler.num_tasks(), curr_num_tasks);
             // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
-            if let Some(internal_id) = scheduler.task_ids.get(&task_id) {
-                crate::ensure_eq!(false, scheduler.tasks.get_pin_mut(internal_id.into()).is_some());
-            }
+            crate::ensure_eq!(false, scheduler.is_valid_task(&task_id));
         }
 
-        crate::ensure_eq!(scheduler.task_ids.len(), 0);
+        crate::ensure_eq!(scheduler.num_tasks(), 0);
 
         Ok(())
     }
@@ -488,7 +447,9 @@ mod tests {
                 String::from("testing"),
                 Box::pin(black_box(DummyCoroutine::default().fuse())),
             );
-            let task_id: TaskId = scheduler.insert(task).expect("couldn't insert future in scheduler");
+            let task_id: TaskId = scheduler
+                .insert_task(task)
+                .expect("couldn't insert future in scheduler");
             black_box(task_id);
         });
     }
@@ -501,14 +462,14 @@ mod tests {
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new(String::from("testing"), Box::pin(DummyCoroutine::new(val).fuse()));
-            let Some(task_id) = scheduler.insert(task) else {
+            let Some(task_id) = scheduler.insert_task(task) else {
                 panic!("insert() failed");
             };
             task_ids.push(task_id);
         }
 
         b.iter(|| {
-            black_box(scheduler.poll());
+            black_box(scheduler.poll_all());
         });
     }
 }

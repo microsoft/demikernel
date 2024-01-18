@@ -102,6 +102,11 @@ impl<T> PinSlab<T> {
         self.internal_get(key).is_some()
     }
 
+    /// Gets a read only unpinned reference.
+    pub fn get(&self, key: usize) -> Option<&T> {
+        self.internal_get(key)
+    }
+
     /// Insert a value into the pin slab.
     pub fn insert(&mut self, val: T) -> Option<usize> {
         let key: usize = self.next;

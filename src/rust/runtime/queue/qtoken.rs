@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::scheduler::scheduler::TaskId;
+use crate::runtime::scheduler::TaskId;
 
 //==============================================================================
 // Structures

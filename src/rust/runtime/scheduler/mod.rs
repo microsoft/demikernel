@@ -30,6 +30,7 @@
 //! task. Coroutines that are capable of yielding when they are blocked contain a [Yielder] to give CPU cycles back to
 //! the scheduler. The [YielderHandle] identifies a specific blocked coroutine and can be used to wake the coroutine.
 
+mod group;
 mod handle;
 pub mod mutex;
 mod page;
@@ -48,6 +49,7 @@ pub use self::{
     scheduler::Scheduler,
     task::{
         Task,
+        TaskId,
         TaskWithResult,
     },
     yielder::Yielder,
