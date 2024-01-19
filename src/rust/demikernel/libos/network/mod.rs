@@ -28,7 +28,14 @@ use crate::{
         SharedDemiRuntime,
     },
 };
-use ::std::net::SocketAddr;
+use ::std::{
+    net::SocketAddr,
+    time::{
+        Duration,
+        Instant,
+        SystemTime,
+    },
+};
 
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
@@ -251,6 +258,67 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.pop(sockqd, size),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop { runtime: _, libos } => libos.pop(sockqd, size),
+        }
+    }
+
+    /// Waits for a pending I/O operation to complete or a timeout to expire.
+    /// This is just a single-token convenience wrapper for wait_any().
+    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
+        trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
+
+        // Put the QToken into a single element array.
+        let qt_array: [QToken; 1] = [qt];
+
+        // Call wait_any() to do the real work.
+        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
+        debug_assert_eq!(offset, 0);
+        Ok(qr)
+    }
+
+    /// Waits for an I/O operation to complete or a timeout to expire.
+    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
+        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // The operation has completed, so extract the result and return.
+            if self.has_completed(qt)? {
+                return Ok(self.get_result(qt)?);
+            }
+
+            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
+        }
+    }
+
+    /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
+        trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
+
+        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
+        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
+
+        loop {
+            // Poll first, so as to give pending operations a chance to complete.
+            self.poll();
+
+            // Search for any operation that has completed.
+            for (i, &qt) in qts.iter().enumerate() {
+                if self.has_completed(qt)? {
+                    return Ok((i, self.get_result(qt)?));
+                }
+            }
+
+            // If we have a timeout, check for expiration.
+            if timeout.is_some()
+                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
+                    > timeout.expect("timeout should still be set")
+            {
+                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            }
         }
     }
 
