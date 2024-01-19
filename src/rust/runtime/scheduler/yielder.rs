@@ -7,15 +7,15 @@
 
 use crate::runtime::{
     fail::Fail,
-    scheduler::handle::YielderHandle,
+    SharedObject,
 };
-
 use ::std::{
     future::Future,
     pin::Pin,
     task::{
         Context,
         Poll,
+        Waker,
     },
 };
 
@@ -30,9 +30,18 @@ struct Yield {
     already_yielded: usize,
     /// How many times should we yield? If none, then we yield until a wake signal.
     yield_quanta: Option<usize>,
-    /// Shared references to wake a yielded coroutine and return either an Ok to indicate there is work to be done or //
+    /// Shared references to wake a yielded coroutine and return either an Ok to indicate there is work to be done or
     /// an error to stop the coroutine.
     yielder_handle: YielderHandle,
+}
+
+/// Yield Handle
+///
+/// This is used to unique identify a yielded coroutine / Task. Used to wake the yielded coroutine.
+#[derive(Clone)]
+pub struct YielderHandle {
+    result_handle: SharedObject<Option<Result<(), Fail>>>,
+    waker_handle: SharedObject<Option<Waker>>,
 }
 
 /// Yielder lets a single coroutine yield to the scheduler. The yield handle can be used to wake the coroutine.
@@ -52,6 +61,38 @@ impl Yield {
             yield_quanta,
             yielder_handle,
         }
+    }
+}
+
+impl YielderHandle {
+    pub fn new() -> Self {
+        Self {
+            result_handle: SharedObject::new(None),
+            waker_handle: SharedObject::new(None),
+        }
+    }
+
+    /// Wake this yielded coroutine: Ok indicates there is work to be done and Fail indicates the coroutine should exit
+    /// with an error.
+    pub fn wake_with(&mut self, result: Result<(), Fail>) {
+        if let Some(old_result) = self.result_handle.replace(result) {
+            debug!(
+                "wake_with(): already scheduled, overwriting result (old={:?})",
+                old_result
+            );
+        } else if let Some(waker) = self.waker_handle.take() {
+            waker.wake();
+        }
+    }
+
+    /// Get the result this coroutine should be woken with.
+    pub fn get_result(&mut self) -> Option<Result<(), Fail>> {
+        self.result_handle.take()
+    }
+
+    /// Set the waker for this Yielder and return a reference to it.
+    pub fn set_waker(&mut self, waker: Waker) {
+        *self.waker_handle = Some(waker);
     }
 }
 
@@ -91,7 +132,7 @@ impl Yielder {
 impl Future for Yield {
     type Output = Result<(), Fail>;
 
-    /// Polls the underlying accept operation.
+    /// Polls the underlying operation.
     fn poll(self: Pin<&mut Self>, context: &mut Context) -> Poll<Self::Output> {
         let self_: &mut Self = self.get_mut();
 
@@ -108,8 +149,8 @@ impl Future for Yield {
             // Add one to our quanta that we've woken up for.
             self_.already_yielded += 1;
             // If we haven't reached our quanta, wake up and check again.
-            // TODO: Find a more efficient way to do this than waking up on every quanta.
-            // See: https://github.com/demikernel/demikernel/issues/560
+            // Find a more efficient way to do this than waking up on every quanta.
+            // TODO: https://github.com/demikernel/demikernel/issues/560
             if self_.already_yielded < budget {
                 context.waker().wake_by_ref();
             } else {
