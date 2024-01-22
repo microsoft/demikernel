@@ -102,6 +102,19 @@ const SOCKADDR_BUF_SIZE: usize = std::mem::size_of::<SOCKADDR_STORAGE>() + 16;
 const ACCEPT_BUFFER_LEN: usize = (SOCKADDR_BUF_SIZE) * 2;
 
 //======================================================================================================================
+// Enums
+//======================================================================================================================
+
+/// Helper structure for converting between DemiBuffers and WSABUF slices.
+enum WsaBufs {
+    /// Only one buffer present.
+    One(WSABUF),
+
+    /// More than one buffer in a chain. Buffers are sequential for vectored I/O.
+    Many(Vec<WSABUF>),
+}
+
+//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -128,6 +141,40 @@ pub struct PopState {
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
+
+impl WsaBufs {
+    /// Convert a single DemiBuffer into a WSABUF.
+    fn convert_buf(buf: &mut DemiBuffer) -> WSABUF {
+        WSABUF {
+            len: buf.len() as u32,
+            buf: PSTR::from_raw(buf.as_mut_ptr()),
+        }
+    }
+
+    /// Map one or more DemiBuffers in a chain into a WsaBufs enum.
+    pub fn new(buf: &mut DemiBuffer) -> WsaBufs {
+        if buf.is_multi_segment() {
+            let result: Vec<WSABUF> = std::iter::once(Self::convert_buf(buf))
+                .chain(
+                    std::iter::successors(buf.next(), DemiBuffer::next)
+                        .map(|mut buf: DemiBuffer| Self::convert_buf(&mut buf)),
+                )
+                .collect::<Vec<WSABUF>>();
+
+            WsaBufs::Many(result)
+        } else {
+            WsaBufs::One(Self::convert_buf(buf))
+        }
+    }
+
+    /// Translate the WsaBufs enum into a slice of WSABUFs usable by the windows API.
+    pub fn as_slice(&self) -> &[WSABUF] {
+        match self {
+            WsaBufs::One(buf) => std::slice::from_ref(buf),
+            WsaBufs::Many(vec) => vec.as_slice(),
+        }
+    }
+}
 
 impl AcceptState {
     /// Create a new, empty `AcceptState``.
@@ -453,17 +500,14 @@ impl Socket {
         let mut bytes_transferred: u32 = 0;
         let mut flags: u32 = 0;
         let success: bool = unsafe {
-            let wsa_buffer: WSABUF = WSABUF {
-                len: pop_state.buffer.len() as u32,
-                // Safety: loading the buffer pointer won't violate pinning invariants.
-                buf: PSTR::from_raw(pop_state.as_mut().get_unchecked_mut().buffer.as_mut_ptr()),
-            };
+            // Safety: loading the buffer pointer won't violate pinning invariants.
+            let wsa_bufs: WsaBufs = WsaBufs::new(&mut pop_state.as_mut().get_unchecked_mut().buffer);
 
             // NB winsock service providers are required to capture the entire WSABUF array inline with the call, so
             // wsa_buffer and the derivative slice can safely drop after the call.
             let result: i32 = WSARecvFrom(
                 self.s,
-                std::slice::from_ref(&wsa_buffer),
+                wsa_bufs.as_slice(),
                 Some(&mut bytes_transferred),
                 &mut flags,
                 Some(pop_state.as_mut().get_unchecked_mut().address.as_mut_ptr() as *mut SOCKADDR),
@@ -521,11 +565,8 @@ impl Socket {
     ) -> Result<(), Fail> {
         let mut bytes_transferred: u32 = 0;
         let success: bool = unsafe {
-            let wsa_buffer: WSABUF = WSABUF {
-                len: buffer.len() as u32,
-                // Safety: loading the buffer pointer won't violate pinning invariants.
-                buf: PSTR::from_raw(buffer.get_unchecked_mut().as_mut_ptr()),
-            };
+            // Safety: loading the buffer pointer won't violate pinning invariants.
+            let wsa_bufs: WsaBufs = WsaBufs::new(buffer.get_unchecked_mut());
 
             let addr: Option<socket2::SockAddr> = addr.map(socket2::SockAddr::from);
 
@@ -535,7 +576,7 @@ impl Socket {
             // functions equivalently to WSASend.
             let result: i32 = WSASendTo(
                 self.s,
-                std::slice::from_ref(&wsa_buffer),
+                wsa_bufs.as_slice(),
                 Some(&mut bytes_transferred),
                 0,
                 addr.as_ref()
