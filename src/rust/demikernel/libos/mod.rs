@@ -46,7 +46,6 @@ use ::std::{
     net::SocketAddr,
     time::{
         Duration,
-        Instant,
         SystemTime,
     },
 };
@@ -382,61 +381,31 @@ impl LibOS {
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
     pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
-        trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
-
-        // Put the QToken into a single element array.
-        let qt_array: [QToken; 1] = [qt];
-
-        // Call wait_any() to do the real work.
-        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
-        debug_assert_eq!(offset, 0);
-        Ok(qr)
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::wait");
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout),
+            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout),
+        }
     }
 
     /// Waits for an I/O operation to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if self.has_completed(qt)? {
-                return Ok(self.get_result(qt)?);
-            }
-
-            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::timedwait");
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.timedwait(qt, abstime),
+            LibOS::MemoryLibOS(libos) => libos.timedwait(qt, abstime),
         }
     }
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
-        trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
-
-        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                if self.has_completed(qt)? {
-                    return Ok((i, self.get_result(qt)?));
-                }
-            }
-
-            // If we have a timeout, check for expiration.
-            if timeout.is_some()
-                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
-                    > timeout.expect("timeout should still be set")
-            {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
+        #[cfg(feature = "profiler")]
+        timer!("demikernel::wait_any");
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout),
+            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout),
         }
     }
 
@@ -470,24 +439,6 @@ impl LibOS {
         self.poll();
 
         result
-    }
-
-    /// Returns whether the operation associated with the given QToken has completed.
-    fn has_completed(&mut self, qt: QToken) -> Result<bool, Fail> {
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.has_completed(qt),
-            LibOS::MemoryLibOS(libos) => libos.has_completed(qt),
-        }
-    }
-
-    fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("demikernel::get_result");
-
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.get_result(qt),
-            LibOS::MemoryLibOS(libos) => libos.get_result(qt),
-        }
     }
 
     fn poll(&mut self) {
