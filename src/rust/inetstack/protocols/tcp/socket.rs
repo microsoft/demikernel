@@ -226,10 +226,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.
-            SocketState::Listening(_) => {
-                let cause: String = format!("cannot close a listening socket");
-                error!("do_close(): {}", &cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
+            SocketState::Listening(ref mut socket) => {
+                socket.close()?;
+                Ok(Some(SocketId::Passive(socket.endpoint())))
             },
             // Closing a connecting socket.
             SocketState::Connecting(_) => {
@@ -256,10 +255,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.
-            SocketState::Listening(_) => {
-                let cause: String = format!("cannot close a listening socket");
-                error!("do_close(): {}", &cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
+            SocketState::Listening(ref mut socket) => {
+                socket.close()?;
+                Ok(Some(SocketId::Passive(socket.endpoint())))
             },
             // Closing a connecting socket.
             SocketState::Connecting(_) => {
