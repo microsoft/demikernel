@@ -411,7 +411,7 @@ impl SharedDemiRuntime {
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
-        for boxed_task in self.scheduler.poll_all() {
+        for boxed_task in self.scheduler.poll_all(TIMER_RESOLUTION) {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 

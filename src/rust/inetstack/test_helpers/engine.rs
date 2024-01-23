@@ -84,6 +84,7 @@ impl SharedEngine {
         self.get_transport().receive(bytes)?;
         // So poll the scheduler to do the processing.
         self.get_runtime().poll();
+        self.get_runtime().poll();
 
         Ok(())
     }

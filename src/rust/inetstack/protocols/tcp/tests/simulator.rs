@@ -810,10 +810,6 @@ impl Simulation {
         self.engine.receive(buf)?;
 
         self.engine.poll();
-        // Poll the scheduler again.
-        // TODO: Remove this once we have a way to poll the scheduler until there is no more work to be done.
-        self.engine.poll();
-
         Ok(())
     }
 
@@ -907,7 +903,6 @@ impl Simulation {
     /// Runs an outgoing packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         self.engine.poll();
-
         let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
 
         // FIXME: We currently do not support multi-frame segments.

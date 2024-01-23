@@ -130,42 +130,32 @@ impl Scheduler {
         Some(task)
     }
 
-    /// This function polls a task and if it has completed, removes it from the scheduler and returns it.
-    fn poll(&mut self) -> Vec<Box<dyn Task>> {
+    /// Poll all tasks which are ready to run for [max_iterations]. This does the same thing as get_next_completed task
+    /// but does not stop until it has reached [max_iterations] and collects all of the
+    pub fn poll_all(&mut self, max_iterations: usize) -> Vec<Box<dyn Task>> {
         let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
+        for _ in 0..max_iterations {
+            self.current_task_id = {
+                match self.current_ready_tasks.pop() {
+                    Some(index) => index,
+                    None => {
+                        self.next_runnable_group();
+                        match self.current_ready_tasks.pop() {
+                            Some(index) => index,
+                            None => return completed_tasks,
+                        }
+                    },
+                }
+            };
 
-        // Performance note: We could set this for self.current_ready_tasks but is not necessary. On the other hand,
-        // it's not impactful for performance (around 1ns difference in the poll benchmark).
-        let ready_tasks: Vec<InternalId> = self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks();
-        for internal_task_id in ready_tasks {
-            // Set the current running task for polling this task. This ensures that all tasks spawned by this task
-            // will share the same task group.
-            self.current_task_id = internal_task_id;
-            if let Some(completed_task) =
-                self.groups[self.current_group_id.into()].poll_notified_task_and_remove_if_ready(internal_task_id)
+            // Now that we have a runnable task, actually poll it.
+            if let Some(task) = self.groups[self.current_group_id.into()]
+                .poll_notified_task_and_remove_if_ready(self.current_task_id.into())
             {
-                completed_tasks.push(completed_task)
+                completed_tasks.push(task);
             }
         }
         completed_tasks
-    }
-
-    /// Poll all tasks which are ready to run once. Tasks in our scheduler are notified when
-    /// relevant data or events happen. The relevant event have callback function (the waker) which
-    /// they can invoke to notify the scheduler that future should be polled again.
-    pub fn poll_all(&mut self) -> Vec<Box<dyn Task>> {
-        let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
-        for i in 0..self.groups.len() {
-            self.current_group_id = InternalId::from(i);
-            completed_tasks.append(&mut self.poll());
-        }
-        completed_tasks
-    }
-
-    /// Poll all tasks in this group that are ready to run.
-    pub fn poll_group(&mut self, group_id: TaskId) -> Option<Vec<Box<dyn Task>>> {
-        self.current_group_id = self.ids.get(&group_id)?;
-        Some(self.poll())
     }
 
     /// Poll all tasks until one completes. Remove that task and return it or fail after polling [max_iteration] number
@@ -173,24 +163,15 @@ impl Scheduler {
     pub fn get_next_completed_task(&mut self, max_iterations: usize) -> Option<Box<dyn Task>> {
         for _ in 0..max_iterations {
             self.current_task_id = {
-                let starting_group_index: InternalId = self.current_group_id;
-                if self.current_ready_tasks.is_empty() {
-                    self.current_ready_tasks = self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks();
-                }
-
-                loop {
-                    match self.current_ready_tasks.pop() {
-                        Some(index) => break index,
-                        None => {
-                            self.current_group_id = self.get_next_group_index();
-                            self.current_ready_tasks =
-                                self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks();
-                        },
-                    }
-                    // If we reach this point, then we have looped all the way around without finding any runnable tasks.
-                    if self.current_group_id == starting_group_index {
-                        return None;
-                    }
+                match self.current_ready_tasks.pop() {
+                    Some(index) => index,
+                    None => {
+                        self.next_runnable_group();
+                        match self.current_ready_tasks.pop() {
+                            Some(index) => index,
+                            None => return None,
+                        }
+                    },
                 }
             };
 
@@ -202,6 +183,24 @@ impl Scheduler {
             }
         }
         None
+    }
+
+    /// Poll over all of the groups looking for a group with runnable tasks. Sets the current_group_id to the next
+    /// runnable task group and current_ready_tasks to a list of tasks that are runnable in that group.
+    fn next_runnable_group(&mut self) {
+        let starting_group_index: InternalId = self.current_group_id;
+        self.current_group_id = self.get_next_group_index();
+
+        loop {
+            self.current_ready_tasks = self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks();
+            if !self.current_ready_tasks.is_empty() {
+                return;
+            }
+            // If we reach this point, then we have looped all the way around without finding any runnable tasks.
+            if self.current_group_id == starting_group_index {
+                return;
+            }
+        }
     }
 
     /// Choose the index of the next group to run.
@@ -541,7 +540,7 @@ mod tests {
         }
 
         b.iter(|| {
-            black_box(scheduler.poll_all());
+            black_box(scheduler.poll_all(64));
         });
     }
 
