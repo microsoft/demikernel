@@ -38,8 +38,6 @@ pub struct WakerPage {
     refcount: Waker64,
     /// Flags wether or not a given future has been notified.
     notified: Waker64,
-    /// Flags whether or not a given future has completed.
-    completed: Waker64,
 }
 
 //==============================================================================
@@ -59,21 +57,7 @@ impl WakerPage {
     pub fn take_notified(&self) -> u64 {
         // Unset all completed bits, since spurious notifications for completed
         // futures would lead us to poll them after completion.
-        let mut notified = self.notified.swap(0);
-        notified &= !self.completed.load();
-        notified
-    }
-
-    /// Queries whether or not the completed flag for the `ix` future in the target [WakerPage] is set.
-    pub fn has_completed(&self, ix: usize) -> bool {
-        debug_assert!(ix < WAKER_BIT_LENGTH);
-        self.completed.load() & (1 << ix) != 0
-    }
-
-    /// Sets the completed flag for the `ix` future in the target [WakerPage].
-    pub fn mark_completed(&self, ix: usize) {
-        debug_assert!(ix < WAKER_BIT_LENGTH);
-        self.completed.fetch_or(1 << ix);
+        self.notified.swap(0)
     }
 
     /// Resets all flags in the target [WakerPage].
@@ -81,7 +65,6 @@ impl WakerPage {
     pub fn reset(&mut self) {
         self.refcount.swap(1);
         self.notified.swap(0);
-        self.completed.swap(0);
     }
 
     /// Initialize flags for the `ix` future in the target [WakerPage].
@@ -89,7 +72,6 @@ impl WakerPage {
     pub fn initialize(&self, ix: usize) {
         debug_assert!(ix < WAKER_BIT_LENGTH);
         self.notified.fetch_or(1 << ix);
-        self.completed.fetch_and(!(1 << ix));
     }
 
     /// Clears flags for the `ix` future in the target [WakerPage]
@@ -98,7 +80,6 @@ impl WakerPage {
         debug_assert!(ix < WAKER_BIT_LENGTH);
         let mask: u64 = !(1 << ix);
         self.notified.fetch_and(mask);
-        self.completed.fetch_and(mask);
     }
 
     /// Increments the reference count of the target [WakerPage].
@@ -131,7 +112,6 @@ impl Default for WakerPage {
         Self {
             refcount: Waker64::new(1),
             notified: Waker64::new(0),
-            completed: Waker64::new(0),
         }
     }
 }
@@ -170,17 +150,6 @@ mod tests {
         b.iter(|| {
             let ix: usize = black_box(x);
             pg.notify(ix);
-        });
-    }
-
-    #[bench]
-    fn bench_mark_completed(b: &mut Bencher) {
-        let pg: WakerPage = WakerPage::default();
-        let x: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
-
-        b.iter(|| {
-            let ix: usize = black_box(x);
-            pg.mark_completed(ix);
         });
     }
 

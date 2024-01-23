@@ -46,18 +46,18 @@ use ::std::{
         SocketAddrV4,
     },
     slice,
+    time::Duration,
 };
 
 //======================================================================================================================
 // Constants
 //======================================================================================================================
 
-/// Maximum number of connection attempts.
-/// This was chosen arbitrarily.
-const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
 /// Seed number for generating request IDs.
 #[cfg(debug_assertions)]
 const REQUEST_ID_SEED: u64 = 95;
+/// Amount of time to wait for the other end in milliseconds. This was chosen arbitrarily.
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10);
 
 //======================================================================================================================
 // Structures
@@ -418,18 +418,11 @@ impl Socket {
     }
 
     /// Gets the next connection request.
-    async fn pop_request_id(&mut self, catmem_qd: QDesc, yielder: &Yielder) -> Result<RequestId, Fail> {
+    async fn pop_request_id(&mut self, catmem_qd: QDesc, _: &Yielder) -> Result<RequestId, Fail> {
         // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
         let qt: QToken = self.catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
-        // Yield until pop completes.
-        while !self.runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
-        // Re-acquire mutable reference.
-        // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+        // Wait for operation result.
+        let qr: demi_qresult_t = self.runtime.wait(qt, DEFAULT_TIMEOUT)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous pop().
             demi_opcode_t::DEMI_OPC_POP => {},
@@ -460,7 +453,7 @@ impl Socket {
     }
 
     // Sends the port number to the peer process.
-    async fn create_pipe(&mut self, ipv4: &Ipv4Addr, port: u16, yielder: &Yielder) -> Result<QDesc, Fail> {
+    async fn create_pipe(&mut self, ipv4: &Ipv4Addr, port: u16, _: &Yielder) -> Result<QDesc, Fail> {
         let catmem_qd: QDesc = self.catmem_qd.expect("should be connected");
         // Create underlying pipes before sending the port number through the
         // control duplex pipe. This prevents us from running into a race
@@ -478,16 +471,10 @@ impl Socket {
         let qt: QToken = self.catmem.push(catmem_qd, &sga)?;
 
         // Wait for push to complete.
-        while !self.runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        let qr: demi_qresult_t = self.runtime.wait(qt, DEFAULT_TIMEOUT)?;
         // Free the scatter-gather array.
         self.runtime.sgafree(sga)?;
 
-        // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -513,7 +500,7 @@ impl Socket {
         &mut self,
         connect_qd: QDesc,
         request_id: &RequestId,
-        yielder: &Yielder,
+        _: &Yielder,
     ) -> Result<(), Fail> {
         // Create a message containing the magic number.
         let sga: demi_sgarray_t = self.send_connect_id(request_id)?;
@@ -521,16 +508,10 @@ impl Socket {
         // Send to server.
         let qt: QToken = self.catmem.push(connect_qd, &sga)?;
         trace!("Send connection request qtoken={:?}", qt);
-        // Yield until push completes.
-        while !self.runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        // Wait until push completes.
+        let qr: demi_qresult_t = self.runtime.wait(qt, DEFAULT_TIMEOUT)?;
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
-        // Get the result of the push.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -583,55 +564,48 @@ impl Socket {
             // Send the connection request to the server.
             self.send_connection_request(connect_qd, request_id, &yielder).await?;
 
-            // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
-            for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
-                match yielder.yield_once().await {
-                    Ok(()) if self.runtime.has_completed(qt)? => break,
-                    Ok(()) => continue,
-                    Err(e) => return Err(e),
-                }
-            }
-            // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
-            if self.runtime.has_completed(qt)? {
-                // Re-acquire reference to Catmem libos.
-                // Get the result of the pop.
-                let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
-                match qr.qr_opcode {
-                    // We expect a successful completion for previous pop().
-                    demi_opcode_t::DEMI_OPC_POP => {
-                        // Extract scatter-gather array from operation result.
-                        let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+            // Wait on the pop. If timed out, send the request again.
+            let qr: demi_qresult_t = match self.runtime.wait(qt, DEFAULT_TIMEOUT) {
+                Ok(result) => result,
+                Err(Fail { cause: _, errno }) if errno == libc::ETIMEDOUT => continue,
+                Err(e) => return Err(e),
+            };
 
-                        // Extract port number.
-                        let port: Result<u16, Fail> = extract_port_number(&sga);
-                        self.runtime.sgafree(sga)?;
-                        return port;
-                    },
-                    // We may get some error.
-                    demi_opcode_t::DEMI_OPC_FAILED => {
-                        // Shut down control duplex pipe as we can open the new pipe now.
-                        self.catmem.shutdown(connect_qd)?;
+            match qr.qr_opcode {
+                // We expect a successful completion for previous pop().
+                demi_opcode_t::DEMI_OPC_POP => {
+                    // Extract scatter-gather array from operation result.
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
 
-                        let cause: String = format!(
-                            "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
-                            qr.qr_qd, qt, qr.qr_ret
-                        );
-                        error!("get_port(): {:?}", &cause);
-                        return Err(Fail::new(qr.qr_ret as i32, &cause));
-                    },
-                    // We do not expect anything else.
-                    _ => {
-                        // The following statement is unreachable because we have issued a pop operation.
-                        // If we successfully complete a different operation, something really bad happen in the scheduler.
-                        unreachable!("unexpected operation on control duplex pipe")
-                    },
-                }
+                    // Extract port number.
+                    let port: Result<u16, Fail> = extract_port_number(&sga);
+                    self.runtime.sgafree(sga)?;
+                    return port;
+                },
+                // We may get some error.
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // Shut down control duplex pipe as we can open the new pipe now.
+                    self.catmem.shutdown(connect_qd)?;
+
+                    let cause: String = format!(
+                        "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                        qr.qr_qd, qt, qr.qr_ret
+                    );
+                    error!("get_port(): {:?}", &cause);
+                    return Err(Fail::new(qr.qr_ret as i32, &cause));
+                },
+                // We do not expect anything else.
+                _ => {
+                    // The following statement is unreachable because we have issued a pop operation.
+                    // If we successfully complete a different operation, something really bad happen in the scheduler.
+                    unreachable!("unexpected operation on control duplex pipe")
+                },
             }
         }
     }
 
     // Send an ack through a new Catmem pipe.
-    async fn send_ack(&mut self, new_qd: QDesc, request_id: &RequestId, yielder: &Yielder) -> Result<(), Fail> {
+    async fn send_ack(&mut self, new_qd: QDesc, request_id: &RequestId, _: &Yielder) -> Result<(), Fail> {
         // Create message with magic connect.
         let sga: demi_sgarray_t = self.send_connect_id(request_id)?;
         // Send to server through new pipe.
@@ -639,15 +613,9 @@ impl Socket {
         trace!("Send ack qtoken={:?}", qt);
 
         // Yield until push completes.
-        while !self.runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        let qr: demi_qresult_t = self.runtime.wait(qt, DEFAULT_TIMEOUT)?;
         // Free the message buffer.
         self.runtime.sgafree(sga)?;
-        // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
 
         match qr.qr_opcode {
             // We expect a successful completion for previous push().

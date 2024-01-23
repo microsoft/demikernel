@@ -32,7 +32,6 @@ use ::std::{
     net::SocketAddr,
     time::{
         Duration,
-        Instant,
         SystemTime,
     },
 };
@@ -263,7 +262,7 @@ impl NetworkLibOSWrapper {
 
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
-    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<demi_qresult_t, Fail> {
         trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
 
         // Put the QToken into a single element array.
@@ -275,50 +274,37 @@ impl NetworkLibOSWrapper {
         Ok(qr)
     }
 
-    /// Waits for an I/O operation to complete or a timeout to expire.
+    /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if self.has_completed(qt)? {
-                return Ok(self.get_result(qt)?);
-            }
-
-            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
+        trace!("timedwait(): qts={:?}, timeout={:?}", qt, abstime);
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.timedwait(qt, abstime),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.timedwait(qt, abstime),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.timedwait(qt, abstime),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.timedwait(qt, abstime),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.timedwait(qt, abstime),
         }
     }
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
-    pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
         trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
-
-        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                if self.has_completed(qt)? {
-                    return Ok((i, self.get_result(qt)?));
-                }
-            }
-
-            // If we have a timeout, check for expiration.
-            if timeout.is_some()
-                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
-                    > timeout.expect("timeout should still be set")
-            {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(feature = "catcollar-libos")]
+            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.wait_any(qts, timeout),
         }
     }
 
@@ -335,21 +321,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll_and_advance_clock(),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.poll_and_advance_clock(),
-        }
-    }
-
-    pub fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
         }
     }
 
@@ -386,21 +357,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.sgafree(sga),
-        }
-    }
-
-    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.has_completed(qt),
         }
     }
 }
