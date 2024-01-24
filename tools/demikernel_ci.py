@@ -195,7 +195,7 @@ def remote_compile_windows(host: str, repository: str, target: str, is_debug: bo
 def remote_run(host: str, repository: str, is_debug: bool, target: str, is_sudo: bool, config_path: str):
     debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
     sudo_cmd: str = "sudo -E" if is_sudo else ""
-    cmd = "cd {} && {} make -j 1 CONFIG_PATH={} {} {} 2> out.stderr ; cat out.stderr".format(
+    cmd = "cd {} && {} make -j 1 CONFIG_PATH={} {} {} 2> out.stderr && cat out.stderr >&2 || ( cat out.stderr >&2 ; exit 1 )".format(
         repository, sudo_cmd, config_path, debug_flag, target)
     ssh_cmd = "ssh {} \"bash -l -c \'{}\'\"".format(host, cmd)
     return subprocess.Popen(ssh_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
