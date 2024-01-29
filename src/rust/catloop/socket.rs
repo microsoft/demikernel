@@ -48,18 +48,18 @@ use ::std::{
         DerefMut,
     },
     slice,
+    time::Duration,
 };
 
 //======================================================================================================================
 // Constants
 //======================================================================================================================
 
-/// Maximum number of connection attempts.
-/// This was chosen arbitrarily.
-const MAX_ACK_RECEIVED_ATTEMPTS: usize = 1024;
 /// Seed number for generating request IDs.
 #[cfg(debug_assertions)]
 const REQUEST_ID_SEED: u64 = 95;
+/// Amount of time to wait for the other end in milliseconds. This was chosen arbitrarily.
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10);
 
 //======================================================================================================================
 // Structures
@@ -469,7 +469,7 @@ impl SharedMemorySocket {
         runtime: &mut SharedDemiRuntime,
         connect_qd: QDesc,
         request_id: &RequestId,
-        yielder: &Yielder,
+        _: &Yielder,
     ) -> Result<(), Fail> {
         // Create a message containing the magic number.
         let sga: demi_sgarray_t = self.send_connect_id(runtime, request_id)?;
@@ -571,20 +571,19 @@ impl SharedMemorySocket {
                         // Shut down control duplex pipe as we can open the new pipe now.
                         catmem.shutdown(connect_qd)?;
 
-                        let cause: String = format!(
-                            "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
-                            qr.qr_qd, qt, qr.qr_ret
-                        );
-                        error!("get_port(): {:?}", &cause);
-                        return Err(Fail::new(qr.qr_ret as i32, &cause));
-                    },
-                    // We do not expect anything else.
-                    _ => {
-                        // The following statement is unreachable because we have issued a pop operation.
-                        // If we successfully complete a different operation, something really bad happen in the scheduler.
-                        unreachable!("unexpected operation on control duplex pipe")
-                    },
-                }
+                    let cause: String = format!(
+                        "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
+                        qr.qr_qd, qt, qr.qr_ret
+                    );
+                    error!("get_port(): {:?}", &cause);
+                    return Err(Fail::new(qr.qr_ret as i32, &cause));
+                },
+                // We do not expect anything else.
+                _ => {
+                    // The following statement is unreachable because we have issued a pop operation.
+                    // If we successfully complete a different operation, something really bad happen in the scheduler.
+                    unreachable!("unexpected operation on control duplex pipe")
+                },
             }
         }
     }
