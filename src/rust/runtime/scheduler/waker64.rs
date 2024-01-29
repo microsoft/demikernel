@@ -76,6 +76,7 @@ impl Waker64 {
         Some(old)
     }
 
+    #[allow(unused)]
     /// Returns the value stored in the the target [Waker64].
     pub fn load(&self) -> u64 {
         let s = unsafe { &mut *self.0.get() };

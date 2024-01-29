@@ -14,10 +14,7 @@ use crate::runtime::{
     QDesc,
     QToken,
 };
-use ::std::time::{
-    Duration,
-    Instant,
-};
+use ::std::time::Duration;
 
 #[cfg(feature = "catmem-libos")]
 use crate::{
@@ -97,7 +94,7 @@ impl MemoryLibOS {
 
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
-    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<demi_qresult_t, Fail> {
         trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
 
         // Put the QToken into a single element array.
@@ -110,30 +107,12 @@ impl MemoryLibOS {
     }
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
-    pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
         trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
-
-        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                if self.has_completed(qt)? {
-                    return Ok((i, self.get_result(qt)?));
-                }
-            }
-
-            // If we have a timeout, check for expiration.
-            if timeout.is_some()
-                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
-                    > timeout.expect("timeout should still be set")
-            {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
+        match self {
+            #[cfg(feature = "catmem-libos")]
+            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            _ => unreachable!("unknown memory libos"),
         }
     }
 
@@ -157,30 +136,12 @@ impl MemoryLibOS {
         }
     }
 
-    #[allow(unreachable_patterns, unused_variables)]
-    pub fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime, libos } => runtime.remove_coroutine_and_get_result(qt),
-            _ => unreachable!("unknown memory libos"),
-        }
-    }
-
     /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catmem-libos")]
             MemoryLibOS::Catmem { runtime, libos: _ } => runtime.poll(),
-            _ => unreachable!("unknown memory libos"),
-        }
-    }
-
-    #[allow(unreachable_patterns, unused_variables)]
-    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
-        match self {
-            #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem { runtime, libos: _ } => runtime.has_completed(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }
