@@ -48,7 +48,7 @@ use crate::{
         },
         scheduler::{
             Scheduler,
-            Task,
+            TaskId,
         },
         timer::SharedTimer,
         types::demi_opcode_t,
@@ -70,7 +70,11 @@ use ::std::{
     },
     pin::Pin,
     rc::Rc,
-    time::Instant,
+    time::{
+        Duration,
+        Instant,
+        SystemTime,
+    },
 };
 
 #[cfg(target_os = "windows")]
@@ -116,7 +120,10 @@ pub struct DemiRuntime {
     network_table: NetworkQueueTable,
     /// Currently running coroutines.
     pending_ops: HashMap<QDesc, HashMap<QToken, YielderHandle>>,
+    /// Number of iterations that we have polled since advancing the clock.
     ts_iters: usize,
+    /// Tasks that have been completed and removed from the
+    completed_tasks: HashMap<QToken, (QDesc, OperationResult)>,
 }
 
 #[derive(Clone)]
@@ -152,6 +159,7 @@ impl SharedDemiRuntime {
             network_table: NetworkQueueTable::default(),
             pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
             ts_iters: 0,
+            completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
         }))
     }
 
@@ -196,26 +204,133 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Removes a coroutine from the underlying scheduler given its associated QToken.
-    pub fn remove_coroutine(&mut self, qt: QToken) -> (QDesc, OperationResult) {
-        // 1. Remove Task from scheduler.
-        let boxed_task: Box<dyn Task> = self
-            .scheduler
-            .remove_task(qt.into())
-            .expect("Removing task that does not exist (either was previously removed or never inserted");
-        // 2. Cast to void and then downcast to operation task.
-        trace!("Removing coroutine: {:?}", boxed_task.get_name());
-        let operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
-        let (qd, result): (QDesc, OperationResult) = operation_task.get_result().expect("coroutine not finished");
-        self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
-        (qd, result)
+    /// This is just a single-token convenience wrapper for wait_any().
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<demi_qresult_t, Fail> {
+        trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
+
+        // Put the QToken into a single element array.
+        let qt_array: [QToken; 1] = [qt];
+
+        // Call wait_any() to do the real work.
+        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
+        debug_assert_eq!(offset, 0);
+        Ok(qr)
     }
 
-    /// Removes a coroutine from the underlying scheduler given its associated QToken and gets the result immediately.
-    pub fn remove_coroutine_and_get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        let (qd, result): (QDesc, OperationResult) = self.remove_coroutine(qt);
-        let result: demi_qresult_t = self.create_result(result, qd, qt);
-        Ok(result)
+    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
+        if let Some((qd, result)) = self.completed_tasks.remove(&qt) {
+            let result: demi_qresult_t = self.create_result(result, qd, qt);
+            return Ok(result);
+        }
+        if !self.scheduler.is_valid_task(&TaskId::from(qt)) {
+            let cause: String = format!("{:?} is not a valid queue token", qt);
+            warn!("wait_any: {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // 2. None of the tasks have already completed, so start a timer and move the clock.
+        let start: Instant = self.get_now();
+        self.advance_clock(start);
+
+        loop {
+            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+                // Perform bookkeeping for the completed and removed task.
+                trace!("Removing coroutine: {:?}", boxed_task.get_name());
+                let completed_qt: QToken = boxed_task.get_id().into();
+                // If an operation task (and not a background task), then check the task to see if it is one of ours.
+                if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                    let (qd, result): (QDesc, OperationResult) =
+                        operation_task.get_result().expect("coroutine not finished");
+                    self.cancel_or_remove_pending_ops_as_needed(&result, qd, completed_qt);
+
+                    // Check whether it matches any of the queue tokens that we are waiting on.
+                    if completed_qt == qt {
+                        let result: demi_qresult_t = self.create_result(result, qd, qt);
+                        return Ok(result);
+                    }
+
+                    // If not a queue token that we are waiting on, then insert into our list of completed tasks.
+                    self.completed_tasks.insert(qt, (qd, result));
+                }
+            }
+            // Check the timeout.
+            if let Some(abstime) = abstime {
+                if SystemTime::now() >= abstime {
+                    return Err(Fail::new(libc::ETIMEDOUT, "wait timed out"));
+                }
+            }
+
+            // Advance the clock and continue running tasks.
+            let now: Instant = self.get_now();
+            self.advance_clock(now);
+        }
+    }
+
+    /// Waits until one of the tasks in qts has completed and returns the result.
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
+        for (i, qt) in qts.iter().enumerate() {
+            // 1. Check if any of these queue tokens point to already completed tasks.
+            if let Some((qd, result)) = self.get_completed_task(&qt) {
+                return Ok((i, self.create_result(result, qd, *qt)));
+            }
+
+            // 2. Make sure these queue tokens all point to valid tasks.
+            if !self.scheduler.is_valid_task(&TaskId::from(*qt)) {
+                let cause: String = format!("{:?} is not a valid queue token", qt);
+                warn!("wait_any: {}", cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            }
+        }
+
+        // 3. None of the tasks have already completed, so start a timer and move the clock.
+        let start: Instant = self.get_now();
+        self.advance_clock(start);
+
+        // 4. Invoke the scheduler and run some tasks.
+        loop {
+            // Run for one quanta and if one of our queue tokens completed, then return.
+            if let Some((i, qd, result)) = self.run_any(qts) {
+                return Ok((i, self.create_result(result, qd, qts[i])));
+            }
+            // Otherwise, move time forward.
+            let now: Instant = self.get_now();
+            if now >= start + timeout {
+                return Err(Fail::new(libc::ETIMEDOUT, "wait timed out"));
+            } else {
+                self.advance_clock(now);
+            }
+        }
+    }
+
+    pub fn get_completed_task(&mut self, qt: &QToken) -> Option<(QDesc, OperationResult)> {
+        self.completed_tasks.remove(qt)
+    }
+
+    /// Runs the scheduler for one [TIMER_RESOLUTION] quanta. Importantly does not modify the clock.
+    pub fn run_any(&mut self, qts: &[QToken]) -> Option<(usize, QDesc, OperationResult)> {
+        if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+            // Perform bookkeeping for the completed and removed task.
+            trace!("Removing coroutine: {:?}", boxed_task.get_name());
+            let qt: QToken = boxed_task.get_id().into();
+
+            // If an operation task, then take a look at the result.
+            if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                let (qd, result): (QDesc, OperationResult) =
+                    operation_task.get_result().expect("coroutine not finished");
+                self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
+
+                // Check whether it matches any of the queue tokens that we are waiting on.
+                for i in 0..qts.len() {
+                    if qts[i] == qt {
+                        return Some((i, qd, result));
+                    }
+                }
+
+                // If not a queue token that we are waiting on, then insert into our list of completed tasks.
+                self.completed_tasks.insert(qt, (qd, result));
+            }
+        }
+        None
     }
 
     /// When the queue is closed, we need to cancel all pending ops. When the coroutine is removed, we only need to
@@ -242,10 +357,8 @@ impl SharedDemiRuntime {
     fn cancel_all_pending_ops_for_queue(&mut self, qd: &QDesc) {
         if let Some(inner_hash_map) = &mut self.pending_ops.remove(&qd) {
             let drain = inner_hash_map.drain();
-            for (qt, mut yielder_handle) in drain {
-                if let Ok(false) = self.has_completed(qt) {
-                    yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
-                }
+            for (_, mut yielder_handle) in drain {
+                yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
             }
         }
     }
@@ -301,12 +414,18 @@ impl SharedDemiRuntime {
 
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
-        // Grab the number of polled tasks because this might be useful in the future.
-        // TODO: Do something with this number when scheduling.
-        // Eventually this will return actual ready tasks.
-        // FIXME: https://github.com/microsoft/demikernel/issues/1128
-        #[allow(unused)]
-        let num_ready: usize = self.scheduler.poll_all();
+        // For all ready tasks that were removed from the scheduler, add to our completed task list.
+        for boxed_task in self.scheduler.poll_all(TIMER_RESOLUTION) {
+            trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
+            let qt: QToken = boxed_task.get_id().into();
+
+            if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                let (qd, result): (QDesc, OperationResult) =
+                    operation_task.get_result().expect("coroutine not finished");
+                self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
+                self.completed_tasks.insert(qt, (qd, result));
+            }
+        }
     }
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
@@ -522,17 +641,6 @@ impl SharedDemiRuntime {
                     qr_ret: e.errno as i64,
                     qr_value: unsafe { mem::zeroed() },
                 }
-            },
-        }
-    }
-
-    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
-        match self.scheduler.has_completed(qt.into()) {
-            Some(has_completed) => Ok(has_completed),
-            None => {
-                let cause: String = format!("invalid scheduler task id (qt={:?})", &qt);
-                error!("has_completed(): {}", cause);
-                Err(Fail::new(libc::EINVAL, &cause))
             },
         }
     }
