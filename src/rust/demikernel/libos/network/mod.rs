@@ -299,7 +299,7 @@ impl NetworkLibOSWrapper {
         trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
 
         // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
+        let start: Option<Instant> = timeout.filter(|&t| t != Duration::from_secs(0)).map(|_| Instant::now());
 
         loop {
             // Poll first, so as to give pending operations a chance to complete.
@@ -313,11 +313,13 @@ impl NetworkLibOSWrapper {
             }
 
             // If we have a timeout, check for expiration.
-            if timeout.is_some()
-                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
-                    > timeout.expect("timeout should still be set")
-            {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+            // For performance reasons we check for immediate expiration first.
+            if let Some(timeout) = timeout {
+                if timeout == Duration::from_secs(0)
+                    || Instant::now().duration_since(start.expect("start should be set if timeout is")) > timeout
+                {
+                    return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+                }
             }
         }
     }
