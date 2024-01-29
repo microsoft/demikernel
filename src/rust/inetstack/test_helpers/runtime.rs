@@ -22,7 +22,6 @@ use crate::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    timer::SharedTimer,
     SharedDemiRuntime,
     SharedObject,
 };
@@ -82,7 +81,7 @@ impl SharedTestRuntime {
     }
 
     /// Remove a fixed number of frames from the runtime's outgoing queue.
-    pub fn pop_frames(&mut self, num_frames: usize) -> VecDeque<DemiBuffer> {
+    fn pop_frames(&mut self, num_frames: usize) -> VecDeque<DemiBuffer> {
         let length: usize = self.outgoing.len();
         self.outgoing.split_off(length - num_frames)
     }
@@ -96,20 +95,6 @@ impl SharedTestRuntime {
         self.pop_frames(1).pop_front().expect("should be at least one frame")
     }
 
-    /// Remove a single frame from the runtime's outgoing queue if it is not empty.
-    pub fn pop_frame_unchecked(&mut self) -> Option<DemiBuffer> {
-        self.pop_frames(1).pop_front()
-    }
-
-    /// Add a frame to the runtime's incoming queue.
-    pub fn push_frame(&mut self, buf: DemiBuffer) {
-        self.incoming.push_back(buf);
-    }
-
-    pub fn poll_scheduler(&mut self) {
-        self.runtime.poll();
-    }
-
     /// Get the link address assigned to the runtime.
     pub fn get_link_addr(&self) -> MacAddress {
         self.link_addr
@@ -118,16 +103,6 @@ impl SharedTestRuntime {
     /// Get the ip address assigned to the runtime.
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4_addr
-    }
-
-    /// Get the runtime's clock.
-    pub fn get_timer(&self) -> SharedTimer {
-        self.runtime.get_timer()
-    }
-
-    /// Advance runtime's clock
-    pub fn advance_clock(&mut self, now: Instant) {
-        self.runtime.advance_clock(now)
     }
 
     /// Get the underlying DemiRuntime.
