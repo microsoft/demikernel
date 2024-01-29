@@ -230,7 +230,6 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             congestion_control::None::new,
             None,
             self.dead_socket_tx.clone(),
-            None,
         )?)
     }
 
