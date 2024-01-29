@@ -54,6 +54,10 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
+/// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
+/// ensure most OS operations will complete.
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
+
 use std::{
     net::{
         IpAddr,
@@ -1152,7 +1156,8 @@ fn safe_push(libos: &mut DummyLibOS, sockqd: QDesc, bytes: demi_sgarray_t) -> Re
 
 /// Safe call to `wait2()`.
 fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
-    match libos.wait(qt, None) {
+    // Set this to something reasonably high because it should eventually complete.
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
         Ok(result) => Ok(result),
         Err(e) => anyhow::bail!("wait failed: {:?}", e),
     }
