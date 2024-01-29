@@ -30,10 +30,7 @@ use crate::{
 };
 use ::std::{
     net::SocketAddr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
@@ -239,7 +236,7 @@ impl NetworkLibOSWrapper {
 
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
-    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<demi_qresult_t, Fail> {
         trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
 
         // Put the QToken into a single element array.
@@ -252,32 +249,16 @@ impl NetworkLibOSWrapper {
     }
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
-    pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
-        trace!("wait_any(): qts={:?}, timeout={:?}", qts, timeout);
-
-        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = timeout.filter(|&t| t != Duration::from_secs(0)).map(|_| Instant::now());
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // Search for any operation that has completed.
-            for (i, &qt) in qts.iter().enumerate() {
-                if self.has_completed(qt)? {
-                    return Ok((i, self.get_result(qt)?));
-                }
-            }
-
-            // If we have a timeout, check for expiration.
-            // For performance reasons we check for immediate expiration first.
-            if let Some(timeout) = timeout {
-                if timeout == Duration::from_secs(0)
-                    || Instant::now().duration_since(start.expect("start should be set if timeout is")) > timeout
-                {
-                    return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-                }
-            }
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.wait_any(qts, timeout),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.wait_any(qts, timeout),
         }
     }
 
@@ -285,26 +266,13 @@ impl NetworkLibOSWrapper {
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.poll(),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.poll(),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll(),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.poll_and_advance_clock(),
-        }
-    }
-
-    pub fn get_result(&mut self, qt: QToken) -> Result<demi_qresult_t, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
+            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.poll(),
         }
     }
 
@@ -337,19 +305,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.sgafree(sga),
-        }
-    }
-
-    pub fn has_completed(&self, qt: QToken) -> Result<bool, Fail> {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.has_completed(qt),
         }
     }
 }

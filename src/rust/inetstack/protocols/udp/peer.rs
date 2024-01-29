@@ -21,7 +21,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -124,7 +123,7 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
     }
 
     /// Closes a UDP socket asynchronously.
-    pub async fn close(&mut self, socket: &mut SharedUdpSocket<N>, _yielder: Yielder) -> Result<(), Fail> {
+    pub async fn close(&mut self, socket: &mut SharedUdpSocket<N>) -> Result<(), Fail> {
         self.hard_close(socket)
     }
 
@@ -134,7 +133,6 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         socket: &mut SharedUdpSocket<N>,
         buf: &mut DemiBuffer,
         remote: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         // TODO: Allocate ephemeral port if not bound.
         // FIXME: https://github.com/microsoft/demikernel/issues/973
@@ -144,7 +142,7 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
         // TODO: Remove copy once we actually use push coroutine for send.
-        socket.push(remote, buf.clone(), yielder).await?;
+        socket.push(remote, buf.clone()).await?;
         buf.trim(buf.len())
     }
 
@@ -154,9 +152,8 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         socket: &mut SharedUdpSocket<N>,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
-        let (addr, incoming): (SocketAddrV4, DemiBuffer) = socket.pop(size, yielder).await?;
+        let (addr, incoming): (SocketAddrV4, DemiBuffer) = socket.pop(size).await?;
         // TODO: Remove copy.
         let len: usize = incoming.len();
         buf.trim(size - len)?;

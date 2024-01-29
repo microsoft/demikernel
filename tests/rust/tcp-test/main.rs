@@ -25,6 +25,10 @@ mod wait;
 use anyhow::Result;
 use args::ProgramArguments;
 use demikernel::{
+    runtime::types::{
+        demi_opcode_t,
+        demi_qresult_t,
+    },
     LibOS,
     LibOSName,
 };
@@ -110,4 +114,12 @@ fn main() -> Result<()> {
         println!("all tests passed");
         Ok(())
     }
+}
+
+pub fn check_for_network_error(qr: &demi_qresult_t) -> bool {
+    qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED
+        && (qr.qr_ret == (libc::EBADF as i64)
+            || qr.qr_ret == (libc::ECANCELED as i64)
+            || qr.qr_ret == (libc::ECONNREFUSED as i64)
+            || qr.qr_ret == (libc::ECONNABORTED as i64))
 }

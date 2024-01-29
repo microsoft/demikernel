@@ -20,9 +20,13 @@ use crate::runtime::{
         IoQueue,
         QType,
     },
-    scheduler::Yielder,
     QToken,
     SharedObject,
+};
+use ::futures::{
+    pin_mut,
+    select_biased,
+    FutureExt,
 };
 use ::socket2::{
     Domain,
@@ -135,27 +139,38 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
-    pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<Self, Fail> {
+    pub async fn accept_coroutine(&mut self) -> Result<Self, Fail> {
+        // 1. Check if we are still in a state where we can accept.
         self.state_machine.may_accept()?;
-        match self.transport.clone().accept(&mut self.socket, yielder).await {
-            // Operation completed.
-            Ok((new_socket, saddr)) => {
-                trace!("connection accepted ({:?})", new_socket);
-                Ok(Self(SharedObject::new(NetworkQueue {
-                    qtype: self.qtype,
-                    state_machine: SocketStateMachine::new_established(),
-                    socket: new_socket,
-                    local: None,
-                    remote: Some(saddr),
-                    transport: self.transport.clone(),
-                })))
-            },
-            Err(Fail { errno, cause: _ }) if errno == libc::EBADF => {
-                // Socket has been closed.
-                Err(Fail::new(errno, "socket was closed"))
-            },
-            Err(e) => Err(e),
-        }
+
+        // 2. Block until either the accept operation completes or the state changes.
+        let (new_socket, saddr) = {
+            let mut state_machine: SocketStateMachine = self.state_machine.clone();
+            let mut transport: T = self.transport.clone();
+            let state_tracker = state_machine.while_may_accept().fuse();
+            let operation = transport.accept(&mut self.socket).fuse();
+            pin_mut!(state_tracker);
+            pin_mut!(operation);
+
+            select_biased! {
+                // If the accepting queue is no longer in a state where it is accepting sockets, return immediately
+                // with the error.
+                fail = state_tracker => return Err(fail),
+                // If the operation returned unsuccessfully, return, otherwise continue to create a new queue.
+                result = operation => result?,
+            }
+        };
+
+        // 3. Successfully accepted a connection, so construct a new queue.
+        trace!("connection accepted ({:?})", new_socket);
+        Ok(Self(SharedObject::new(NetworkQueue {
+            qtype: self.qtype,
+            state_machine: SocketStateMachine::new_established(),
+            socket: new_socket,
+            local: None,
+            remote: Some(saddr),
+            transport: self.transport.clone(),
+        })))
     }
 
     /// Start an asynchronous coroutine to start connecting this queue. This function contains all of the single-queue,
@@ -171,10 +186,27 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
     /// asynchronous code necessary to run a connect and any single-queue functionality after the connect completes.
-    pub async fn connect_coroutine(&mut self, remote: SocketAddr, yielder: Yielder) -> Result<(), Fail> {
-        // Check whether we can connect.
+    pub async fn connect_coroutine(&mut self, remote: SocketAddr) -> Result<(), Fail> {
+        // 1. Check whether we can still connect.
         self.state_machine.may_connect()?;
-        match self.transport.clone().connect(&mut self.socket, remote, yielder).await {
+
+        // 2. Wait until either the connect completes or the socket state changes.
+        let result: Result<(), Fail> = {
+            let mut state_machine: SocketStateMachine = self.state_machine.clone();
+            let mut transport: T = self.transport.clone();
+            let state_tracker = state_machine.while_may_connect().fuse();
+            let operation = transport.connect(&mut self.socket, remote).fuse();
+            pin_mut!(state_tracker);
+            pin_mut!(operation);
+
+            select_biased! {
+                // If the state changed, then immediately return.
+                fail = state_tracker => Err(fail),
+                // If the operation completed, continue with the result.
+                result = operation => result,
+            }
+        };
+        match result {
             Ok(()) => {
                 // Successfully connected to remote.
                 self.state_machine.prepare(SocketOp::Established)?;
@@ -202,12 +234,12 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn hard_close(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
-        self.state_machine.commit();
+        //self.state_machine.prepare(SocketOp::Close)?;
+        //self.state_machine.commit();
         match self.transport.clone().hard_close(&mut self.socket) {
             Ok(()) => {
-                self.state_machine.prepare(SocketOp::Closed)?;
-                self.state_machine.commit();
+                //self.state_machine.prepare(SocketOp::Closed)?;
+                //self.state_machine.commit();
                 Ok(())
             },
             Err(e) => Err(e),
@@ -216,8 +248,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
     /// to close a queue and any single-queue functionality after the close completes.
-    pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        match self.transport.clone().close(&mut self.socket, yielder).await {
+    pub async fn close_coroutine(&mut self) -> Result<(), Fail> {
+        match self.transport.clone().close(&mut self.socket).await {
             Ok(()) => {
                 self.state_machine.prepare(SocketOp::Closed)?;
                 self.state_machine.commit();
@@ -239,20 +271,26 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously push data to the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to push to the queue and any single-queue functionality after the push completes.
-    pub async fn push_coroutine(
-        &mut self,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    pub async fn push_coroutine(&mut self, buf: &mut DemiBuffer, addr: Option<SocketAddr>) -> Result<(), Fail> {
         self.state_machine.may_push()?;
-        match self.transport.clone().push(&mut self.socket, buf, addr, yielder).await {
-            Ok(()) => {
-                debug_assert_eq!(buf.len(), 0);
-                Ok(())
-            },
-            Err(e) => return Err(e),
+
+        let result = {
+            let mut state_machine: SocketStateMachine = self.state_machine.clone();
+            let mut transport: T = self.transport.clone();
+            let state_tracker = state_machine.while_may_push().fuse();
+            let operation = transport.push(&mut self.socket, buf, addr).fuse();
+            pin_mut!(state_tracker);
+            pin_mut!(operation);
+
+            select_biased! {
+                fail = state_tracker => return Err(fail),
+                result = operation => result,
+            }
+        };
+        if result.is_ok() {
+            debug_assert_eq!(buf.len(), 0);
         }
+        result
     }
 
     /// Schedules a coroutine to pop from this queue. This function contains all of the single-queue,
@@ -268,26 +306,25 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to pop from a queue and any single-queue functionality after the pop completes.
-    pub async fn pop_coroutine(
-        &mut self,
-        size: Option<usize>,
-        yielder: Yielder,
-    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+    pub async fn pop_coroutine(&mut self, size: Option<usize>) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         self.state_machine.may_pop()?;
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
-        // Check that we allocated a DemiBuffer that is big enough.
-        debug_assert_eq!(buf.len(), size);
-        match self
-            .transport
-            .clone()
-            .pop(&mut self.socket, &mut buf, size, yielder)
-            .await
-        {
-            Ok(addr) => Ok((addr, buf)),
-            Err(e) => Err(e),
-        }
+        let result = {
+            let mut state_machine: SocketStateMachine = self.state_machine.clone();
+            let mut transport: T = self.transport.clone();
+            let state_tracker = state_machine.while_may_pop().fuse();
+            let operation = transport.pop(&mut self.socket, &mut buf, size).fuse();
+            pin_mut!(state_tracker);
+            pin_mut!(operation);
+
+            select_biased! {
+                fail = state_tracker => return Err(fail),
+                result = operation => result,
+            }
+        };
+        Ok((result?, buf))
     }
 
     /// Generic function for spawning a control-path coroutine on [self].

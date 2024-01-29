@@ -13,7 +13,6 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        scheduler::Yielder,
         SharedDemiRuntime,
     },
 };
@@ -52,7 +51,6 @@ pub trait NetworkTransport: Clone + 'static {
     fn accept(
         &mut self,
         sd: &mut Self::SocketDescriptor,
-        yielder: Yielder,
     ) -> impl std::future::Future<Output = Result<(Self::SocketDescriptor, SocketAddr), Fail>>;
 
     /// Asynchronously connect this socket to [remote].
@@ -60,7 +58,6 @@ pub trait NetworkTransport: Clone + 'static {
         &mut self,
         sd: &mut Self::SocketDescriptor,
         remote: SocketAddr,
-        yielder: Yielder,
     ) -> impl std::future::Future<Output = Result<(), Fail>>;
 
     /// Push data to a connected socket.
@@ -69,7 +66,6 @@ pub trait NetworkTransport: Clone + 'static {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> impl std::future::Future<Output = Result<(), Fail>>;
 
     /// Pop data from a connected socket.
@@ -78,15 +74,10 @@ pub trait NetworkTransport: Clone + 'static {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> impl std::future::Future<Output = Result<Option<SocketAddr>, Fail>>;
 
     /// Asynchronously close a socket.
-    fn close(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        yielder: Yielder,
-    ) -> impl std::future::Future<Output = Result<(), Fail>>;
+    fn close(&mut self, sd: &mut Self::SocketDescriptor) -> impl std::future::Future<Output = Result<(), Fail>>;
 
     /// Pull the common runtime out of the transport. We only need this because traits do not support members.
     fn get_runtime(&self) -> &SharedDemiRuntime;
