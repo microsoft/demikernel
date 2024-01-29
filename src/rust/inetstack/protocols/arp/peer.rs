@@ -16,6 +16,7 @@ use crate::{
         Ethernet2Header,
     },
     runtime::{
+        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
@@ -23,8 +24,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
-        timer::UtilityMethods,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -35,7 +34,6 @@ use ::futures::{
         Receiver,
         Sender,
     },
-    select_biased,
     FutureExt,
 };
 use ::libc::ETIMEDOUT;
@@ -64,7 +62,6 @@ use ::std::{
 /// Arp Peer
 ///
 pub struct ArpPeer<N: NetworkRuntime> {
-    runtime: SharedDemiRuntime,
     network: N,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -93,14 +90,13 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         arp_config: ArpConfig,
     ) -> Result<Self, Fail> {
         let cache: ArpCache = ArpCache::new(
-            runtime.get_timer(),
+            runtime.get_now(),
             Some(arp_config.get_cache_ttl()),
             Some(arp_config.get_initial_values()),
             arp_config.get_disable_arp(),
         );
 
         let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer {
-            runtime: runtime.clone(),
             network,
             local_link_addr,
             local_ipv4_addr,
@@ -152,28 +148,10 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
 
     async fn poll(mut self) {
         loop {
-            let timeout_yielder: Yielder = Yielder::new();
-            let timeout = self
-                .runtime
-                .get_timer()
-                .wait(Self::ARP_CLEANUP_TIMEOUT, &timeout_yielder)
-                .fuse();
-            let packet_yielder: Yielder = Yielder::new();
-            let mut me: Self = self.clone();
-            let packet = me.recv_queue.pop(&packet_yielder).fuse();
-            futures::pin_mut!(timeout);
-            futures::pin_mut!(packet);
-
-            let buf: DemiBuffer = select_biased! {
-                result = timeout => match result {
-                    Ok(()) => continue,
-                    Err(Fail{errno, cause:_}) if errno == libc::ETIMEDOUT => continue,
-                    Err(_) => break,
-                },
-                result = packet => match result {
-                    Ok(buf) => buf,
-                    Err(_) => break,
-                }
+            let buf: DemiBuffer = match self.recv_queue.pop(Some(Self::ARP_CLEANUP_TIMEOUT)).await {
+                Ok(buf) => buf,
+                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT || errno == libc::EAGAIN => continue,
+                Err(_) => break,
             };
             // from RFC 826:
             // > ?Do I have the hardware type in ar$hrd?
@@ -256,7 +234,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         self.cache.get(ipv4_addr).cloned()
     }
 
-    pub async fn query(&mut self, ipv4_addr: Ipv4Addr, yielder: &Yielder) -> Result<MacAddress, Fail> {
+    pub async fn query(&mut self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
         if let Some(&link_addr) = self.cache.get(ipv4_addr) {
             return Ok(link_addr);
         }
@@ -271,20 +249,15 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
             ),
         );
         let mut peer: SharedArpPeer<N> = self.clone();
-        let mut arp_response = Box::pin(peer.do_wait_link_addr(ipv4_addr).fuse());
-
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 self.network.transmit(Box::new(msg.clone()));
-                let timer = self
-                    .runtime
-                    .get_timer()
-                    .wait(self.arp_config.get_request_timeout(), yielder);
+                let arp_response = peer.do_wait_link_addr(ipv4_addr);
 
-                match arp_response.with_timeout(timer).await {
+                match conditional_yield_with_timeout(arp_response, self.arp_config.get_request_timeout()).await {
                     Ok(link_addr) => {
                         debug!("ARP result available ({:?})", link_addr);
                         return Ok(link_addr);

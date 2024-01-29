@@ -406,6 +406,7 @@ mod tests {
         ensure_eq,
         runtime::scheduler::{
             Scheduler,
+            Task,
             TaskId,
             TaskWithResult,
         },
@@ -678,8 +679,9 @@ mod tests {
             .insert_task(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
-        let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove_task(server_handle).unwrap().as_any())
+        let get_server_result = |task: Box<dyn Task>| {
+            TaskWithResult::<Result<(), Fail>>::try_from(task.as_any())
+                .expect("should be correct task type")
                 .get_result()
                 .unwrap()
         };
@@ -687,11 +689,14 @@ mod tests {
         let mut wait_for_state = |scheduler: &mut Scheduler, state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                scheduler.poll_all();
-                if let Some(true) = scheduler.has_completed(server_handle) {
-                    return Err(get_server_result(scheduler).unwrap_err());
+                // Loop for an arbitrary number of quanta.
+                if let Some(task) = scheduler.get_next_completed_task(64) {
+                    if task.get_id() == server_handle {
+                        return Err(get_server_result(task).unwrap_err());
+                    }
                 }
             }
+
             Ok(())
         };
 
@@ -723,15 +728,16 @@ mod tests {
 
         std::mem::drop(client_handle);
 
-        loop {
-            if let Some(true) = scheduler.has_completed(server_handle) {
-                break;
-            }
+        let task = loop {
             iocp.get_mut().process_events()?;
-            scheduler.poll_all();
-        }
+            if let Some(task) = scheduler.get_next_completed_task(64) {
+                if task.get_id() == server_handle {
+                    break task;
+                }
+            }
+        };
 
-        get_server_result(&mut scheduler)?;
+        get_server_result(task)?;
 
         Ok(())
     }
@@ -790,8 +796,9 @@ mod tests {
             .insert_task(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
             .unwrap();
 
-        let get_server_result = |scheduler: &mut Scheduler| {
-            TaskWithResult::<Result<(), Fail>>::from(scheduler.remove_task(server_handle).unwrap().as_any())
+        let get_server_result = |task: Box<dyn Task>| {
+            TaskWithResult::<Result<(), Fail>>::try_from(task.as_any())
+                .expect("should be correct task type")
                 .get_result()
                 .unwrap()
         };
@@ -799,9 +806,11 @@ mod tests {
         let mut wait_for_state = |scheduler: &mut Scheduler, state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                scheduler.poll_all();
-                if let Some(true) = scheduler.has_completed(server_handle) {
-                    return Err(get_server_result(scheduler).unwrap_err());
+                // Loop for an arbitrary number of quanta.
+                if let Some(task) = scheduler.get_next_completed_task(64) {
+                    if task.get_id() == server_handle {
+                        return Err(get_server_result(task).unwrap_err());
+                    }
                 }
             }
             Ok(())
@@ -811,15 +820,16 @@ mod tests {
 
         yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "I/O cancelled")));
 
-        loop {
-            if let Some(true) = scheduler.has_completed(server_handle) {
-                break;
-            }
+        let task = loop {
             iocp.get_mut().process_events()?;
-            scheduler.poll_all();
-        }
+            if let Some(task) = scheduler.get_next_completed_task(64) {
+                if task.get_id() == server_handle {
+                    break task;
+                }
+            }
+        };
 
-        let result: Result<(), Fail> = get_server_result(&mut scheduler);
+        let result: Result<(), Fail> = get_server_result(task);
         if let Err(err) = result {
             if err.errno == libc::ECANCELED {
                 Ok(())

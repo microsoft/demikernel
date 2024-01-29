@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use crate::DEFAULT_TIMEOUT;
 use anyhow::Result;
 use demikernel::{
     runtime::types::demi_opcode_t,
@@ -24,7 +25,7 @@ pub fn close_and_wait(libos: &mut LibOS, qd: QDesc) -> Result<()> {
         Err(e) => anyhow::bail!("async_close() failed for qd: {:?}: {:?}", qd, e),
     };
 
-    match libos.wait(qt, None) {
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && is_closed(qr.qr_ret) => {},
         _ => anyhow::bail!("wait() should succeed with async_close()"),

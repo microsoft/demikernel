@@ -46,6 +46,10 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
+/// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
+/// ensure most OS operations will complete.
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
+
 use ::socket2::{
     Domain,
     Protocol,
@@ -53,9 +57,17 @@ use ::socket2::{
 };
 use std::{
     net::SocketAddr,
+    sync::{
+        Arc,
+        Barrier,
+    },
     thread::{
         self,
         JoinHandle,
+    },
+    time::{
+        Duration,
+        Instant,
     },
 };
 
@@ -206,6 +218,9 @@ fn udp_push_remote() -> Result<()> {
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
 
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
+
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
@@ -269,6 +284,7 @@ fn udp_push_remote() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                alice_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -338,6 +354,7 @@ fn udp_push_remote() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                bob_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -362,6 +379,9 @@ fn udp_loopback() -> Result<()> {
     let bob_addr: SocketAddr = SocketAddr::new(ALICE_IP, bob_port);
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -425,6 +445,7 @@ fn udp_loopback() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                alice_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -486,6 +507,7 @@ fn udp_loopback() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                bob_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -506,10 +528,24 @@ fn udp_loopback() -> Result<()> {
 
 /// Safe call to `wait2()`.
 fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
-    while !libos.get_runtime().has_completed(qt)? {
-        libos.get_runtime().poll();
+    // First check if the task has already completed.
+    if let Some(result) = libos.get_runtime().get_completed_task(&qt) {
+        return Ok(result);
     }
 
-    let (qd, result): (QDesc, OperationResult) = libos.get_runtime().remove_coroutine(qt);
-    Ok((qd, result))
+    // Otherwise, actually run the scheduler.
+    // Put the QToken into a single element array.
+    let qt_array: [QToken; 1] = [qt];
+    let start: Instant = Instant::now();
+
+    // Call run_any() until the task finishes.
+    while Instant::now() <= start + DEFAULT_TIMEOUT {
+        // Run for one quanta and if one of our queue tokens completed, then return.
+        if let Some((offset, qd, qr)) = libos.get_runtime().run_any(&qt_array) {
+            debug_assert_eq!(offset, 0);
+            return Ok((qd, qr));
+        }
+    }
+
+    anyhow::bail!("wait timed out")
 }

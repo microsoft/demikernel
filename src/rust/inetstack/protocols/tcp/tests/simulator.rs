@@ -810,10 +810,6 @@ impl Simulation {
         self.engine.receive(buf)?;
 
         self.engine.poll();
-        // Poll the scheduler again.
-        // TODO: Remove this once we have a way to poll the scheduler until there is no more work to be done.
-        self.engine.poll();
-
         Ok(())
     }
 
@@ -906,24 +902,32 @@ impl Simulation {
 
     /// Runs an outgoing packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        self.engine.poll();
+        let mut n = 0;
+        let frames = loop {
+            let frames = self.engine.pop_all_frames();
+            if frames.is_empty() {
+                if n > 5 {
+                    anyhow::bail!("did not emit a frame after 5 loops");
+                } else {
+                    self.engine.poll();
+                    n += 1;
+                }
+            } else {
+                // FIXME: We currently do not support multi-frame segments.
+                crate::ensure_eq!(frames.len(), 1);
+                break frames;
+            }
+        };
+        let bytes = &frames[0];
+        let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
+        self.check_ethernet2_header(&eth2_header)?;
 
-        let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
+        let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
+        self.check_ipv4_header(&ipv4_header)?;
 
-        // FIXME: We currently do not support multi-frame segments.
-        crate::ensure_eq!(frames.len(), 1);
-
-        for bytes in &frames {
-            let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
-            self.check_ethernet2_header(&eth2_header)?;
-
-            let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
-            self.check_ipv4_header(&ipv4_header)?;
-
-            let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
-            crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());
-            self.check_tcp_header(&tcp_header, &tcp_packet)?;
-        }
+        let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+        crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());
+        self.check_tcp_header(&tcp_header, &tcp_packet)?;
 
         Ok(())
     }
