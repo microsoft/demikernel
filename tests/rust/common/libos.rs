@@ -52,6 +52,10 @@ use std::{
 // Structures
 //==============================================================================
 
+/// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be quite small to make
+/// timeouts fast.
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1);
+
 pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>);
 
 //==============================================================================
@@ -100,26 +104,26 @@ impl DummyLibOS {
 
     #[allow(dead_code)]
     pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<(QDesc, OperationResult), Fail> {
-        // Get the wait start time, but only if we have a timeout.  We don't care when we started if we wait forever.
-        let start: Option<Instant> = if timeout.is_none() { None } else { Some(Instant::now()) };
+        // First check if the task has already completed.
+        if let Some(result) = self.get_runtime().get_completed_task(&qt) {
+            return Ok(result);
+        }
 
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.get_runtime().poll();
+        // Otherwise, actually run the scheduler.
+        // Put the QToken into a single element array.
+        let qt_array: [QToken; 1] = [qt];
+        let start: Instant = Instant::now();
 
-            if self.get_runtime().has_completed(qt)? {
-                let (qd, result): (QDesc, OperationResult) = self.get_runtime().remove_coroutine(qt);
-                return Ok((qd, result));
-            }
-
-            // If we have a timeout, check for expiration.
-            if timeout.is_some()
-                && Instant::now().duration_since(start.expect("start should be set if timeout is"))
-                    > timeout.expect("timeout should still be set")
-            {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
+        // Call run_any() until the task finishes.
+        while Instant::now() <= start + timeout.unwrap_or(DEFAULT_TIMEOUT) {
+            // Run for one quanta and if one of our queue tokens completed, then return.
+            if let Some((offset, qd, qr)) = self.get_runtime().run_any(&qt_array) {
+                debug_assert_eq!(offset, 0);
+                return Ok((qd, qr));
             }
         }
+
+        Err(Fail::new(libc::ETIMEDOUT, "wait timed out"))
     }
 }
 

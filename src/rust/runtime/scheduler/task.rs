@@ -34,7 +34,7 @@ pub trait Task: FusedFuture<Output = ()> + Unpin + Any {
 
 /// This trait is just for convenience of having defined associated types because we cannot define them on the struct
 /// impl as this feature is unstable in Rust.
-pub trait TaskWith: From<Box<dyn Any>> {
+pub trait TaskWith: TryFrom<Box<dyn Any>> {
     type Coroutine;
     type ResultType;
 }
@@ -95,9 +95,14 @@ impl<R: Unpin + Clone + Any> TaskWith for TaskWithResult<R> {
     type ResultType = R;
 }
 
-impl<R: Unpin + Clone + Any> From<Box<dyn Any>> for TaskWithResult<R> {
-    fn from(task: Box<dyn Any>) -> Self {
-        *task.downcast::<Self>().expect("Wrong type!")
+impl<R: Unpin + Clone + Any> TryFrom<Box<dyn Any>> for TaskWithResult<R> {
+    type Error = Box<dyn Any>;
+
+    fn try_from(value: Box<dyn Any>) -> Result<Self, Self::Error> {
+        match value.downcast::<Self>() {
+            Ok(ptr) => Ok(*ptr),
+            Err(e) => Err(e),
+        }
     }
 }
 
