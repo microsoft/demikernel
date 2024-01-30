@@ -44,7 +44,7 @@ pub mod yielder;
 
 pub use self::{
     mutex::Mutex,
-    scheduler::Scheduler,
+    scheduler::SharedScheduler,
     task::{
         Task,
         TaskId,

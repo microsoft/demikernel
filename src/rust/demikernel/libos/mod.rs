@@ -58,8 +58,8 @@ use crate::catnap::transport::SharedCatnapTransport;
 // Structures
 //======================================================================================================================
 
-// By default, we have a timeout of 100ms, which is extremely long for our libOSes.
-const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
+// The following value was chosen arbitrarily.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// LibOS
 pub enum LibOS {
