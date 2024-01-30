@@ -14,7 +14,6 @@ use crate::{
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::{
         network::NetworkRuntime,
-        scheduler::Yielder,
         QDesc,
     },
 };
@@ -25,21 +24,17 @@ use ::futures::{
 };
 
 pub async fn background<N: NetworkRuntime>(cb: SharedControlBlock<N>, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
-    let yielder_acknowledger: Yielder = Yielder::new();
-    let acknowledger = acknowledger(cb.clone(), yielder_acknowledger).fuse();
+    let acknowledger = acknowledger(cb.clone()).fuse();
     futures::pin_mut!(acknowledger);
 
-    let yielder_retransmitter: Yielder = Yielder::new();
-    let retransmitter = retransmitter(cb.clone(), yielder_retransmitter).fuse();
+    let retransmitter = retransmitter(cb.clone()).fuse();
     futures::pin_mut!(retransmitter);
 
-    let yielder_sender: Yielder = Yielder::new();
-    let sender = sender(cb.clone(), yielder_sender).fuse();
+    let sender = sender(cb.clone()).fuse();
     futures::pin_mut!(sender);
 
-    let yielder_receiver: Yielder = Yielder::new();
     let mut cb2: SharedControlBlock<N> = cb.clone();
-    let receiver = cb2.poll(yielder_receiver).fuse();
+    let receiver = cb2.poll().fuse();
     pin_mut!(receiver);
 
     let r = futures::select_biased! {
