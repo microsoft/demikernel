@@ -47,6 +47,7 @@ use crate::{
         memory::DemiBuffer,
         network::transport::NetworkTransport,
         scheduler::Yielder,
+        yield_once,
         DemiRuntime,
         SharedDemiRuntime,
         SharedObject,
@@ -130,10 +131,7 @@ impl SharedCatnapTransport {
                 error!("Completion port error: {}", err);
             }
 
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            }
+            poll_yield().await;
         }
     }
 }
