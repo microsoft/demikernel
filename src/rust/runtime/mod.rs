@@ -13,9 +13,10 @@ pub mod memory;
 pub mod network;
 pub mod queue;
 pub mod scheduler;
-pub mod timer;
 pub mod types;
 pub use condition_variable::SharedConditionVariable;
+mod poll;
+mod timer;
 pub use queue::{
     BackgroundTask,
     Operation,
@@ -44,6 +45,7 @@ use crate::{
             socket::SocketId,
             NetworkQueueTable,
         },
+        poll::PollFuture,
         queue::{
             IoQueue,
             IoQueueTable,
@@ -245,7 +247,6 @@ impl SharedDemiRuntime {
 
         // 2. None of the tasks have already completed, so start a timer and move the clock.
         self.advance_clock_to_now();
-        let start: Instant = self.get_now();
 
         loop {
             if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
@@ -713,6 +714,12 @@ pub async fn conditional_yield_until<F: Future>(condition: F, expiry: Option<Ins
     } else {
         Ok(condition.await)
     }
+}
+
+/// Yield for one quanta.
+pub async fn poll_yield() {
+    let poll: PollFuture = PollFuture::default();
+    poll.await;
 }
 
 //======================================================================================================================

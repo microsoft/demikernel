@@ -368,15 +368,8 @@ impl SharedMemorySocket {
     ) -> Result<RequestId, Fail> {
         // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
         let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
-        // Yield until pop completes.
-        while !runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
-        // Re-acquire mutable reference.
-        // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
+        // Wait for pop to finish.
+        let qr: demi_qresult_t = runtime.wait(qt, DEFAULT_TIMEOUT)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous pop().
             demi_opcode_t::DEMI_OPC_POP => {},
@@ -432,16 +425,12 @@ impl SharedMemorySocket {
         let qt: QToken = catmem.push(catmem_qd, &sga)?;
 
         // Wait for push to complete.
-        while !runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        let qr: demi_qresult_t = runtime.wait(qt, DEFAULT_TIMEOUT)?;
+
         // Free the scatter-gather array.
         runtime.sgafree(sga)?;
 
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -477,16 +466,11 @@ impl SharedMemorySocket {
         // Send to server.
         let qt: QToken = catmem.push(connect_qd, &sga)?;
         trace!("Send connection request qtoken={:?}", qt);
-        // Yield until push completes.
-        while !runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        // Wait until push completes.
+        let qr: demi_qresult_t = runtime.wait(qt, DEFAULT_TIMEOUT)?;
         // Free the message buffer.
         runtime.sgafree(sga)?;
         // Get the result of the push.
-        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -543,33 +527,22 @@ impl SharedMemorySocket {
                 .await?;
 
             // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
-            for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
-                match yielder.yield_once().await {
-                    Ok(()) if runtime.has_completed(qt)? => break,
-                    Ok(()) => continue,
-                    Err(e) => return Err(e),
-                }
-            }
-            // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
-            if runtime.has_completed(qt)? {
-                // Re-acquire reference to Catmem libos.
-                // Get the result of the pop.
-                let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
-                match qr.qr_opcode {
-                    // We expect a successful completion for previous pop().
-                    demi_opcode_t::DEMI_OPC_POP => {
-                        // Extract scatter-gather array from operation result.
-                        let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
+            let qr: demi_qresult_t = runtime.wait(qt, DEFAULT_TIMEOUT)?;
+            match qr.qr_opcode {
+                // We expect a successful completion for previous pop().
+                demi_opcode_t::DEMI_OPC_POP => {
+                    // Extract scatter-gather array from operation result.
+                    let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
 
-                        // Extract port number.
-                        let port: Result<u16, Fail> = extract_port_number(&sga);
-                        runtime.sgafree(sga)?;
-                        return port;
-                    },
-                    // We may get some error.
-                    demi_opcode_t::DEMI_OPC_FAILED => {
-                        // Shut down control duplex pipe as we can open the new pipe now.
-                        catmem.shutdown(connect_qd)?;
+                    // Extract port number.
+                    let port: Result<u16, Fail> = extract_port_number(&sga);
+                    runtime.sgafree(sga)?;
+                    return port;
+                },
+                // We may get some error.
+                demi_opcode_t::DEMI_OPC_FAILED => {
+                    // Shut down control duplex pipe as we can open the new pipe now.
+                    catmem.shutdown(connect_qd)?;
 
                     let cause: String = format!(
                         "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
@@ -603,16 +576,10 @@ impl SharedMemorySocket {
         let qt: QToken = catmem.push(new_qd, &sga)?;
         trace!("Send ack qtoken={:?}", qt);
 
-        // Yield until push completes.
-        while !runtime.has_completed(qt)? {
-            if let Err(e) = yielder.yield_once().await {
-                return Err(e);
-            }
-        }
+        // Wait until push completes.
+        let qr: demi_qresult_t = runtime.wait(qt, DEFAULT_TIMEOUT)?;
         // Free the message buffer.
         runtime.sgafree(sga)?;
-        // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
 
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
