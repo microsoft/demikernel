@@ -13,6 +13,7 @@ use crate::{
         limits,
         memory::DemiBuffer,
         network::transport::NetworkTransport,
+        poll_yield,
         scheduler::{
             Yielder,
             YielderHandle,
@@ -492,10 +493,8 @@ impl SharedCatnapTransport {
                         .poll_out();
                 }
             }
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            }
+            // Yield for one iteration.
+            poll_yield().await;
         }
     }
 

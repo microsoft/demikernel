@@ -1,0 +1,295 @@
+warning: unused imports: `future::FutureExt`, `select_biased`
+  --> src/rust/inetstack/protocols/tcp/active_open.rs:51:5
+   |
+51 |     future::FutureExt,
+   |     ^^^^^^^^^^^^^^^^^
+52 |     select_biased,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: use of deprecated method `runtime::scheduler::yielder::Yielder::yield_until_wake`
+  --> src/rust/collections/async_value.rs:46:31
+   |
+46 |                 match yielder.yield_until_wake().await {
+   |                               ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `runtime::scheduler::yielder::Yielder::yield_once`
+  --> src/rust/runtime/scheduler/mutex.rs:53:27
+   |
+53 |             match yielder.yield_once().await {
+   |                           ^^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::Yielder::yield_once`
+   --> src/rust/inetstack/mod.rs:182:27
+    |
+182 |             match yielder.yield_once().await {
+    |                           ^^^^^^^^^^
+
+warning: unused variable: `yielder`
+   --> src/rust/inetstack/protocols/tcp/established/ctrlblk.rs:125:54
+    |
+125 |     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+    |                                                      ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_yielder`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `yielder`
+   --> src/rust/inetstack/protocols/tcp/established/ctrlblk.rs:870:53
+    |
+870 |     pub async fn push(&mut self, mut nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+    |                                                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_yielder`
+
+warning: unused variable: `yielder`
+    --> src/rust/inetstack/protocols/tcp/established/ctrlblk.rs:1113:37
+     |
+1113 |     async fn local_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+     |                                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_yielder`
+
+warning: unused variable: `yielder`
+    --> src/rust/inetstack/protocols/tcp/established/ctrlblk.rs:1165:47
+     |
+1165 |     async fn remote_already_closed(&mut self, yielder: Yielder) -> Result<(), Fail> {
+     |                                               ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_yielder`
+
+warning: use of deprecated method `runtime::scheduler::yielder::Yielder::yield_until_wake`
+   --> src/rust/catnap/linux/transport.rs:216:17
+    |
+216 |         yielder.yield_until_wake().await
+    |                 ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::Yielder::yield_once`
+   --> src/rust/catnap/linux/transport.rs:495:27
+    |
+495 |             match yielder.yield_once().await {
+    |                           ^^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+  --> src/rust/collections/async_value.rs:36:28
+   |
+36 |             yielder_handle.wake_with(Ok(()));
+   |                            ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/runtime/scheduler/yielder.rs:160:38
+    |
+160 |                 self_.yielder_handle.wake_with(Ok(()));
+    |                                      ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/runtime/mod.rs:378:32
+    |
+378 |                 yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
+    |                                ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/inetstack/protocols/icmpv4/peer.rs:299:14
+    |
+299 |             .wake_with(Err(Fail::new(libc::ECANCELED, "Closing this peer gracefully")))
+    |              ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/catnap/linux/transport.rs:147:32
+    |
+147 |                 yielder_handle.wake_with(Ok(()));
+    |                                ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/catnap/linux/transport.rs:163:40
+    |
+163 |                         yielder_handle.wake_with(Ok(()))
+    |                                        ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/catnap/linux/transport.rs:177:40
+    |
+177 |                         yielder_handle.wake_with(Err(Fail::new(errno, &cause)))
+    |                                        ^^^^^^^^^
+
+warning: use of deprecated method `runtime::scheduler::yielder::YielderHandle::wake_with`
+   --> src/rust/catnap/linux/transport.rs:561:14
+    |
+561 |             .wake_with(Err(Fail::new(libc::EBADF, "closing epoll socket")));
+    |              ^^^^^^^^^
+
+warning: unused variable: `start`
+   --> src/rust/runtime/mod.rs:252:13
+    |
+252 |         let start: Instant = self.get_now();
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_start`
+
+warning: field `waiter` is never read
+  --> src/rust/collections/async_value.rs:25:5
+   |
+23 | pub struct AsyncValue<T> {
+   |            ---------- field in this struct
+24 |     value: Option<T>,
+25 |     waiter: Option<YielderHandle>,
+   |     ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: methods `set` and `get` are never used
+  --> src/rust/collections/async_value.rs:33:12
+   |
+32 | impl<T: Clone> AsyncValue<T> {
+   | ---------------------------- methods in this implementation
+33 |     pub fn set(&mut self, item: T) {
+   |            ^^^
+...
+40 |     pub async fn get(&mut self, yielder: Yielder) -> Result<T, Fail> {
+   |                  ^^^
+
+warning: field `runtime` is never read
+  --> src/rust/inetstack/protocols/arp/peer.rs:66:5
+   |
+65 | pub struct ArpPeer<N: NetworkRuntime> {
+   |            ------- field in this struct
+66 |     runtime: SharedDemiRuntime,
+   |     ^^^^^^^
+
+warning: field `yielder_handle` is never read
+  --> src/rust/inetstack/protocols/tcp/passive_open.rs:92:5
+   |
+79 | pub struct PassiveSocket<N: NetworkRuntime> {
+   |            ------------- field in this struct
+...
+92 |     yielder_handle: YielderHandle,
+   |     ^^^^^^^^^^^^^^
+
+warning: `demikernel` (lib) generated 23 warnings (run `cargo fix --lib -p demikernel` to apply 6 suggestions)
+warning: `demikernel` (lib test) generated 23 warnings (23 duplicates)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/rust/lib.rs (target/debug/deps/demikernel-d5123dd5ab9e7d9f)
+TRACE [demikernel::runtime] Inserting background coroutine: "Inetstack::arp::background"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="Inetstack::arp::background", id=TaskId(2939647976913485485), pin_slab_index=0
+TRACE [demikernel::runtime] Inserting background coroutine: "Inetstack::ICMP::background"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="Inetstack::ICMP::background", id=TaskId(5612343741886906158), pin_slab_index=1
+TRACE [demikernel::runtime] Inserting background coroutine: "inetstack::poll_recv"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="inetstack::poll_recv", id=TaskId(5452211403613372577), pin_slab_index=2
+absolute time is not supported
+TRACE [demikernel::demikernel::libos::network::libos] socket() domain=AF_INET, type=SOCK_STREAM, protocol=IPPROTO_TCP
+TRACE [demikernel::runtime] Allocating new queue: qd=QDesc(500)
+TRACE [demikernel::demikernel::libos::network::libos] bind() qd=QDesc(500), local=192.168.1.1:12345
+TRACE [demikernel::runtime] Check address in use: 192.168.1.1:12345
+DEBUG [demikernel::runtime::network::socket::state] get_next_state(): current=Unbound, transition=Bind
+TRACE [demikernel::runtime] Insert socket id to queue descriptor mapping: Passive(192.168.1.1:12345) -> QDesc(500)
+TRACE [demikernel::demikernel::libos::network::libos] listen() qd=QDesc(500), backlog=1
+DEBUG [demikernel::runtime::network::socket::state] get_next_state(): current=Bound, transition=Listen
+TRACE [demikernel::inetstack] listen() backlog=1
+TRACE [demikernel::runtime] Inserting background coroutine: "passive_listening::poll"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="passive_listening::poll", id=TaskId(13439519126536318205), pin_slab_index=3
+TRACE [demikernel::demikernel::libos::network::libos] accept(): qd=QDesc(500)
+TRACE [demikernel::runtime] Inserting coroutine: "NetworkLibOS::accept for qd=QDesc(500)"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="NetworkLibOS::accept for qd=QDesc(500)", id=TaskId(9947736379437784723), pin_slab_index=4
+DEBUG [demikernel::inetstack] Engine received Ethernet2Header { dst_addr: MacAddress(12-23-45-67-89-ab), src_addr: MacAddress(ab-89-67-45-23-12), ether_type: Ipv4 }
+DEBUG [demikernel::inetstack::protocols::peer] Ipv4 received Ipv4Header { version: 4, ihl: 5, dscp: 0, ecn: 0, total_length: 48, identification: 0, flags: 2, fragment_offset: 0, ttl: 255, protocol: TCP, header_checksum: 63603, src_addr: 192.168.1.2, dst_addr: 192.168.1.1 }
+DEBUG [demikernel::inetstack::protocols::tcp::peer] TCP received TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 0 }, ack_num: SeqNumber { value: 0 }, ns: false, cwr: false, ece: false, urg: false, ack: false, psh: false, rst: false, syn: true, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 2, option_list: [MaximumSegmentSize(1450), WindowScale(0), NoOperation, NoOperation, NoOperation] }
+TRACE [demikernel::inetstack] accept()
+DEBUG [demikernel::inetstack::protocols::tcp::passive_open] Received SYN: TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 0 }, ack_num: SeqNumber { value: 0 }, ns: false, cwr: false, ece: false, urg: false, ack: false, psh: false, rst: false, syn: true, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 2, option_list: [MaximumSegmentSize(1450), WindowScale(0), NoOperation, NoOperation, NoOperation] }
+TRACE [demikernel::runtime] Inserting background coroutine: "Inetstack::TCP::passiveopen::background"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="Inetstack::TCP::passiveopen::background", id=TaskId(2786141136387072907), pin_slab_index=5
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Received advertised MSS: 1450
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Received window scale: 0
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Advertising MSS: 1450
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Advertising window scale: 0
+DEBUG [demikernel::inetstack::protocols::tcp::passive_open] Sending SYN+ACK: TcpHeader { src_port: 12345, dst_port: 23456, seq_num: SeqNumber { value: 0 }, ack_num: SeqNumber { value: 1 }, ns: false, cwr: false, ece: false, urg: false, ack: true, psh: false, rst: false, syn: true, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 2, option_list: [MaximumSegmentSize(1450), WindowScale(0), NoOperation, NoOperation, NoOperation] }
+DEBUG [demikernel::inetstack::test_helpers::runtime] transmit frame: 0 body: 0
+DEBUG [demikernel::inetstack] Engine received Ethernet2Header { dst_addr: MacAddress(12-23-45-67-89-ab), src_addr: MacAddress(ab-89-67-45-23-12), ether_type: Ipv4 }
+DEBUG [demikernel::inetstack::protocols::peer] Ipv4 received Ipv4Header { version: 4, ihl: 5, dscp: 0, ecn: 0, total_length: 44, identification: 0, flags: 2, fragment_offset: 0, ttl: 255, protocol: TCP, header_checksum: 63607, src_addr: 192.168.1.2, dst_addr: 192.168.1.1 }
+DEBUG [demikernel::inetstack::protocols::tcp::peer] TCP received TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 1 }, ack_num: SeqNumber { value: 1 }, ns: false, cwr: false, ece: false, urg: false, ack: true, psh: false, rst: false, syn: false, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 0, option_list: [NoOperation, NoOperation, NoOperation, NoOperation, NoOperation] }
+DEBUG [demikernel::inetstack::protocols::tcp::passive_open] Received ACK: TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 1 }, ack_num: SeqNumber { value: 1 }, ns: false, cwr: false, ece: false, urg: false, ack: true, psh: false, rst: false, syn: false, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 0, option_list: [NoOperation, NoOperation, NoOperation, NoOperation, NoOperation] }
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Window sizes: local 65535, remote 65535
+INFO [demikernel::inetstack::protocols::tcp::passive_open] Window scale: local 0, remote 0
+TRACE [demikernel::runtime] Inserting background coroutine: "Inetstack::TCP::established::background"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="Inetstack::TCP::established::background", id=TaskId(5873408492745772459), pin_slab_index=6
+TRACE [demikernel::runtime::scheduler::group] remove(): name="Inetstack::TCP::passiveopen::background", id=TaskId(2786141136387072907), pin_slab_index=5
+TRACE [demikernel::demikernel::libos::network::queue] connection accepted (TCP socket local=Some(192.168.1.1:12345) remote=Some(192.168.1.2:23456))
+TRACE [demikernel::runtime] Allocating new queue: qd=QDesc(501)
+TRACE [demikernel::runtime::scheduler::group] remove(): name="NetworkLibOS::accept for qd=QDesc(500)", id=TaskId(9947736379437784723), pin_slab_index=4
+TRACE [demikernel::runtime] Completed while polling coroutine: "Inetstack::TCP::passiveopen::background"
+TRACE [demikernel::runtime] Completed while polling coroutine: "NetworkLibOS::accept for qd=QDesc(500)"
+connection accepted (qd=QDesc(500), addr=192.168.1.2:23456)
+TRACE [demikernel::demikernel::libos::network::libos] pop() qd=QDesc(501), size=None
+TRACE [demikernel::runtime] Inserting coroutine: "NetworkLibOS::pop for qd=QDesc(501)"
+TRACE [demikernel::runtime::scheduler::group] insert(): name="NetworkLibOS::pop for qd=QDesc(501)", id=TaskId(8472530172997478856), pin_slab_index=4
+DEBUG [demikernel::inetstack] Engine received Ethernet2Header { dst_addr: MacAddress(12-23-45-67-89-ab), src_addr: MacAddress(ab-89-67-45-23-12), ether_type: Ipv4 }
+DEBUG [demikernel::inetstack::protocols::peer] Ipv4 received Ipv4Header { version: 4, ihl: 5, dscp: 0, ecn: 0, total_length: 1044, identification: 0, flags: 2, fragment_offset: 0, ttl: 255, protocol: TCP, header_checksum: 62607, src_addr: 192.168.1.2, dst_addr: 192.168.1.1 }
+DEBUG [demikernel::inetstack::protocols::tcp::peer] TCP received TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 1 }, ack_num: SeqNumber { value: 1 }, ns: false, cwr: false, ece: false, urg: false, ack: true, psh: true, rst: false, syn: false, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 0, option_list: [NoOperation, NoOperation, NoOperation, NoOperation, NoOperation] }
+DEBUG [demikernel::inetstack::protocols::tcp::established::ctrlblk] Established Connection Receiving 1000 bytes + TcpHeader { src_port: 23456, dst_port: 12345, seq_num: SeqNumber { value: 1 }, ack_num: SeqNumber { value: 1 }, ns: false, cwr: false, ece: false,  urg: false, ack: true, psh: true, rst: false, syn: false, fin: false, window_size: 65535, urgent_pointer: 0, num_options: 0, option_list: [NoOperation, NoOperation, NoOperation, NoOperation, NoOperation] }
+WARN [demikernel::inetstack::protocols::tcp::established::ctrlblk] process_ack(): received duplicate ack (SeqNumber { value: 1 })
+TRACE [demikernel::runtime::scheduler::group] remove(): name="NetworkLibOS::pop for qd=QDesc(501)", id=TaskId(8472530172997478856), pin_slab_index=4
+TRACE [demikernel::runtime] Completed while polling coroutine: "NetworkLibOS::pop for qd=QDesc(501)"
+DEBUG [demikernel::runtime::network::socket::state] get_next_state(): current=PassiveListening, transition=Close
+ERROR [demikernel::inetstack::protocols::tcp::socket] do_close(): cannot close a listening socket
+ERROR [demikernel::demikernel::libos::network::libos] close() failed (error=Error 95: "cannot close a listening socket"
+DEBUG [demikernel::runtime::network::socket::state] get_next_state(): current=ActiveEstablished, transition=Close
+DEBUG [demikernel::runtime::network::socket::state] get_next_state(): current=Closing, transition=Closed
+Error: ensure failed: `(left == right)` left: `0`, right: `1` at file: src/rust/inetstack/protocols/tcp/tests/simulator.rs, line: 909
+
+Stack backtrace:
+   0: anyhow::error::<impl anyhow::Error>::msg
+             at /home/irene/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anyhow-1.0.79/src/error.rs:83:36
+   1: demikernel::inetstack::protocols::tcp::tests::simulator::Simulation::run_outgoing_packet
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:909:9
+   2: demikernel::inetstack::protocols::tcp::tests::simulator::Simulation::run_packet
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:366:46
+   3: demikernel::inetstack::protocols::tcp::tests::simulator::Simulation::run_event
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:331:59
+   4: demikernel::inetstack::protocols::tcp::tests::simulator::Simulation::run
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:307:17
+   5: demikernel::inetstack::protocols::tcp::tests::simulator::test_simulation
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:134:9
+   6: demikernel::inetstack::protocols::tcp::tests::simulator::test_simulation::{{closure}}
+             at ./src/rust/inetstack/protocols/tcp/tests/simulator.rs:92:25
+   7: core::ops::function::FnOnce::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/core/src/ops/function.rs:250:5
+   8: core::ops::function::FnOnce::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/core/src/ops/function.rs:250:5
+   9: test::__rust_begin_short_backtrace
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/test/src/lib.rs:627:18
+  10: test::run_test_in_process::{{closure}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/test/src/lib.rs:650:60
+  11: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/core/src/panic/unwind_safe.rs:272:9
+  12: std::panicking::try::do_call
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panicking.rs:552:40
+  13: std::panicking::try
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panicking.rs:516:19
+  14: std::panic::catch_unwind
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panic.rs:142:14
+  15: test::run_test_in_process
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/test/src/lib.rs:650:27
+  16: test::run_test::{{closure}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/test/src/lib.rs:573:43
+  17: test::run_test::{{closure}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/test/src/lib.rs:601:41
+  18: std::sys_common::backtrace::__rust_begin_short_backtrace
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/sys_common/backtrace.rs:155:18
+  19: std::thread::Builder::spawn_unchecked_::{{closure}}::{{closure}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/thread/mod.rs:529:17
+  20: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/core/src/panic/unwind_safe.rs:272:9
+  21: std::panicking::try::do_call
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panicking.rs:552:40
+  22: std::panicking::try
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panicking.rs:516:19
+  23: std::panic::catch_unwind
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/panic.rs:142:14
+  24: std::thread::Builder::spawn_unchecked_::{{closure}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/thread/mod.rs:528:30
+  25: core::ops::function::FnOnce::call_once{{vtable.shim}}
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/core/src/ops/function.rs:250:5
+  26: <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/alloc/src/boxed.rs:2015:9
+  27: <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/alloc/src/boxed.rs:2015:9
+  28: std::sys::unix::thread::Thread::new::thread_start
+             at /rustc/89e2160c4ca5808657ed55392620ed1dbbce78d1/library/std/src/sys/unix/thread.rs:108:17
+  29: start_thread
+             at ./nptl/pthread_create.c:442:8
+  30: clone3
+             at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+error: test failed, to rerun pass `--lib`

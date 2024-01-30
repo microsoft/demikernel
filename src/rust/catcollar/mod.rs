@@ -40,6 +40,7 @@ use crate::{
             MemoryRuntime,
         },
         network::unwrap_socketaddr,
+        poll_yield,
         queue::{
             Operation,
             OperationResult,
@@ -231,7 +232,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_accept(fd: RawFd, yielder: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
+    async fn do_accept(fd: RawFd, _: Yielder) -> Result<(RawFd, SocketAddrV4), Fail> {
         // Socket address of accept connection.
         let mut saddr: SockAddr = unsafe { mem::zeroed() };
         let mut address_len: Socklen = mem::size_of::<SockAddrIn>() as u32;
@@ -268,11 +269,7 @@ impl CatcollarLibOS {
 
                     // Operation in progress.
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("accept(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            break Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         // Operation failed.
                         let message: String = format!("accept(): operation failed (errno={:?})", errno);
@@ -313,7 +310,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_connect(fd: RawFd, remote: SocketAddrV4, yielder: Yielder) -> Result<(), Fail> {
+    async fn do_connect(fd: RawFd, remote: SocketAddrV4, _: Yielder) -> Result<(), Fail> {
         let saddr: SockAddr = linux::socketaddrv4_to_sockaddr(&remote);
         loop {
             match unsafe { libc::connect(fd, &saddr as *const SockAddr, mem::size_of::<SockAddrIn>() as Socklen) } {
@@ -328,11 +325,7 @@ impl CatcollarLibOS {
 
                     // Operation in progress.
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("connect(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            return Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         // Operation failed.
                         let message: String = format!("connect(): operation failed (errno={:?})", errno);
@@ -377,7 +370,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_close(fd: RawFd, yielder: Yielder) -> Result<(), Fail> {
+    async fn do_close(fd: RawFd, _: Yielder) -> Result<(), Fail> {
         loop {
             match unsafe { libc::close(fd) } {
                 // Operation completed.
@@ -391,11 +384,7 @@ impl CatcollarLibOS {
 
                     // Operation was interrupted, retry?
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("close(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            return Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         // Operation failed.
                         let message: String = format!("close(): operation failed (errno={:?})", errno);
@@ -441,7 +430,7 @@ impl CatcollarLibOS {
         }
     }
 
-    async fn do_push(mut rt: SharedIoUringRuntime, fd: RawFd, buf: DemiBuffer, yielder: Yielder) -> Result<(), Fail> {
+    async fn do_push(mut rt: SharedIoUringRuntime, fd: RawFd, buf: DemiBuffer, _: Yielder) -> Result<(), Fail> {
         let request_id: RequestId = rt.push(fd, buf.clone())?;
         loop {
             match rt.peek(request_id) {
@@ -455,11 +444,7 @@ impl CatcollarLibOS {
                     let errno: i32 = -size;
                     // Operation in progress.
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("push(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            return Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         let message: String = format!("push(): operation failed (errno={:?})", errno);
                         error!("{}", message);
@@ -523,7 +508,7 @@ impl CatcollarLibOS {
         fd: RawFd,
         remote: SocketAddrV4,
         buf: DemiBuffer,
-        yielder: Yielder,
+        _: Yielder,
     ) -> Result<(), Fail> {
         let request_id: RequestId = rt.pushto(fd, remote, buf.clone())?;
         loop {
@@ -538,11 +523,7 @@ impl CatcollarLibOS {
                     let errno: i32 = -size;
                     // Operation in progress.
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("pushto(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            return Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         let message: String = format!("push(): operation failed (errno={:?})", errno);
                         error!("{}", message);
@@ -602,7 +583,7 @@ impl CatcollarLibOS {
         mut rt: SharedIoUringRuntime,
         fd: RawFd,
         buf: DemiBuffer,
-        yielder: Yielder,
+        _: Yielder,
     ) -> Result<(Option<SocketAddrV4>, DemiBuffer), Fail> {
         let request_id: RequestId = rt.pop(fd, buf.clone())?;
         loop {
@@ -619,11 +600,7 @@ impl CatcollarLibOS {
                 Ok((None, size)) if size < 0 => {
                     let errno: i32 = -size;
                     if DemiRuntime::should_retry(errno) {
-                        if let Err(e) = yielder.yield_once().await {
-                            let message: String = format!("pop(): operation canceled (err={:?})", e);
-                            error!("{}", message);
-                            break Err(Fail::new(libc::ECANCELED, &message));
-                        }
+                        poll_yield().await;
                     } else {
                         let message: String = format!("pop(): operation failed (errno={:?})", errno);
                         error!("{}", message);
