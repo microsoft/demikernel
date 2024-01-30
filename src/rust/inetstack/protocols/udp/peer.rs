@@ -154,9 +154,9 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
         socket: &mut SharedUdpSocket<N>,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
+        _: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
-        let (addr, incoming): (SocketAddrV4, DemiBuffer) = socket.pop(size, yielder).await?;
+        let (addr, incoming): (SocketAddrV4, DemiBuffer) = socket.pop(size).await?;
         // TODO: Remove copy.
         let len: usize = incoming.len();
         buf.trim(size - len)?;

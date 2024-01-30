@@ -168,11 +168,18 @@ impl TaskGroup {
         result
     }
 
-    pub fn get_id(&self, pin_slab_index: usize) -> TaskId {
+    /// Translates an internal task id to an external one. Expects the task to exist.
+    pub fn unchecked_internal_to_external_id(&self, internal_id: InternalId) -> TaskId {
         self.tasks
-            .get(pin_slab_index)
-            .expect(format!("Invalid offset: {:?}", pin_slab_index).as_str())
+            .get(internal_id.into())
+            .expect(format!("Invalid offset: {:?}", internal_id).as_str())
             .get_id()
+    }
+
+    pub fn unchecked_external_to_internal_id(&self, task_id: &TaskId) -> InternalId {
+        self.ids
+            .get(task_id)
+            .expect(format!("Invalid id: {:?}", task_id).as_str())
     }
 
     fn get_pinned_task_ptr(&mut self, pin_slab_index: usize) -> Pin<&mut Box<dyn Task>> {
@@ -182,18 +189,18 @@ impl TaskGroup {
             .expect(format!("Invalid offset: {:?}", pin_slab_index).as_str())
     }
 
-    fn get_waker(&self, waker_page_index: usize, waker_page_offset: usize) -> Waker {
+    pub fn get_waker(&self, internal_task_id: InternalId) -> Option<Waker> {
+        let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(internal_task_id.into())?;
+
         let raw_waker: NonNull<u8> = self.waker_page_refs[waker_page_index].into_raw_waker_ref(waker_page_offset);
-        unsafe { Waker::from_raw(WakerRef::new(raw_waker).into()) }
+        Some(unsafe { Waker::from_raw(WakerRef::new(raw_waker).into()) })
     }
 
     pub fn poll_notified_task_and_remove_if_ready(&mut self, internal_task_id: InternalId) -> Option<Box<dyn Task>> {
         // Perform the actual work of running the task.
         let poll_result: Poll<()> = {
             // Get the waker context.
-            let (waker_page_index, waker_page_offset) =
-                self.get_waker_page_index_and_offset(internal_task_id.into())?;
-            let waker: Waker = self.get_waker(waker_page_index, waker_page_offset);
+            let waker: Waker = self.get_waker(internal_task_id)?;
             let mut waker_context: Context = Context::from_waker(&waker);
 
             let mut pinned_ptr = self.get_pinned_task_ptr(internal_task_id.into());
@@ -204,7 +211,7 @@ impl TaskGroup {
         };
 
         if let Poll::Ready(()) = poll_result {
-            let task_id: TaskId = self.get_id(internal_task_id.into());
+            let task_id: TaskId = self.unchecked_internal_to_external_id(internal_task_id);
             return self.remove(task_id);
         }
         None

@@ -72,6 +72,7 @@ impl YielderHandle {
         }
     }
 
+    #[deprecated]
     /// Wake this yielded coroutine: Ok indicates there is work to be done and Fail indicates the coroutine should exit
     /// with an error.
     pub fn wake_with(&mut self, result: Result<(), Fail>) {
@@ -109,6 +110,7 @@ impl Yielder {
         self.yielder_handle.clone()
     }
 
+    #[deprecated]
     /// Create a Yield Future that yields for just one quanta.
     pub async fn yield_once(&self) -> Result<(), Fail> {
         Yield::new(Some(1), self.yielder_handle.clone()).await
@@ -119,6 +121,7 @@ impl Yielder {
         Yield::new(Some(n), self.yielder_handle.clone()).await
     }
 
+    #[deprecated]
     /// Create a Yield Future that yields until woken with a signal.
     pub async fn yield_until_wake(&self) -> Result<(), Fail> {
         Yield::new(None, self.yielder_handle.clone()).await
