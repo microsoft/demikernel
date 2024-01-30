@@ -16,7 +16,6 @@ pub mod scheduler;
 pub mod timer;
 pub mod types;
 pub use condition_variable::SharedConditionVariable;
-pub mod watched;
 pub use queue::{
     BackgroundTask,
     Operation,

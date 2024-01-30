@@ -13,9 +13,12 @@ use super::{
     },
 };
 use crate::{
-    collections::async_queue::{
-        AsyncQueue,
-        SharedAsyncQueue,
+    collections::{
+        async_queue::{
+            AsyncQueue,
+            SharedAsyncQueue,
+        },
+        async_value::SharedAsyncValue,
     },
     inetstack::protocols::{
         arp::SharedArpPeer,
@@ -42,7 +45,6 @@ use crate::{
             NetworkRuntime,
         },
         scheduler::Yielder,
-        watched::SharedWatchedValue,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -122,7 +124,7 @@ impl Receiver {
         }
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+    pub async fn pop(&mut self, size: Option<usize>, _: Yielder) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
             let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
             // Split the buffer if it's too big.
@@ -171,7 +173,7 @@ pub struct ControlBlock<N: NetworkRuntime> {
 
     ack_delay_timeout: Duration,
 
-    ack_deadline: SharedWatchedValue<Option<Instant>>,
+    ack_deadline: SharedAsyncValue<Option<Instant>>,
 
     // This is our receive buffer size, which is also the maximum size of our receive window.
     // Note: The maximum possible advertised window is 1 GiB with window scaling and 64 KiB without.
@@ -203,7 +205,7 @@ pub struct ControlBlock<N: NetworkRuntime> {
 
     // Current retransmission timer expiration time.
     // TODO: Consider storing this directly in the RtoCalculator.
-    retransmit_deadline: SharedWatchedValue<Option<Instant>>,
+    retransmit_deadline: SharedAsyncValue<Option<Instant>>,
 
     // Retransmission Timeout (RTO) calculator.
     rto_calculator: RtoCalculator,
@@ -252,14 +254,14 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             sender,
             state: State::Established,
             ack_delay_timeout,
-            ack_deadline: SharedWatchedValue::new(None),
+            ack_deadline: SharedAsyncValue::new(None),
             receive_buffer_size: receiver_window_size,
             window_scale: receiver_window_scale,
             out_of_order: VecDeque::new(),
             out_of_order_fin: Option::None,
             receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
-            retransmit_deadline: SharedWatchedValue::new(None),
+            retransmit_deadline: SharedAsyncValue::new(None),
             rto_calculator: RtoCalculator::new(),
             recv_queue,
             ack_queue,
@@ -288,7 +290,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.sender.retransmit(self.clone())
     }
 
-    pub fn congestion_control_watch_retransmit_now_flag(&self) -> SharedWatchedValue<bool> {
+    pub fn congestion_control_watch_retransmit_now_flag(&self) -> SharedAsyncValue<bool> {
         self.cc.get_retransmit_now_flag()
     }
 
@@ -308,11 +310,11 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.cc.on_cwnd_check_before_send()
     }
 
-    pub fn congestion_control_get_cwnd(&self) -> SharedWatchedValue<u32> {
+    pub fn congestion_control_get_cwnd(&self) -> SharedAsyncValue<u32> {
         self.cc.get_cwnd()
     }
 
-    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> SharedWatchedValue<u32> {
+    pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> SharedAsyncValue<u32> {
         self.cc.get_limited_transmit_cwnd_increase()
     }
 
@@ -320,19 +322,19 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.sender.get_mss()
     }
 
-    pub fn get_send_window(&self) -> SharedWatchedValue<u32> {
+    pub fn get_send_window(&self) -> SharedAsyncValue<u32> {
         self.sender.get_send_window()
     }
 
-    pub fn get_send_unacked(&self) -> SharedWatchedValue<SeqNumber> {
+    pub fn get_send_unacked(&self) -> SharedAsyncValue<SeqNumber> {
         self.sender.get_send_unacked()
     }
 
-    pub fn get_unsent_seq_no(&self) -> SharedWatchedValue<SeqNumber> {
+    pub fn get_unsent_seq_no(&self) -> SharedAsyncValue<SeqNumber> {
         self.sender.get_unsent_seq_no()
     }
 
-    pub fn get_send_next(&self) -> SharedWatchedValue<SeqNumber> {
+    pub fn get_send_next(&self) -> SharedAsyncValue<SeqNumber> {
         self.sender.get_send_next()
     }
 
@@ -348,7 +350,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.retransmit_deadline.set(when);
     }
 
-    pub fn watch_retransmit_deadline(&self) -> SharedWatchedValue<Option<Instant>> {
+    pub fn watch_retransmit_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
         self.retransmit_deadline.clone()
     }
 
@@ -840,7 +842,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.sender.remote_mss()
     }
 
-    pub fn get_ack_deadline(&self) -> SharedWatchedValue<Option<Instant>> {
+    pub fn get_ack_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
         self.ack_deadline.clone()
     }
 

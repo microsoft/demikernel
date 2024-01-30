@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
+    collections::async_value::SharedAsyncValue,
     inetstack::protocols::tcp::{
         established::{
             ctrlblk::SharedControlBlock,
@@ -12,12 +13,10 @@ use crate::{
     },
     runtime::{
         conditional_yield_until,
-        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::NetworkRuntime,
         scheduler::Yielder,
-        watched::SharedWatchedValue,
     },
 };
 use ::futures::{
@@ -35,17 +34,17 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.
-        let mut unsent_seq_watched: SharedWatchedValue<SeqNumber> = cb.get_unsent_seq_no();
+        let mut unsent_seq_watched: SharedAsyncValue<SeqNumber> = cb.get_unsent_seq_no();
         let unsent_seq: SeqNumber = unsent_seq_watched.get();
 
-        let mut send_next_watched: SharedWatchedValue<SeqNumber> = cb.get_send_next();
+        let mut send_next_watched: SharedAsyncValue<SeqNumber> = cb.get_send_next();
         let send_next: SeqNumber = send_next_watched.get();
 
         if send_next == unsent_seq {
             let something_changed = async move {
                 select_biased! {
-                    _ = unsent_seq_watched.watch().fuse() => (),
-                    _ = send_next_watched.watch().fuse() => (),
+                    _ = unsent_seq_watched.wait_for_change(None).fuse() => (),
+                    _ = send_next_watched.wait_for_change(None).fuse() => (),
                 }
             };
             pin_mut!(something_changed);
@@ -59,7 +58,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
 
         // Okay, we know we have some unsent data past this point. Next, check to see that the
         // remote side has available window.
-        let mut win_sz_watched: SharedWatchedValue<u32> = cb.get_send_window();
+        let mut win_sz_watched: SharedAsyncValue<u32> = cb.get_send_window();
         let win_sz: u32 = win_sz_watched.get();
 
         // If we don't have any window size at all, we need to transition to PERSIST mode and
@@ -91,7 +90,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
                 header.seq_num = send_next;
                 cb.emit(header, Some(buf.clone()), remote_link_addr);
 
-                match conditional_yield_with_timeout(win_sz_watched.watch(), timeout).await {
+                match win_sz_watched.wait_for_change(Some(timeout)).await {
                     Ok(_) => continue 'top,
                     Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => timeout *= 2,
                     Err(_) => unreachable!(
@@ -102,16 +101,16 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
         }
 
         // The remote window is nonzero, but there still may not be room.
-        let mut send_unacked_watched: SharedWatchedValue<SeqNumber> = cb.get_send_unacked();
+        let mut send_unacked_watched: SharedAsyncValue<SeqNumber> = cb.get_send_unacked();
         let send_unacked: SeqNumber = send_unacked_watched.get();
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
         cb.congestion_control_on_cwnd_check_before_send();
-        let mut cwnd_watched: SharedWatchedValue<u32> = cb.congestion_control_get_cwnd();
+        let mut cwnd_watched: SharedAsyncValue<u32> = cb.congestion_control_get_cwnd();
         let cwnd: u32 = cwnd_watched.get();
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
-        let mut ltci_watched: SharedWatchedValue<u32> = cb.congestion_control_get_limited_transmit_cwnd_increase();
+        let mut ltci_watched: SharedAsyncValue<u32> = cb.congestion_control_get_limited_transmit_cwnd_increase();
         let ltci: u32 = ltci_watched.get();
 
         let effective_cwnd: u32 = cwnd + ltci;
@@ -123,11 +122,11 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
         {
             futures::select_biased! {
-                _ = pin!(send_unacked_watched.watch().fuse()) => continue 'top,
-                _ = send_next_watched.watch().fuse() => continue 'top,
-                _ = win_sz_watched.watch().fuse() => continue 'top,
-                _ = cwnd_watched.watch().fuse() => continue 'top,
-                _ = ltci_watched.watch().fuse() => continue 'top,
+                _ = pin!(send_unacked_watched.wait_for_change(None).fuse()) => continue 'top,
+                _ = send_next_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = win_sz_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = cwnd_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = ltci_watched.wait_for_change(None).fuse() => continue 'top,
             };
         }
 
