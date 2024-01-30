@@ -31,7 +31,6 @@
 //! the scheduler. The [YielderHandle] identifies a specific blocked coroutine and can be used to wake the coroutine.
 
 mod group;
-pub mod mutex;
 mod page;
 pub mod scheduler;
 pub mod task;
@@ -43,7 +42,6 @@ pub mod yielder;
 //==============================================================================
 
 pub use self::{
-    mutex::Mutex,
     scheduler::SharedScheduler,
     task::{
         Task,
