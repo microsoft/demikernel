@@ -5,6 +5,7 @@
 // Exports
 //======================================================================================================================
 
+pub mod condition_variable;
 pub mod fail;
 pub mod limits;
 pub mod logging;
@@ -14,6 +15,7 @@ pub mod queue;
 pub mod scheduler;
 pub mod timer;
 pub mod types;
+pub use condition_variable::SharedConditionVariable;
 pub mod watched;
 pub use queue::{
     BackgroundTask,
@@ -24,6 +26,7 @@ pub use queue::{
     QToken,
     QType,
 };
+pub use scheduler::TaskId;
 
 #[cfg(feature = "liburing")]
 pub use liburing;
@@ -50,14 +53,26 @@ use crate::{
             IoQueueTable,
         },
         scheduler::{
-            Scheduler,
-            TaskId,
+            SharedScheduler,
+            Yielder,
+            YielderHandle,
         },
         timer::SharedTimer,
-        types::demi_opcode_t,
+        types::{
+            demi_accept_result_t,
+            demi_opcode_t,
+            demi_qr_value_t,
+            demi_qresult_t,
+        },
     },
 };
-use ::futures::future::FusedFuture;
+use ::futures::{
+    future::FusedFuture,
+    select_biased,
+    Future,
+    FutureExt,
+};
+
 use ::std::{
     boxed::Box,
     collections::HashMap,
@@ -71,7 +86,10 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    pin::Pin,
+    pin::{
+        pin,
+        Pin,
+    },
     rc::Rc,
     time::{
         Duration,
@@ -86,17 +104,17 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 #[cfg(target_os = "linux")]
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
-use self::{
-    scheduler::{
-        Yielder,
-        YielderHandle,
-    },
-    types::{
-        demi_accept_result_t,
-        demi_qr_value_t,
-        demi_qresult_t,
-    },
-};
+//======================================================================================================================
+// Thread local variable
+//======================================================================================================================
+
+thread_local! {
+/// Each Demikernel thread has its own instance of the scheduler stored in a thread local variable for access from
+/// different coroutines. It is important to note that this is NEVER accessed directly from outside of the runtime.
+static THREAD_SCHEDULER: SharedScheduler = SharedScheduler::default();
+/// This is our shared sense of time. It is explicitly moved forward ONLY by the runtime and used to trigger time outs.
+static THREAD_TIME: SharedTimer = SharedTimer::default();
+}
 
 //======================================================================================================================
 // Constants
@@ -109,16 +127,11 @@ const TIMER_RESOLUTION: usize = 64;
 //======================================================================================================================
 
 /// Demikernel Runtime
-#[derive(Default)]
 pub struct DemiRuntime {
-    /// Scheduler
-    scheduler: Scheduler,
     /// Shared IoQueueTable.
     qtable: IoQueueTable,
     /// Shared ephemeral port allocator.
     ephemeral_ports: EphemeralPorts,
-    /// Shared timer for periodic triggering of coroutines and time outs.
-    timer: SharedTimer,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
     network_table: NetworkQueueTable,
     /// Currently running coroutines.
@@ -153,12 +166,15 @@ impl DemiRuntime {
 
 /// Associate Functions for POSIX Runtime
 impl SharedDemiRuntime {
+    #[cfg(test)]
     pub fn new(now: Instant) -> Self {
+        THREAD_TIME.with(|s| {
+            s.clone().set_time(now);
+        });
+
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            scheduler: Scheduler::default(),
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
-            timer: SharedTimer::new(now),
             network_table: NetworkQueueTable::default(),
             pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
             ts_iters: 0,
@@ -170,7 +186,7 @@ impl SharedDemiRuntime {
     fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert_task(task) {
+        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -225,18 +241,18 @@ impl SharedDemiRuntime {
             let result: demi_qresult_t = self.create_result(result, qd, qt);
             return Ok(result);
         }
-        if !self.scheduler.is_valid_task(&TaskId::from(qt)) {
+        if !THREAD_SCHEDULER.with(|s| s.is_valid_task(&TaskId::from(qt))) {
             let cause: String = format!("{:?} is not a valid queue token", qt);
             warn!("wait_any: {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
         // 2. None of the tasks have already completed, so start a timer and move the clock.
+        self.advance_clock_to_now();
         let start: Instant = self.get_now();
-        self.advance_clock(start);
 
         loop {
-            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+            if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
                 // Perform bookkeeping for the completed and removed task.
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
@@ -264,8 +280,7 @@ impl SharedDemiRuntime {
             }
 
             // Advance the clock and continue running tasks.
-            let now: Instant = self.get_now();
-            self.advance_clock(now);
+            self.advance_clock_to_now();
         }
     }
 
@@ -278,7 +293,7 @@ impl SharedDemiRuntime {
             }
 
             // 2. Make sure these queue tokens all point to valid tasks.
-            if !self.scheduler.is_valid_task(&TaskId::from(*qt)) {
+            if !THREAD_SCHEDULER.with(|s| s.is_valid_task(&TaskId::from(*qt))) {
                 let cause: String = format!("{:?} is not a valid queue token", qt);
                 warn!("wait_any: {}", cause);
                 return Err(Fail::new(libc::EINVAL, &cause));
@@ -286,8 +301,8 @@ impl SharedDemiRuntime {
         }
 
         // 3. None of the tasks have already completed, so start a timer and move the clock.
+        self.advance_clock_to_now();
         let start: Instant = self.get_now();
-        self.advance_clock(start);
 
         // 4. Invoke the scheduler and run some tasks.
         loop {
@@ -296,11 +311,10 @@ impl SharedDemiRuntime {
                 return Ok((i, self.create_result(result, qd, qts[i])));
             }
             // Otherwise, move time forward.
+            self.advance_clock_to_now();
             let now: Instant = self.get_now();
             if now >= start + timeout {
                 return Err(Fail::new(libc::ETIMEDOUT, "wait timed out"));
-            } else {
-                self.advance_clock(now);
             }
         }
     }
@@ -311,7 +325,7 @@ impl SharedDemiRuntime {
 
     /// Runs the scheduler for one [TIMER_RESOLUTION] quanta. Importantly does not modify the clock.
     pub fn run_any(&mut self, qts: &[QToken]) -> Option<(usize, QDesc, OperationResult)> {
-        if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+        if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
             // Perform bookkeeping for the completed and removed task.
             trace!("Removing coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
@@ -366,7 +380,7 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// Inserts the background `coroutine` named `task_name` into the scheduler.
+    /// Inserts the background `coroutine` named `task_name` into the THREAD_SCHEDULER.with(|s| {s.
     pub fn insert_background_coroutine(
         &mut self,
         task_name: &str,
@@ -374,7 +388,7 @@ impl SharedDemiRuntime {
     ) -> Result<QToken, Fail> {
         trace!("Inserting background coroutine: {:?}", task_name);
         let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
-        match self.scheduler.insert_task(task) {
+        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -387,7 +401,7 @@ impl SharedDemiRuntime {
     /// Removes the background `coroutine` associated with `qt`. Since background coroutines do not return a result
     /// there is no need to cast it.
     pub fn remove_background_coroutine(&mut self, qt: QToken) -> Result<(), Fail> {
-        match self.scheduler.remove_task(qt.into()) {
+        match THREAD_SCHEDULER.with(|s| s.clone().remove_task(qt.into())) {
             Some(boxed_task) => {
                 trace!("Removing background coroutine: {:?}", boxed_task.get_name());
                 Ok(())
@@ -418,7 +432,7 @@ impl SharedDemiRuntime {
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
-        for boxed_task in self.scheduler.poll_all(TIMER_RESOLUTION) {
+        for boxed_task in THREAD_SCHEDULER.with(|s| s.clone().poll_all(TIMER_RESOLUTION)) {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
@@ -514,19 +528,22 @@ impl SharedDemiRuntime {
         EphemeralPorts::is_private(port)
     }
 
-    /// Returns a reference to the shared timer.
-    pub fn get_timer(&self) -> SharedTimer {
-        self.timer.clone()
-    }
-
     /// Moves time forward deterministically.
     pub fn advance_clock(&mut self, now: Instant) {
-        self.timer.advance_clock(now)
+        THREAD_TIME.with(|t| t.clone().advance_clock(now));
+    }
+
+    /// Moves time forward to the current real time.
+    fn advance_clock_to_now(&mut self) {
+        if self.ts_iters == 0 {
+            self.advance_clock(Instant::now());
+        }
+        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
     }
 
     /// Gets the current time according to our internal timer.
     pub fn get_now(&self) -> Instant {
-        self.timer.now()
+        THREAD_TIME.with(|t| t.now())
     }
 
     /// Checks if an identifier is in use and returns the queue descriptor if it is.
@@ -662,6 +679,47 @@ impl<T: ?Sized> SharedBox<T> {
 }
 
 //======================================================================================================================
+// Static Functions
+//======================================================================================================================
+
+/// Check whether this task (and therefore its waker) is still valid.
+fn is_valid_task_id(task_id: &TaskId) -> bool {
+    THREAD_SCHEDULER.with(|s| s.is_valid_task(task_id))
+}
+
+pub async fn yield_with_timeout(timeout: Duration) {
+    let timer_cond: SharedConditionVariable = SharedConditionVariable::default();
+    THREAD_TIME.with(|t| t.clone().wait(timeout, timer_cond.clone())).await
+}
+
+/// Yield until either the condition completes or we time out. If the timeout is 0, then run
+pub async fn conditional_yield_with_timeout<F: Future>(condition: F, timeout: Duration) -> Result<F::Output, Fail> {
+    let mut timer_cond: SharedConditionVariable = SharedConditionVariable::default();
+    select_biased! {
+        result = pin!(condition.fuse()) => {
+            timer_cond.cancel();
+            Ok(result)},
+        _ = THREAD_TIME.with(|t| {t.clone().wait(timeout, timer_cond.clone()).fuse()}) => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
+    }
+}
+
+/// Yield until either the condition completes or the [expiry] time passes. If the expiry time is None, then wait until
+/// the condition completes.
+pub async fn conditional_yield_until<F: Future>(condition: F, expiry: Option<Instant>) -> Result<F::Output, Fail> {
+    if let Some(expiry) = expiry {
+        let mut timer_cond: SharedConditionVariable = SharedConditionVariable::default();
+        select_biased! {
+            result = pin!(condition.fuse()) => {
+                timer_cond.cancel();
+                Ok(result)},
+            _ = THREAD_TIME.with(|t| {t.clone().wait_until(expiry, timer_cond.clone()).fuse()}) => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
+        }
+    } else {
+        Ok(condition.await)
+    }
+}
+
+//======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
 
@@ -670,7 +728,19 @@ impl MemoryRuntime for SharedDemiRuntime {}
 
 impl Default for SharedDemiRuntime {
     fn default() -> Self {
-        Self(SharedObject::new(DemiRuntime::default()))
+        let now: Instant = Instant::now();
+        THREAD_TIME.with(|s| {
+            s.clone().set_time(now);
+        });
+
+        Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
+            qtable: IoQueueTable::default(),
+            ephemeral_ports: EphemeralPorts::default(),
+            network_table: NetworkQueueTable::default(),
+            pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
+            ts_iters: 0,
+            completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
+        }))
     }
 }
 

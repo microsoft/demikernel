@@ -273,27 +273,17 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             self.transport.transmit(Box::new(segment));
 
             // Wait for either a response or timeout.
-            let yielder2: Yielder = Yielder::new();
-            let timeout_future = self.runtime.get_timer().wait(handshake_timeout, &yielder2).fuse();
-            let mut me: Self = self.clone();
-            let ack_future = me.recv_queue.pop(&yielder).fuse();
-            futures::pin_mut!(timeout_future);
-            futures::pin_mut!(ack_future);
-            select_biased! {
-                // If we received a response, process the response and either finish setting up the connection or try
-                // again.
-                result = ack_future => match result {
-                    Ok((_, header, _)) => match self.process_ack(header) {
-                        Ok(socket) => return Ok(socket),
-                        Err(Fail{errno, cause:_}) if errno == libc::EAGAIN => continue,
-                        Err(e) => return Err(e),
-                    },
+            match self.recv_queue.pop(Some(handshake_timeout)).await {
+                Ok((_, header, _)) => match self.process_ack(header) {
+                    Ok(socket) => return Ok(socket),
+                    Err(Fail { errno, cause: _ }) if errno == libc::EAGAIN => continue,
                     Err(e) => return Err(e),
                 },
-                // If timeout, then we try again unless this coroutine has been canceled.
-                result = timeout_future => match result {
-                    Ok(()) => continue,
-                    Err(e) => return Err(e),
+                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => continue,
+                Err(_) => {
+                    unreachable!(
+                        "either the ack deadline changed or the deadline passed, no other errors are possible!"
+                    )
                 },
             }
         }

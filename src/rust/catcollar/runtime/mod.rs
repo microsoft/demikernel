@@ -18,7 +18,6 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        scheduler::Scheduler,
         SharedObject,
     },
 };
@@ -52,8 +51,6 @@ pub struct RequestId(pub *const liburing::msghdr);
 
 /// I/O User Ring Runtime
 pub struct IoUringRuntime {
-    /// Scheduler
-    pub scheduler: Scheduler,
     /// Underlying io_uring.
     io_uring: IoUring,
     /// Pending requests.
@@ -149,7 +146,6 @@ impl Default for SharedIoUringRuntime {
     fn default() -> Self {
         let io_uring: IoUring = IoUring::new(CATCOLLAR_NUM_RINGS).expect("cannot create io_uring");
         Self(SharedObject::<IoUringRuntime>::new(IoUringRuntime {
-            scheduler: Scheduler::default(),
             io_uring: io_uring,
             pending: HashSet::new(),
             completed: HashMap::new(),
