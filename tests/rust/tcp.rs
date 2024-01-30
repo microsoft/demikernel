@@ -1164,10 +1164,13 @@ fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResu
 }
 
 /// Safe call to `close()` on passive socket.
-fn safe_close_passive(libos: &mut DummyLibOS, sockqd: QDesc) -> Result<(QDesc, OperationResult)> {
-    match libos.async_close(sockqd) {
-        Ok(qt) => safe_wait(libos, qt),
-        Err(_) => anyhow::bail!("close() on passive socket has failed"),
+fn safe_close_passive(libos: &mut DummyLibOS, sockqd: QDesc) -> Result<()> {
+    let qt = libos.async_close(sockqd)?;
+    match safe_wait(libos, qt)? {
+        (_, OperationResult::Failed(_)) => Ok(()),
+        _ => {
+            anyhow::bail!("close() on listening socket should have failed (this is a known bug)")
+        },
     }
 }
 

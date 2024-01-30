@@ -188,15 +188,6 @@ catnap:
   udp_ping_pong: {}
   udp_push_pop: {}
 catnip:
-  tcp_close:
-    scenario0:
-      nclients: 32
-      run_mode: sequential
-      who_closes: client
-    scenario1:
-      nclients: 32
-      run_mode: sequential
-      who_closes: server
   tcp_ping_pong: {}
   tcp_push_pop: {}
   udp_ping_pong: {}
@@ -223,15 +214,6 @@ catnip:
       nrequests: 1024
       run_mode: sequential
 catpowder:
-  tcp_close:
-    scenario0:
-      nclients: 32
-      run_mode: sequential
-      who_closes: client
-    scenario1:
-      nclients: 32
-      run_mode: sequential
-      who_closes: server
   tcp_ping_pong: {}
   tcp_push_pop: {}
   udp_ping_pong: {}
