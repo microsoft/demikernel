@@ -15,6 +15,7 @@ use crate::runtime::scheduler::TaskId;
 ///
 /// This is used to uniquely identify operations on IO queues.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[repr(C)]
 pub struct QToken(u64);
 
 //======================================================================================================================
