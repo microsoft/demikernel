@@ -30,6 +30,7 @@ use crate::{
             unwrap_socketaddr,
             NetworkRuntime,
         },
+        poll_yield,
         scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
@@ -152,7 +153,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
     /// Scheduler will poll all futures that are ready to make progress.
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
-    pub async fn poll(mut self, yielder: Yielder) {
+    pub async fn poll(mut self, _: Yielder) {
         #[cfg(feature = "profiler")]
         timer!("inetstack::poll");
         loop {
@@ -179,10 +180,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
                     }
                 }
             }
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            };
+            poll_yield().await;
         }
     }
 
