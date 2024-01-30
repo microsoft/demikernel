@@ -135,9 +135,9 @@ impl<N: NetworkRuntime> SharedUdpSocket<N> {
         Ok(())
     }
 
-    pub async fn pop(&mut self, size: usize, yielder: Yielder) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
+    pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
         loop {
-            match self.recv_queue.pop(&yielder).await {
+            match self.recv_queue.pop(None).await {
                 Ok(msg) => {
                     let remote: SocketAddrV4 = msg.0;
                     let mut buf: DemiBuffer = msg.1;

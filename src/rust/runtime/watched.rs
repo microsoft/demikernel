@@ -6,11 +6,8 @@
 //==============================================================================
 
 use crate::runtime::{
-    scheduler::{
-        Yielder,
-        YielderHandle,
-    },
     Fail,
+    SharedConditionVariable,
     SharedObject,
 };
 use ::std::{
@@ -19,7 +16,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    vec::Vec,
 };
 
 //=============================================================================
@@ -28,7 +24,7 @@ use ::std::{
 
 pub struct WatchedValue<T> {
     value: T,
-    waiters: Vec<YielderHandle>,
+    cond_var: SharedConditionVariable,
 }
 
 #[derive(Clone)]
@@ -42,7 +38,7 @@ impl<T: Copy> SharedWatchedValue<T> {
     pub fn new(value: T) -> Self {
         Self(SharedObject::<WatchedValue<T>>::new(WatchedValue {
             value,
-            waiters: Vec::<YielderHandle>::new(),
+            cond_var: SharedConditionVariable::default(),
         }))
     }
 
@@ -57,21 +53,16 @@ impl<T: Copy> SharedWatchedValue<T> {
     pub fn modify(&mut self, f: impl FnOnce(T) -> T) {
         // Update the value
         self.value = f(self.value);
-        while let Some(mut yielder_handle) = self.waiters.pop() {
-            yielder_handle.wake_with(Ok(()));
-        }
+        self.cond_var.broadcast();
     }
 
     pub fn get(&self) -> T {
         self.value
     }
 
-    pub async fn watch(&mut self, yielder: Yielder) -> Result<T, Fail> {
-        self.waiters.push(yielder.get_handle());
-        match yielder.yield_until_wake().await {
-            Ok(()) => Ok(self.value),
-            Err(e) => Err(e),
-        }
+    pub async fn watch(&mut self) -> Result<T, Fail> {
+        self.cond_var.wait().await;
+        Ok(self.value)
     }
 }
 

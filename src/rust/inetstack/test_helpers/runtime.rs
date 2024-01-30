@@ -22,7 +22,6 @@ use crate::runtime::{
         NetworkRuntime,
         PacketBuf,
     },
-    timer::SharedTimer,
     SharedDemiRuntime,
     SharedObject,
 };
@@ -118,11 +117,6 @@ impl SharedTestRuntime {
     /// Get the ip address assigned to the runtime.
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4_addr
-    }
-
-    /// Get the runtime's clock.
-    pub fn get_timer(&self) -> SharedTimer {
-        self.runtime.get_timer()
     }
 
     /// Advance runtime's clock
