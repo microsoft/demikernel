@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Cloneright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT license.
 
 //======================================================================================================================
@@ -38,20 +38,20 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Demikernel scheduler. On get, if the value is not ready, the coroutine will yield until the value is ready.
 /// When the result is ready, the last coroutine to call get is woken.
 #[derive(Clone)]
-pub struct AsyncValue<T: Copy + Eq> {
+pub struct AsyncValue<T: Clone> {
     value: T,
     cond_var: SharedConditionVariable,
 }
 
 #[derive(Clone)]
 /// Reference to an AsyncValue that is shared across coroutines.
-pub struct SharedAsyncValue<T: Copy + Eq>(SharedObject<AsyncValue<T>>);
+pub struct SharedAsyncValue<T: Clone>(SharedObject<AsyncValue<T>>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-impl<T: Copy + Eq> AsyncValue<T> {
+impl<T: Clone> AsyncValue<T> {
     pub fn new(value: T) -> Self {
         Self {
             value,
@@ -69,29 +69,26 @@ impl<T: Copy + Eq> AsyncValue<T> {
 
     pub fn modify(&mut self, f: impl FnOnce(T) -> T) {
         // Update the value
-        let value = f(self.value);
-        if self.value != value {
-            self.value = value;
-            self.cond_var.broadcast();
-        }
+        self.value = f(self.value.clone());
+        self.cond_var.broadcast();
     }
 
     pub fn get(&self) -> T {
-        self.value
+        self.value.clone()
     }
 
     pub async fn wait_for_change(&mut self, timeout: Option<Duration>) -> Result<T, Fail> {
         conditional_yield_with_timeout(self.cond_var.wait(), timeout.unwrap_or(DEFAULT_TIMEOUT)).await?;
-        Ok(self.value)
+        Ok(self.value.clone())
     }
 
     pub async fn wait_for_change_until(&mut self, expiry: Option<Instant>) -> Result<T, Fail> {
         conditional_yield_until(self.cond_var.wait(), expiry).await?;
-        Ok(self.value)
+        Ok(self.value.clone())
     }
 }
 
-impl<T: Copy + Eq> SharedAsyncValue<T> {
+impl<T: Clone> SharedAsyncValue<T> {
     pub fn new(value: T) -> Self {
         Self(SharedObject::<AsyncValue<T>>::new(AsyncValue::<T>::new(value)))
     }
@@ -101,7 +98,7 @@ impl<T: Copy + Eq> SharedAsyncValue<T> {
 // Associate Functions
 //======================================================================================================================
 
-impl<T: Copy + Eq> Deref for SharedAsyncValue<T> {
+impl<T: Clone> Deref for SharedAsyncValue<T> {
     type Target = AsyncValue<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -109,13 +106,13 @@ impl<T: Copy + Eq> Deref for SharedAsyncValue<T> {
     }
 }
 
-impl<T: Copy + Eq> DerefMut for SharedAsyncValue<T> {
+impl<T: Clone> DerefMut for SharedAsyncValue<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<T: Copy + Eq + fmt::Debug> fmt::Debug for SharedAsyncValue<T> {
+impl<T: Clone + fmt::Debug> fmt::Debug for SharedAsyncValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "AsyncValue({:?})", self.0.value)
     }
