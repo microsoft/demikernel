@@ -42,7 +42,6 @@ use crate::{
             NetworkRuntime,
         },
         scheduler::Yielder,
-        timer::SharedTimer,
         watched::SharedWatchedValue,
         SharedDemiRuntime,
         SharedObject,
@@ -125,7 +124,7 @@ impl Receiver {
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
-            let mut buf: DemiBuffer = self.recv_queue.pop(&yielder).await?;
+            let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
             // Split the buffer if it's too big.
             if buf.len() > size {
                 buf.split_front(size)?
@@ -133,7 +132,7 @@ impl Receiver {
                 buf
             }
         } else {
-            self.recv_queue.pop(&yielder).await?
+            self.recv_queue.pop(None).await?
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);
@@ -381,10 +380,6 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         self.sender.pop_one_unsent_byte()
     }
 
-    pub fn get_timer(&self) -> SharedTimer {
-        self.runtime.get_timer()
-    }
-
     pub fn get_now(&self) -> Instant {
         self.runtime.get_now()
     }
@@ -394,10 +389,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     // This is the main TCP processing routine.
-    pub async fn poll(&mut self, yielder: Yielder) -> Result<!, Fail> {
+    pub async fn poll(&mut self) -> Result<!, Fail> {
         // Normal data processing in the Established state.
         loop {
-            let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(&yielder).await {
+            let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(None).await {
                 Ok((_, header, data)) if self.state == State::Established => (header, data),
                 Ok(result) => {
                     self.recv_queue.push_front(result);
@@ -471,7 +466,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
             let timeout: Duration = self.ack_delay_timeout;
             // Getting the current time is extremely cheap as it is just a variable lookup.
-            let now: Instant = self.get_timer().now();
+            let now: Instant = self.get_now();
             self.ack_deadline.set(Some(now + timeout));
         } else {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
@@ -673,7 +668,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             if header.ack_num <= send_next {
                 // Does not matter when we get this since the clock will not move between the beginning of packet
                 // processing and now without a call to advance_clock.
-                let now: Instant = self.get_timer().now();
+                let now: Instant = self.get_now();
 
                 // This segment acknowledges new data (possibly and/or FIN).
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
@@ -874,7 +869,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
     pub async fn push(&mut self, mut nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
         loop {
-            let n: usize = self.ack_queue.pop(&yielder).await?;
+            let n: usize = self.ack_queue.pop(None).await?;
 
             if n > nbytes {
                 self.ack_queue.push_front(n - nbytes);
@@ -1123,7 +1118,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
         while self.state != State::TimeWait {
             // Wait for next packet.
-            let (_, header, _) = self.recv_queue.pop(&yielder).await?;
+            let (_, header, _) = self.recv_queue.pop(None).await?;
 
             // Check ACK.
             self.state = match self.process_ack(&header) {
@@ -1175,7 +1170,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // Wait for ACK of FIN.
         loop {
             // Wait for next packet.
-            let (_, header, _) = self.recv_queue.pop(&yielder).await?;
+            let (_, header, _) = self.recv_queue.pop(None).await?;
 
             // Check ACK.
             match self.process_ack(&header) {

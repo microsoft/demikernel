@@ -13,13 +13,23 @@
 
 use crate::{
     collections::id_map::IdMap,
-    runtime::scheduler::{
-        group::TaskGroup,
-        Task,
-        TaskId,
+    runtime::{
+        scheduler::{
+            group::TaskGroup,
+            Task,
+            TaskId,
+        },
+        SharedObject,
     },
 };
 use ::slab::Slab;
+use ::std::{
+    ops::{
+        Deref,
+        DerefMut,
+    },
+    task::Waker,
+};
 
 //======================================================================================================================
 // Structures
@@ -31,8 +41,16 @@ pub struct InternalId(usize);
 
 /// Task Scheduler
 pub struct Scheduler {
+    // Mapping between external task ids and internal ids (which currently represent the offset into the slab where the
+    // task lives).
     ids: IdMap<TaskId, InternalId>,
+    // A group of tasks used for resource management. Currently all of our tasks are in a single group but we will
+    // eventually break them up by Demikernel queue for fairness and performance isolation.
     groups: Slab<TaskGroup>,
+    // Track the currently running task id. This is entirely for external use. If there are no coroutines running (i.
+    // e.g, we did not enter the scheduler through a wait), this MUST be set to none because we cannot yield or wake ///
+    // unless inside a task/async coroutine.
+    current_running_task: Option<TaskId>,
 
     // These global variables are for our scheduling policy. For now, we simply use round robin.
     // The index of the current or last task that we ran.
@@ -42,6 +60,9 @@ pub struct Scheduler {
     // The current set of ready tasks in the group.
     current_ready_tasks: Vec<InternalId>,
 }
+
+#[derive(Clone)]
+pub struct SharedScheduler(SharedObject<Scheduler>);
 
 //======================================================================================================================
 // Associate Functions
@@ -130,6 +151,17 @@ impl Scheduler {
         Some(task)
     }
 
+    fn poll_notified_task_and_remove_if_ready(&mut self) -> Option<Box<dyn Task>> {
+        let group: &mut TaskGroup = self
+            .groups
+            .get_mut(self.current_group_id.into())
+            .expect("task group should exist: ");
+        self.current_running_task = Some(group.unchecked_internal_to_external_id(self.current_task_id));
+        let result: Option<Box<dyn Task>> = group.poll_notified_task_and_remove_if_ready(self.current_task_id);
+        self.current_running_task = None;
+        result
+    }
+
     /// Poll all tasks which are ready to run for [max_iterations]. This does the same thing as get_next_completed task
     /// but does not stop until it has reached [max_iterations] and collects all of the
     pub fn poll_all(&mut self, max_iterations: usize) -> Vec<Box<dyn Task>> {
@@ -149,9 +181,7 @@ impl Scheduler {
             };
 
             // Now that we have a runnable task, actually poll it.
-            if let Some(task) = self.groups[self.current_group_id.into()]
-                .poll_notified_task_and_remove_if_ready(self.current_task_id.into())
-            {
+            if let Some(task) = self.poll_notified_task_and_remove_if_ready() {
                 completed_tasks.push(task);
             }
         }
@@ -176,9 +206,7 @@ impl Scheduler {
             };
 
             // Now that we have a runnable task, actually poll it.
-            if let Some(task) = self.groups[self.current_group_id.into()]
-                .poll_notified_task_and_remove_if_ready(self.current_task_id.into())
-            {
+            if let Some(task) = self.poll_notified_task_and_remove_if_ready() {
                 return Some(task);
             }
         }
@@ -209,12 +237,26 @@ impl Scheduler {
         InternalId::from((usize::from(self.current_group_id) + 1) % self.groups.len())
     }
 
+    /// Returns whether this task id points to a valid task.
     pub fn is_valid_task(&self, task_id: &TaskId) -> bool {
         if let Some(group) = self.get_group(task_id) {
             group.is_valid_task(&task_id)
         } else {
             false
         }
+    }
+
+    #[allow(unused)]
+    /// Returns the current running task id if we are in the scheduler, otherwise None.
+    pub fn get_task_id(&self) -> Option<TaskId> {
+        self.current_running_task
+    }
+
+    #[allow(unused)]
+    pub fn get_waker(&self, task_id: TaskId) -> Option<Waker> {
+        let group: &TaskGroup = self.get_group(&task_id)?;
+        let internal_id: InternalId = group.unchecked_external_to_internal_id(&task_id);
+        group.get_waker(internal_id)
     }
 
     #[cfg(test)]
@@ -243,10 +285,31 @@ impl Default for Scheduler {
         Self {
             ids,
             groups,
+            current_running_task: None,
             current_group_id: internal_id,
             current_task_id: InternalId(0),
             current_ready_tasks: vec![],
         }
+    }
+}
+
+impl Default for SharedScheduler {
+    fn default() -> Self {
+        Self(SharedObject::new(Scheduler::default()))
+    }
+}
+
+impl Deref for SharedScheduler {
+    type Target = Scheduler;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SharedScheduler {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }
 

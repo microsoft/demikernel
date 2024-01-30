@@ -234,14 +234,14 @@ impl Sender {
                     // Put the segment we just sent on the retransmission queue.
                     let unacked_segment = UnackedSegment {
                         bytes: buf,
-                        initial_tx: Some(cb.get_timer().now()),
+                        initial_tx: Some(cb.get_now()),
                     };
                     self.unacked_queue.borrow_mut().push_back(unacked_segment);
 
                     // Start the retransmission timer if it isn't already running.
                     if cb.get_retransmit_deadline().is_none() {
                         let rto: Duration = cb.rto();
-                        cb.set_retransmit_deadline(Some(cb.get_timer().now() + rto));
+                        cb.set_retransmit_deadline(Some(cb.get_now() + rto));
                     }
 
                     return Ok(());

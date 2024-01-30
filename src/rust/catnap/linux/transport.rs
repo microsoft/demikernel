@@ -131,8 +131,8 @@ impl PassiveSocketData {
     }
 
     /// Block until a new connection arrives.
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<(Socket, SocketAddr), Fail> {
-        self.accept_queue.pop(&yielder).await?
+    pub async fn accept(&mut self, _: Yielder) -> Result<(Socket, SocketAddr), Fail> {
+        self.accept_queue.pop(None).await?
     }
 }
 
@@ -217,13 +217,8 @@ impl ActiveSocketData {
     }
 
     /// Pops data from the socket. Blocks until some data is found but does not wait until the buf has reached [size].
-    pub async fn pop(
-        &mut self,
-        buf: &mut DemiBuffer,
-        size: usize,
-        yielder: &Yielder,
-    ) -> Result<Option<SocketAddr>, Fail> {
-        let (addr, mut incoming_buf): (Option<SocketAddr>, DemiBuffer) = self.recv_queue.pop(&yielder).await??;
+    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize, _: &Yielder) -> Result<Option<SocketAddr>, Fail> {
+        let (addr, mut incoming_buf): (Option<SocketAddr>, DemiBuffer) = self.recv_queue.pop(None).await??;
         // Figure out how much data we got.
         let bytes_read: usize = min(incoming_buf.len(), size);
         // Trim the buffer down to the amount that we received.
