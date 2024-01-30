@@ -20,7 +20,7 @@ use crate::{
             SockAddrIn,
             SockAddrIn6,
             SockAddrStorage,
-            Socklen
+            Socklen,
         },
     },
     runtime::{
@@ -41,6 +41,7 @@ use ::libc::{
     c_void,
     sockaddr,
 };
+use ::socket2::SockAddr;
 use ::std::{
     cell::RefCell,
     ffi::CStr,
@@ -53,14 +54,13 @@ use ::std::{
         SystemTime,
     },
 };
-use ::socket2::SockAddr;
 
 #[cfg(test)]
 use ::std::net::{
-        Ipv4Addr,
-        Ipv6Addr,
-        SocketAddrV4,
-        SocketAddrV6,
+    Ipv4Addr,
+    Ipv6Addr,
+    SocketAddrV4,
+    SocketAddrV6,
 };
 
 //======================================================================================================================
@@ -647,10 +647,7 @@ pub extern "C" fn demi_wait_any(
     }
 
     // Get queue tokens.
-    let qts: Vec<QToken> = {
-        let raw_qts: &[u64] = unsafe { slice::from_raw_parts(qts, num_qts as usize) };
-        raw_qts.iter().map(|i| QToken::from(*i)).collect()
-    };
+    let qts: &[QToken] = unsafe { slice::from_raw_parts(qts as *const QToken, num_qts as usize) };
 
     // Convert timespec to Duration.
     let duration: Option<Duration> = if timeout.is_null() {
@@ -839,11 +836,11 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<Socke
 
     // Note Socket2 uses winapi crate versus windows crate used to deduce SockAddrStorage used above. These types have
     // the same size/layout, hence the use of transmute. This is a no-op on platforms with proper libc support.
-    let saddr: SockAddr = unsafe{ SockAddr::new(mem::transmute(storage), size) };
+    let saddr: SockAddr = unsafe { SockAddr::new(mem::transmute(storage), size) };
 
     match saddr.as_socket() {
         Some(saddr) => Ok(saddr),
-        None => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"))
+        None => return Err(Fail::new(libc::ENOTSUP, "communication domain not supported")),
     }
 }
 
@@ -883,9 +880,12 @@ fn test_sockaddr_to_socketaddr_failure() {
     let saddr: SockAddr = SockAddr::from(SADDR);
 
     // Test invalid socket size
-    let mut storage = unsafe{ mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
+    let mut storage = unsafe { mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
     storage.ss_family = AF_INET;
-    match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), mem::size_of::<AddressFamily>() as Socklen) {
+    match sockaddr_to_socketaddr(
+        ptr::addr_of!(storage).cast(),
+        mem::size_of::<AddressFamily>() as Socklen,
+    ) {
         Err(e) if e.errno == libc::EINVAL => (),
         _ => panic!("expected sockaddr_to_socketaddr to fail with EINVAL"),
     };
@@ -898,10 +898,14 @@ fn test_sockaddr_to_socketaddr_failure() {
 
     // Test invalid address family (using AF_APPLETALK, since it probably won't be supported in future)
     assert!(saddr.len() as usize <= mem::size_of::<SockAddrStorage>());
-    unsafe { ptr::copy_nonoverlapping::<u8>(saddr.as_ptr().cast(),
-                                            ptr::addr_of_mut!(storage).cast(),
-                                            saddr.len() as usize); }
-    storage.ss_family = unsafe{ mem::transmute(AF_APPLETALK) };
+    unsafe {
+        ptr::copy_nonoverlapping::<u8>(
+            saddr.as_ptr().cast(),
+            ptr::addr_of_mut!(storage).cast(),
+            saddr.len() as usize,
+        );
+    }
+    storage.ss_family = unsafe { mem::transmute(AF_APPLETALK) };
     match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), saddr.len()) {
         Err(e) if e.errno == libc::ENOTSUP => (),
         _ => panic!("expected sockaddr_to_socketaddr to fail with ENOTSUP"),
