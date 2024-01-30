@@ -2,12 +2,12 @@
 // Licensed under the MIT license.
 
 use crate::{
+    collections::async_value::SharedAsyncValue,
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::{
         conditional_yield_until,
         fail::Fail,
         network::NetworkRuntime,
-        watched::SharedWatchedValue,
     },
 };
 use ::futures::{
@@ -21,14 +21,12 @@ use ::std::time::{
 };
 
 pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<!, Fail> {
+    // Watch the retransmission deadline.
+    let mut rtx_deadline_watched: SharedAsyncValue<Option<Instant>> = cb.watch_retransmit_deadline();
+    // Watch the fast retransmit flag.
+    let mut rtx_fast_retransmit_watched: SharedAsyncValue<bool> = cb.congestion_control_watch_retransmit_now_flag();
     loop {
-        // Watch the retransmission deadline.
-        let mut rtx_deadline_watched: SharedWatchedValue<Option<Instant>> = cb.watch_retransmit_deadline();
         let rtx_deadline: Option<Instant> = rtx_deadline_watched.get();
-
-        // Watch the fast retransmit flag.
-        let mut rtx_fast_retransmit_watched: SharedWatchedValue<bool> =
-            cb.congestion_control_watch_retransmit_now_flag();
         let rtx_fast_retransmit: bool = rtx_fast_retransmit_watched.get();
         if rtx_fast_retransmit {
             // Notify congestion control about fast retransmit.
@@ -40,10 +38,10 @@ pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> 
         }
 
         // If either changed, wake up.
-        let something_changed = async move {
+        let something_changed = async {
             select_biased!(
-                _ = rtx_deadline_watched.watch().fuse() => (),
-                _ = rtx_fast_retransmit_watched.watch().fuse() => (),
+                _ = rtx_deadline_watched.wait_for_change(None).fuse() => (),
+                _ = rtx_fast_retransmit_watched.wait_for_change(None).fuse() => (),
             )
         };
         pin_mut!(something_changed);
