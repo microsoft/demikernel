@@ -151,9 +151,6 @@ fn accept_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {
-            connect_finished = true
-        },
         Ok(_) => anyhow::bail!("wait() should not succeed"),
         Err(_) => anyhow::bail!("wait() should be cancelled"),
     }

@@ -63,9 +63,6 @@ use crate::catnap::transport::SharedCatnapTransport;
 // Structures
 //======================================================================================================================
 
-// By default, we have a timeout of 100ms, which is extremely long for our libOSes.
-const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
-
 /// LibOS
 pub enum LibOS {
     /// Network LibOS
@@ -387,8 +384,8 @@ impl LibOS {
         #[cfg(feature = "profiler")]
         timer!("demikernel::wait");
         match self {
-            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
-            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout),
+            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout),
         }
     }
 
@@ -407,8 +404,8 @@ impl LibOS {
         #[cfg(feature = "profiler")]
         timer!("demikernel::wait_any");
         match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
-            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout),
+            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout),
         }
     }
 
