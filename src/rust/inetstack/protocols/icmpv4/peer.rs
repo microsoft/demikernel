@@ -26,10 +26,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
         SharedConditionVariable,
         SharedDemiRuntime,
         SharedObject,
@@ -98,9 +94,6 @@ pub struct Icmpv4Peer<N: NetworkRuntime> {
     /// Random number generator
     rng: SmallRng,
 
-    /// Polling coroutine yielder
-    yielder_handle: YielderHandle,
-
     /// Inflight ping requests.
     inflight: HashMap<(u16, u16), InflightRequest>,
 }
@@ -118,7 +111,6 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let yielder: Yielder = Yielder::new();
         let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
             transport: transport.clone(),
@@ -128,18 +120,14 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             recv_queue: AsyncQueue::<(Ipv4Header, DemiBuffer)>::default(),
             seq: Wrapping(0),
             rng,
-            yielder_handle: yielder.get_handle(),
             inflight: HashMap::<(u16, u16), InflightRequest>::new(),
         }));
-        runtime.insert_background_coroutine(
-            "Inetstack::ICMP::background",
-            Box::pin(peer.clone().poll(yielder).fuse()),
-        )?;
+        runtime.insert_background_coroutine("Inetstack::ICMP::background", Box::pin(peer.clone().poll().fuse()))?;
         Ok(peer)
     }
 
     /// Background task for replying to ICMP messages.
-    async fn poll(mut self, _: Yielder) {
+    async fn poll(mut self) {
         loop {
             let (ipv4_hdr, buf): (Ipv4Header, DemiBuffer) = match self.recv_queue.pop(Some(PING_TIMEOUT)).await {
                 Ok(result) => result,
@@ -170,7 +158,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
                 },
             };
             debug!("initiating ARP query");
-            let dst_link_addr: MacAddress = match self.arp.query(dst_ipv4_addr, &Yielder::new()).await {
+            let dst_link_addr: MacAddress = match self.arp.query(dst_ipv4_addr).await {
                 Ok(dst_link_addr) => dst_link_addr,
                 Err(e) => {
                     warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e);
@@ -232,7 +220,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
 
         let t0: Instant = self.runtime.get_now();
         debug!("initiating ARP query");
-        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr, &Yielder::new()).await?;
+        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr).await?;
         debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
         let data: DemiBuffer = DemiBuffer::new(datagram::ICMPV4_ECHO_REQUEST_MESSAGE_SIZE);
@@ -290,12 +278,5 @@ impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
 impl<N: NetworkRuntime> DerefMut for SharedIcmpv4Peer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
-    }
-}
-
-impl<N: NetworkRuntime> Drop for Icmpv4Peer<N> {
-    fn drop(&mut self) {
-        self.yielder_handle
-            .wake_with(Err(Fail::new(libc::ECANCELED, "Closing this peer gracefully")))
     }
 }

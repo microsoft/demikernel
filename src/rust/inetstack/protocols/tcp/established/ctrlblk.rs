@@ -44,7 +44,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -124,7 +123,7 @@ impl Receiver {
         }
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, _: Yielder) -> Result<DemiBuffer, Fail> {
+    pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
             let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
             // Split the buffer if it's too big.
@@ -869,7 +868,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         hdr_window_size
     }
 
-    pub async fn push(&mut self, mut nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn push(&mut self, mut nbytes: usize) -> Result<(), Fail> {
         loop {
             let n: usize = self.ack_queue.pop(None).await?;
 
@@ -886,7 +885,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         }
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+    pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         // TODO: Need to add a way to indicate that the other side closed (i.e. that we've received a FIN).
         // Should we do this via a zero-sized buffer?  Same as with the unsent and unacked queues on the send side?
         //
@@ -894,7 +893,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         //  if self.receiver.reader_next.get() == self.receiver.receive_next.get() {
         // But that will think data is available to be read once we've received a FIN, because FINs consume sequence
         // number space.  Now we call is_empty() on the receive queue instead.
-        self.receiver.pop(size, yielder).await
+        self.receiver.pop(size).await
     }
 
     // This routine remembers that we have received an out-of-order FIN.
@@ -1099,11 +1098,11 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     // This coroutine runs the close protocol.
-    pub async fn close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn close(&mut self) -> Result<(), Fail> {
         // Assert we are in a valid state and move to new state.
         match self.state {
-            State::Established => self.local_close(yielder).await,
-            State::CloseWait => self.remote_already_closed(yielder).await,
+            State::Established => self.local_close().await,
+            State::CloseWait => self.remote_already_closed().await,
             _ => {
                 let cause: String = format!("socket is already closing");
                 error!("close(): {}", cause);
@@ -1112,7 +1111,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         }
     }
 
-    async fn local_close(&mut self, yielder: Yielder) -> Result<(), Fail> {
+    async fn local_close(&mut self) -> Result<(), Fail> {
         // 0. Set state.
         self.state = State::FinWait1;
         // 1. Send FIN.
@@ -1164,7 +1163,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         Ok(())
     }
 
-    async fn remote_already_closed(&mut self, yielder: Yielder) -> Result<(), Fail> {
+    async fn remote_already_closed(&mut self) -> Result<(), Fail> {
         // 0. Set state.
         self.state = State::LastAck;
         // 1. Send FIN.

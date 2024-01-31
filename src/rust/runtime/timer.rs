@@ -46,14 +46,6 @@ pub struct SharedTimer(SharedObject<Timer>);
 //==============================================================================
 
 impl SharedTimer {
-    #[cfg(test)]
-    pub fn new(now: Instant) -> Self {
-        Self(SharedObject::<Timer>::new(Timer {
-            now,
-            heap: BinaryHeap::new(),
-        }))
-    }
-
     /// This sets the time but is only used for initialization.
     pub fn set_time(&mut self, now: Instant) {
         self.now = now;

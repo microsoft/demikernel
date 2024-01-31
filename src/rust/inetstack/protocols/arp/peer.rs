@@ -24,7 +24,6 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -63,7 +62,6 @@ use ::std::{
 /// Arp Peer
 ///
 pub struct ArpPeer<N: NetworkRuntime> {
-    runtime: SharedDemiRuntime,
     network: N,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -99,7 +97,6 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         );
 
         let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer {
-            runtime: runtime.clone(),
             network,
             local_link_addr,
             local_ipv4_addr,
@@ -237,7 +234,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         self.cache.get(ipv4_addr).cloned()
     }
 
-    pub async fn query(&mut self, ipv4_addr: Ipv4Addr, _: &Yielder) -> Result<MacAddress, Fail> {
+    pub async fn query(&mut self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
         if let Some(&link_addr) = self.cache.get(ipv4_addr) {
             return Ok(link_addr);
         }
