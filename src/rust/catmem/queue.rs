@@ -16,7 +16,6 @@ use crate::{
         memory::DemiBuffer,
         poll_yield,
         queue::IoQueue,
-        scheduler::Yielder,
         DemiRuntime,
         QToken,
         QType,
@@ -115,7 +114,7 @@ impl SharedCatmemQueue {
     }
 
     /// This function perms an async close on the target queue.
-    pub async fn do_async_close(&mut self, _: Yielder) -> Result<(), Fail> {
+    pub async fn do_async_close(&mut self) -> Result<(), Fail> {
         let mut retries: u32 = MAX_RETRIES_PUSH_EOF;
         let x = loop {
             if let Ok(()) = self.ring.try_close() {
@@ -142,7 +141,7 @@ impl SharedCatmemQueue {
 
     /// This function pops a buffer of optional [size] from the queue. If the queue is connected to the push end of a
     /// shared memory ring, this function returns an error.
-    pub async fn do_pop(&mut self, size: Option<usize>, _: Yielder) -> Result<(DemiBuffer, bool), Fail> {
+    pub async fn do_pop(&mut self, size: Option<usize>) -> Result<(DemiBuffer, bool), Fail> {
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         let eof: bool = loop {
@@ -172,7 +171,7 @@ impl SharedCatmemQueue {
 
     /// This function tries to push [buf] to the shared memory ring. If the queue is connected to the pop end, then
     /// this function returns an error.
-    pub async fn do_push(&mut self, mut buf: DemiBuffer, _: Yielder) -> Result<(), Fail> {
+    pub async fn do_push(&mut self, mut buf: DemiBuffer) -> Result<(), Fail> {
         loop {
             match self.ring.try_push(&buf) {
                 Ok(len) if len == buf.len() => {

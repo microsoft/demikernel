@@ -50,11 +50,7 @@ use crate::{
             IoQueue,
             IoQueueTable,
         },
-        scheduler::{
-            SharedScheduler,
-            Yielder,
-            YielderHandle,
-        },
+        scheduler::SharedScheduler,
         timer::SharedTimer,
         types::{
             demi_accept_result_t,
@@ -132,8 +128,6 @@ pub struct DemiRuntime {
     ephemeral_ports: EphemeralPorts,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
     network_table: NetworkQueueTable,
-    /// Currently running coroutines.
-    pending_ops: HashMap<QDesc, HashMap<QToken, YielderHandle>>,
     /// Number of iterations that we have polled since advancing the clock.
     ts_iters: usize,
     /// Tasks that have been completed and removed from the
@@ -174,14 +168,13 @@ impl SharedDemiRuntime {
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
-            pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
         }))
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    fn insert_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
+    pub fn insert_io_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
         match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
@@ -194,30 +187,21 @@ impl SharedDemiRuntime {
         }
     }
 
-    /// The coroutine factory is a function that takes a yielder and returns a future. The future is then inserted into
-    /// the scheduler.
-    pub fn insert_coroutine_with_tracking<F>(
+    /// Inserts the background `coroutine` named `task_name` into the THREAD_SCHEDULER.with(|s| {s.
+    pub fn insert_background_coroutine(
         &mut self,
         task_name: &str,
-        coroutine_factory: F,
-        qd: QDesc,
-    ) -> Result<QToken, Fail>
-    where
-        F: FnOnce(Yielder) -> Pin<Box<dyn FusedFuture<Output = (QDesc, OperationResult)>>>,
-    {
-        let yielder: Yielder = Yielder::new();
-        let yielder_handle: YielderHandle = yielder.get_handle();
-        let coroutine: Pin<Box<dyn FusedFuture<Output = (QDesc, OperationResult)>>> = coroutine_factory(yielder);
-        match self.insert_coroutine(task_name, coroutine) {
-            Ok(qt) => {
-                // This allows to keep track of currently running coroutines.
-                self.pending_ops
-                    .entry(qd)
-                    .or_insert(HashMap::new())
-                    .insert(qt, yielder_handle.clone());
-                Ok(qt)
+        coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
+    ) -> Result<QToken, Fail> {
+        trace!("Inserting background coroutine: {:?}", task_name);
+        let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
+        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
+            Some(task_id) => Ok(task_id.into()),
+            None => {
+                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                error!("insert_background_coroutine(): {}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
             },
-            Err(e) => Err(e),
         }
     }
 
@@ -257,7 +241,6 @@ impl SharedDemiRuntime {
                 if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                     let (qd, result): (QDesc, OperationResult) =
                         operation_task.get_result().expect("coroutine not finished");
-                    self.cancel_or_remove_pending_ops_as_needed(&result, qd, completed_qt);
 
                     // Check whether it matches any of the queue tokens that we are waiting on.
                     if completed_qt == qt {
@@ -331,7 +314,6 @@ impl SharedDemiRuntime {
             if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
                     operation_task.get_result().expect("coroutine not finished");
-                self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
 
                 // Check whether it matches any of the queue tokens that we are waiting on.
                 for i in 0..qts.len() {
@@ -347,70 +329,7 @@ impl SharedDemiRuntime {
         None
     }
 
-    /// When the queue is closed, we need to cancel all pending ops. When the coroutine is removed, we only need to
-    /// cancel the pending op associated with the qtoken.
-    fn cancel_or_remove_pending_ops_as_needed(&mut self, result: &OperationResult, qd: QDesc, qt: QToken) {
-        match result {
-            OperationResult::Close => {
-                self.cancel_all_pending_ops_for_queue(&qd);
-            },
-            _ => {
-                self.cancel_pending_op(&qd, &qt);
-            },
-        }
-    }
-
-    /// Cancel pending op because the coroutine was removed.
-    fn cancel_pending_op(&mut self, qd: &QDesc, qt: &QToken) {
-        if let Some(inner_hash_map) = self.pending_ops.get_mut(&qd) {
-            inner_hash_map.remove(qt);
-        }
-    }
-
-    /// Cancel all pending ops because the queue was closed.
-    fn cancel_all_pending_ops_for_queue(&mut self, qd: &QDesc) {
-        if let Some(inner_hash_map) = &mut self.pending_ops.remove(&qd) {
-            let drain = inner_hash_map.drain();
-            for (_, mut yielder_handle) in drain {
-                yielder_handle.wake_with(Err(Fail::new(libc::ECANCELED, "This queue was closed")));
-            }
-        }
-    }
-
-    /// Inserts the background `coroutine` named `task_name` into the THREAD_SCHEDULER.with(|s| {s.
-    pub fn insert_background_coroutine(
-        &mut self,
-        task_name: &str,
-        coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
-    ) -> Result<QToken, Fail> {
-        trace!("Inserting background coroutine: {:?}", task_name);
-        let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
-        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
-            Some(task_id) => Ok(task_id.into()),
-            None => {
-                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
-                error!("insert_background_coroutine(): {}", cause);
-                Err(Fail::new(libc::EAGAIN, &cause))
-            },
-        }
-    }
-
-    /// Removes the background `coroutine` associated with `qt`. Since background coroutines do not return a result
-    /// there is no need to cast it.
-    pub fn remove_background_coroutine(&mut self, qt: QToken) -> Result<(), Fail> {
-        match THREAD_SCHEDULER.with(|s| s.clone().remove_task(qt.into())) {
-            Some(boxed_task) => {
-                trace!("Removing background coroutine: {:?}", boxed_task.get_name());
-                Ok(())
-            },
-            None => {
-                let cause: String = format!("cannot remove coroutine (task_id={:?})", qt);
-                error!("remove_background_coroutine(): {}", cause);
-                Err(Fail::new(libc::ESRCH, &cause))
-            },
-        }
-    }
-
+    /// Advance clock to now (within the time granularity) and poll all coroutines.
     pub fn poll_and_advance_clock(&mut self) {
         if self.ts_iters == 0 {
             #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
@@ -436,7 +355,6 @@ impl SharedDemiRuntime {
             if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
                     operation_task.get_result().expect("coroutine not finished");
-                self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
                 self.completed_tasks.insert(qt, (qd, result));
             }
         }
@@ -462,7 +380,6 @@ impl SharedDemiRuntime {
     /// Frees the queue associated with [qd] and returns the freed queue.
     pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
         trace!("Freeing queue: qd={:?}", qd);
-        self.cancel_all_pending_ops_for_queue(qd);
         self.qtable.free(qd)
     }
 
@@ -740,7 +657,6 @@ impl Default for SharedDemiRuntime {
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
-            pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
         }))

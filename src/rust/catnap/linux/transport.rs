@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::AsyncQueue,
+    collections::{
+        async_queue::AsyncQueue,
+        async_value::SharedAsyncValue,
+    },
     demikernel::config::Config,
     runtime::{
         fail::Fail,
@@ -14,10 +17,6 @@ use crate::{
         memory::DemiBuffer,
         network::transport::NetworkTransport,
         poll_yield,
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
         DemiRuntime,
         SharedDemiRuntime,
         SharedObject,
@@ -64,6 +63,12 @@ const EPOLL_BATCH_SIZE: usize = 1024;
 // Structures
 //======================================================================================================================
 
+struct Outgoing {
+    addr: Option<SocketAddr>,
+    buf: DemiBuffer,
+    result: SharedAsyncValue<Option<Result<(), Fail>>>,
+}
+
 /// This structure represents the metadata for a passive listening socket: the socket itself and the queue of incoming connections.
 pub struct PassiveSocketData {
     socket: Socket,
@@ -74,7 +79,7 @@ pub struct PassiveSocketData {
 /// outgoing messages and incoming ones.
 pub struct ActiveSocketData {
     socket: Socket,
-    send_queue: AsyncQueue<(Option<SocketAddr>, DemiBuffer, YielderHandle)>,
+    send_queue: AsyncQueue<Outgoing>,
     recv_queue: AsyncQueue<Result<(Option<SocketAddr>, DemiBuffer), Fail>>,
 }
 
@@ -93,7 +98,6 @@ pub struct SharedSocketData(SharedObject<SocketData>);
 pub struct CatnapTransport {
     epoll_fd: RawFd,
     socket_table: Slab<SharedSocketData>,
-    background_task: YielderHandle,
     runtime: SharedDemiRuntime,
 }
 
@@ -132,7 +136,7 @@ impl PassiveSocketData {
     }
 
     /// Block until a new connection arrives.
-    pub async fn accept(&mut self, _: Yielder) -> Result<(Socket, SocketAddr), Fail> {
+    pub async fn accept(&mut self) -> Result<(Socket, SocketAddr), Fail> {
         self.accept_queue.pop(None).await?
     }
 }
@@ -142,18 +146,23 @@ impl ActiveSocketData {
     /// buffer for write to indicate that we want to know when the socket is ready for writing but do not have data to
     /// write (i.e., to detect when connect finishes).
     pub fn poll_send(&mut self) {
-        if let Some((addr, mut buf, mut yielder_handle)) = self.send_queue.try_pop() {
+        if let Some(Outgoing {
+            addr,
+            mut buf,
+            mut result,
+        }) = self.send_queue.try_pop()
+        {
             // A dummy request to detect when the socket has connected.
             if buf.is_empty() {
-                yielder_handle.wake_with(Ok(()));
+                result.set(Some(Ok(())));
                 return;
             }
             // Try to send the buffer.
-            let result: Result<usize, io::Error> = match addr {
+            let io_result: Result<usize, io::Error> = match addr {
                 Some(addr) => self.socket.send_to(&buf, &addr.clone().into()),
                 None => self.socket.send(&buf),
             };
-            match result {
+            match io_result {
                 // Operation completed.
                 Ok(nbytes) => {
                     trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
@@ -161,21 +170,21 @@ impl ActiveSocketData {
                         .expect("OS should not have sent more bytes than in the buffer");
                     if buf.is_empty() {
                         // Done sending this buffer
-                        yielder_handle.wake_with(Ok(()))
+                        result.set(Some(Ok(())));
                     } else {
                         // Only sent part of the buffer so try again later.
-                        self.send_queue.push_front((addr, buf, yielder_handle));
+                        self.send_queue.push_front(Outgoing { addr, buf, result });
                     }
                 },
                 Err(e) => {
                     let errno: i32 = get_libc_err(e);
                     if DemiRuntime::should_retry(errno) {
                         // Put the buffer back and try again later.
-                        self.send_queue.push_front((addr, buf, yielder_handle));
+                        self.send_queue.push_front(Outgoing { addr, buf, result });
                     } else {
                         let cause: String = format!("failed to send on socket: {:?}", errno);
                         error!("poll_send(): {}", cause);
-                        yielder_handle.wake_with(Err(Fail::new(errno, &cause)))
+                        result.set(Some(Err(Fail::new(errno, &cause))));
                     }
                 },
             }
@@ -212,13 +221,26 @@ impl ActiveSocketData {
     }
 
     /// Pushes data to the socket. Blocks until completion.
-    pub async fn push(&mut self, addr: Option<SocketAddr>, buf: DemiBuffer, yielder: &Yielder) -> Result<(), Fail> {
-        self.send_queue.push((addr, buf, yielder.get_handle()));
-        yielder.yield_until_wake().await
+    pub async fn push(&mut self, addr: Option<SocketAddr>, buf: DemiBuffer) -> Result<(), Fail> {
+        let mut result: SharedAsyncValue<Option<Result<(), Fail>>> = SharedAsyncValue::new(None);
+        self.send_queue.push(Outgoing {
+            addr,
+            buf,
+            result: result.clone(),
+        });
+        loop {
+            match result.get() {
+                Some(result) => return result,
+                None => {
+                    result.wait_for_change(None).await?;
+                    continue;
+                },
+            }
+        }
     }
 
     /// Pops data from the socket. Blocks until some data is found but does not wait until the buf has reached [size].
-    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize, _: &Yielder) -> Result<Option<SocketAddr>, Fail> {
+    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddr>, Fail> {
         let (addr, mut incoming_buf): (Option<SocketAddr>, DemiBuffer) = self.recv_queue.pop(None).await??;
         // Figure out how much data we got.
         let bytes_read: usize = min(incoming_buf.len(), size);
@@ -311,33 +333,28 @@ impl SharedSocketData {
     }
 
     /// Push some data to an active established connection.
-    pub async fn push(&mut self, addr: Option<SocketAddr>, buf: DemiBuffer, yielder: &Yielder) -> Result<(), Fail> {
+    pub async fn push(&mut self, addr: Option<SocketAddr>, buf: DemiBuffer) -> Result<(), Fail> {
         match self.deref_mut() {
             SocketData::Inactive(_) => unreachable!("Cannot write to an inactive socket"),
-            SocketData::Active(data) => data.push(addr, buf, yielder).await,
+            SocketData::Active(data) => data.push(addr, buf).await,
             SocketData::Passive(_) => unreachable!("Cannot write to a passive socket"),
         }
     }
 
     /// Accept a new connection on an passive listening socket.
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<(Socket, SocketAddr), Fail> {
+    pub async fn accept(&mut self) -> Result<(Socket, SocketAddr), Fail> {
         match self.deref_mut() {
             SocketData::Inactive(_) => unreachable!("Cannot accept on an inactive socket"),
             SocketData::Active(_) => unreachable!("Cannot accept on an active socket"),
-            SocketData::Passive(data) => data.accept(yielder).await,
+            SocketData::Passive(data) => data.accept().await,
         }
     }
 
     /// Pop some data on an active established connection.
-    pub async fn pop(
-        &mut self,
-        buf: &mut DemiBuffer,
-        size: usize,
-        yielder: &Yielder,
-    ) -> Result<Option<SocketAddr>, Fail> {
+    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddr>, Fail> {
         match self.deref_mut() {
             SocketData::Inactive(_) => unreachable!("Cannot read on an inactive socket"),
-            SocketData::Active(data) => data.pop(buf, size, yielder).await,
+            SocketData::Active(data) => data.pop(buf, size).await,
             SocketData::Passive(_) => unreachable!("Cannot read on a passive socket"),
         }
     }
@@ -376,19 +393,16 @@ impl SharedCatnapTransport {
         };
 
         // Set up background task for polling epoll API.
-        let yielder: Yielder = Yielder::new();
-        let background_task: YielderHandle = yielder.get_handle();
         let me: Self = Self(SharedObject::new(CatnapTransport {
             epoll_fd,
             socket_table: Slab::<SharedSocketData>::new(),
-            background_task,
             runtime: runtime.clone(),
         }));
         let mut me2: Self = me.clone();
         runtime
             .insert_background_coroutine(
                 "catnap::transport::epoll",
-                Box::pin(async move { me2.poll(yielder).await }.fuse()),
+                Box::pin(async move { me2.poll().await }.fuse()),
             )
             .expect("should be able to insert background coroutine");
         me
@@ -436,7 +450,7 @@ impl SharedCatnapTransport {
     }
 
     /// Background function for checking for epoll events.
-    async fn poll(&mut self, yielder: Yielder) {
+    async fn poll(&mut self) {
         let mut events: Vec<libc::epoll_event> = Vec::with_capacity(EPOLL_BATCH_SIZE);
         loop {
             match unsafe {
@@ -550,28 +564,6 @@ impl DerefMut for SharedCatnapTransport {
 impl AsRawFd for SharedSocketData {
     fn as_raw_fd(&self) -> RawFd {
         self.get_socket().as_raw_fd()
-    }
-}
-
-/// Clean up the epoll socket on libOS shutdown.
-impl Drop for CatnapTransport {
-    fn drop(&mut self) {
-        self.background_task
-            .wake_with(Err(Fail::new(libc::EBADF, "closing epoll socket")));
-        match unsafe { libc::close(self.epoll_fd) } {
-            0 => (),
-            -1 => {
-                let errno: libc::c_int = unsafe { *libc::__errno_location() };
-                if errno == libc::EBADF {
-                    warn!("epoll socket already closed");
-                } else {
-                    panic!("could not free epoll socket: {:?}", errno);
-                }
-            },
-            _ => {
-                unreachable!("close can only return 0 or -1");
-            },
-        }
     }
 }
 
@@ -698,12 +690,8 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Accept the next incoming connection. This function blocks until a new connection arrives from the underlying
     /// transport.
-    async fn accept(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        yielder: Yielder,
-    ) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
-        let (new_socket, addr) = self.data_from_sd(sd).accept(yielder).await?;
+    async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+        let (new_socket, addr) = self.data_from_sd(sd).accept().await?;
         // Set socket options.
         if let Err(e) = new_socket.set_reuse_address(true) {
             let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
@@ -732,12 +720,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Connect to [remote] through the underlying transport. This function blocks until the connect succeeds or fails
     /// with an error.
-    async fn connect(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        remote: SocketAddr,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
         self.data_from_sd(sd).move_socket_to_active();
         self.register_epoll(&sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
 
@@ -748,7 +731,7 @@ impl NetworkTransport for SharedCatnapTransport {
                     // Check the return error code.
                     let errno: i32 = get_libc_err(e);
                     if DemiRuntime::should_retry(errno) {
-                        self.data_from_sd(sd).push(None, DemiBuffer::new(0), &yielder).await?;
+                        self.data_from_sd(sd).push(None, DemiBuffer::new(0)).await?;
                     } else {
                         let cause: String = format!("failed to connect on socket: {:?}", errno);
                         error!("connect(): {}", cause);
@@ -760,7 +743,7 @@ impl NetworkTransport for SharedCatnapTransport {
     }
 
     /// Close the socket and block until close completes.
-    async fn close(&mut self, sd: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
+    async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
         let data: &mut SharedSocketData = self.data_from_sd(sd);
         loop {
             // Close the socket.
@@ -773,7 +756,7 @@ impl NetworkTransport for SharedCatnapTransport {
                         libc::ENOTCONN => break,
                         errno if DemiRuntime::should_retry(errno) => {
                             // Wait for a new incoming event.
-                            data.pop(&mut DemiBuffer::new(0), 0, &yielder).await?;
+                            data.pop(&mut DemiBuffer::new(0), 0).await?;
                             continue;
                         },
                         errno => return Err(Fail::new(errno, "operation failed")),
@@ -798,10 +781,9 @@ impl NetworkTransport for SharedCatnapTransport {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         {
-            self.data_from_sd(sd).push(addr, buf.clone(), &yielder).await?;
+            self.data_from_sd(sd).push(addr, buf.clone()).await?;
             // Clear out the original buffer.
             buf.trim(buf.len()).expect("Should be able to empty the buffer");
             Ok(())
@@ -816,9 +798,8 @@ impl NetworkTransport for SharedCatnapTransport {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
-        self.data_from_sd(sd).pop(buf, size, &yielder).await
+        self.data_from_sd(sd).pop(buf, size).await
     }
 
     /// Close the socket on the underlying transport. Also unregisters the socket with epoll.

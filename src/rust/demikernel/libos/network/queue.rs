@@ -20,7 +20,6 @@ use crate::runtime::{
         IoQueue,
         QType,
     },
-    scheduler::Yielder,
     QToken,
     SharedObject,
 };
@@ -135,9 +134,9 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously accepts a new connection on the queue. This function contains all of the single-queue,
     /// asynchronous code necessary to run an accept and any single-queue functionality after the accept completes.
-    pub async fn accept_coroutine(&mut self, yielder: Yielder) -> Result<Self, Fail> {
+    pub async fn accept_coroutine(&mut self) -> Result<Self, Fail> {
         self.state_machine.may_accept()?;
-        match self.transport.clone().accept(&mut self.socket, yielder).await {
+        match self.transport.clone().accept(&mut self.socket).await {
             // Operation completed.
             Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
@@ -171,10 +170,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously connects the target queue to a remote address. This function contains all of the single-queue,
     /// asynchronous code necessary to run a connect and any single-queue functionality after the connect completes.
-    pub async fn connect_coroutine(&mut self, remote: SocketAddr, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn connect_coroutine(&mut self, remote: SocketAddr) -> Result<(), Fail> {
         // Check whether we can connect.
         self.state_machine.may_connect()?;
-        match self.transport.clone().connect(&mut self.socket, remote, yielder).await {
+        match self.transport.clone().connect(&mut self.socket, remote).await {
             Ok(()) => {
                 // Successfully connected to remote.
                 self.state_machine.prepare(SocketOp::Established)?;
@@ -216,8 +215,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously closes this queue. This function contains all of the single-queue, asynchronous code necessary
     /// to close a queue and any single-queue functionality after the close completes.
-    pub async fn close_coroutine(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        match self.transport.clone().close(&mut self.socket, yielder).await {
+    pub async fn close_coroutine(&mut self) -> Result<(), Fail> {
+        match self.transport.clone().close(&mut self.socket).await {
             Ok(()) => {
                 self.state_machine.prepare(SocketOp::Closed)?;
                 self.state_machine.commit();
@@ -239,14 +238,9 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously push data to the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to push to the queue and any single-queue functionality after the push completes.
-    pub async fn push_coroutine(
-        &mut self,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    pub async fn push_coroutine(&mut self, buf: &mut DemiBuffer, addr: Option<SocketAddr>) -> Result<(), Fail> {
         self.state_machine.may_push()?;
-        match self.transport.clone().push(&mut self.socket, buf, addr, yielder).await {
+        match self.transport.clone().push(&mut self.socket, buf, addr).await {
             Ok(()) => {
                 debug_assert_eq!(buf.len(), 0);
                 Ok(())
@@ -268,23 +262,14 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Asynchronously pops data from the queue. This function contains all of the single-queue, asynchronous code
     /// necessary to pop from a queue and any single-queue functionality after the pop completes.
-    pub async fn pop_coroutine(
-        &mut self,
-        size: Option<usize>,
-        yielder: Yielder,
-    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+    pub async fn pop_coroutine(&mut self, size: Option<usize>) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         self.state_machine.may_pop()?;
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
         let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
         // Check that we allocated a DemiBuffer that is big enough.
         debug_assert_eq!(buf.len(), size);
-        match self
-            .transport
-            .clone()
-            .pop(&mut self.socket, &mut buf, size, yielder)
-            .await
-        {
+        match self.transport.clone().pop(&mut self.socket, &mut buf, size).await {
             Ok(addr) => Ok((addr, buf)),
             Err(e) => Err(e),
         }
