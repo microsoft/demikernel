@@ -33,7 +33,7 @@
 // Receive data packet.
 +.1 < P. seq 1(1000) ack 1001 win 65535 <nop>
 // Send ACK on data packet.
-+.0 > . seq 1001(0) ack 1001 win 64535 <nop>
++.6 > . seq 1001(0) ack 1001 win 64535 <nop>
 
 // Data read.
 +.0 wait(501, ...) = 0
