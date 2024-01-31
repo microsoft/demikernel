@@ -659,6 +659,8 @@ fn tcp_bad_connect() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        // Sleep for a while to give Bob time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });
@@ -712,6 +714,8 @@ fn tcp_bad_connect() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });
@@ -774,6 +778,9 @@ fn tcp_bad_close() -> Result<()> {
             Err(_) => (),
         };
 
+        // Sleep for a while to give Bob time to finish.
+        sleep(Duration::from_millis(10));
+
         Ok(())
     });
 
@@ -815,6 +822,8 @@ fn tcp_bad_close() -> Result<()> {
             Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
         };
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });
@@ -876,6 +885,8 @@ fn tcp_bad_push() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        // Sleep for a while to give Bob time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });
@@ -947,6 +958,9 @@ fn tcp_bad_push() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
 
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(10));
+
         Ok(())
     });
 
@@ -1017,6 +1031,8 @@ fn tcp_bad_pop() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        // Sleep for a while to give Bob time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });
@@ -1058,6 +1074,8 @@ fn tcp_bad_pop() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(10));
 
         Ok(())
     });

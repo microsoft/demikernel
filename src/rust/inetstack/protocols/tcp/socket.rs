@@ -29,7 +29,6 @@ use crate::{
             socket::SocketId,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         QDesc,
         SharedDemiRuntime,
         SharedObject,
@@ -152,13 +151,13 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         Ok(())
     }
 
-    pub async fn accept(&mut self, yielder: Yielder) -> Result<SharedTcpSocket<N>, Fail> {
+    pub async fn accept(&mut self) -> Result<SharedTcpSocket<N>, Fail> {
         // Wait for a new connection on the listening socket.
         let mut listening_socket: SharedPassiveSocket<N> = match self.state {
             SocketState::Listening(ref listening_socket) => listening_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
-        let new_socket: EstablishedSocket<N> = listening_socket.do_accept(yielder).await?;
+        let new_socket: EstablishedSocket<N> = listening_socket.do_accept().await?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
@@ -177,7 +176,6 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         local_isn: SeqNumber,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
@@ -198,12 +196,12 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         )?;
         self.state = SocketState::Connecting(socket.clone());
         self.recv_queue = Some(recv_queue);
-        let new_socket = socket.connect(yielder).await?;
+        let new_socket = socket.connect().await?;
         self.state = SocketState::Established(new_socket);
         Ok(())
     }
 
-    pub async fn push(&mut self, buf: DemiBuffer, _yielder: Yielder) -> Result<(), Fail> {
+    pub async fn push(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         // Send synchronously.
         match self.state {
             SocketState::Established(ref mut socket) => socket.send(buf),
@@ -211,18 +209,18 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         }
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
+    pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         match self.state {
-            SocketState::Established(ref mut socket) => socket.pop(size, yielder).await,
+            SocketState::Established(ref mut socket) => socket.pop(size).await,
             _ => unreachable!("State machine check should ensure that this socket is connected"),
         }
     }
 
-    pub async fn close(&mut self, yielder: Yielder) -> Result<Option<SocketId>, Fail> {
+    pub async fn close(&mut self) -> Result<Option<SocketId>, Fail> {
         match self.state {
             // Closing an active socket.
             SocketState::Established(ref mut socket) => {
-                socket.close(yielder).await?;
+                socket.close().await?;
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.

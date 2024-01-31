@@ -35,7 +35,6 @@ mod page;
 pub mod scheduler;
 pub mod task;
 mod waker64;
-pub mod yielder;
 
 //==============================================================================
 // Exports
@@ -47,9 +46,5 @@ pub use self::{
         Task,
         TaskId,
         TaskWithResult,
-    },
-    yielder::{
-        Yielder,
-        YielderHandle,
     },
 };
