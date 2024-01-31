@@ -5,13 +5,12 @@
 // Imports
 //======================================================================================================================
 
-// TODO: Remove the following once we fixed ARP, ICMP, and UDP tests
-#[cfg(not(test))]
-use crate::runtime;
-
-use crate::runtime::{
-    SharedObject,
-    TaskId,
+use crate::{
+    runtime,
+    runtime::{
+        SharedObject,
+        TaskId,
+    },
 };
 use ::std::{
     collections::LinkedList,
@@ -65,17 +64,9 @@ impl SharedConditionVariable {
     /// Wake the next waiting coroutine.
     pub fn signal(&mut self) {
         if let Some((_task_id, waiter)) = self.waiters.pop_front() {
-            #[cfg(test)]
-            {
+            if runtime::is_valid_task_id(&_task_id) {
                 self.num_ready += 1;
                 waiter.wake_by_ref();
-            }
-            #[cfg(not(test))]
-            {
-                if runtime::is_valid_task_id(&_task_id) {
-                    self.num_ready += 1;
-                    waiter.wake_by_ref();
-                }
             }
         }
     }
@@ -84,17 +75,9 @@ impl SharedConditionVariable {
     /// Wake all waiting coroutines.
     pub fn broadcast(&mut self) {
         while let Some((_task_id, waiter)) = self.waiters.pop_front() {
-            #[cfg(test)]
-            {
+            if runtime::is_valid_task_id(&_task_id) {
                 self.num_ready += 1;
                 waiter.wake_by_ref();
-            }
-            #[cfg(not(test))]
-            {
-                if runtime::is_valid_task_id(&_task_id) {
-                    self.num_ready += 1;
-                    waiter.wake_by_ref();
-                }
             }
         }
     }
@@ -158,19 +141,12 @@ impl Future for YieldFuture {
             Poll::Ready(())
         } else {
             if self_.state == YieldState::Running {
-                #[cfg(test)]
-                {
-                    self_.cond_var.add_waiter(TaskId::from(0), context.waker().clone());
-                }
-                #[cfg(not(test))]
-                {
-                    let task_id: TaskId = runtime::THREAD_SCHEDULER
-                        .with(|s| s.get_task_id())
-                        .expect("All async functions run in a coroutine");
-                    self_.cond_var.add_waiter(task_id, context.waker().clone());
-                }
-                self_.state = YieldState::Yielded;
+                let task_id: TaskId = runtime::THREAD_SCHEDULER
+                    .with(|s| s.get_task_id())
+                    .expect("All async functions run in a coroutine");
+                self_.cond_var.add_waiter(task_id, context.waker().clone());
             }
+            self_.state = YieldState::Yielded;
             Poll::Pending
         }
     }
