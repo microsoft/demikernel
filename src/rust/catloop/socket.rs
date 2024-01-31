@@ -18,7 +18,6 @@ use crate::{
             QDesc,
             QToken,
         },
-        scheduler::Yielder,
         types::{
             demi_opcode_t,
             demi_qresult_t,

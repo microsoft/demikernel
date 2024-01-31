@@ -40,17 +40,12 @@ use crate::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         QDesc,
         SharedDemiRuntime,
         SharedObject,
     },
 };
-use ::futures::{
-    channel::mpsc,
-    future::FutureExt,
-    select_biased,
-};
+use ::futures::channel::mpsc;
 use ::std::{
     convert::TryInto,
     net::SocketAddrV4,
@@ -233,14 +228,14 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         )?)
     }
 
-    pub async fn connect(mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
+    pub async fn connect(mut self) -> Result<EstablishedSocket<N>, Fail> {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
         for _ in 0..handshake_retries {
             // Look up remote MAC address.
             // TODO: Do we need to do this every iteration?
-            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone(), &yielder).await {
+            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone()).await {
                 Ok(r) => r,
                 Err(e) => {
                     warn!("ARP query failed: {:?}", e);

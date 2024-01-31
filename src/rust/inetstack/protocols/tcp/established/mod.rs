@@ -29,7 +29,6 @@ use crate::{
             config::TcpConfig,
             NetworkRuntime,
         },
-        scheduler::Yielder,
         QDesc,
         SharedDemiRuntime,
     },
@@ -122,16 +121,16 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         self.cb.send(buf)
     }
 
-    pub async fn push(&mut self, nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
-        self.cb.push(nbytes, yielder).await
+    pub async fn push(&mut self, nbytes: usize) -> Result<(), Fail> {
+        self.cb.push(nbytes).await
     }
 
-    pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
-        self.cb.pop(size, yielder).await
+    pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
+        self.cb.pop(size).await
     }
 
-    pub async fn close(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        self.cb.close(yielder).await
+    pub async fn close(&mut self) -> Result<(), Fail> {
+        self.cb.close().await
     }
 
     pub fn remote_mss(&self) -> usize {
