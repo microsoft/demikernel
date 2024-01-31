@@ -5,13 +5,16 @@
 // Imports
 //======================================================================================================================
 
+// TODO: Remove the following once we fixed ARP, ICMP, and UDP tests
+#[cfg(not(test))]
+use crate::runtime;
+
 use crate::runtime::{
-    is_valid_task_id,
     SharedObject,
     TaskId,
-    THREAD_SCHEDULER,
 };
 use ::std::{
+    collections::LinkedList,
     future::Future,
     ops::{
         Deref,
@@ -36,11 +39,11 @@ enum YieldState {
     Yielded,
 }
 
-/// This data structure implements single result that can be asynchronously waited on and  is hooked into the
-/// Demikernel scheduler. On get, if the value is not ready, the coroutine will yield until the value is ready.
-/// When the result is ready, the last coroutine to call get is woken.
+/// This data structure implements single result that can be asynchronously waited on and is hooked into the Demikernel
+/// scheduler. On get, if the value is not ready, the coroutine will yield until the value is ready.  When the result is
+/// ready, the last coroutine to call get is woken.
 pub struct ConditionVariable {
-    waiters: Vec<(TaskId, Waker)>,
+    waiters: LinkedList<(TaskId, Waker)>,
     num_ready: usize,
 }
 
@@ -59,9 +62,9 @@ struct YieldFuture {
 //======================================================================================================================
 
 impl SharedConditionVariable {
-    /// Wake the next waitng coroutine.
+    /// Wake the next waiting coroutine.
     pub fn signal(&mut self) {
-        if let Some((task_id, waiter)) = self.waiters.pop() {
+        if let Some((_task_id, waiter)) = self.waiters.pop_front() {
             #[cfg(test)]
             {
                 self.num_ready += 1;
@@ -69,7 +72,7 @@ impl SharedConditionVariable {
             }
             #[cfg(not(test))]
             {
-                if is_valid_task_id(&task_id) {
+                if runtime::is_valid_task_id(&_task_id) {
                     self.num_ready += 1;
                     waiter.wake_by_ref();
                 }
@@ -80,7 +83,7 @@ impl SharedConditionVariable {
     #[allow(unused)]
     /// Wake all waiting coroutines.
     pub fn broadcast(&mut self) {
-        while let Some((task_id, waiter)) = self.waiters.pop() {
+        while let Some((_task_id, waiter)) = self.waiters.pop_front() {
             #[cfg(test)]
             {
                 self.num_ready += 1;
@@ -88,7 +91,7 @@ impl SharedConditionVariable {
             }
             #[cfg(not(test))]
             {
-                if is_valid_task_id(&task_id) {
+                if runtime::is_valid_task_id(&_task_id) {
                     self.num_ready += 1;
                     waiter.wake_by_ref();
                 }
@@ -112,7 +115,7 @@ impl SharedConditionVariable {
     }
 
     fn add_waiter(&mut self, task_id: TaskId, waker: Waker) {
-        self.waiters.push((task_id, waker));
+        self.waiters.push_back((task_id, waker));
     }
 }
 
@@ -123,7 +126,7 @@ impl SharedConditionVariable {
 impl Default for SharedConditionVariable {
     fn default() -> Self {
         Self(SharedObject::new(ConditionVariable {
-            waiters: vec![],
+            waiters: LinkedList::default(),
             num_ready: 0,
         }))
     }
@@ -161,7 +164,7 @@ impl Future for YieldFuture {
                 }
                 #[cfg(not(test))]
                 {
-                    let task_id: TaskId = THREAD_SCHEDULER
+                    let task_id: TaskId = runtime::THREAD_SCHEDULER
                         .with(|s| s.get_task_id())
                         .expect("All async functions run in a coroutine");
                     self_.cond_var.add_waiter(task_id, context.waker().clone());
