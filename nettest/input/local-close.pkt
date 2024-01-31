@@ -20,7 +20,7 @@
 // Send FIN segment.
 +.0 > F. seq 1(0) ack 1 win 65535 <nop>
 // Receive ACK on FIN segment.
-+.1 < . seq 1(0) ack 2 win 65535 <nop>
++.6 < . seq 1(0) ack 2 win 65535 <nop>
 
 // Receive FIN segment.
 +.1 < F. seq 1(0) ack 2 win 65535 <nop>

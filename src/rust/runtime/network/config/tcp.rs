@@ -180,7 +180,9 @@ impl Default for TcpConfig {
             handshake_retries: 5,
             handshake_timeout: Duration::from_secs(3),
             receive_window_size: 0xffff,
-            ack_delay_timeout: Duration::from_millis(5),
+            // Set to max value per the RFC.
+            // See: https://www.rfc-editor.org/rfc/rfc5681#section-4.2
+            ack_delay_timeout: Duration::from_millis(500),
             window_scale: 0,
             rx_checksum_offload: false,
             tx_checksum_offload: false,
