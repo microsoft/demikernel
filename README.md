@@ -21,11 +21,11 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 ## Codename for LibOSes
 
-- `catloop` -- TCP Socket Loopback LibOS
-- `catmem` -- Shared Memory LibOS
-- `catnap` -- Linux Sockets LibOS
-- `catnip` -- DPDK LibOS
-- `catpowder` -- Linux Raw Sockets
+- `catloop` - TCP Socket Loopback LibOS
+- `catmem` - Shared Memory LibOS
+- `catnap` - Linux Sockets LibOS
+- `catnip` - DPDK LibOS
+- `catpowder` - Linux Raw Sockets
 
 ## Documentation
 
