@@ -40,8 +40,6 @@ use ::std::{
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
 
-#[cfg(feature = "catcollar-libos")]
-use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::SharedCatloopLibOS;
 #[cfg(all(feature = "catnap-libos"))]
@@ -66,11 +64,6 @@ pub enum NetworkLibOSWrapper {
     Catnap {
         runtime: SharedDemiRuntime,
         libos: SharedNetworkLibOS<SharedCatnapTransport>,
-    },
-    #[cfg(feature = "catcollar-libos")]
-    Catcollar {
-        runtime: SharedDemiRuntime,
-        libos: CatcollarLibOS,
     },
     #[cfg(feature = "catnip-libos")]
     Catnip {
@@ -106,8 +99,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => {
                 libos.socket(domain.into(), socket_type.into(), protocol.into())
             },
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.socket(domain, socket_type, protocol),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => {
                 libos.socket(domain.into(), socket_type.into(), protocol.into())
@@ -124,8 +115,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.bind(sockqd, local),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.bind(sockqd, local),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.bind(sockqd, local),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.bind(sockqd, local),
             #[cfg(feature = "catloop-libos")]
@@ -155,8 +144,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.listen(sockqd, backlog),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.listen(sockqd, backlog),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.listen(sockqd, backlog),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.listen(sockqd, backlog),
             #[cfg(feature = "catloop-libos")]
@@ -171,8 +158,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.accept(sockqd),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.accept(sockqd),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.accept(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.accept(sockqd),
             #[cfg(feature = "catloop-libos")]
@@ -187,8 +172,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.connect(sockqd, remote),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.connect(sockqd, remote),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.connect(sockqd, remote),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.connect(sockqd, remote),
             #[cfg(feature = "catloop-libos")]
@@ -202,8 +185,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.async_close(sockqd),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.async_close(sockqd),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.async_close(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.async_close(sockqd),
             #[cfg(feature = "catloop-libos")]
@@ -218,8 +199,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.push(sockqd, sga),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.push(sockqd, sga),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.push(sockqd, sga),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.push(sockqd, sga),
             #[cfg(feature = "catloop-libos")]
@@ -234,8 +213,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.pushto(sockqd, sga, to),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.pushto(sockqd, sga, to),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catloop-libos")]
@@ -252,8 +229,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.pop(sockqd, size),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.pop(sockqd, size),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime: _, libos } => libos.pop(sockqd, size),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.pop(sockqd, size),
             #[cfg(feature = "catloop-libos")]
@@ -331,8 +306,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.poll_and_advance_clock(),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.poll_and_advance_clock(),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.poll_and_advance_clock(),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll_and_advance_clock(),
             #[cfg(feature = "catloop-libos")]
@@ -346,8 +319,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.remove_coroutine_and_get_result(qt),
             #[cfg(feature = "catloop-libos")]
@@ -364,8 +335,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime: _, libos } => libos.sgaalloc(size),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime: _, libos } => libos.sgaalloc(size),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.sgaalloc(size),
             #[cfg(feature = "catnip-libos")]
             // TODO: Move this over to the transport once we set that up.
             // FIXME: https://github.com/microsoft/demikernel/issues/1057
@@ -382,8 +351,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.sgafree(sga),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.sgafree(sga),
             #[cfg(feature = "catloop-libos")]
@@ -397,8 +364,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.has_completed(qt),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.has_completed(qt),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.has_completed(qt),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.has_completed(qt),
             #[cfg(feature = "catloop-libos")]

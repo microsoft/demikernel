@@ -50,8 +50,6 @@ use ::std::{
     },
 };
 
-#[cfg(feature = "catcollar-libos")]
-use crate::catcollar::CatcollarLibOS;
 #[cfg(feature = "catloop-libos")]
 use crate::catloop::SharedCatloopLibOS;
 #[cfg(feature = "catmem-libos")]
@@ -106,11 +104,6 @@ impl LibOS {
                     runtime.clone(),
                     SharedCatnapTransport::new(&config, &mut runtime),
                 ),
-            }),
-            #[cfg(feature = "catcollar-libos")]
-            LibOSName::Catcollar => Self::NetworkLibOS(NetworkLibOSWrapper::Catcollar {
-                runtime: runtime.clone(),
-                libos: CatcollarLibOS::new(&config, runtime.clone()),
             }),
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {

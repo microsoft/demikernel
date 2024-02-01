@@ -1,25 +1,3 @@
-catcollar:
-  tcp_close:
-    scenario0:
-      nclients: 32
-      run_mode: sequential
-      who_closes: client
-    scenario1:
-      nclients: 32
-      run_mode: sequential
-      who_closes: server
-    scenario2:
-      nclients: 32
-      run_mode: concurrent
-      who_closes: client
-    scenario3:
-      nclients: 32
-      run_mode: concurrent
-      who_closes: server
-  tcp_ping_pong: {}
-  tcp_push_pop: {}
-  udp_ping_pong: {}
-  udp_push_pop: {}
 catmem:
   pipe_open: {}
   pipe_ping_pong: {}
