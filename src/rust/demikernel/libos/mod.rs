@@ -44,10 +44,7 @@ use crate::{
 use ::std::{
     env,
     net::SocketAddr,
-    time::{
-        Duration,
-        SystemTime,
-    },
+    time::Duration,
 };
 
 #[cfg(feature = "catloop-libos")]
@@ -379,16 +376,6 @@ impl LibOS {
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout),
             LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout),
-        }
-    }
-
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
-        timer!("demikernel::timedwait");
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.timedwait(qt, abstime),
-            LibOS::MemoryLibOS(libos) => libos.timedwait(qt, abstime),
         }
     }
 

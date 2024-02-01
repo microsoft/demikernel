@@ -33,7 +33,6 @@ use ::std::{
     time::{
         Duration,
         Instant,
-        SystemTime,
     },
 };
 
@@ -248,25 +247,6 @@ impl NetworkLibOSWrapper {
         let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
         debug_assert_eq!(offset, 0);
         Ok(qr)
-    }
-
-    /// Waits for an I/O operation to complete or a timeout to expire.
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
-        trace!("timedwait() qt={:?}, timeout={:?}", qt, abstime);
-
-        loop {
-            // Poll first, so as to give pending operations a chance to complete.
-            self.poll();
-
-            // The operation has completed, so extract the result and return.
-            if self.has_completed(qt)? {
-                return Ok(self.get_result(qt)?);
-            }
-
-            if abstime.is_none() || SystemTime::now() >= abstime.unwrap() {
-                return Err(Fail::new(libc::ETIMEDOUT, "timer expired"));
-            }
-        }
     }
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
