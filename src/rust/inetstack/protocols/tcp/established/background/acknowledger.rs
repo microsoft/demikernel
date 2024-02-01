@@ -5,7 +5,6 @@ use super::SharedControlBlock;
 use crate::{
     collections::async_value::SharedAsyncValue,
     runtime::{
-        conditional_yield_until,
         fail::Fail,
         network::NetworkRuntime,
     },
