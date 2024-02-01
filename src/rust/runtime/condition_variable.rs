@@ -63,8 +63,8 @@ struct YieldFuture {
 impl SharedConditionVariable {
     /// Wake the next waiting coroutine.
     pub fn signal(&mut self) {
-        if let Some((_task_id, waiter)) = self.waiters.pop_front() {
-            if runtime::is_valid_task_id(&_task_id) {
+        if let Some((task_id, waiter)) = self.waiters.pop_front() {
+            if runtime::is_valid_task_id(&task_id) {
                 self.num_ready += 1;
                 waiter.wake_by_ref();
             }
@@ -74,8 +74,8 @@ impl SharedConditionVariable {
     #[allow(unused)]
     /// Wake all waiting coroutines.
     pub fn broadcast(&mut self) {
-        while let Some((_task_id, waiter)) = self.waiters.pop_front() {
-            if runtime::is_valid_task_id(&_task_id) {
+        while let Some((task_id, waiter)) = self.waiters.pop_front() {
+            if runtime::is_valid_task_id(&task_id) {
                 self.num_ready += 1;
                 waiter.wake_by_ref();
             }
