@@ -236,11 +236,12 @@ impl IoCompletionPort {
                         if err.errno == libc::ECANCELED {
                             if let Err(cancel_err) = cancel(completion.get_state_ref(), overlapped) {
                                 warn!("cancellation failed: {}", cancel_err);
-                            } else {
-                                return Err(err);
                             }
                         }
 
+                        // NOTE: the semantics of completion ports with cancellation is unclear: CancelIoEx
+                        // documentation implies that some operations may not post a completion packet after this
+                        // operation. If completions are found to leak, this may be why.
                         completion.abandon();
                         return Err(err);
                     },
