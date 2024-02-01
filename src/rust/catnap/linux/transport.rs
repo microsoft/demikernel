@@ -2,18 +2,24 @@
 // Licensed under the MIT license.
 
 //======================================================================================================================
+// Modules
+//======================================================================================================================
+
+mod active_socket;
+mod passive_socket;
+
+//======================================================================================================================
 // Imports
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        async_queue::AsyncQueue,
-        async_value::SharedAsyncValue,
+    catnap::transport::{
+        active_socket::ActiveSocketData,
+        passive_socket::PassiveSocketData,
     },
     demikernel::config::Config,
     runtime::{
         fail::Fail,
-        limits,
         memory::DemiBuffer,
         network::transport::NetworkTransport,
         poll_yield,
@@ -31,13 +37,11 @@ use ::socket2::{
     Type,
 };
 use ::std::{
-    cmp::min,
     convert::{
         AsMut,
         AsRef,
     },
     io,
-    mem::MaybeUninit,
     net::{
         Shutdown,
         SocketAddr,
@@ -62,26 +66,6 @@ const EPOLL_BATCH_SIZE: usize = 1024;
 //======================================================================================================================
 // Structures
 //======================================================================================================================
-
-struct Outgoing {
-    addr: Option<SocketAddr>,
-    buf: DemiBuffer,
-    result: SharedAsyncValue<Option<Result<(), Fail>>>,
-}
-
-/// This structure represents the metadata for a passive listening socket: the socket itself and the queue of incoming connections.
-pub struct PassiveSocketData {
-    socket: Socket,
-    accept_queue: AsyncQueue<Result<(Socket, SocketAddr), Fail>>,
-}
-
-/// This structure represents the metadata for an active established socket: the socket itself and the queue of
-/// outgoing messages and incoming ones.
-pub struct ActiveSocketData {
-    socket: Socket,
-    send_queue: AsyncQueue<Outgoing>,
-    recv_queue: AsyncQueue<Result<(Option<SocketAddr>, DemiBuffer), Fail>>,
-}
 
 /// This structure represents the metadata for a socket.
 pub enum SocketData {
@@ -112,157 +96,6 @@ type SockDesc = <SharedCatnapTransport as NetworkTransport>::SocketDescriptor;
 // Implementations
 //======================================================================================================================
 
-/// A passive listening socket that polls for incoming connections and accepts them.
-impl PassiveSocketData {
-    /// Handle an accept event notification by calling accept and putting the new connection in the accept queue.
-    pub fn poll_accept(&mut self) {
-        match self.socket.accept() {
-            // Operation completed.
-            Ok((new_socket, saddr)) => {
-                trace!("connection accepted ({:?})", new_socket);
-                let addr: SocketAddr = saddr.as_socket().expect("not a SocketAddrV4");
-                self.accept_queue.push(Ok((new_socket, addr)))
-            },
-            Err(e) => {
-                // Check the return error code.
-                let errno: i32 = get_libc_err(e);
-                if !DemiRuntime::should_retry(errno) {
-                    let cause: String = format!("failed to accept on socket: {:?}", errno);
-                    error!("poll_accept(): {}", cause);
-                    self.accept_queue.push(Err(Fail::new(errno, &cause)));
-                }
-            },
-        }
-    }
-
-    /// Block until a new connection arrives.
-    pub async fn accept(&mut self) -> Result<(Socket, SocketAddr), Fail> {
-        self.accept_queue.pop(None).await?
-    }
-}
-
-impl ActiveSocketData {
-    /// Polls the send queue on an outgoing epoll event and send out data if there is any pending. We use an empty
-    /// buffer for write to indicate that we want to know when the socket is ready for writing but do not have data to
-    /// write (i.e., to detect when connect finishes).
-    pub fn poll_send(&mut self) {
-        if let Some(Outgoing {
-            addr,
-            mut buf,
-            mut result,
-        }) = self.send_queue.try_pop()
-        {
-            // A dummy request to detect when the socket has connected.
-            if buf.is_empty() {
-                result.set(Some(Ok(())));
-                return;
-            }
-            // Try to send the buffer.
-            let io_result: Result<usize, io::Error> = match addr {
-                Some(addr) => self.socket.send_to(&buf, &addr.clone().into()),
-                None => self.socket.send(&buf),
-            };
-            match io_result {
-                // Operation completed.
-                Ok(nbytes) => {
-                    trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
-                    buf.adjust(nbytes as usize)
-                        .expect("OS should not have sent more bytes than in the buffer");
-                    if buf.is_empty() {
-                        // Done sending this buffer
-                        result.set(Some(Ok(())));
-                    } else {
-                        // Only sent part of the buffer so try again later.
-                        self.send_queue.push_front(Outgoing { addr, buf, result });
-                    }
-                },
-                Err(e) => {
-                    let errno: i32 = get_libc_err(e);
-                    if DemiRuntime::should_retry(errno) {
-                        // Put the buffer back and try again later.
-                        self.send_queue.push_front(Outgoing { addr, buf, result });
-                    } else {
-                        let cause: String = format!("failed to send on socket: {:?}", errno);
-                        error!("poll_send(): {}", cause);
-                        result.set(Some(Err(Fail::new(errno, &cause))));
-                    }
-                },
-            }
-        }
-    }
-
-    /// Polls the socket for incoming data on an incoming epoll event. Inserts any received data into the incoming
-    /// queue.
-    /// TODO: Incoming queue should possibly be byte oriented.
-    pub fn poll_recv(&mut self) {
-        let mut buf: DemiBuffer = DemiBuffer::new(limits::POP_SIZE_MAX as u16);
-        match self
-            .socket
-            .recv_from(unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut MaybeUninit<u8>, buf.len()) })
-        {
-            // Operation completed.
-            Ok((nbytes, socketaddr)) => {
-                if let Err(e) = buf.trim(buf.len() - nbytes as usize) {
-                    self.recv_queue.push(Err(e));
-                } else {
-                    trace!("data popped ({:?} bytes)", nbytes);
-                    self.recv_queue.push(Ok((socketaddr.as_socket(), buf)));
-                }
-            },
-            Err(e) => {
-                let errno: i32 = get_libc_err(e);
-                if !DemiRuntime::should_retry(errno) {
-                    let cause: String = format!("failed to receive on socket: {:?}", errno);
-                    error!("poll_recv(): {}", cause);
-                    self.recv_queue.push(Err(Fail::new(errno, &cause)));
-                }
-            },
-        }
-    }
-
-    /// Pushes data to the socket. Blocks until completion.
-    pub async fn push(&mut self, addr: Option<SocketAddr>, buf: DemiBuffer) -> Result<(), Fail> {
-        let mut result: SharedAsyncValue<Option<Result<(), Fail>>> = SharedAsyncValue::new(None);
-        self.send_queue.push(Outgoing {
-            addr,
-            buf,
-            result: result.clone(),
-        });
-        loop {
-            match result.get() {
-                Some(result) => return result,
-                None => {
-                    result.wait_for_change(None).await?;
-                    continue;
-                },
-            }
-        }
-    }
-
-    /// Pops data from the socket. Blocks until some data is found but does not wait until the buf has reached [size].
-    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddr>, Fail> {
-        let (addr, mut incoming_buf): (Option<SocketAddr>, DemiBuffer) = self.recv_queue.pop(None).await??;
-        // Figure out how much data we got.
-        let bytes_read: usize = min(incoming_buf.len(), size);
-        // Trim the buffer down to the amount that we received.
-        buf.trim(buf.len() - bytes_read)
-            .expect("DemiBuffer must be bigger than size");
-        // Move it if the buffer isn't empty.
-        if !incoming_buf.is_empty() {
-            buf.copy_from_slice(&incoming_buf[0..bytes_read]);
-        }
-        // Trim off everything that we moved.
-        incoming_buf
-            .adjust(bytes_read)
-            .expect("bytes_read will be less than incoming buf len because it is a min of incoming buf len and size ");
-        // We didn't consume all of the incoming data.
-        if !incoming_buf.is_empty() {
-            self.recv_queue.push_front(Ok((addr, incoming_buf)));
-        }
-        Ok(addr)
-    }
-}
-
 impl SharedSocketData {
     /// Creates new metadata representing a socket.
     pub fn new_inactive(socket: Socket) -> Self {
@@ -271,11 +104,9 @@ impl SharedSocketData {
 
     /// Creates new metadata representing a socket.
     pub fn new_active(socket: Socket) -> Self {
-        Self(SharedObject::<SocketData>::new(SocketData::Active(ActiveSocketData {
-            socket,
-            send_queue: AsyncQueue::default(),
-            recv_queue: AsyncQueue::default(),
-        })))
+        Self(SharedObject::<SocketData>::new(SocketData::Active(
+            ActiveSocketData::new(socket),
+        )))
     }
 
     /// Moves an inactive socket to a passive listening socket.
@@ -285,10 +116,7 @@ impl SharedSocketData {
             SocketData::Active(_) => unreachable!("should not be able to move an active socket to a passive one"),
             SocketData::Passive(_) => return,
         };
-        self.set_socket_data(SocketData::Passive(PassiveSocketData {
-            socket,
-            accept_queue: AsyncQueue::default(),
-        }))
+        self.set_socket_data(SocketData::Passive(PassiveSocketData::new(socket)))
     }
 
     /// Moves an inactive socket to an active established socket.
@@ -298,11 +126,7 @@ impl SharedSocketData {
             SocketData::Active(_) => return,
             SocketData::Passive(_) => unreachable!("should not be able to move a passive socket to an active one"),
         };
-        self.set_socket_data(SocketData::Active(ActiveSocketData {
-            socket,
-            send_queue: AsyncQueue::default(),
-            recv_queue: AsyncQueue::default(),
-        }));
+        self.set_socket_data(SocketData::Active(ActiveSocketData::new(socket)));
     }
 
     /// Gets a reference to the actual Socket for reading the socket's metadata (mostly the raw file descriptor).
@@ -310,8 +134,8 @@ impl SharedSocketData {
         let _self: &'a SocketData = self.as_ref();
         match _self {
             SocketData::Inactive(Some(socket)) => socket,
-            SocketData::Active(data) => &data.socket,
-            SocketData::Passive(data) => &data.socket,
+            SocketData::Active(data) => data.get_socket(),
+            SocketData::Passive(data) => data.get_socket(),
             _ => panic!("Should have data"),
         }
     }
@@ -321,8 +145,8 @@ impl SharedSocketData {
         let _self: &'a mut SocketData = self.as_mut();
         match _self {
             SocketData::Inactive(Some(socket)) => socket,
-            SocketData::Active(data) => &mut data.socket,
-            SocketData::Passive(data) => &mut data.socket,
+            SocketData::Active(data) => data.get_mut_socket(),
+            SocketData::Passive(data) => data.get_mut_socket(),
             _ => panic!("Should have data"),
         }
     }
