@@ -234,12 +234,12 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
 
     /// Close this queue. This function contains all the single-queue functionality to synchronously close a queue.
     pub fn hard_close(&mut self) -> Result<(), Fail> {
-        self.state_machine.prepare(SocketOp::Close)?;
-        self.state_machine.commit();
+        //self.state_machine.prepare(SocketOp::Close)?;
+        //self.state_machine.commit();
         match self.transport.clone().hard_close(&mut self.socket) {
             Ok(()) => {
-                self.state_machine.prepare(SocketOp::Closed)?;
-                self.state_machine.commit();
+                //self.state_machine.prepare(SocketOp::Closed)?;
+                //self.state_machine.commit();
                 Ok(())
             },
             Err(e) => Err(e),
