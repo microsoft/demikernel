@@ -143,7 +143,6 @@ impl SharedMemorySocket {
         &mut self,
         mut runtime: SharedDemiRuntime,
         mut catmem: SharedCatmemLibOS,
-        yielder: &Yielder,
     ) -> Result<(Self, SocketAddr), Fail> {
         // Allocate ephemeral port.
         let new_port: u16 = runtime.alloc_ephemeral_port()?;
@@ -165,12 +164,7 @@ impl SharedMemorySocket {
 
             // Grab next request from the control duplex pipe.
             let new_qd: QDesc = match self
-                .pop_request_id(
-                    &mut runtime,
-                    &mut catmem,
-                    self.catmem_qd.expect("should be connected"),
-                    &yielder,
-                )
+                .pop_request_id(&mut runtime, &mut catmem, self.catmem_qd.expect("should be connected"))
                 .await
             {
                 // Received a request id so create the new connection. This involves create the new duplex pipe
@@ -181,10 +175,7 @@ impl SharedMemorySocket {
                         continue;
                     } else {
                         self.pending_request_ids.insert(request_id);
-                        match self
-                            .create_pipe(&mut runtime, &mut catmem, &ipv4, new_port, &yielder)
-                            .await
-                        {
+                        match self.create_pipe(&mut runtime, &mut catmem, &ipv4, new_port).await {
                             Ok(new_qd) => new_qd,
                             Err(e) => {
                                 runtime.free_ephemeral_port(new_port)?;
@@ -202,8 +193,7 @@ impl SharedMemorySocket {
 
             let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
             let new_socket: Self = Self::alloc(new_qd, None, Some(new_addr));
-            let result: Result<RequestId, Fail> =
-                self.pop_request_id(&mut runtime, &mut catmem, new_qd, &yielder).await;
+            let result: Result<RequestId, Fail> = self.pop_request_id(&mut runtime, &mut catmem, new_qd).await;
 
             // Check that the remote has retrieved the port number and responded with a valid request id.
             match result {
@@ -231,7 +221,6 @@ impl SharedMemorySocket {
         mut runtime: SharedDemiRuntime,
         mut catmem: SharedCatmemLibOS,
         remote: SocketAddr,
-        yielder: &Yielder,
     ) -> Result<(), Fail> {
         let ipv4: Ipv4Addr = *unwrap_socketaddr(remote)?.ip();
         let port: u16 = remote.port().into();
@@ -240,10 +229,7 @@ impl SharedMemorySocket {
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
         let result: Result<(QDesc, SocketAddrV4), Fail> = {
-            let new_port: u16 = match self
-                .get_port(&mut catmem, &mut runtime, &ipv4, port, &request_id, yielder)
-                .await
-            {
+            let new_port: u16 = match self.get_port(&mut catmem, &mut runtime, &ipv4, port, &request_id).await {
                 Ok(new_port) => new_port,
                 Err(e) => {
                     return Err(e);
@@ -259,10 +245,7 @@ impl SharedMemorySocket {
                 },
             };
             // Send an ack to the server over the new pipe.
-            if let Err(e) = self
-                .send_ack(&mut catmem, &mut runtime, new_qd, &request_id, &yielder)
-                .await
-            {
+            if let Err(e) = self.send_ack(&mut catmem, &mut runtime, new_qd, &request_id).await {
                 return Err(e);
             }
             Ok((new_qd, remote))
@@ -279,9 +262,9 @@ impl SharedMemorySocket {
     }
 
     /// Closes `socket`.
-    pub async fn close(&mut self, catmem: SharedCatmemLibOS, yielder: Yielder) -> Result<(), Fail> {
+    pub async fn close(&mut self, catmem: SharedCatmemLibOS) -> Result<(), Fail> {
         if let Some(qd) = self.catmem_qd {
-            match catmem.close_coroutine(qd, yielder).await {
+            match catmem.close_coroutine(qd).await {
                 (_, OperationResult::Close) => (),
                 (_, OperationResult::Failed(e)) => return Err(e),
                 _ => panic!("Should not return anything other than close or fail"),
@@ -299,18 +282,13 @@ impl SharedMemorySocket {
     }
 
     /// Asynchronous code for pushing to the underlying Catmem transport.
-    pub async fn push(
-        &mut self,
-        catmem: SharedCatmemLibOS,
-        buf: &mut DemiBuffer,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    pub async fn push(&mut self, catmem: SharedCatmemLibOS, buf: &mut DemiBuffer) -> Result<(), Fail> {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
         // TODO: Remove the copy eventually.
-        match catmem.push_coroutine(qd, buf.clone(), yielder).await {
+        match catmem.push_coroutine(qd, buf.clone()).await {
             (_, OperationResult::Push) => {
                 buf.trim(buf.len())?;
                 Ok(())
@@ -326,13 +304,12 @@ impl SharedMemorySocket {
         catmem: SharedCatmemLibOS,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        match catmem.pop_coroutine(qd, Some(size), yielder).await {
+        match catmem.pop_coroutine(qd, Some(size)).await {
             (_, OperationResult::Pop(_, incoming)) => {
                 let len: usize = incoming.len();
                 // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
@@ -363,7 +340,6 @@ impl SharedMemorySocket {
         runtime: &mut SharedDemiRuntime,
         catmem: &mut SharedCatmemLibOS,
         catmem_qd: QDesc,
-        yielder: &Yielder,
     ) -> Result<RequestId, Fail> {
         // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
         let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
@@ -405,7 +381,6 @@ impl SharedMemorySocket {
         catmem: &mut SharedCatmemLibOS,
         ipv4: &Ipv4Addr,
         port: u16,
-        yielder: &Yielder,
     ) -> Result<QDesc, Fail> {
         let catmem_qd: QDesc = self.catmem_qd.expect("should be connected");
         // Create underlying pipes before sending the port number through the
@@ -457,7 +432,6 @@ impl SharedMemorySocket {
         runtime: &mut SharedDemiRuntime,
         connect_qd: QDesc,
         request_id: &RequestId,
-        _: &Yielder,
     ) -> Result<(), Fail> {
         // Create a message containing the magic number.
         let sga: demi_sgarray_t = self.send_connect_id(runtime, request_id)?;
@@ -498,7 +472,6 @@ impl SharedMemorySocket {
         ipv4: &Ipv4Addr,
         port: u16,
         request_id: &RequestId,
-        yielder: &Yielder,
     ) -> Result<u16, Fail> {
         // Issue receive operation to wait for connect request ack.
         let size: usize = mem::size_of::<u16>();
@@ -522,7 +495,7 @@ impl SharedMemorySocket {
 
         loop {
             // Send the connection request to the server.
-            self.send_connection_request(catmem, runtime, connect_qd, request_id, &yielder)
+            self.send_connection_request(catmem, runtime, connect_qd, request_id)
                 .await?;
 
             // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
@@ -567,7 +540,6 @@ impl SharedMemorySocket {
         runtime: &mut SharedDemiRuntime,
         new_qd: QDesc,
         request_id: &RequestId,
-        yielder: &Yielder,
     ) -> Result<(), Fail> {
         // Create message with magic connect.
         let sga: demi_sgarray_t = self.send_connect_id(runtime, request_id)?;
