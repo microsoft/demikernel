@@ -721,7 +721,7 @@ pub async fn conditional_yield_until<F: Future>(condition: F, expiry: Option<Ins
 
 /// Yield for one quanta.
 pub async fn poll_yield() {
-    let poll = PollFuture::default();
+    let poll: PollFuture = PollFuture::default();
     poll.await;
 }
 
