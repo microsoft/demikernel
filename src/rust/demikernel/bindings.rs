@@ -49,10 +49,7 @@ use ::std::{
     net::SocketAddr,
     ptr,
     slice,
-    time::{
-        Duration,
-        SystemTime,
-    },
+    time::Duration,
 };
 
 #[cfg(test)]
@@ -511,59 +508,6 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
         },
         Err(e) => {
             trace!("demi_pop() failed: {:?}", e);
-            e.errno
-        },
-    });
-
-    match ret {
-        Ok(ret) => ret,
-        Err(e) => e.errno,
-    }
-}
-
-//======================================================================================================================
-// timedwait
-//======================================================================================================================
-
-#[no_mangle]
-pub extern "C" fn demi_timedwait(
-    qr_out: *mut demi_qresult_t,
-    qt: demi_qtoken_t,
-    abstime: *const libc::timespec,
-) -> c_int {
-    trace!("demi_timedwait() {:?} {:?} {:?}", qr_out, qt, abstime);
-
-    // Check for invalid storage location.
-    if qr_out.is_null() {
-        warn!("qr_out is a null pointer");
-        return libc::EINVAL;
-    }
-
-    // Check for invalid timeout.
-    if abstime.is_null() {
-        warn!("abstime is a null pointer");
-        return libc::EINVAL;
-    }
-
-    // Convert timespec to SystemTime.
-    let abstime: Option<SystemTime> = {
-        let timeout: Duration = Duration::from_nanos(
-            unsafe { (*abstime).tv_sec } as u64 * 1_000_000_000_ + unsafe { (*abstime).tv_nsec } as u64,
-        );
-        match SystemTime::UNIX_EPOCH.checked_add(timeout) {
-            Some(abstime) => Some(abstime),
-            None => Some(SystemTime::now()),
-        }
-    };
-
-    // Issue operation.
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.timedwait(qt.into(), abstime) {
-        Ok(qr) => {
-            unsafe { *qr_out = qr };
-            0
-        },
-        Err(e) => {
-            trace!("demi_timedwait() failed: {:?}", e);
             e.errno
         },
     });

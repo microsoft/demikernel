@@ -153,18 +153,6 @@ static bool inval_sgafree(void)
  *===================================================================================================================*/
 
 /**
- * @brief Issues an invalid system call to demi_timedwait().
- */
-static bool inval_timedwait(void)
-{
-    struct timespec *abstime = NULL;
-    demi_qresult_t *qr = NULL;
-    demi_qtoken_t qt = -1;
-
-    return (demi_timedwait(qr, qt, abstime) != 0);
-}
-
-/**
  * @brief Issues an invalid system call to demi_wait().
  */
 static bool inval_wait(void)
@@ -221,9 +209,7 @@ static struct test tests_sga[] = {{inval_sgaalloc, "invalid demi_sgaalloc()"},
 /**
  * @brief Tests for system calls in demi/wait.h
  */
-static struct test tests_wait[] = {{inval_timedwait, "invalid demi_timedwait()"},
-                                   {inval_wait, "invalid demi_wait()"},
-                                   {inval_wait_any, "invalid demi_wait_any()"}};
+static struct test tests_wait[] = {{inval_wait, "invalid demi_wait()"}, {inval_wait_any, "invalid demi_wait_any()"}};
 
 /**
  * @brief Drives the application.
