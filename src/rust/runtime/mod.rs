@@ -25,9 +25,6 @@ pub use queue::{
     QType,
 };
 
-#[cfg(feature = "liburing")]
-pub use liburing;
-
 #[cfg(feature = "libdpdk")]
 pub use dpdk_rs as libdpdk;
 

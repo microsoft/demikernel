@@ -36,9 +36,6 @@ mod catnip;
 #[cfg(feature = "catpowder-libos")]
 mod catpowder;
 
-#[cfg(feature = "catcollar-libos")]
-mod catcollar;
-
 #[cfg(all(feature = "catnap-libos"))]
 mod catnap;
 

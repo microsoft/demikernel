@@ -83,7 +83,7 @@ System-level tests exercise the user-level API that is exposed by Demikernel.
 
 These tests are located in `demikernel/examples/` and detailed in the following tables.
 
-**The following system-level tests are supported by `catcollar`, `catnap`, `catnip`, `catpowder`.**
+**The following system-level tests are supported by `catnap`, `catnip`, `catpowder`.**
 
 | Test Name       | Description                                                               |
 | --------------- | ------------------------------------------------------------------------- |

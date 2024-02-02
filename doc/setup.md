@@ -9,13 +9,13 @@ specification, check out the `README.md` file.
 
 ## Table of Contents
 
+- [Table of Contents](#table-of-contents)
 - [1. Clone This Repository](#1-clone-this-repository)
 - [2. Install Third-Party Requirements](#2-install-third-party-requirements)
 - [3. Install Rust Toolchain](#3-install-rust-toolchain)
 - [4. Build DPDK Library (For Catnip and Only Once)](#4-build-dpdk-library-for-catnip-and-only-once)
-- [5. Build IO Uring Library (For Catcollar and Only Once)](#5-build-io-uring-library-for-catcollar-and-only-once)
-- [6. Setup Configuration File (Only Once)](#6-setup-configuration-file-only-once)
-- [7. Enable Huge Pages (Optional for Catnip at Every System Reboot)](#7-enable-huge-pages-optional-for-catnip-at-every-system-reboot)
+- [5. Setup Configuration File (Only Once)](#5-setup-configuration-file-only-once)
+- [6. Enable Huge Pages (Only for Catnip on Every System Reboot)](#6-enable-huge-pages-only-for-catnip-on-every-system-reboot)
 
 
 > **Follow these instructions to build Demikernel on a fresh Ubuntu 22.04 system.**
@@ -52,13 +52,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ./scripts/setup/dpdk.sh
 ```
 
-## 5. Build IO Uring Library (For Catcollar and Only Once)
-
-```bash
-./scripts/setup/io_uring.sh
-```
-
-## 6. Setup Configuration File (Only Once)
+## 5. Setup Configuration File (Only Once)
 
 - Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
 - Open the file in `$HOME/config.yaml` for editing and do the following:
@@ -72,7 +66,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
   - If using DPDK, change `WW:WW.W` to match the PCIe address of your NIC.
 - Save the file.
 
-## 7. Enable Huge Pages (Only for Catnip on Every System Reboot)
+## 6. Enable Huge Pages (Only for Catnip on Every System Reboot)
 
 ```bash
 sudo -E ./scripts/setup/hugepages.sh

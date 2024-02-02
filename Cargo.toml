@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.4.11"
+version = "1.5.0"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -46,7 +46,6 @@ x86 = "0.52.0"
 # Local crates.
 nettest = { path = "nettest" }
 dpdk-rs = { path = "dpdk-rs", optional = true }
-liburing = { path = "liburing-rs", optional = true }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
@@ -150,7 +149,6 @@ path = "examples/rust/tcp-ping-pong.rs"
 default = ["catnap-libos"]
 catnap-libos = []
 catpowder-libos = []
-catcollar-libos = ["liburing"]
 catmem-libos = []
 catnip-libos = ["libdpdk"]
 catloop-libos = ["catmem-libos"]
