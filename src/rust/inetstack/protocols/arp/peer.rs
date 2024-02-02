@@ -176,9 +176,19 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
             // > information in the packet and set Merge_flag to true.
             let merge_flag: bool = {
                 if self.cache.get(header.get_sender_protocol_addr()).is_some() {
+                    trace!(
+                        "poll(): updating the arp cache (link_addr={:?}, ipv4_addr={:?})",
+                        header.get_sender_hardware_addr(),
+                        header.get_sender_protocol_addr()
+                    );
                     self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
                     true
                 } else {
+                    trace!(
+                        "poll(): arp cache miss (link_addr={:?}, ipv4_addr={:?})",
+                        header.get_sender_hardware_addr(),
+                        header.get_sender_protocol_addr()
+                    );
                     false
                 }
             };
@@ -189,6 +199,11 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                     let cause: String = format!("unrecognized IP address");
                     warn!("arp_cache::poll(): {}", &cause);
                 }
+                trace!(
+                    "poll(): dropping arp packet (link_addr={:?}, ipv4_addr={:?})",
+                    header.get_sender_hardware_addr(),
+                    header.get_sender_protocol_addr()
+                );
                 continue;
             }
             // from RFC 826:
@@ -196,6 +211,11 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
             // > sender protocol address, sender hardware address> to
             // > the translation table.
             if !merge_flag {
+                trace!(
+                    "poll(): adding entry to the arp cache (link_addr={:?}, ipv4_addr={:?})",
+                    header.get_sender_hardware_addr(),
+                    header.get_sender_protocol_addr()
+                );
                 self.do_insert(header.get_sender_protocol_addr(), header.get_sender_hardware_addr());
             }
 
@@ -267,7 +287,9 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                     },
                 }
             }
-            Err(Fail::new(ETIMEDOUT, "ARP query timeout"))
+            let cause: String = format!("query(): query timeout (ipv4_addr={:?})", ipv4_addr);
+            error!("{}", &cause);
+            Err(Fail::new(ETIMEDOUT, &cause))
         };
 
         self.do_drop(ipv4_addr);
