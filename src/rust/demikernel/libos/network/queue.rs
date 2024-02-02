@@ -153,11 +153,11 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             pin_mut!(operation);
 
             select_biased! {
-                // If the operation returned unsuccessfully, return, otherwise continue to create a new queue.
-                result = operation => result?,
                 // If the accepting queue is no longer in a state where it is accepting sockets, return immediately
                 // with the error.
                 fail = state_tracker => return Err(fail),
+                // If the operation returned unsuccessfully, return, otherwise continue to create a new queue.
+                result = operation => result?,
             }
         };
 
@@ -200,10 +200,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             pin_mut!(operation);
 
             select_biased! {
+                // If the state changed, then immediately return.
+                fail = state_tracker => Err(fail),
                 // If the operation completed, continue with the result.
                 result = operation => result,
-                // If the state changed, then immediately return.
-                fail = state_tracker => return Err(fail),
             }
         };
         match result {
@@ -283,8 +283,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             pin_mut!(operation);
 
             select_biased! {
-                result = operation => result,
                 fail = state_tracker => return Err(fail),
+                result = operation => result,
             }
         };
         if result.is_ok() {
@@ -320,8 +320,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             pin_mut!(operation);
 
             select_biased! {
-                result = operation => result,
                 fail = state_tracker => return Err(fail),
+                result = operation => result,
             }
         };
         Ok((result?, buf))

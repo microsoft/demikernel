@@ -68,6 +68,7 @@ use std::{
     },
     thread::{
         self,
+        sleep,
         JoinHandle,
     },
     time::Duration,
@@ -178,6 +179,8 @@ fn tcp_establish_connection_unbound() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -252,6 +255,8 @@ fn tcp_establish_connection_bound() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -354,6 +359,8 @@ fn tcp_push_remote() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -712,6 +719,8 @@ fn tcp_bad_connect() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -815,6 +824,8 @@ fn tcp_bad_close() -> Result<()> {
             Ok(_) => anyhow::bail!("double close() should fail"),
             Err(_) => (),
         };
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -943,9 +954,11 @@ fn tcp_bad_push() -> Result<()> {
                 anyhow::bail!("push() has failed")
             },
         }
-
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
@@ -1058,6 +1071,8 @@ fn tcp_bad_pop() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
+        // Sleep for a while to give Alice time to finish.
+        sleep(Duration::from_millis(100));
 
         Ok(())
     });
