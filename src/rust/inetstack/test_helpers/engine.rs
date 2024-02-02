@@ -48,6 +48,7 @@ use ::std::{
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
+#[derive(Clone)]
 pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
 
 impl SharedEngine {
@@ -151,7 +152,7 @@ impl SharedEngine {
         self.listen(socket_fd, backlog)
     }
 
-    pub async fn arp_query(&mut self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+    pub async fn arp_query(self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
         self.get_transport().arp_query(ipv4_addr).await
     }
 
