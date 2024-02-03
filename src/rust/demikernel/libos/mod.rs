@@ -48,7 +48,7 @@ use ::std::{
 };
 
 #[cfg(feature = "catloop-libos")]
-use crate::catloop::SharedCatloopLibOS;
+use crate::catloop::transport::SharedCatloopTransport;
 #[cfg(feature = "catmem-libos")]
 use crate::catmem::SharedCatmemLibOS;
 #[cfg(all(feature = "catnap-libos"))]
@@ -134,7 +134,10 @@ impl LibOS {
             #[cfg(feature = "catloop-libos")]
             LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop {
                 runtime: runtime.clone(),
-                libos: SharedCatloopLibOS::new(&config, runtime.clone()),
+                libos: SharedNetworkLibOS::<SharedCatloopTransport>::new(
+                    runtime.clone(),
+                    SharedCatloopTransport::new(&config, runtime.clone()),
+                ),
             }),
             _ => panic!("unsupported libos"),
         };

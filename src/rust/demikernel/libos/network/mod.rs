@@ -40,7 +40,7 @@ use ::std::{
 use crate::inetstack::SharedInetStack;
 
 #[cfg(feature = "catloop-libos")]
-use crate::catloop::SharedCatloopLibOS;
+use crate::catloop::transport::SharedCatloopTransport;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::transport::SharedCatnapTransport;
 #[cfg(feature = "catnip-libos")]
@@ -72,7 +72,7 @@ pub enum NetworkLibOSWrapper {
     #[cfg(feature = "catloop-libos")]
     Catloop {
         runtime: SharedDemiRuntime,
-        libos: SharedCatloopLibOS,
+        libos: SharedNetworkLibOS<SharedCatloopTransport>,
     },
 }
 
@@ -103,7 +103,9 @@ impl NetworkLibOSWrapper {
                 libos.socket(domain.into(), socket_type.into(), protocol.into())
             },
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime: _, libos } => libos.socket(domain, socket_type, protocol),
+            NetworkLibOSWrapper::Catloop { runtime: _, libos } => {
+                libos.socket(domain.into(), socket_type.into(), protocol.into())
+            },
         }
     }
 

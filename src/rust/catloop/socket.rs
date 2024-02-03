@@ -7,17 +7,13 @@
 
 use crate::{
     catmem::SharedCatmemLibOS,
-    pal,
     runtime::{
         fail::Fail,
         memory::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::socket::{
-            operation::SocketOp,
-            state::SocketStateMachine,
-        },
+        network::unwrap_socketaddr,
         queue::{
             QDesc,
             QToken,
@@ -30,6 +26,7 @@ use crate::{
         },
         OperationResult,
         SharedDemiRuntime,
+        SharedObject,
     },
 };
 use ::rand::{
@@ -37,13 +34,18 @@ use ::rand::{
     RngCore,
     SeedableRng,
 };
-use ::socket2::Type;
 use ::std::{
     collections::HashSet,
+    fmt::Debug,
     mem,
     net::{
         Ipv4Addr,
+        SocketAddr,
         SocketAddrV4,
+    },
+    ops::{
+        Deref,
+        DerefMut,
     },
     slice,
 };
@@ -64,13 +66,7 @@ const REQUEST_ID_SEED: u64 = 95;
 //======================================================================================================================
 
 /// A socket.
-pub struct Socket {
-    /// The state of the socket.
-    state: SocketStateMachine,
-    /// Underlying shared runtime.
-    runtime: SharedDemiRuntime,
-    /// Underlying Catmem LibOS.
-    catmem: SharedCatmemLibOS,
+pub struct MemorySocket {
     /// Underlying shared memory pipe.
     catmem_qd: Option<QDesc>,
     /// The local address to which the socket is bound.
@@ -85,6 +81,8 @@ pub struct Socket {
     rng: SmallRng,
 }
 
+pub struct SharedMemorySocket(SharedObject<MemorySocket>);
+
 /// Unique identifier for a request.
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct RequestId(u64);
@@ -93,13 +91,10 @@ pub struct RequestId(u64);
 // Associated Functions
 //======================================================================================================================
 
-impl Socket {
+impl SharedMemorySocket {
     /// Creates a new socket that is not bound to an address.
-    pub fn new(runtime: SharedDemiRuntime, catmem: SharedCatmemLibOS) -> Result<Self, Fail> {
-        Ok(Self {
-            state: SocketStateMachine::new_unbound(Type::STREAM),
-            runtime,
-            catmem,
+    pub fn new() -> Self {
+        Self(SharedObject::new(MemorySocket {
             catmem_qd: None,
             local: None,
             remote: None,
@@ -109,21 +104,12 @@ impl Socket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
-        })
+        }))
     }
 
     /// Allocates a new socket that is bound to [local].
-    fn alloc(
-        runtime: SharedDemiRuntime,
-        catmem: SharedCatmemLibOS,
-        catmem_qd: QDesc,
-        local: Option<SocketAddrV4>,
-        remote: Option<SocketAddrV4>,
-    ) -> Self {
-        Self {
-            state: SocketStateMachine::new_established(),
-            runtime,
-            catmem,
+    fn alloc(catmem_qd: QDesc, local: Option<SocketAddrV4>, remote: Option<SocketAddrV4>) -> Self {
+        Self(SharedObject::new(MemorySocket {
             catmem_qd: Some(catmem_qd),
             local,
             remote,
@@ -133,54 +119,40 @@ impl Socket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
-        }
+        }))
     }
 
     /// Binds the target socket to `local` address.
     /// TODO: Should probably move the create of the duplex pipe to listen.
-    pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
-        self.state.prepare(SocketOp::Bind)?;
+    pub fn bind(&mut self, local: SocketAddrV4, catmem: &mut SharedCatmemLibOS) -> Result<(), Fail> {
         // Create underlying memory channels.
         let ipv4: &Ipv4Addr = local.ip();
         let port: u16 = local.port();
-        self.catmem_qd = match self.catmem.create_pipe(&format_pipe_str(ipv4, port)) {
-            Ok(qd) => {
-                self.state.commit();
-                Some(qd)
-            },
-            Err(e) => {
-                self.state.abort();
-                return Err(e);
-            },
-        };
+        self.catmem_qd = Some(catmem.create_pipe(&format_pipe_str(ipv4, port))?);
         self.local = Some(local);
         Ok(())
     }
 
     /// Enables this socket to accept incoming connections.
     pub fn listen(&mut self, backlog: usize) -> Result<(), Fail> {
-        // We just assert backlog here, because it was previously checked at PDPIX layer.
-        debug_assert!((backlog > 0) && (backlog <= pal::constants::SOMAXCONN as usize));
-
-        self.state.prepare(SocketOp::Listen)?;
         self.backlog = backlog;
-        self.state.commit();
         Ok(())
     }
 
-    pub fn accept<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        self.state.may_accept()?;
-        self.do_generic_sync_control_path_call(coroutine_constructor)
-    }
-
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
-    pub async fn do_accept(&mut self, ipv4: Ipv4Addr, new_port: u16, yielder: &Yielder) -> Result<Self, Fail> {
+    pub async fn accept(
+        &mut self,
+        mut runtime: SharedDemiRuntime,
+        mut catmem: SharedCatmemLibOS,
+        yielder: &Yielder,
+    ) -> Result<(Self, SocketAddr), Fail> {
+        // Allocate ephemeral port.
+        let new_port: u16 = runtime.alloc_ephemeral_port()?;
+        let ipv4: Ipv4Addr = *self
+            .local
+            .expect("Should be bound to a local address to accept connections")
+            .ip();
         loop {
-            self.state.may_accept()?;
-
             // Check if backlog is full.
             if self.pending_request_ids.len() >= self.backlog {
                 // It is, thus just log a debug message, pending requests will still be queued anyways.
@@ -194,7 +166,12 @@ impl Socket {
 
             // Grab next request from the control duplex pipe.
             let new_qd: QDesc = match self
-                .pop_request_id(self.catmem_qd.expect("should be connected"), &yielder)
+                .pop_request_id(
+                    &mut runtime,
+                    &mut catmem,
+                    self.catmem_qd.expect("should be connected"),
+                    &yielder,
+                )
                 .await
             {
                 // Received a request id so create the new connection. This involves create the new duplex pipe
@@ -205,9 +182,13 @@ impl Socket {
                         continue;
                     } else {
                         self.pending_request_ids.insert(request_id);
-                        match self.create_pipe(&ipv4, new_port, &yielder).await {
+                        match self
+                            .create_pipe(&mut runtime, &mut catmem, &ipv4, new_port, &yielder)
+                            .await
+                        {
                             Ok(new_qd) => new_qd,
                             Err(e) => {
+                                runtime.free_ephemeral_port(new_port)?;
                                 return Err(e);
                             },
                         }
@@ -215,18 +196,15 @@ impl Socket {
                 },
                 // Some error.
                 Err(e) => {
+                    runtime.free_ephemeral_port(new_port)?;
                     return Err(e);
                 },
             };
 
-            let new_socket: Self = Self::alloc(
-                self.runtime.clone(),
-                self.catmem.clone(),
-                new_qd,
-                None,
-                Some(SocketAddrV4::new(ipv4, new_port)),
-            );
-            let result: Result<RequestId, Fail> = self.pop_request_id(new_qd, &yielder).await;
+            let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
+            let new_socket: Self = Self::alloc(new_qd, None, Some(new_addr));
+            let result: Result<RequestId, Fail> =
+                self.pop_request_id(&mut runtime, &mut catmem, new_qd, &yielder).await;
 
             // Check that the remote has retrieved the port number and responded with a valid request id.
             match result {
@@ -235,60 +213,57 @@ impl Socket {
                     // If we've never seen this before, something has gone very wrong.
                     assert!(self.pending_request_ids.contains(&request_id));
                     self.pending_request_ids.remove(&request_id);
-                    self.state.commit();
-                    return Ok(new_socket);
+                    return Ok((new_socket, new_addr.into()));
                 },
                 // Some error.
                 Err(e) => {
                     // Clean up newly allocated duplex pipe.
-                    self.catmem.close(new_qd)?;
+                    catmem.close(new_qd)?;
+                    runtime.free_ephemeral_port(new_port)?;
                     return Err(e);
                 },
             };
         }
     }
 
-    pub fn connect<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        self.state.prepare(SocketOp::Connect)?;
-        self.do_generic_sync_control_path_call(coroutine_constructor)
-    }
-
     /// Connects this socket to [remote].
-    pub async fn do_connect(&mut self, remote: SocketAddrV4, yielder: &Yielder) -> Result<(), Fail> {
-        let ipv4: &Ipv4Addr = remote.ip();
+    pub async fn connect(
+        &mut self,
+        mut runtime: SharedDemiRuntime,
+        mut catmem: SharedCatmemLibOS,
+        remote: SocketAddr,
+        yielder: &Yielder,
+    ) -> Result<(), Fail> {
+        let ipv4: Ipv4Addr = *unwrap_socketaddr(remote)?.ip();
         let port: u16 = remote.port().into();
-        let mut catmem: SharedCatmemLibOS = self.catmem.clone();
         let request_id: RequestId = RequestId(self.rng.next_u64());
 
         // Gets the port for the new connection from the server by sending a connection request repeatedly until a port
         // comes back.
         let result: Result<(QDesc, SocketAddrV4), Fail> = {
-            let new_port: u16 = match self.get_port(ipv4, port, &request_id, yielder).await {
+            let new_port: u16 = match self
+                .get_port(&mut catmem, &mut runtime, &ipv4, port, &request_id, yielder)
+                .await
+            {
                 Ok(new_port) => new_port,
                 Err(e) => {
-                    self.state.prepare(SocketOp::Closed)?;
-                    self.state.commit();
                     return Err(e);
                 },
             };
 
             // Open underlying pipes.
-            let remote: SocketAddrV4 = SocketAddrV4::new(*ipv4, new_port);
-            let new_qd: QDesc = match catmem.open_pipe(&format_pipe_str(ipv4, new_port)) {
+            let remote: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
+            let new_qd: QDesc = match catmem.open_pipe(&format_pipe_str(&ipv4, new_port)) {
                 Ok(new_qd) => new_qd,
                 Err(e) => {
-                    self.state.prepare(SocketOp::Closed)?;
-                    self.state.commit();
                     return Err(e);
                 },
             };
             // Send an ack to the server over the new pipe.
-            if let Err(e) = self.send_ack(new_qd, &request_id, &yielder).await {
-                self.state.prepare(SocketOp::Closed)?;
-                self.state.commit();
+            if let Err(e) = self
+                .send_ack(&mut catmem, &mut runtime, new_qd, &request_id, &yielder)
+                .await
+            {
                 return Err(e);
             }
             Ok((new_qd, remote))
@@ -296,92 +271,80 @@ impl Socket {
 
         match result {
             Ok((new_qd, remote)) => {
-                self.state.prepare(SocketOp::Established)?;
-                self.state.commit();
                 self.catmem_qd = Some(new_qd);
                 self.remote = Some(remote);
                 Ok(())
             },
-            Err(e) => {
-                self.state.prepare(SocketOp::Closed)?;
-                self.state.commit();
-                Err(e)
-            },
+            Err(e) => Err(e),
         }
-    }
-
-    /// Asynchronously closes this socket by allocating a coroutine.
-    pub fn async_close<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        self.state.prepare(SocketOp::Close)?;
-        self.do_generic_sync_control_path_call(coroutine_constructor)
     }
 
     /// Closes `socket`.
-    pub async fn do_close(&mut self, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
-        // TODO: Should we assert that we're still in the close state?
-        let catmem_qd: Option<QDesc> = self.catmem_qd;
-        if let Some(qd) = catmem_qd {
-            match self.catmem.clone().close_coroutine(qd, yielder).await {
-                (qd, OperationResult::Close) => {
-                    self.state.prepare(SocketOp::Closed)?;
-                    self.state.commit();
-                    Ok((qd, OperationResult::Close))
-                },
-                (qd, OperationResult::Failed(e)) => {
-                    // Where to revert to?
-                    Ok((qd, OperationResult::Failed(e)))
-                },
+    pub async fn close(&mut self, catmem: SharedCatmemLibOS, yielder: Yielder) -> Result<(), Fail> {
+        if let Some(qd) = self.catmem_qd {
+            match catmem.close_coroutine(qd, yielder).await {
+                (_, OperationResult::Close) => (),
+                (_, OperationResult::Failed(e)) => return Err(e),
                 _ => panic!("Should not return anything other than close or fail"),
             }
+        };
+        Ok(())
+    }
+
+    pub fn hard_close(&mut self, catmem: &mut SharedCatmemLibOS) -> Result<(), Fail> {
+        if let Some(qd) = self.catmem_qd {
+            catmem.close(qd)
         } else {
-            // We know that the queue descriptor will be replaced so it doesn't matter what we put here.
-            Ok((QDesc::from(QDesc::MAX), OperationResult::Close))
+            Ok(())
         }
     }
 
-    /// Schedule a coroutine to push to this queue. This function contains all of the single-queue,
-    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the push completes.
-    pub fn push<F>(&self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        self.state.may_push()?;
-        coroutine_constructor()
-    }
-
     /// Asynchronous code for pushing to the underlying Catmem transport.
-    pub async fn do_push(&mut self, buf: DemiBuffer, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
-        self.state.may_push()?;
+    pub async fn push(
+        &mut self,
+        catmem: SharedCatmemLibOS,
+        buf: &mut DemiBuffer,
+        yielder: Yielder,
+    ) -> Result<(), Fail> {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        Ok(self.catmem.clone().push_coroutine(qd, buf, yielder).await)
-    }
-
-    /// Schedule a coroutine to pop from the underlying Catmem queue. This function contains all of the single-queue,
-    /// asynchronous code necessary to run push a buffer and any single-queue functionality after the pop completes.
-    pub fn pop<F>(&self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        self.state.may_pop()?;
-        coroutine_constructor()
+        // TODO: Remove the copy eventually.
+        match catmem.push_coroutine(qd, buf.clone(), yielder).await {
+            (_, OperationResult::Push) => {
+                buf.trim(buf.len())?;
+                Ok(())
+            },
+            (_, OperationResult::Failed(e)) => return Err(e),
+            _ => panic!("Should not return anything other than push or fail"),
+        }
     }
 
     /// Asynchronous code for popping from the underlying Catmem transport.
-    pub async fn do_pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<(QDesc, OperationResult), Fail> {
-        self.state.may_pop()?;
+    pub async fn pop(
+        &mut self,
+        catmem: SharedCatmemLibOS,
+        buf: &mut DemiBuffer,
+        size: usize,
+        yielder: Yielder,
+    ) -> Result<Option<SocketAddr>, Fail> {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = self.catmem_qd.expect("socket should be connected");
-        match self.catmem.clone().pop_coroutine(qd, size, yielder).await {
-            (qd, OperationResult::Pop(_, buf)) => Ok((qd, OperationResult::Pop(self.remote(), buf))),
-            (qd, result) => Ok((qd, result)),
+        match catmem.pop_coroutine(qd, Some(size), yielder).await {
+            (_, OperationResult::Pop(_, incoming)) => {
+                let len: usize = incoming.len();
+                // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
+                buf.trim(size - len)?;
+                buf.copy_from_slice(&incoming[0..len]);
+
+                let remote: SocketAddr = self.remote.expect("can only pop from a connected socket").into();
+                Ok(Some(remote))
+            },
+            (_, OperationResult::Failed(e)) => Err(e),
+            _ => panic!("Should not return anything other than push or fail"),
         }
     }
 
@@ -395,41 +358,25 @@ impl Socket {
         self.remote
     }
 
-    /// Generic function for spawning a control-path coroutine on [self].
-    fn do_generic_sync_control_path_call<F>(&mut self, coroutine_constructor: F) -> Result<QToken, Fail>
-    where
-        F: FnOnce() -> Result<QToken, Fail>,
-    {
-        // Spawn coroutine.
-        match coroutine_constructor() {
-            // We successfully spawned the coroutine.
-            Ok(qt) => {
-                // Commit the operation on the socket.
-                self.state.commit();
-                Ok(qt)
-            },
-            // We failed to spawn the coroutine.
-            Err(e) => {
-                // Abort the operation on the socket.
-                self.state.abort();
-                Err(e)
-            },
-        }
-    }
-
     /// Gets the next connection request.
-    async fn pop_request_id(&mut self, catmem_qd: QDesc, yielder: &Yielder) -> Result<RequestId, Fail> {
+    async fn pop_request_id(
+        &mut self,
+        runtime: &mut SharedDemiRuntime,
+        catmem: &mut SharedCatmemLibOS,
+        catmem_qd: QDesc,
+        yielder: &Yielder,
+    ) -> Result<RequestId, Fail> {
         // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
-        let qt: QToken = self.catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
+        let qt: QToken = catmem.pop(catmem_qd, Some(mem::size_of::<RequestId>()))?;
         // Yield until pop completes.
-        while !self.runtime.has_completed(qt)? {
+        while !runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
         }
         // Re-acquire mutable reference.
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous pop().
             demi_opcode_t::DEMI_OPC_POP => {},
@@ -455,39 +402,46 @@ impl Socket {
 
         // Parse and check request.
         let result: Result<RequestId, Fail> = get_connect_id(&sga);
-        self.runtime.sgafree(sga)?;
+        runtime.sgafree(sga)?;
         result
     }
 
     // Sends the port number to the peer process.
-    async fn create_pipe(&mut self, ipv4: &Ipv4Addr, port: u16, yielder: &Yielder) -> Result<QDesc, Fail> {
+    async fn create_pipe(
+        &mut self,
+        runtime: &mut SharedDemiRuntime,
+        catmem: &mut SharedCatmemLibOS,
+        ipv4: &Ipv4Addr,
+        port: u16,
+        yielder: &Yielder,
+    ) -> Result<QDesc, Fail> {
         let catmem_qd: QDesc = self.catmem_qd.expect("should be connected");
         // Create underlying pipes before sending the port number through the
         // control duplex pipe. This prevents us from running into a race
         // condition were the remote makes progress faster than us and attempts
         // to open the duplex pipe before it is created.
-        let new_qd: QDesc = self.catmem.create_pipe(&format_pipe_str(ipv4, port))?;
+        let new_qd: QDesc = catmem.create_pipe(&format_pipe_str(ipv4, port))?;
         // Allocate a scatter-gather array and send the port number to the remote.
-        let sga: demi_sgarray_t = self.runtime.sgaalloc(mem::size_of_val(&port))?;
+        let sga: demi_sgarray_t = runtime.sgaalloc(mem::size_of_val(&port))?;
         let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
         let len: usize = sga.sga_segs[0].sgaseg_len as usize;
         let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
         slice.copy_from_slice(&port.to_ne_bytes());
 
         // Push the port number.
-        let qt: QToken = self.catmem.push(catmem_qd, &sga)?;
+        let qt: QToken = catmem.push(catmem_qd, &sga)?;
 
         // Wait for push to complete.
-        while !self.runtime.has_completed(qt)? {
+        while !runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
         }
         // Free the scatter-gather array.
-        self.runtime.sgafree(sga)?;
+        runtime.sgafree(sga)?;
 
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(new_qd),
@@ -511,26 +465,28 @@ impl Socket {
 
     async fn send_connection_request(
         &mut self,
+        catmem: &mut SharedCatmemLibOS,
+        runtime: &mut SharedDemiRuntime,
         connect_qd: QDesc,
         request_id: &RequestId,
         yielder: &Yielder,
     ) -> Result<(), Fail> {
         // Create a message containing the magic number.
-        let sga: demi_sgarray_t = self.send_connect_id(request_id)?;
+        let sga: demi_sgarray_t = self.send_connect_id(runtime, request_id)?;
 
         // Send to server.
-        let qt: QToken = self.catmem.push(connect_qd, &sga)?;
+        let qt: QToken = catmem.push(connect_qd, &sga)?;
         trace!("Send connection request qtoken={:?}", qt);
         // Yield until push completes.
-        while !self.runtime.has_completed(qt)? {
+        while !runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
         }
         // Free the message buffer.
-        self.runtime.sgafree(sga)?;
+        runtime.sgafree(sga)?;
         // Get the result of the push.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
             demi_opcode_t::DEMI_OPC_PUSH => Ok(()),
@@ -554,6 +510,8 @@ impl Socket {
 
     async fn get_port(
         &mut self,
+        catmem: &mut SharedCatmemLibOS,
+        runtime: &mut SharedDemiRuntime,
         ipv4: &Ipv4Addr,
         port: u16,
         request_id: &RequestId,
@@ -562,7 +520,7 @@ impl Socket {
         // Issue receive operation to wait for connect request ack.
         let size: usize = mem::size_of::<u16>();
         // Open connection to server.
-        let connect_qd: QDesc = match self.catmem.open_pipe(&format_pipe_str(ipv4, port)) {
+        let connect_qd: QDesc = match catmem.open_pipe(&format_pipe_str(ipv4, port)) {
             Ok(qd) => qd,
             Err(e) => {
                 // Interpose error.
@@ -576,26 +534,27 @@ impl Socket {
             },
         };
 
-        let qt: QToken = self.catmem.pop(connect_qd, Some(size))?;
+        let qt: QToken = catmem.pop(connect_qd, Some(size))?;
         trace!("Read port qtoken={:?}", qt);
 
         loop {
             // Send the connection request to the server.
-            self.send_connection_request(connect_qd, request_id, &yielder).await?;
+            self.send_connection_request(catmem, runtime, connect_qd, request_id, &yielder)
+                .await?;
 
             // Wait on the pop for MAX_ACK_RECEIVED_ATTEMPTS
             for _ in 0..MAX_ACK_RECEIVED_ATTEMPTS {
                 match yielder.yield_once().await {
-                    Ok(()) if self.runtime.has_completed(qt)? => break,
+                    Ok(()) if runtime.has_completed(qt)? => break,
                     Ok(()) => continue,
                     Err(e) => return Err(e),
                 }
             }
             // If we received a port back from the server, then unpack it. Otherwise, send the connection request again.
-            if self.runtime.has_completed(qt)? {
+            if runtime.has_completed(qt)? {
                 // Re-acquire reference to Catmem libos.
                 // Get the result of the pop.
-                let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+                let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
                 match qr.qr_opcode {
                     // We expect a successful completion for previous pop().
                     demi_opcode_t::DEMI_OPC_POP => {
@@ -604,13 +563,13 @@ impl Socket {
 
                         // Extract port number.
                         let port: Result<u16, Fail> = extract_port_number(&sga);
-                        self.runtime.sgafree(sga)?;
+                        runtime.sgafree(sga)?;
                         return port;
                     },
                     // We may get some error.
                     demi_opcode_t::DEMI_OPC_FAILED => {
                         // Shut down control duplex pipe as we can open the new pipe now.
-                        self.catmem.shutdown(connect_qd)?;
+                        catmem.shutdown(connect_qd)?;
 
                         let cause: String = format!(
                             "failed to establish connection (qd={:?}, qt={:?}, errno={:?})",
@@ -631,23 +590,30 @@ impl Socket {
     }
 
     // Send an ack through a new Catmem pipe.
-    async fn send_ack(&mut self, new_qd: QDesc, request_id: &RequestId, yielder: &Yielder) -> Result<(), Fail> {
+    async fn send_ack(
+        &mut self,
+        catmem: &mut SharedCatmemLibOS,
+        runtime: &mut SharedDemiRuntime,
+        new_qd: QDesc,
+        request_id: &RequestId,
+        yielder: &Yielder,
+    ) -> Result<(), Fail> {
         // Create message with magic connect.
-        let sga: demi_sgarray_t = self.send_connect_id(request_id)?;
+        let sga: demi_sgarray_t = self.send_connect_id(runtime, request_id)?;
         // Send to server through new pipe.
-        let qt: QToken = self.catmem.push(new_qd, &sga)?;
+        let qt: QToken = catmem.push(new_qd, &sga)?;
         trace!("Send ack qtoken={:?}", qt);
 
         // Yield until push completes.
-        while !self.runtime.has_completed(qt)? {
+        while !runtime.has_completed(qt)? {
             if let Err(e) = yielder.yield_once().await {
                 return Err(e);
             }
         }
         // Free the message buffer.
-        self.runtime.sgafree(sga)?;
+        runtime.sgafree(sga)?;
         // Retrieve operation result and check if it is what we expect.
-        let qr: demi_qresult_t = self.runtime.remove_coroutine_and_get_result(qt)?;
+        let qr: demi_qresult_t = runtime.remove_coroutine_and_get_result(qt)?;
 
         match qr.qr_opcode {
             // We expect a successful completion for previous push().
@@ -671,8 +637,12 @@ impl Socket {
     }
 
     /// Creates a magic connect message.
-    pub fn send_connect_id(&mut self, request_id: &RequestId) -> Result<demi_sgarray_t, Fail> {
-        let sga: demi_sgarray_t = self.runtime.sgaalloc(mem::size_of_val(&request_id))?;
+    pub fn send_connect_id(
+        &mut self,
+        runtime: &mut SharedDemiRuntime,
+        request_id: &RequestId,
+    ) -> Result<demi_sgarray_t, Fail> {
+        let sga: demi_sgarray_t = runtime.sgaalloc(mem::size_of_val(&request_id))?;
         let ptr: *mut u64 = sga.sga_segs[0].sgaseg_buf as *mut u64;
         unsafe {
             *ptr = request_id.0;
@@ -722,4 +692,28 @@ fn get_connect_id(sga: &demi_sgarray_t) -> Result<RequestId, Fail> {
 
 fn format_pipe_str(ip: &Ipv4Addr, port: u16) -> String {
     format!("{}:{}", ip, port)
+}
+
+impl Deref for SharedMemorySocket {
+    type Target = MemorySocket;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl DerefMut for SharedMemorySocket {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
+
+impl Debug for SharedMemorySocket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Memory socket: local={:?} remote={:?} catmem_qd={:?}",
+            self.local, self.remote, self.catmem_qd
+        )
+    }
 }
