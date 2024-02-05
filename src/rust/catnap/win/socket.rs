@@ -25,8 +25,11 @@ use windows::{
     core::PSTR,
     Win32::{
         Foundation::{
+            BOOL,
             ERROR_NOT_FOUND,
+            FALSE,
             HANDLE,
+            TRUE,
         },
         Networking::WinSock::{
             bind,
@@ -56,6 +59,7 @@ use windows::{
             SO_PROTOCOL_INFOW,
             SO_UPDATE_ACCEPT_CONTEXT,
             SO_UPDATE_CONNECT_CONTEXT,
+            TCP_NODELAY,
             WSABUF,
             WSAEINVAL,
             WSAPROTOCOL_INFOW,
@@ -180,6 +184,10 @@ impl Socket {
         self.set_linger(config.linger_time)?;
         if protocol == IPPROTO_TCP.0 {
             self.set_tcp_keepalive(&config.keepalive_params)?;
+
+            if let Some(nagle) = config.nagle {
+                self.set_nagle(nagle)?;
+            }
         }
         Ok(())
     }
@@ -206,6 +214,14 @@ impl Socket {
             }?;
         }
 
+        Ok(())
+    }
+
+    /// Enable or disable the use of Nagle's algorithm for TCP.
+    fn set_nagle(&self, enabled: bool) -> Result<(), Fail> {
+        // Note the inverted condition here: TCP_NODELAY is a disabler for Nagle's algorithm.
+        let value: BOOL = if enabled { FALSE } else { TRUE };
+        unsafe { WinsockRuntime::do_setsockopt(self.s, IPPROTO_TCP.0, TCP_NODELAY, Some(&value)) }?;
         Ok(())
     }
 
