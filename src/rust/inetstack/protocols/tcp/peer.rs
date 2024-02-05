@@ -187,7 +187,6 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         buf: &mut DemiBuffer,
         yielder: Yielder,
     ) -> Result<(), Fail> {
-        // TODO: Remove this copy after merging with the transport trait.
         // Wait for push to complete.
         socket.push(buf.clone(), yielder).await?;
         buf.trim(buf.len())
