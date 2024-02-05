@@ -5,6 +5,7 @@
 // Imports
 //======================================================================================================================
 
+use crate::check_for_network_error;
 use anyhow::Result;
 use demikernel::{
     runtime::types::demi_opcode_t,
@@ -209,8 +210,12 @@ fn listen_connecting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
     if !connect_finished {
         // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
+            Ok(qr) if check_for_network_error(&qr) => (),
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+                "wait() should succeed with a specified error on connect() after close(), instead returned this \
+                 unknown error: {:?}",
+                qr.qr_ret
+            ),
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -254,7 +259,12 @@ fn listen_accepting_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()> 
 
     // Poll again to check that the qtoken returns an err.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+        Ok(qr) if check_for_network_error(&qr) => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on accept() after close(), instead returned this unknown \
+             error: {:?}",
+            qr.qr_ret
+        ),
         // If we found a connection to accept, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")
