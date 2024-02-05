@@ -66,6 +66,9 @@ pub(super) struct WinConfig {
 
     /// Linger socket options.
     linger_time: Option<Duration>,
+
+    /// Whether Nagle's algorithm is enabled or disabled.
+    nagle: Option<bool>,
 }
 
 /// Underlying network transport.
@@ -97,6 +100,7 @@ impl SharedCatnapTransport {
         let config: WinConfig = WinConfig {
             keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
             linger_time: config.linger_time().expect("failed to load linger settings"),
+            nagle: config.nagle().expect("failed to load nagle's algorithm settings"),
         };
 
         let me: Self = Self(SharedObject::new(CatnapTransport {
