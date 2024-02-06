@@ -11,10 +11,7 @@ use crate::{
 };
 use ::yaml_rust::Yaml;
 use std::{
-    ops::{
-        Fn,
-        Index,
-    },
+    ops::Index,
     time::Duration,
 };
 use windows::Win32::Networking::WinSock::tcp_keepalive;
@@ -35,11 +32,11 @@ impl Config {
     /// Reads TCP keepalive settings as a `tcp_keepalive` structure from "tcp_keepalive" subsection.
     pub fn tcp_keepalive(&self) -> Result<tcp_keepalive, Fail> {
         const SECTION: &str = "tcp_keepalive";
-        let section: &Yaml = Self::require_subsection(self.get_libos_section()?, SECTION)?;
+        let section: &Yaml = Self::get_subsection(self.get_libos_section()?, SECTION)?;
 
-        let onoff: bool = Self::require_bool_option(section, "enabled")?;
-        let keepalivetime: u32 = Self::require_int_option(section, "time_millis")?;
-        let keepaliveinterval: u32 = Self::require_int_option(section, "interval")?;
+        let onoff: bool = Self::get_bool_option(section, "enabled")?;
+        let keepalivetime: u32 = Self::get_int_option(section, "time_millis")?;
+        let keepaliveinterval: u32 = Self::get_int_option(section, "interval")?;
 
         Ok(tcp_keepalive {
             onoff: if onoff { 1 } else { 0 },
@@ -52,10 +49,10 @@ impl Config {
     /// The linger duration will be no larger than u16::MAX seconds.
     pub fn linger_time(&self) -> Result<Option<Duration>, Fail> {
         const SECTION: &str = "linger";
-        let section: &Yaml = Self::require_subsection(self.get_libos_section()?, SECTION)?;
+        let section: &Yaml = Self::get_subsection(self.get_libos_section()?, SECTION)?;
 
-        let enabled: bool = Self::require_bool_option(section, "enabled")?;
-        let time_seconds: u16 = Self::require_int_option(section, "time_seconds")?;
+        let enabled: bool = Self::get_bool_option(section, "enabled")?;
+        let time_seconds: u16 = Self::get_int_option(section, "time_seconds")?;
 
         if enabled {
             Ok(Some(Duration::new(time_seconds as u64, 0)))
@@ -64,13 +61,18 @@ impl Config {
         }
     }
 
+    /// Reads the setting to enable or disable Nagle's algorithm.
+    pub fn nagle(&self) -> Result<Option<bool>, Fail> {
+        Ok(Self::get_bool_option(self.get_libos_section()?, "use_nagle").ok())
+    }
+
     /// Get the libos subsection, requiring that it exists and is a Hash.
     fn get_libos_section(&self) -> Result<&Yaml, Fail> {
-        Self::require_subsection(&self.0, LIBOS)
+        Self::get_subsection(&self.0, LIBOS)
     }
 
     /// Index `yaml` to find the value at `index`, validating that the index exists.
-    fn require_option<'a>(yaml: &'a Yaml, index: &str) -> Result<&'a Yaml, Fail> {
+    fn get_option<'a>(yaml: &'a Yaml, index: &str) -> Result<&'a Yaml, Fail> {
         match yaml.index(index) {
             Yaml::BadValue => {
                 let message: String = format!("missing configuration option \"{}\"", index);
@@ -81,8 +83,11 @@ impl Config {
     }
 
     /// Index `yaml` to find the value at `index`, validating that it exists and that the receiver returns Some(_).
-    fn require_typed_option<T>(yaml: &Yaml, index: &str, receiver: &dyn Fn(&Yaml) -> Option<T>) -> Result<T, Fail> {
-        let option: &Yaml = Self::require_option(yaml, index)?;
+    fn get_typed_option<'a, T, Fn>(yaml: &'a Yaml, index: &str, receiver: Fn) -> Result<T, Fail>
+    where
+        Fn: FnOnce(&'a Yaml) -> Option<T>,
+    {
+        let option: &'a Yaml = Self::get_option(yaml, index)?;
         match receiver(option) {
             Some(value) => Ok(value),
             None => {
@@ -94,8 +99,8 @@ impl Config {
 
     /// Similar to `require_typed_option` using `Yaml::as_hash` receiver. This method returns a `&Yaml` instead of
     /// yaml::Hash, and Yaml is more natural for indexing.
-    fn require_subsection<'a>(yaml: &'a Yaml, index: &str) -> Result<&'a Yaml, Fail> {
-        let section: &Yaml = Self::require_option(yaml, index)?;
+    fn get_subsection<'a>(yaml: &'a Yaml, index: &str) -> Result<&'a Yaml, Fail> {
+        let section: &'a Yaml = Self::get_option(yaml, index)?;
         match section {
             Yaml::Hash(_) => Ok(section),
             _ => {
@@ -107,8 +112,8 @@ impl Config {
 
     /// Similar to `require_typed_option` using `Yaml::as_i64` as the receiver, but additionally verifies that the
     /// destination type may hold the i64 value.
-    fn require_int_option<T: TryFrom<i64>>(yaml: &Yaml, index: &str) -> Result<T, Fail> {
-        let val: i64 = Self::require_typed_option(yaml, index, &Yaml::as_i64)?;
+    fn get_int_option<T: TryFrom<i64>>(yaml: &Yaml, index: &str) -> Result<T, Fail> {
+        let val: i64 = Self::get_typed_option(yaml, index, &Yaml::as_i64)?;
         match T::try_from(val) {
             Ok(val) => Ok(val),
             _ => {
@@ -119,7 +124,7 @@ impl Config {
     }
 
     /// Same as `Self::require_typed_option` using `Yaml::as_bool` as the receiver.
-    fn require_bool_option(yaml: &Yaml, index: &str) -> Result<bool, Fail> {
-        Self::require_typed_option(yaml, index, &Yaml::as_bool)
+    fn get_bool_option(yaml: &Yaml, index: &str) -> Result<bool, Fail> {
+        Self::get_typed_option(yaml, index, &Yaml::as_bool)
     }
 }
