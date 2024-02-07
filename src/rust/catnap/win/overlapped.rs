@@ -6,10 +6,7 @@
 //==============================================================================
 
 use std::{
-    cell::{
-        Cell,
-        UnsafeCell,
-    },
+    cell::Cell,
     marker::{
         PhantomData,
         PhantomPinned,
@@ -18,7 +15,6 @@ use std::{
         pin,
         Pin,
     },
-    time::Duration,
 };
 
 use windows::Win32::{
@@ -361,7 +357,12 @@ impl<S> StatefulOverlappedCompletion<S> {
 
 impl<S> Drop for StatefulOverlappedCompletion<S> {
     fn drop(&mut self) {
-        unsafe { self.inner.abandon() };
+        if self.inner.condition_variable.take().is_some() {
+            // Coroutine exited before the completion was signaled. Leave the heap object alive such the OVERLAPPED
+            // structure is still valid until the completion processor sees and deallocates it.
+            let ptr: Pin<Box<OverlappedCompletion>> = self.inner;
+            std::mem::forget(ptr);
+        }
     }
 }
 
