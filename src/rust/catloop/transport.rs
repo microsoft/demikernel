@@ -124,25 +124,11 @@ impl NetworkTransport for SharedCatloopTransport {
     /// and the underlying Catmem queue and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
     async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        sd.close(self.catmem.clone()).await?;
-        if let Some(local) = sd.local() {
-            if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-                // Allocate ephemeral port from the pool.
-                self.runtime.free_ephemeral_port(local.port())?;
-            }
-        }
-        Ok(())
+        sd.close(self.catmem.clone()).await
     }
 
     fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        sd.hard_close(&mut self.catmem)?;
-        if let Some(local) = sd.local() {
-            if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-                // Allocate ephemeral port from the pool.
-                self.runtime.free_ephemeral_port(local.port())?;
-            }
-        }
-        Ok(())
+        sd.hard_close(&mut self.catmem)
     }
 
     /// Asynchronous code to push to a Catloop queue.

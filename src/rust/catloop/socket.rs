@@ -167,7 +167,7 @@ impl SharedMemorySocket {
         };
 
         let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
-        let new_socket: Self = Self::alloc(new_qd, None, Some(new_addr));
+        let new_socket: Self = Self::alloc(new_qd, Some(new_addr), None);
 
         // Check that the remote has retrieved the port number and responded with a valid request id.
         match pop_request_id(catmem.clone(), new_qd).await {
@@ -176,15 +176,15 @@ impl SharedMemorySocket {
                 // If we've never seen this before, something has gone very wrong.
                 assert!(self.pending_request_ids.contains(&request_id));
                 self.pending_request_ids.remove(&request_id);
-                return Ok((new_socket, new_addr.into()));
+                Ok((new_socket, new_addr.into()))
             },
             // Some error.
             Err(e) => {
                 // Clean up newly allocated duplex pipe.
                 catmem.close(new_qd)?;
-                return Err(e);
+                Err(e)
             },
-        };
+        }
     }
 
     /// Connects this socket to [remote].
