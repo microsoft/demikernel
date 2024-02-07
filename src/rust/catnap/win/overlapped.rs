@@ -14,7 +14,11 @@ use std::{
         PhantomData,
         PhantomPinned,
     },
-    pin::Pin,
+    pin::{
+        pin,
+        Pin,
+    },
+    time::Duration,
 };
 
 use windows::Win32::{
@@ -40,10 +44,7 @@ use crate::{
     catnap::transport::error::translate_ntstatus,
     runtime::{
         fail::Fail,
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
+        SharedConditionVariable,
     },
 };
 
@@ -69,7 +70,7 @@ struct OverlappedCompletion {
     overlapped: OVERLAPPED,
     /// If set, indicates a coroutine in waiting. Cleared by the I/O processor to signal completion. If unset when an
     /// overlapped is dequeued from the completion port, the completion is abandoned.
-    yielder_handle: Option<YielderHandle>,
+    condition_variable: Option<SharedConditionVariable>,
     /// Set by the I/O processor to indicate overlapped result.
     completion_key: usize,
     /// A callback to free all resources associated with the completion for abandoned waits.
@@ -82,9 +83,9 @@ struct OverlappedCompletion {
 #[repr(C)]
 struct StatefulOverlappedCompletion<S> {
     /// Inner data required by the completion processor; must be first to "downcast" to OVERLAPPED.
-    inner: OverlappedCompletion,
+    inner: Pin<Box<OverlappedCompletion>>,
     /// Caller state, encased in a cell for interior mutability.
-    state: UnsafeCell<S>,
+    state: S,
 }
 
 /// This struct encapsulates the behavior of Windows I/O completion ports. This implementation exposes a single
@@ -184,67 +185,38 @@ impl IoCompletionPort {
     /// dequeued from the completion port.  Waking the Yielder for errors which are no ECANCELLED will abandon the wait.
     /// While OVERLAPPED resources will be freed in a non-exceptional scenario, this may cause unsound behavior I/O on
     /// the same file/socket.
-    pub async unsafe fn do_io_with<F1, F2, F3, R, S>(
-        &mut self,
-        state: S,
-        yielder: &Yielder,
-        start: F1,
-        cancel: F2,
-        finish: F3,
-    ) -> Result<R, Fail>
+    pub async unsafe fn do_io_with<F1, F2, R, S>(&mut self, state: S, start: F1, finish: F2) -> Result<R, Fail>
     where
         S: 'static,
         for<'a> F1: FnOnce(Pin<&'a mut S>, *mut OVERLAPPED) -> Result<(), Fail>,
-        for<'a> F2: FnOnce(Pin<&'a mut S>, *mut OVERLAPPED) -> Result<(), Fail>,
-        for<'a> F3: FnOnce(Pin<&'a mut S>, OverlappedResult) -> Result<R, Fail>,
+        for<'a> F2: FnOnce(Pin<&'a mut S>, OverlappedResult) -> Result<R, Fail>,
     {
-        let mut completion: Pin<Box<StatefulOverlappedCompletion<S>>> = Box::pin(StatefulOverlappedCompletion {
-            inner: OverlappedCompletion {
-                overlapped: OVERLAPPED::default(),
-                yielder_handle: Some(yielder.get_handle()),
-                completion_key: 0,
-                free: StatefulOverlappedCompletion::<S>::drop_overlapped,
-                _marker: PhantomPinned,
-            },
-            state: UnsafeCell::new(state),
+        let cv: SharedConditionVariable = SharedConditionVariable::default();
+
+        let mut completion: Pin<&mut StatefulOverlappedCompletion<S>> = pin!(StatefulOverlappedCompletion {
+            inner: OverlappedCompletion::new(cv.clone()),
+            state: state,
         });
 
         let overlapped: *mut OVERLAPPED = completion.as_mut().marshal();
-        match start(completion.get_state_ref(), overlapped) {
+        match start(completion.as_mut().get_state_ref(), overlapped) {
             // Operation in progress, pending overlapped completion.
             Ok(()) => loop {
-                let status: Result<(), Fail> = yielder.yield_until_wake().await;
+                cv.wait().await;
 
-                // NB If the yielder handle is cleared, the event was dequeued from the completion port and
+                // NB If the condition_variable is cleared, the event was dequeued from the completion port and
                 // processed. If the coroutine was also cancelled, depending on the order of scheduling the result
                 // may still indicate failure. YielderHandler absence takes higher precedence here -- no need to
                 // signal failure if it's not semantically useful.
-                if completion.inner.yielder_handle.is_none() {
+                if !completion.inner.as_ref().has_cv() {
+                    let (overlapped, state) = completion.as_mut().split();
                     return finish(
-                        completion.get_state_ref(),
-                        OverlappedResult::new(&completion.inner.overlapped, completion.inner.completion_key),
+                        state,
+                        OverlappedResult::new(&overlapped.overlapped, overlapped.completion_key),
                     );
-                }
-
-                match status {
-                    Ok(()) => {
-                        // Spurious wake-up.
-                        continue;
-                    },
-
-                    Err(err) => {
-                        if err.errno == libc::ECANCELED {
-                            if let Err(cancel_err) = cancel(completion.get_state_ref(), overlapped) {
-                                warn!("cancellation failed: {}", cancel_err);
-                            }
-                        }
-
-                        // NOTE: the semantics of completion ports with cancellation is unclear: CancelIoEx
-                        // documentation implies that some operations may not post a completion packet after this
-                        // operation. If completions are found to leak, this may be why.
-                        completion.abandon();
-                        return Err(err);
-                    },
+                } else {
+                    // Spurious wake-up.
+                    continue;
                 }
             },
 
@@ -254,23 +226,14 @@ impl IoCompletionPort {
     }
 
     /// Same as `do_io_with`, but does not use an intermediate state value.
-    pub async unsafe fn do_io<F1, F2, F3, R>(
-        &mut self,
-        yielder: &Yielder,
-        start: F1,
-        cancel: F2,
-        finish: F3,
-    ) -> Result<R, Fail>
+    pub async unsafe fn do_io<F1, F2, R>(&mut self, start: F1, finish: F2) -> Result<R, Fail>
     where
         F1: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
-        F2: FnOnce(*mut OVERLAPPED) -> Result<(), Fail>,
-        F3: FnOnce(OverlappedResult) -> Result<R, Fail>,
+        F2: FnOnce(OverlappedResult) -> Result<R, Fail>,
     {
         self.do_io_with(
             (),
-            yielder,
             |_, overlapped: *mut OVERLAPPED| -> Result<(), Fail> { start(overlapped) },
-            |_, overlapped: *mut OVERLAPPED| -> Result<(), Fail> { cancel(overlapped) },
             |_, result: OverlappedResult| -> Result<R, Fail> { finish(result) },
         )
         .await
@@ -286,10 +249,10 @@ impl IoCompletionPort {
 
             // Safety: the OVERLAPPED does not need to be pinned after being dequeued from the completion port.
             let overlapped: &mut OverlappedCompletion = unsafe { overlapped.get_unchecked_mut() };
-            if let Some(mut yielder_handle) = overlapped.yielder_handle.take() {
+            if let Some(mut condition_variable) = overlapped.condition_variable.take() {
                 debug_assert!(entry.dwNumberOfBytesTransferred as usize == overlapped.overlapped.InternalHigh);
                 overlapped.completion_key = entry.lpCompletionKey;
-                yielder_handle.wake_with(Ok(()));
+                condition_variable.signal();
             } else {
                 // This can happen due to a failed cancellation or any other error on the do_overlapped path.
                 trace!("I/O dropped for completion key {}", entry.lpCompletionKey);
@@ -331,9 +294,47 @@ impl IoCompletionPort {
 }
 
 impl OverlappedCompletion {
+    pub fn new(condition_variable: SharedConditionVariable) -> Pin<Box<Self>> {
+        Box::pin(Self {
+            overlapped: OVERLAPPED::default(),
+            condition_variable: Some(condition_variable),
+            completion_key: 0,
+            free: Self::deallocate,
+            _marker: PhantomPinned,
+        })
+    }
+
+    /// Take the condition variable from this struct. The condition variable is not structurally pinned.
+    pub fn take_cv(self: Pin<&mut Self>) -> Option<SharedConditionVariable> {
+        // Safety: updating the condition variable does not violate pinning invariants.
+        unsafe { self.get_unchecked_mut() }.condition_variable.take()
+    }
+
+    /// Check whether the condition variable is still set.
+    pub fn has_cv(self: Pin<&Self>) -> bool {
+        self.condition_variable.is_some()
+    }
+
     /// Marshal an OVERLAPPED pointer back into an OverlappedCompletion.
-    fn unmarshal<'a>(overlapped: std::ptr::NonNull<OVERLAPPED>) -> Pin<&'a mut Self> {
+    pub fn unmarshal<'a>(overlapped: std::ptr::NonNull<OVERLAPPED>) -> Pin<&'a mut Self> {
         unsafe { Pin::new_unchecked(&mut *(overlapped.as_ptr() as *mut Self)) }
+    }
+
+    /// Called by the I/O event processor to free this instance if the completion is abandoned by the waiter.
+    fn deallocate(overlapped: *mut OVERLAPPED) {
+        if overlapped != std::ptr::null_mut() {
+            let overlapped: *mut Self = overlapped.cast();
+            let overlapped: Box<Self> = unsafe { Box::from_raw(overlapped) };
+            std::mem::drop(overlapped);
+        }
+    }
+
+    /// Abandon this overlapped instance. This will consume and forget `self` so that the waiter may return without
+    /// invalidating memory needed by the I/O event processor. This method should only be called when the OVERLAPPED
+    /// has not yet been dequeued from the completion port.
+    unsafe fn abandon(mut self: Pin<Box<Self>>) {
+        let _ = self.as_mut().take_cv();
+        std::mem::forget(self)
     }
 }
 
@@ -343,43 +344,26 @@ impl<S> StatefulOverlappedCompletion<S> {
         unsafe { self.as_mut().get_unchecked_mut() as *mut Self }.cast()
     }
 
-    /// Called by the I/O event processor to free this instance if the completion is abandoned by the waiter.
-    unsafe fn drop_overlapped(overlapped: *mut OVERLAPPED) {
-        if overlapped != std::ptr::null_mut() {
-            let overlapped: *mut Self = overlapped.cast();
-            let overlapped: Box<Self> = unsafe { Box::from_raw(overlapped) };
-            std::mem::drop(overlapped);
-        }
-    }
-
-    /// Structural pinning (required) for `inner`.
-    fn get_inner<'a>(self: &'a mut Pin<Box<Self>>) -> Pin<&'a mut OverlappedCompletion> {
-        unsafe { Pin::new_unchecked(&mut self.as_mut().get_unchecked_mut().inner) }
-    }
-
     /// Structure pinning (probably required) for `state`.
-    fn get_state_ref<'a>(self: &Pin<Box<Self>>) -> Pin<&'a mut S> {
-        unsafe { Pin::new_unchecked(&mut *self.state.get()) }
+    fn get_state_ref(mut self: Pin<&mut Self>) -> Pin<&mut S> {
+        unsafe { self.as_mut().map_unchecked_mut(|this| &mut this.state) }
     }
 
-    /// Set the yielder handle for the waiter. The yielder handle is not structurally pinned.
-    fn set_yielder(self: &mut Pin<Box<Self>>, yielder_handle: Option<YielderHandle>) {
-        // Safety: updating the yielder does not violate pinning invariants.
-        unsafe { self.get_inner().get_unchecked_mut() }.yielder_handle = yielder_handle;
-    }
-
-    /// Abandon this overlapped instance. This will consume and forget `self` so that the waiter may return without
-    /// invalidating memory needed by the I/O event processor. This method should only be called when the OVERLAPPED
-    /// has not yet been dequeued from the completion port.
-    unsafe fn abandon(mut self: Pin<Box<Self>>) {
-        self.set_yielder(None);
-        std::mem::forget(self)
+    fn split(mut self: Pin<&mut Self>) -> (Pin<&mut OverlappedCompletion>, Pin<&mut S>) {
+        let me: &mut Self = unsafe { self.get_unchecked_mut() };
+        (me.inner.as_mut(), unsafe { Pin::new_unchecked(&mut me.state) })
     }
 }
 
 //======================================================================================================================
 // Traits
 //======================================================================================================================
+
+impl<S> Drop for StatefulOverlappedCompletion<S> {
+    fn drop(&mut self) {
+        unsafe { self.inner.abandon() };
+    }
+}
 
 impl Drop for IoCompletionPort {
     /// Close the underlying handle when the completion port is dropped. The underlying primitive will not be freed
@@ -400,16 +384,27 @@ mod tests {
             AtomicU32,
             Ordering,
         },
+        task::{
+            Context,
+            Poll,
+        },
     };
 
     use crate::{
         ensure_eq,
-        runtime::scheduler::{
-            Scheduler,
-            Task,
-            TaskId,
-            TaskWithResult,
+        runtime::{
+            scheduler::{
+                scheduler::Scheduler,
+                Task,
+                TaskId,
+                TaskWithResult,
+            },
+            Operation,
+            SharedDemiRuntime,
         },
+        OperationResult,
+        QDesc,
+        QToken,
     };
 
     use super::*;
@@ -422,6 +417,10 @@ mod tests {
         bail,
         ensure,
         Result,
+    };
+    use futures::{
+        task::noop_waker_ref,
+        Future,
     };
     use windows::{
         core::{
@@ -500,15 +499,10 @@ mod tests {
 
     #[test]
     fn test_marshal_unmarshal() -> Result<()> {
+        let cv: SharedConditionVariable = SharedConditionVariable::default();
         let mut completion: Pin<&mut StatefulOverlappedCompletion<()>> = pin!(StatefulOverlappedCompletion {
-            inner: OverlappedCompletion {
-                overlapped: OVERLAPPED::default(),
-                yielder_handle: None,
-                completion_key: 0,
-                free: StatefulOverlappedCompletion::<()>::drop_overlapped,
-                _marker: PhantomPinned,
-            },
-            state: UnsafeCell::new(()),
+            inner: OverlappedCompletion::new(cv),
+            state: (),
         });
 
         // Ensure that the marshal returns the address of the overlapped member.
@@ -547,16 +541,10 @@ mod tests {
     fn test_event_processor() -> Result<()> {
         const COMPLETION_KEY: usize = 123;
         let mut iocp: IoCompletionPort = make_iocp()?;
-        let mut yielder_handle: YielderHandle = YielderHandle::new();
+        let mut cv: SharedConditionVariable = SharedConditionVariable::default();
         let mut overlapped: Pin<&mut StatefulOverlappedCompletion<()>> = pin!(StatefulOverlappedCompletion {
-            inner: OverlappedCompletion {
-                overlapped: OVERLAPPED::default(),
-                yielder_handle: Some(yielder_handle.clone()),
-                completion_key: 0,
-                free: StatefulOverlappedCompletion::<()>::drop_overlapped,
-                _marker: PhantomPinned,
-            },
-            state: UnsafeCell::new(()),
+            inner: OverlappedCompletion::new(cv.clone()),
+            state: (),
         });
 
         post_completion(&iocp, overlapped.as_mut().marshal(), COMPLETION_KEY)?;
@@ -566,7 +554,7 @@ mod tests {
         let unpinned_overlapped: &mut StatefulOverlappedCompletion<()> = unsafe { overlapped.get_unchecked_mut() };
 
         ensure!(
-            unpinned_overlapped.inner.yielder_handle.is_none(),
+            unpinned_overlapped.inner.condition_variable.is_none(),
             "yielder should be cleared by iocp"
         );
         ensure_eq!(
@@ -575,9 +563,9 @@ mod tests {
             "completion key not updated"
         );
 
-        let result: Option<Result<(), Fail>> = yielder_handle.get_result();
-        ensure!(result.is_some(), "yielder handle not woken");
-        ensure!(result.unwrap().is_ok(), "yielder handle result not success");
+        let mut cx: Context = Context::from_waker(noop_waker_ref());
+        let fut: Pin<&mut dyn Future<Output = ()>> = pin!(cv.wait());
+        ensure_eq!(fut.poll(&mut cx), Poll::Ready(()), "condition variable not signaled");
 
         Ok(())
     }
@@ -606,31 +594,29 @@ mod tests {
         iocp.get_mut().associate_handle(server_pipe.0, COMPLETION_KEY)?;
         let iocp_ref: &mut IoCompletionPort = unsafe { &mut *iocp.get() };
 
-        let server: Pin<Box<dyn FusedFuture<Output = Result<(), Fail>>>> = Box::pin(
+        let server: Pin<Box<Operation>> = Box::pin(
             async move {
-                let yielder: Yielder = Yielder::new();
-
-                unsafe {
+                if let Err(fail) = unsafe {
                     iocp_ref.do_io(
-                        &yielder,
                         |overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
                             server_state.fetch_add(1, Ordering::Relaxed);
                             is_overlapped_ok(ConnectNamedPipe(server_pipe.0, Some(overlapped)))
                         },
-                        |_| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
                         |result: OverlappedResult| -> Result<(), Fail> { result.ok() },
                     )
                 }
-                .await?;
+                .await
+                {
+                    return (QDesc::from(0), OperationResult::Failed(fail));
+                }
 
                 server_state.fetch_add(1, Ordering::Relaxed);
 
                 let mut buffer: Rc<Vec<u8>> =
                     Rc::new(iter::repeat(0u8).take(BUFFER_SIZE as usize).collect::<Vec<u8>>());
-                buffer = unsafe {
+                let result: Result<Rc<Vec<u8>>, Fail> = unsafe {
                     iocp_ref.do_io_with(
                         buffer,
-                        &yielder,
                         |state: Pin<&mut Rc<Vec<u8>>>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
                             let vec: &mut Vec<u8> = Rc::get_mut(state.get_mut()).unwrap();
                             vec.resize(BUFFER_SIZE as usize, 0u8);
@@ -641,7 +627,6 @@ mod tests {
                                 Some(overlapped),
                             ))
                         },
-                        |_, _| -> Result<(), Fail> { Err(Fail::new(libc::ENOTSUP, "cannot cancel")) },
                         |mut state: Pin<&mut Rc<Vec<u8>>>, result: OverlappedResult| -> Result<Rc<Vec<u8>>, Fail> {
                             match result.ok() {
                                 Ok(()) => {
@@ -660,47 +645,50 @@ mod tests {
                         },
                     )
                 }
-                .await?;
+                .await;
+
+                let buffer = match result {
+                    Ok(buffer) => buffer,
+                    Err(err) => {
+                        return (QDesc::from(0), OperationResult::Failed(err));
+                    },
+                };
 
                 let message: &str = std::str::from_utf8(buffer.as_slice())
-                    .map_err(|_| Fail::new(libc::EINVAL, "utf8 conversion failed"))?;
+                    .map_err(|_| Fail::new(libc::EINVAL, "utf8 conversion failed"));
                 if message != MESSAGE {
                     let err_msg: String = format!("expected \"{}\", got \"{}\"", MESSAGE, message);
-                    Err(Fail::new(libc::EINVAL, err_msg.as_str()))
+                    (
+                        QDesc::from(0),
+                        OperationResult::Failed(Fail::new(libc::EINVAL, err_msg.as_str())),
+                    )
                 } else {
-                    Ok(())
+                    // Dummy result
+                    (QDesc::from(0), OperationResult::Close)
                 }
             }
             .fuse(),
         );
 
-        let mut scheduler: Scheduler = Scheduler::default();
-        let server_handle: TaskId = scheduler
-            .insert_task(TaskWithResult::<Result<(), Fail>>::new("server".into(), server))
-            .unwrap();
+        let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+        let server_task: QToken = runtime.insert_io_coroutine("server", server).unwrap();
 
-        let get_server_result = |task: Box<dyn Task>| {
-            TaskWithResult::<Result<(), Fail>>::try_from(task.as_any())
-                .expect("should be correct task type")
-                .get_result()
-                .unwrap()
-        };
-
-        let mut wait_for_state = |scheduler: &mut Scheduler, state| -> Result<(), Fail> {
+        let mut wait_for_state = |state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                // Loop for an arbitrary number of quanta.
-                if let Some(task) = scheduler.get_next_completed_task(64) {
-                    if task.get_id() == server_handle {
-                        return Err(get_server_result(task).unwrap_err());
-                    }
+                runtime.poll();
+                if let Some((_, result)) = runtime.get_completed_task(&server_task) {
+                    return match result {
+                        OperationResult::Failed(fail) => Err(fail),
+                        _ => Err(Fail::new(libc::EFAULT, "server completed early unexpectedly")),
+                    };
                 }
             }
 
             Ok(())
         };
 
-        wait_for_state(&mut scheduler, 1)?;
+        wait_for_state(1)?;
 
         let client_handle: SafeHandle = SafeHandle(unsafe {
             CreateFileA(
@@ -714,7 +702,7 @@ mod tests {
             )
         }?);
 
-        wait_for_state(&mut scheduler, 2)?;
+        wait_for_state(2)?;
 
         let mut bytes_written: u32 = 0;
         unsafe {
@@ -728,16 +716,15 @@ mod tests {
 
         std::mem::drop(client_handle);
 
-        let task = loop {
+        let result: OperationResult = loop {
             iocp.get_mut().process_events()?;
-            if let Some(task) = scheduler.get_next_completed_task(64) {
-                if task.get_id() == server_handle {
-                    break task;
-                }
+            runtime.poll();
+            if let Some((_, result)) = runtime.get_completed_task(&server_task) {
+                break result;
             }
         };
 
-        get_server_result(task)?;
+        ensure_eq!(result, OperationResult::Close, "server did not complete successfully");
 
         Ok(())
     }
