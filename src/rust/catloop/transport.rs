@@ -110,7 +110,7 @@ impl NetworkTransport for SharedCatloopTransport {
     /// the connect succeeds or fails.
     async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
         // Wait for connect operation to complete.
-        sd.connect(self.runtime.clone(), self.catmem.clone(), remote).await
+        sd.connect(self.catmem.clone(), remote).await
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
