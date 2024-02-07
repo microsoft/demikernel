@@ -18,7 +18,10 @@ use crate::{
     catnap::transport::{
         error::expect_last_wsa_error,
         overlapped::IoCompletionPort,
-        socket::Socket,
+        socket::{
+            Socket,
+            SocketOpState,
+        },
         WinConfig,
     },
     runtime::fail::Fail,
@@ -330,7 +333,7 @@ impl WinsockRuntime {
         typ: libc::c_int,
         protocol: libc::c_int,
         config: &WinConfig,
-        iocp: &IoCompletionPort,
+        iocp: &IoCompletionPort<SocketOpState>,
     ) -> Result<Socket, Fail> {
         // Safety: SOCKET is a loose handle; it must be closed with `closesocket` to clean up resources. Socket struct
         // will take ownership by end of method; failures after this call need to be cause a `closesocket` call.

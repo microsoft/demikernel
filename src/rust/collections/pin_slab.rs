@@ -96,6 +96,13 @@ impl<T> PinSlab<T> {
         }
     }
 
+    /// Insert a value into the pin slab.
+    pub fn insert(&mut self, val: T) -> Option<usize> {
+        let key: usize = self.next;
+        self.insert_at(key, val)?;
+        Some(key)
+    }
+
     /// Checks whether the given slot is occupied.
     pub fn contains(&self, key: usize) -> bool {
         // We are just using this to check the existance of an entry in this slot or not.
@@ -107,22 +114,23 @@ impl<T> PinSlab<T> {
         self.internal_get(key)
     }
 
-    /// Insert a value into the pin slab.
-    pub fn insert(&mut self, val: T) -> Option<usize> {
-        let key: usize = self.next;
-        self.insert_at(key, val)?;
-        Some(key)
+    #[allow(unused)]
+    /// Gets a read only pinned reference.
+    pub fn get_pin(&self, key: usize) -> Option<Pin<&T>> {
+        let entry: &T = self.internal_get(key)?;
+        // Safety: all storage is pre-allocated in chunks, and each chunk
+        // doesn't move. We only provide mutators to drop the storage through
+        // `remove` (but it doesn't return it).
+        unsafe { Some(Pin::new_unchecked(entry)) }
     }
 
     /// Access the given key as a pinned mutable value.
     pub fn get_pin_mut(&mut self, key: usize) -> Option<Pin<&mut T>> {
+        let entry: &mut T = self.internal_get_mut(key)?;
         // Safety: all storage is pre-allocated in chunks, and each chunk
         // doesn't move. We only provide mutators to drop the storage through
         // `remove` (but it doesn't return it).
-        unsafe {
-            let entry: &mut T = self.internal_get_mut(key)?;
-            Some(Pin::new_unchecked(entry))
-        }
+        unsafe { Some(Pin::new_unchecked(entry)) }
     }
 
     /// Get a reference to the value at the given slot.
