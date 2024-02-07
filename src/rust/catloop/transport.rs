@@ -102,7 +102,14 @@ impl NetworkTransport for SharedCatloopTransport {
     /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
     async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
-        sd.accept(self.runtime.clone(), self.catmem.clone()).await
+        let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
+        match sd.accept(new_port, self.catmem.clone()).await {
+            Ok(new_socket) => Ok(new_socket),
+            Err(e) => {
+                self.runtime.free_ephemeral_port(new_port)?;
+                Err(e)
+            },
+        }
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs

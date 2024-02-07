@@ -14,7 +14,6 @@ use crate::{
         network::unwrap_socketaddr,
         queue::QDesc,
         OperationResult,
-        SharedDemiRuntime,
         SharedObject,
     },
 };
@@ -128,18 +127,13 @@ impl SharedMemorySocket {
     }
 
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
-    pub async fn accept(
-        &mut self,
-        mut runtime: SharedDemiRuntime,
-        mut catmem: SharedCatmemLibOS,
-    ) -> Result<(Self, SocketAddr), Fail> {
+    pub async fn accept(&mut self, new_port: u16, mut catmem: SharedCatmemLibOS) -> Result<(Self, SocketAddr), Fail> {
         // Allocate ephemeral port.
-        let new_port: u16 = runtime.alloc_ephemeral_port()?;
         let ipv4: Ipv4Addr = *self
             .local
             .expect("Should be bound to a local address to accept connections")
             .ip();
-        loop {
+        let new_qd: QDesc = loop {
             // Check if backlog is full.
             if self.pending_request_ids.len() >= self.backlog {
                 // It is, thus just log a debug message, pending requests will still be queued anyways.
@@ -152,62 +146,44 @@ impl SharedMemorySocket {
             }
 
             // Grab next request from the control duplex pipe.
-            let new_qd: QDesc = match self
-                .pop_request_id(catmem.clone(), self.catmem_qd.expect("should be connected"))
-                .await
-            {
-                // Received a request id so create the new connection. This involves create the new duplex pipe
-                // and sending the port number to the remote.
-                Ok(request_id) => {
-                    if self.pending_request_ids.contains(&request_id) {
-                        debug!("do_accept(): duplicate request (request_id={:?})", request_id.0);
-                        continue;
-                    } else {
-                        self.pending_request_ids.insert(request_id);
-                        match create_pipe(
-                            self.catmem_qd.expect("pipe should have been created"),
-                            catmem.clone(),
-                            &ipv4,
-                            new_port,
-                        )
-                        .await
-                        {
-                            Ok(new_qd) => new_qd,
-                            Err(e) => {
-                                runtime.free_ephemeral_port(new_port)?;
-                                return Err(e);
-                            },
-                        }
-                    }
-                },
-                // Some error.
-                Err(e) => {
-                    runtime.free_ephemeral_port(new_port)?;
-                    return Err(e);
-                },
-            };
+            let request_id: RequestId =
+                pop_request_id(catmem.clone(), self.catmem_qd.expect("should be connected")).await?;
 
-            let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
-            let new_socket: Self = Self::alloc(new_qd, None, Some(new_addr));
-            let result: Result<RequestId, Fail> = self.pop_request_id(catmem.clone(), new_qd).await;
+            // Received a request id so create the new connection. This involves create the new duplex pipe
+            // and sending the port number to the remote.
+            if self.pending_request_ids.contains(&request_id) {
+                debug!("do_accept(): duplicate request (request_id={:?})", request_id.0);
+                continue;
+            } else {
+                self.pending_request_ids.insert(request_id);
+                break create_pipe(
+                    self.catmem_qd.expect("pipe should have been created"),
+                    catmem.clone(),
+                    &ipv4,
+                    new_port,
+                )
+                .await?;
+            }
+        };
 
-            // Check that the remote has retrieved the port number and responded with a valid request id.
-            match result {
-                // Valid response. Connection successfully established, so return new port and pipe to application.
-                Ok(request_id) => {
-                    // If we've never seen this before, something has gone very wrong.
-                    assert!(self.pending_request_ids.contains(&request_id));
-                    self.pending_request_ids.remove(&request_id);
-                    return Ok((new_socket, new_addr.into()));
-                },
-                // Some error.
-                Err(e) => {
-                    // Clean up newly allocated duplex pipe.
-                    catmem.close(new_qd)?;
-                    runtime.free_ephemeral_port(new_port)?;
-                    return Err(e);
-                },
-            };
+        let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
+        let new_socket: Self = Self::alloc(new_qd, Some(new_addr), None);
+
+        // Check that the remote has retrieved the port number and responded with a valid request id.
+        match pop_request_id(catmem.clone(), new_qd).await {
+            // Valid response. Connection successfully established, so return new port and pipe to application.
+            Ok(request_id) => {
+                // If we've never seen this before, something has gone very wrong.
+                assert!(self.pending_request_ids.contains(&request_id));
+                self.pending_request_ids.remove(&request_id);
+                Ok((new_socket, new_addr.into()))
+            },
+            // Some error.
+            Err(e) => {
+                // Clean up newly allocated duplex pipe.
+                catmem.close(new_qd)?;
+                Err(e)
+            },
         }
     }
 
@@ -324,31 +300,6 @@ impl SharedMemorySocket {
     pub fn remote(&self) -> Option<SocketAddrV4> {
         self.remote
     }
-
-    /// Gets the next connection request.
-    async fn pop_request_id(&mut self, catmem: SharedCatmemLibOS, catmem_qd: QDesc) -> Result<RequestId, Fail> {
-        // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
-        match catmem.pop_coroutine(catmem_qd, Some(mem::size_of::<RequestId>())).await {
-            // We expect a successful completion for previous pop().
-            (_, OperationResult::Pop(_, incoming)) => {
-                // Parse and check request.
-                let result: Result<RequestId, Fail> = get_connect_id(incoming);
-                result
-            },
-            // We may get some error.
-            (qd, OperationResult::Failed(e)) => {
-                let cause: String = format!("failed to establish connection (qd={:?}, errno={:?})", qd, e);
-                error!("pop_request_id(): {:?}", &cause);
-                Err(e)
-            },
-            // We do not expect anything else.
-            _ => {
-                // The following statement is unreachable because we have issued a pop operation.
-                // If we successfully complete a different operation, something really bad happen in the scheduler.
-                unreachable!("unexpected operation on control duplex pipe")
-            },
-        }
-    }
 }
 
 //======================================================================================================================
@@ -381,6 +332,31 @@ async fn create_pipe(
             Err(e)
         },
         _ => unreachable!("Should not return anything other than push or fail"),
+    }
+}
+
+/// Gets the next connection request.
+async fn pop_request_id(catmem: SharedCatmemLibOS, catmem_qd: QDesc) -> Result<RequestId, Fail> {
+    // Issue pop. No need to bound the pop because we've quantized it already in the concurrent ring buffer.
+    match catmem.pop_coroutine(catmem_qd, Some(mem::size_of::<RequestId>())).await {
+        // We expect a successful completion for previous pop().
+        (_, OperationResult::Pop(_, incoming)) => {
+            // Parse and check request.
+            let result: Result<RequestId, Fail> = get_connect_id(incoming);
+            result
+        },
+        // We may get some error.
+        (qd, OperationResult::Failed(e)) => {
+            let cause: String = format!("failed to establish connection (qd={:?}, errno={:?})", qd, e);
+            error!("pop_request_id(): {:?}", &cause);
+            Err(e)
+        },
+        // We do not expect anything else.
+        _ => {
+            // The following statement is unreachable because we have issued a pop operation.
+            // If we successfully complete a different operation, something really bad happen in the scheduler.
+            unreachable!("unexpected operation on control duplex pipe")
+        },
     }
 }
 

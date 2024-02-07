@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::helper_functions;
+use crate::{
+    helper_functions,
+    DEFAULT_TIMEOUT,
+};
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -115,7 +118,7 @@ impl TcpServer {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(DEFAULT_TIMEOUT))?;
                 self.mark_completed_operation(index)?;
                 qr
             };
@@ -201,7 +204,7 @@ impl TcpServer {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, None)?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(DEFAULT_TIMEOUT))?;
                 self.mark_completed_operation(index)?;
                 qr
             };

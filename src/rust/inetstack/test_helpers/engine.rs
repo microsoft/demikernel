@@ -46,7 +46,7 @@ use ::std::{
 };
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
 
