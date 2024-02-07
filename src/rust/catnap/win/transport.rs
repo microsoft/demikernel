@@ -46,6 +46,7 @@ use crate::{
         fail::Fail,
         memory::DemiBuffer,
         network::transport::NetworkTransport,
+        poll_yield,
         scheduler::Yielder,
         yield_once,
         DemiRuntime,
