@@ -310,9 +310,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                     ));
 
                     // Check if this is an ephemeral port.
-                    if SharedDemiRuntime::is_private_ephemeral_port(local.port())
-                        && queue.get_qtype() == QType::UdpSocket
-                    {
+                    if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
                         // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
                         if let Err(e) = self.runtime.free_ephemeral_port(local.port()) {
                             let cause: String = format!("close(): Could not free ephemeral port");
