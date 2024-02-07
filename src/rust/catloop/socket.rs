@@ -282,9 +282,8 @@ impl SharedMemorySocket {
                 // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
                 buf.trim(size - len)?;
                 buf.copy_from_slice(&incoming[0..len]);
-
-                let remote: SocketAddr = self.remote.expect("can only pop from a connected socket").into();
-                Ok(Some(remote))
+                // We do not keep a socket address for the remote socket, so none to return.
+                Ok(None)
             },
             (_, OperationResult::Failed(e)) => Err(e),
             _ => unreachable!("Should not return anything other than push or fail"),
