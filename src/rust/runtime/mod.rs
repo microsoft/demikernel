@@ -50,7 +50,10 @@ use crate::{
             IoQueue,
             IoQueueTable,
         },
-        scheduler::SharedScheduler,
+        scheduler::{
+            SharedScheduler,
+            TaskWithResult,
+        },
         timer::SharedTimer,
         types::{
             demi_accept_result_t,
@@ -68,6 +71,7 @@ use ::futures::{
 };
 
 use ::std::{
+    any::Any,
     boxed::Box,
     collections::HashMap,
     convert::{
@@ -175,26 +179,26 @@ impl SharedDemiRuntime {
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
     pub fn insert_io_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
-        trace!("Inserting coroutine: {:?}", task_name);
-        let task: OperationTask = OperationTask::new(task_name.to_string(), coroutine);
-        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
-            Some(task_id) => Ok(task_id.into()),
-            None => {
-                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
-                error!("insert_coroutine(): {}", cause);
-                Err(Fail::new(libc::EAGAIN, &cause))
-            },
-        }
+        self.insert_coroutine(task_name, coroutine)
     }
 
-    /// Inserts the background `coroutine` named `task_name` into the THREAD_SCHEDULER.with(|s| {s.
+    /// Inserts the background `coroutine` named `task_name` into the scheduler
     pub fn insert_background_coroutine(
         &mut self,
         task_name: &str,
         coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
     ) -> Result<QToken, Fail> {
-        trace!("Inserting background coroutine: {:?}", task_name);
-        let task: BackgroundTask = BackgroundTask::new(task_name.to_string(), coroutine);
+        self.insert_coroutine(task_name, coroutine)
+    }
+
+    /// Inserts a coroutine of type T and task
+    pub fn insert_coroutine<R: Unpin + Clone + Any>(
+        &mut self,
+        task_name: &str,
+        coroutine: Pin<Box<dyn FusedFuture<Output = R>>>,
+    ) -> Result<QToken, Fail> {
+        trace!("Inserting coroutine: {:?}", task_name);
+        let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name.to_string(), coroutine);
         match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
             Some(task_id) => Ok(task_id.into()),
             None => {
