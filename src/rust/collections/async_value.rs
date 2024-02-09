@@ -29,7 +29,7 @@ use ::std::{
 //======================================================================================================================
 
 /// Default timeout for an AynscQueue This was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 //======================================================================================================================
 // Structures

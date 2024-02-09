@@ -59,7 +59,7 @@ use crate::catnap::transport::SharedCatnapTransport;
 //======================================================================================================================
 
 // The following value was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// LibOS
 pub enum LibOS {
