@@ -266,13 +266,13 @@ impl NetworkLibOSWrapper {
     pub fn poll(&mut self) {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.poll(),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.poll(),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.poll(),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.poll_and_advance_clock(),
+            NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.poll(),
         }
     }
 

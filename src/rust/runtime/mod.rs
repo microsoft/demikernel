@@ -333,22 +333,6 @@ impl SharedDemiRuntime {
         None
     }
 
-    /// Advance clock to now (within the time granularity) and poll all coroutines.
-    pub fn poll_and_advance_clock(&mut self) {
-        if self.ts_iters == 0 {
-            #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
-            let now: Instant = Instant::now();
-            #[cfg(not(any(feature = "catnip-libos", feature = "catpowder-libos")))]
-            let now: Instant = {
-                use std::ops::Add;
-                self.get_now().add(std::time::Duration::from_millis(1))
-            };
-            self.advance_clock(now);
-        }
-        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
-        self.poll()
-    }
-
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
