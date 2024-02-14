@@ -395,12 +395,16 @@ macro_rules! int_size_trait_impl {
     ($int_type:ident, $atomic_type:ident) => {
         impl IntSize for $int_type {
             fn atomic_load_acquire(src: &mut $int_type) -> $int_type {
-                let a: &mut $atomic_type = $atomic_type::from_mut(src);
+                // Safety: the single mutable reference guarantees unique ownership. Memory layouts are identical for
+                // support atomic types.
+                let a: &$atomic_type = unsafe { &*(src as *mut $int_type).cast() };
                 a.load(atomic::Ordering::Acquire)
             }
 
             fn atomic_store_release(dest: &mut $int_type, val: $int_type) {
-                let a: &mut $atomic_type = $atomic_type::from_mut(dest);
+                // Safety: the single mutable reference guarantees unique ownership. Memory layouts are identical for
+                // support atomic types.
+                let a: &$atomic_type = unsafe { &*(dest as *mut $int_type).cast() };
                 a.store(val, atomic::Ordering::Release);
             }
 
