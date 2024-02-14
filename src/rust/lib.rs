@@ -3,12 +3,8 @@
 
 #![cfg_attr(feature = "strict", deny(clippy:all))]
 #![recursion_limit = "512"]
-#![feature(atomic_from_mut)]
-#![feature(never_type)]
 #![feature(test)]
-#![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]
-#![feature(slice_ptr_get)]
 #![feature(strict_provenance)]
 #![cfg_attr(target_os = "windows", feature(maybe_uninit_uninit_array))]
 

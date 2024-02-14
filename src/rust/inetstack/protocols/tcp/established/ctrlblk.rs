@@ -48,6 +48,7 @@ use crate::{
         SharedObject,
     },
 };
+use ::futures::never::Never;
 use ::std::{
     collections::VecDeque,
     convert::TryInto,
@@ -394,7 +395,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     // This is the main TCP processing routine.
-    pub async fn poll(&mut self, yielder: Yielder) -> Result<!, Fail> {
+    pub async fn poll(&mut self, yielder: Yielder) -> Result<Never, Fail> {
         // Normal data processing in the Established state.
         loop {
             let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(&yielder).await {

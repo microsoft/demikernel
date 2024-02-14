@@ -274,7 +274,7 @@ impl ConcurrentRingBuffer {
         assert!(offset % 2 == 0);
         let buffer_ptr: *mut u8 = unsafe { self.buffer.get_mut() }.as_mut_ptr();
         let header_ptr: *mut u16 = unsafe { buffer_ptr.add(offset) } as *mut u16;
-        let header: &AtomicU16 = AtomicU16::from_mut(unsafe { &mut *header_ptr });
+        let header: &AtomicU16 = unsafe { &*header_ptr.cast() };
         header.swap(val as u16, atomic::Ordering::Relaxed) as usize
     }
 
@@ -427,14 +427,14 @@ impl Ring for ConcurrentRingBuffer {
 
 /// Peeks at the value at [ptr] to check various constraints.
 fn peek(ptr: *mut usize) -> usize {
-    let ptr: &mut AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *ptr });
+    let ptr: &AtomicUsize = unsafe { &*ptr.cast() };
     ptr.load(atomic::Ordering::Relaxed)
 }
 
 /// Compares and increments the value at [ptr] only if it has not changed since the last time we read it.
 fn check_and_set(ptr: *mut usize, current: usize, new: usize) -> Result<usize, usize> {
-    let ptr_: &mut AtomicUsize = AtomicUsize::from_mut(unsafe { &mut *ptr });
-    ptr_.compare_exchange_weak(current, new, atomic::Ordering::Acquire, atomic::Ordering::Relaxed)
+    let ptr: &AtomicUsize = unsafe { &*ptr.cast() };
+    ptr.compare_exchange_weak(current, new, atomic::Ordering::Acquire, atomic::Ordering::Relaxed)
 }
 
 /// Align to [HEADER_SIZE] for the header offset.
