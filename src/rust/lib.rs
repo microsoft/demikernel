@@ -4,7 +4,6 @@
 #![cfg_attr(feature = "strict", deny(clippy:all))]
 #![recursion_limit = "512"]
 #![feature(atomic_from_mut)]
-#![feature(never_type)]
 #![feature(test)]
 #![feature(type_alias_impl_trait)]
 #![feature(allocator_api)]

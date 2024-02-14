@@ -9,14 +9,17 @@ use crate::runtime::{
     timer::SharedTimer,
     watched::SharedWatchedValue,
 };
-use ::futures::future::{
-    self,
-    Either,
-    FutureExt,
+use ::futures::{
+    future::{
+        self,
+        Either,
+        FutureExt,
+    },
+    never::Never,
 };
 use ::std::time::Instant;
 
-pub async fn acknowledger<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<!, Fail> {
+pub async fn acknowledger<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<Never, Fail> {
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
         // - TCP should implement a delayed ACK
