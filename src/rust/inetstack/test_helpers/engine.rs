@@ -46,7 +46,7 @@ use ::std::{
 };
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
 
@@ -112,7 +112,7 @@ impl SharedEngine {
 
     pub fn udp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {
         let qt = self.async_close(socket_fd)?;
-        match self.wait(qt)? {
+        match self.wait(qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Close) => Ok(()),
             _ => unreachable!("close did not succeed"),
         }
@@ -163,7 +163,7 @@ impl SharedEngine {
         self.get_runtime().poll()
     }
 
-    pub fn wait(&self, qt: QToken) -> Result<(QDesc, OperationResult), Fail> {
+    pub fn wait(&self, qt: QToken, timeout: Duration) -> Result<(QDesc, OperationResult), Fail> {
         // First check if the task has already completed.
         if let Some(result) = self.get_runtime().get_completed_task(&qt) {
             return Ok(result);
@@ -175,7 +175,7 @@ impl SharedEngine {
         let start: Instant = Instant::now();
 
         // Call run_any() until the task finishes.
-        while Instant::now() <= start + DEFAULT_TIMEOUT {
+        while Instant::now() <= start + timeout {
             // Run for one quanta and if one of our queue tokens completed, then return.
             if let Some((offset, qd, qr)) = self.get_runtime().run_any(&qt_array) {
                 debug_assert_eq!(offset, 0);
