@@ -23,7 +23,10 @@ use crate::{
         },
         test_helpers::{
             self,
-            engine::SharedEngine,
+            engine::{
+                SharedEngine,
+                DEFAULT_TIMEOUT,
+            },
             runtime::SharedTestRuntime,
         },
     },
@@ -895,7 +898,7 @@ impl Simulation {
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<(QDesc, OperationResult)> {
         match self.inflight.take() {
-            Some(qt) => Ok(self.engine.wait(qt)?),
+            Some(qt) => Ok(self.engine.wait(qt, DEFAULT_TIMEOUT)?),
             None => anyhow::bail!("should have an inflight queue token"),
         }
     }
