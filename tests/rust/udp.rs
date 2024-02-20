@@ -57,6 +57,10 @@ use ::socket2::{
 };
 use std::{
     net::SocketAddr,
+    sync::{
+        Arc,
+        Barrier,
+    },
     thread::{
         self,
         JoinHandle,
@@ -214,6 +218,9 @@ fn udp_push_remote() -> Result<()> {
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
 
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
+
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
@@ -277,6 +284,7 @@ fn udp_push_remote() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                alice_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -346,6 +354,7 @@ fn udp_push_remote() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                bob_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -370,6 +379,9 @@ fn udp_loopback() -> Result<()> {
     let bob_addr: SocketAddr = SocketAddr::new(ALICE_IP, bob_port);
     let alice_port: u16 = PORT_BASE;
     let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -433,6 +445,7 @@ fn udp_loopback() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                alice_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),
@@ -494,6 +507,7 @@ fn udp_loopback() -> Result<()> {
         match libos.async_close(sockfd) {
             Ok(qt) => {
                 safe_wait(&mut libos, qt)?;
+                bob_barrier.wait();
                 Ok(())
             },
             Err(e) => anyhow::bail!("close() failed: {:?}", e),

@@ -255,8 +255,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catpowder { runtime, libos: _ } => runtime.wait_any(qts, timeout),
             #[cfg(all(feature = "catnap-libos"))]
             NetworkLibOSWrapper::Catnap { runtime, libos: _ } => runtime.wait_any(qts, timeout),
-            #[cfg(feature = "catcollar-libos")]
-            NetworkLibOSWrapper::Catcollar { runtime, libos: _ } => runtime.wait_any(qts, timeout),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.wait_any(qts, timeout),
             #[cfg(feature = "catloop-libos")]

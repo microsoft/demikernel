@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::helper_functions;
+use crate::{
+    helper_functions,
+    DEFAULT_TIMEOUT,
+};
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -87,7 +90,7 @@ impl TcpClient {
             let qt: QToken = self.libos.connect(qd, self.remote)?;
 
             // Wait for connection to be established.
-            let qr: demi_qresult_t = self.libos.wait(qt, None)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
 
             // Parse result.
             match qr.qr_opcode {
@@ -132,7 +135,7 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, Some(DEFAULT_TIMEOUT))?;
                 let qt: QToken = qts.remove(index);
                 qts_reverse
                     .remove(&qt)
@@ -170,7 +173,7 @@ impl TcpClient {
             // Connect to the server and wait.
             let qd: QDesc = self.issue_socket()?;
             let qt: QToken = self.libos.connect(qd, self.remote)?;
-            let qr: demi_qresult_t = self.libos.wait(qt, None)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
 
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
@@ -178,7 +181,7 @@ impl TcpClient {
 
                     // Pop immediately after connect and wait.
                     let pop_qt: QToken = self.libos.pop(qd, None)?;
-                    let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, None)?;
+                    let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, Some(DEFAULT_TIMEOUT))?;
 
                     match pop_qr.qr_opcode {
                         demi_opcode_t::DEMI_OPC_POP => {
@@ -237,7 +240,7 @@ impl TcpClient {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, None)?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, Some(DEFAULT_TIMEOUT))?;
                 let _qt: QToken = qts.remove(index);
                 qr
             };

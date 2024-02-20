@@ -57,6 +57,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
 /// ensure most OS operations will complete.
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
+const BAD_WAIT_TIMEOUT: Duration = Duration::from_millis(1);
 
 use std::{
     net::{
@@ -65,6 +66,10 @@ use std::{
         Ipv6Addr,
         SocketAddr,
         SocketAddrV6,
+    },
+    sync::{
+        Arc,
+        Barrier,
     },
     thread::{
         self,
@@ -125,6 +130,9 @@ fn tcp_establish_connection_unbound() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
+
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
@@ -152,6 +160,7 @@ fn tcp_establish_connection_unbound() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        alice_barrier.wait();
 
         Ok(())
     });
@@ -180,7 +189,7 @@ fn tcp_establish_connection_unbound() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
         // Sleep for a while to give Alice time to finish.
-        sleep(Duration::from_millis(100));
+        bob_barrier.wait();
 
         Ok(())
     });
@@ -198,6 +207,9 @@ fn tcp_establish_connection_unbound() -> Result<()> {
 fn tcp_establish_connection_bound() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -226,6 +238,8 @@ fn tcp_establish_connection_bound() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        // Sleep for a while to give Bob time to finish.
+        alice_barrier.wait();
 
         Ok(())
     });
@@ -256,8 +270,7 @@ fn tcp_establish_connection_bound() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
         // Sleep for a while to give Alice time to finish.
-        sleep(Duration::from_millis(100));
-
+        bob_barrier.wait();
         Ok(())
     });
 
@@ -278,6 +291,9 @@ fn tcp_establish_connection_bound() -> Result<()> {
 fn tcp_push_remote() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -318,7 +334,7 @@ fn tcp_push_remote() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
-
+        alice_barrier.wait();
         Ok(())
     });
 
@@ -359,8 +375,7 @@ fn tcp_push_remote() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
-        // Sleep for a while to give Alice time to finish.
-        sleep(Duration::from_millis(100));
+        bob_barrier.wait();
 
         Ok(())
     });
@@ -640,6 +655,9 @@ fn tcp_bad_connect() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
+
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
             Ok(libos) => libos,
@@ -666,7 +684,7 @@ fn tcp_bad_connect() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
-
+        alice_barrier.wait();
         Ok(())
     });
 
@@ -693,7 +711,7 @@ fn tcp_bad_connect() -> Result<()> {
         let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let sockqd: QDesc = safe_socket(&mut libos)?;
         let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
-        match libos.wait(qt, Some(Duration::from_millis(10))) {
+        match libos.wait(qt, Some(BAD_WAIT_TIMEOUT)) {
             Err(e) if e.errno == libc::ETIMEDOUT => (),
             Ok((_, OperationResult::Connect)) => {
                 // Close socket if not error because this test cannot continue.
@@ -719,9 +737,7 @@ fn tcp_bad_connect() -> Result<()> {
 
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
-        // Sleep for a while to give Alice time to finish.
-        sleep(Duration::from_millis(100));
-
+        bob_barrier.wait();
         Ok(())
     });
 
@@ -742,6 +758,9 @@ fn tcp_bad_connect() -> Result<()> {
 fn tcp_bad_close() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -783,6 +802,7 @@ fn tcp_bad_close() -> Result<()> {
             Err(_) => (),
         };
 
+        alice_barrier.wait();
         Ok(())
     });
 
@@ -827,6 +847,7 @@ fn tcp_bad_close() -> Result<()> {
         // Sleep for a while to give Alice time to finish.
         sleep(Duration::from_millis(100));
 
+        bob_barrier.wait();
         Ok(())
     });
 
@@ -847,6 +868,9 @@ fn tcp_bad_close() -> Result<()> {
 fn tcp_bad_push() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -887,6 +911,7 @@ fn tcp_bad_push() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
+        alice_barrier.wait();
 
         Ok(())
     });
@@ -957,9 +982,7 @@ fn tcp_bad_push() -> Result<()> {
         // Close connection.
         safe_close_active(&mut libos, sockqd)?;
 
-        // Sleep for a while to give Alice time to finish.
-        sleep(Duration::from_millis(100));
-
+        bob_barrier.wait();
         Ok(())
     });
 
@@ -980,6 +1003,9 @@ fn tcp_bad_push() -> Result<()> {
 fn tcp_bad_pop() -> Result<()> {
     let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
     let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
+
+    let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
+    let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
     let alice: JoinHandle<Result<()>> = thread::spawn(move || {
         let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
@@ -1031,6 +1057,7 @@ fn tcp_bad_pop() -> Result<()> {
         safe_close_active(&mut libos, qd)?;
         safe_close_passive(&mut libos, sockqd)?;
 
+        alice_barrier.wait();
         Ok(())
     });
 
@@ -1074,6 +1101,7 @@ fn tcp_bad_pop() -> Result<()> {
         // Sleep for a while to give Alice time to finish.
         sleep(Duration::from_millis(100));
 
+        bob_barrier.wait();
         Ok(())
     });
 
