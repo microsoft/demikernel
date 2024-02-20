@@ -256,6 +256,17 @@ pub fn expect_last_wsa_error() -> Fail {
     wsa_error_to_win_error(unsafe { WSAGetLastError() }).into()
 }
 
+/// Expect that GetLastError indicates an error condition, and return it as a Fail operation. If error code is
+/// ERROR_SUCCESS, the failure message will indicate such.
+pub fn expect_last_win32_error() -> Fail {
+    windows::core::Error::from_win32().into()
+}
+
+/// Map a Windows error to a Fail. The allows marshalling in otherwise ambiguous contexts, such as Result::map_err.
+pub fn map_win_err(e: windows::core::Error) -> Fail {
+    e.into()
+}
+
 //======================================================================================================================
 // Traits
 //======================================================================================================================

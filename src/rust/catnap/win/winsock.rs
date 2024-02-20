@@ -106,13 +106,17 @@ pub struct WinsockRuntime {
 
 impl SocketExtensions {
     /// Create an instance of SocketExtensions, with all extensions resolved for the socket provider.
-    pub fn new(s: SOCKET) -> Result<Rc<SocketExtensions>, Fail> {
+    pub fn new(s: SOCKET, config: &WinConfig) -> Result<Rc<SocketExtensions>, Fail> {
         Ok(Rc::new(SocketExtensions {
             acceptex: Self::lookup_single_fn(s, &WSAID_ACCEPTEX)?,
             get_acceptex_sockaddrs: Self::lookup_single_fn(s, &WSAID_GETACCEPTEXSOCKADDRS)?,
             connectex: Self::lookup_single_fn(s, &WSAID_CONNECTEX)?,
             disconnectex: Self::lookup_single_fn(s, &WSAID_DISCONNECTEX)?,
-            rio_fns: Self::resolve_rio_fn_table(s)?,
+            rio_fns: if config.rio_settings.enable_rio {
+                Self::resolve_rio_fn_table(s)?
+            } else {
+                RIO_EXTENSION_FUNCTION_TABLE::default()
+            },
         }))
     }
 
@@ -291,7 +295,7 @@ impl WinsockRuntime {
 
     /// Get or initialize a new `SocketExtensions` instance for a  socket. Extensions are stored by socket provider,
     /// which may be shared by multiple sockets.
-    fn get_or_init_extensions(&mut self, s: SOCKET) -> Result<Rc<SocketExtensions>, Fail> {
+    fn get_or_init_extensions(&mut self, s: SOCKET, config: &WinConfig) -> Result<Rc<SocketExtensions>, Fail> {
         let protocol: WSAPROTOCOL_INFOW = unsafe { self.getsockopt(s, SOL_SOCKET, SO_PROTOCOL_INFOW) }?;
 
         let extensions: &mut Weak<SocketExtensions> = self
@@ -302,7 +306,7 @@ impl WinsockRuntime {
             return Ok(extensions);
         }
 
-        let new_extensions: Rc<SocketExtensions> = SocketExtensions::new(s)?;
+        let new_extensions: Rc<SocketExtensions> = SocketExtensions::new(s, config)?;
         *extensions = Rc::downgrade(&new_extensions);
 
         Ok(new_extensions)
@@ -336,7 +340,7 @@ impl WinsockRuntime {
         // will take ownership by end of method; failures after this call need to be cause a `closesocket` call.
         let s: SOCKET = unsafe { Self::raw_socket(domain, typ, protocol, None, WSA_FLAG_OVERLAPPED) }?;
 
-        self.get_or_init_extensions(s)
+        self.get_or_init_extensions(s, config)
             .and_then(|extensions: Rc<SocketExtensions>| Socket::new(s, protocol, config, extensions, iocp))
             .or_else(|err: Fail| {
                 unsafe { closesocket(s) };

@@ -4,6 +4,8 @@
 mod config;
 mod error;
 mod overlapped;
+mod page_alloc;
+mod rio_runtime;
 mod socket;
 mod winsock;
 
@@ -30,10 +32,12 @@ use windows::Win32::{
 
 use crate::{
     catnap::transport::{
+        config::RioSettings,
         overlapped::{
             IoCompletionPort,
             OverlappedResult,
         },
+        rio_runtime::RioRuntime,
         socket::{
             AcceptState,
             PopState,
@@ -65,6 +69,9 @@ pub(super) struct WinConfig {
 
     /// Linger socket options.
     linger_time: Option<Duration>,
+
+    /// Registered I/O settings
+    rio_settings: RioSettings,
 }
 
 /// Underlying network transport.
@@ -80,6 +87,9 @@ pub struct CatnapTransport {
 
     /// Shared Demikernel runtime.
     runtime: SharedDemiRuntime,
+
+    /// When enabled, the registered I/O runtime.
+    rio_runtime: Option<RioRuntime>,
 }
 
 /// A network transport built on top of Windows overlapped I/O.
@@ -96,6 +106,7 @@ impl SharedCatnapTransport {
         let config: WinConfig = WinConfig {
             keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
             linger_time: config.linger_time().expect("failed to load linger settings"),
+            rio_settings: config.rio_settings().expect("failed to load registered I/O settings"),
         };
 
         let me: Self = Self(SharedObject::new(CatnapTransport {
@@ -103,6 +114,7 @@ impl SharedCatnapTransport {
             iocp: IoCompletionPort::new().expect("failed to setup I/O completion port"),
             config,
             runtime: runtime.clone(),
+            rio_runtime: None,
         }));
 
         runtime

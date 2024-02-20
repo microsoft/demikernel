@@ -11,6 +11,10 @@ use crate::{
 };
 use ::yaml_rust::Yaml;
 use std::{
+    num::{
+        NonZeroI64,
+        NonZeroUsize,
+    },
     ops::{
         Fn,
         Index,
@@ -18,6 +22,17 @@ use std::{
     time::Duration,
 };
 use windows::Win32::Networking::WinSock::tcp_keepalive;
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
+
+pub struct RioSettings {
+    pub enable_rio: bool,
+    pub use_large_pages: bool,
+    pub buffer_size_bytes: NonZeroUsize,
+    pub buffer_count: NonZeroUsize,
+}
 
 //======================================================================================================================
 // Constants
@@ -62,6 +77,19 @@ impl Config {
         } else {
             Ok(None)
         }
+    }
+
+    /// Reads registered I/O settings from "rio" subsection.
+    pub fn rio_settings(&self) -> Result<RioSettings, Fail> {
+        const SECTION: &str = "rio";
+        let section: &Yaml = Self::require_subsection(self.get_libos_section()?, SECTION)?;
+
+        Ok(RioSettings {
+            enable_rio: Self::require_bool_option(section, "enabled")?,
+            use_large_pages: Self::require_bool_option(section, "use_large_pages")?,
+            buffer_size_bytes: Self::require_nonzero_int_option(section, "buffer_size_bytes")?,
+            buffer_count: Self::require_nonzero_int_option(section, "buffer_count")?,
+        })
     }
 
     /// Get the libos subsection, requiring that it exists and is a Hash.
@@ -109,6 +137,21 @@ impl Config {
     /// destination type may hold the i64 value.
     fn require_int_option<T: TryFrom<i64>>(yaml: &Yaml, index: &str) -> Result<T, Fail> {
         let val: i64 = Self::require_typed_option(yaml, index, &Yaml::as_i64)?;
+        Self::try_convert_param(val, index)
+    }
+
+    fn require_nonzero_int_option<T: TryFrom<NonZeroI64>>(yaml: &Yaml, index: &str) -> Result<T, Fail> {
+        let val: i64 = Self::require_typed_option(yaml, index, &Yaml::as_i64)?;
+        match NonZeroI64::new(val) {
+            Some(val) => Self::try_convert_param(val, index),
+            None => {
+                let message: String = format!("parameter \"{}\" may not be zero", index);
+                Err(Fail::new(libc::ERANGE, message.as_str()))
+            },
+        }
+    }
+
+    fn try_convert_param<U, T: TryFrom<U>>(val: U, index: &str) -> Result<T, Fail> {
         match T::try_from(val) {
             Ok(val) => Ok(val),
             _ => {
