@@ -47,8 +47,6 @@ use crate::{
         memory::DemiBuffer,
         network::transport::NetworkTransport,
         poll_yield,
-        scheduler::Yielder,
-        yield_once,
         DemiRuntime,
         SharedDemiRuntime,
         SharedObject,
@@ -126,7 +124,6 @@ impl SharedCatnapTransport {
 
     /// Run a coroutine which pulls the I/O completion port for events.
     async fn run_event_processor(&mut self) {
-        let yielder: Yielder = Yielder::new();
         loop {
             if let Err(err) = self.0.iocp.process_events() {
                 error!("Completion port error: {}", err);
@@ -172,12 +169,10 @@ impl NetworkTransport for SharedCatnapTransport {
     }
 
     /// Asynchronously disconnect and shut down a socket.
-    async fn close(&mut self, socket: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
+    async fn close(&mut self, socket: &mut Self::SocketDescriptor) -> Result<(), Fail> {
         match unsafe {
             self.0.iocp.do_io(
-                &yielder,
                 |overlapped: *mut OVERLAPPED| socket.start_disconnect(overlapped),
-                |_| Err(Fail::new(libc::EFAULT, "cannot cancel a disconnect")),
                 |result: OverlappedResult| socket.finish_disconnect(result),
             )
         }
@@ -201,16 +196,9 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Accept a connection on the specified socket. The coroutine will not finish until a connection is successfully
     /// accepted or `yielder` is cancelled.
-    async fn accept(
-        &mut self,
-        socket: &mut Self::SocketDescriptor,
-        yielder: Yielder,
-    ) -> Result<(Socket, SocketAddr), Fail> {
+    async fn accept(&mut self, socket: &mut Self::SocketDescriptor) -> Result<(Socket, SocketAddr), Fail> {
         let start = |accept_result: Pin<&mut AcceptState>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
             socket.start_accept(accept_result, overlapped)
-        };
-        let cancel = |_: Pin<&mut AcceptState>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-            socket.cancel_io(overlapped)
         };
         let me_finish: Self = self.clone();
         let finish = |accept_result: Pin<&mut AcceptState>,
@@ -219,28 +207,17 @@ impl NetworkTransport for SharedCatnapTransport {
             socket.finish_accept(accept_result, &me_finish.0.iocp, result)
         };
 
-        let (socket, _local_addr, remote_addr) = unsafe {
-            self.0
-                .iocp
-                .do_io_with(AcceptState::new(), &yielder, start, cancel, finish)
-        }
-        .await?;
+        let (socket, _local_addr, remote_addr) =
+            unsafe { self.0.iocp.do_io_with(AcceptState::new(), start, finish) }.await?;
 
         Ok((socket, remote_addr))
     }
 
     /// Connect a socket to a remote address.
-    async fn connect(
-        &mut self,
-        socket: &mut Self::SocketDescriptor,
-        remote: SocketAddr,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    async fn connect(&mut self, socket: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
         unsafe {
             self.0.iocp.do_io(
-                &yielder,
                 |overlapped: *mut OVERLAPPED| -> Result<(), Fail> { socket.start_connect(remote, overlapped) },
-                |overlapped: *mut OVERLAPPED| -> Result<(), Fail> { socket.cancel_io(overlapped) },
                 |result: OverlappedResult| -> Result<(), Fail> { socket.finish_connect(result) },
             )
         }
@@ -253,17 +230,12 @@ impl NetworkTransport for SharedCatnapTransport {
         socket: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
         unsafe {
             self.0.iocp.do_io_with(
                 PopState::new(buf.clone()),
-                &yielder,
                 |pop_state: Pin<&mut PopState>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
                     socket.start_pop(pop_state, overlapped)
-                },
-                |_pop_state: Pin<&mut PopState>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                    socket.cancel_io(overlapped)
                 },
                 |pop_state: Pin<&mut PopState>,
                  result: OverlappedResult|
@@ -290,18 +262,13 @@ impl NetworkTransport for SharedCatnapTransport {
         socket: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         loop {
             let result: Result<usize, Fail> = unsafe {
                 self.0.iocp.do_io_with(
                     buf.clone(),
-                    &yielder,
                     |buffer: Pin<&mut DemiBuffer>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
                         socket.start_push(buffer, addr, overlapped)
-                    },
-                    |_buffer: Pin<&mut DemiBuffer>, overlapped: *mut OVERLAPPED| -> Result<(), Fail> {
-                        socket.cancel_io(overlapped)
                     },
                     |buffer: Pin<&mut DemiBuffer>, result: OverlappedResult| -> Result<usize, Fail> {
                         socket.finish_push(buffer, result)

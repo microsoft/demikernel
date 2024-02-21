@@ -192,29 +192,26 @@ impl IoCompletionPort {
         for<'a> F2: FnOnce(Pin<&'a mut S>, OverlappedResult) -> Result<R, Fail>,
     {
         let cv: SharedConditionVariable = SharedConditionVariable::default();
-
         let mut completion: OverlappedHandle<S> =
             OverlappedHandle(OverlappedCompletionWithState::new(cv.clone(), state));
 
         let overlapped: *mut OVERLAPPED = completion.0.as_mut().marshal();
         match start(completion.0.as_mut().get_state_mut(), overlapped) {
             // Operation in progress, pending overlapped completion.
-            Ok(()) => loop {
-                cv.wait().await;
+            Ok(()) => {
+                loop {
+                    cv.wait().await;
 
-                // NB If the condition_variable is cleared, the event was dequeued from the completion port and
-                // processed. If the coroutine was also cancelled, depending on the order of scheduling the result
-                // may still indicate failure. YielderHandler absence takes higher precedence here -- no need to
-                // signal failure if it's not semantically useful.
-                if !completion.0.as_ref().get_inner().has_cv() {
-                    let (overlapped, state) = completion.0.as_mut().split_mut();
-                    return finish(
-                        state,
-                        OverlappedResult::new(&overlapped.overlapped, overlapped.completion_key),
-                    );
-                } else {
-                    // Spurious wake-up.
-                    continue;
+                    if let Some(_) = completion.0.as_ref().get_inner().condition_variable.as_ref() {
+                        // Spurious wake-up.
+                        continue;
+                    } else {
+                        let (overlapped, state) = completion.0.as_mut().split_mut();
+                        return finish(
+                            state,
+                            OverlappedResult::new(&overlapped.overlapped, overlapped.completion_key),
+                        );
+                    }
                 }
             },
 
@@ -375,6 +372,7 @@ impl<S> Drop for OverlappedHandle<S> {
         if self.0.as_mut().get_inner_mut().take_cv().is_some() {
             // Coroutine exited before the completion was signaled. Leave the heap object alive such the OVERLAPPED
             // structure is still valid until the completion processor sees and deallocates it.
+            std::mem::take(unsafe { self.0. });
             let ptr: Pin<Box<OverlappedCompletionWithState<S>>> = self.0;
             std::mem::forget(ptr);
         }
