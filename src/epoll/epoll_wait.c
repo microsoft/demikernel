@@ -42,7 +42,7 @@ int __demi_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int t
         if ((ev->used) && (ev->qt != (demi_qtoken_t)-1))
         {
             __epoll_reent_guard = 1;
-            int ret = demi_timedwait(&ev->qr, ev->qt, &abstime);
+            int ret = demi_wait(&ev->qr, ev->qt, &abstime);
             __epoll_reent_guard = 0;
 
             if (ret == ETIMEDOUT)
