@@ -29,6 +29,7 @@ use crate::{
         QDesc,
         SharedDemiRuntime,
         SharedObject,
+        SharedBetweenCores,
     },
 };
 use ::futures::channel::mpsc;
@@ -66,6 +67,7 @@ pub struct TcpPeer<N: NetworkRuntime> {
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     addresses: HashMap<SocketId, SharedTcpSocket<N>>,
+    shared_between_cores: *mut SharedBetweenCores,
 }
 
 #[derive(Clone)]
@@ -84,6 +86,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
+        shared_between_cores: *mut SharedBetweenCores,
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
@@ -99,6 +102,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             rng,
             dead_socket_tx: tx,
             addresses: HashMap::<SocketId, SharedTcpSocket<N>>::new(),
+            shared_between_cores,
         })))
     }
 
@@ -123,7 +127,11 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
         // Issue operation.
         socket.bind(local)?;
-        self.addresses.insert(SocketId::Passive(local), socket.clone());
+        // self.addresses.insert(SocketId::Passive(local), socket.clone());
+        unsafe {
+            // (*self.shared_between_cores).insert_on_addresses(SocketId::Passive(local), socket.clone());
+            (*self.shared_between_cores).insert_on_addresses(SocketId::Active(local, SocketAddrV4::new(Ipv4Addr::new(0, 0, 0,0), 0)), socket.clone());
+        }
         Ok(())
     }
 
@@ -136,9 +144,16 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     }
 
     /// Runs until a new connection is accepted.
-    pub async fn accept(&self, socket: &mut SharedTcpSocket<N>, yielder: Yielder) -> Result<SharedTcpSocket<N>, Fail> {
+    pub async fn accept(&mut self, socket: &mut SharedTcpSocket<N>, yielder: Yielder) -> Result<SharedTcpSocket<N>, Fail> {
         // Wait for accept to complete.
-        Ok(socket.accept(yielder).await?)
+        // Ok(socket.accept(yielder).await?)
+        match socket.accept(yielder).await {
+            Ok(socket) => unsafe {
+                (*self.shared_between_cores).insert_on_addresses(SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()), socket.clone());
+                Ok(socket)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Runs until the connect to remote is made or times out.
@@ -269,20 +284,28 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         }
 
         // Retrieve the queue descriptor based on the incoming segment.
-        let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
-            Some(socket) => socket,
-            None => match self.addresses.get_mut(&SocketId::Passive(local)) {
-                Some(socket) => socket,
-                None => {
-                    let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
-                    error!("receive(): {}", &cause);
-                    return;
+        let socket = unsafe {
+            let socket = match (*self.shared_between_cores).get_mut_on_addresses(SocketId::Active(local, remote)) {
+                Some(socket) => {
+                    socket
                 },
-            },
+                None => match (*self.shared_between_cores).get_mut_on_addresses(SocketId::Active(local, SocketAddrV4::new(Ipv4Addr::new(0, 0, 0,0), 0))) {
+                    Some(socket) => {
+                        socket
+                    },
+                    None => {
+                        let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
+                        error!("receive(): {}", &cause);
+                        (*self.shared_between_cores).unlock();
+                        return;
+                    },
+                },
+            };
+            socket
         };
 
         // Dispatch to further processing depending on the socket state.
-        socket.receive(ip_hdr, tcp_hdr, data)
+        unsafe { (*socket).receive(ip_hdr, tcp_hdr, data) }
     }
 }
 

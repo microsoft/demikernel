@@ -1,14 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod background;
+pub mod background;
 pub mod congestion_control;
-mod ctrlblk;
+pub mod ctrlblk;
 mod rto;
 mod sender;
 
 use crate::{
-    collections::async_queue::SharedAsyncQueue,
+    collections::{
+        dpdk_spinlock::DPDKSpinLock,
+        async_queue::SharedAsyncQueue,
+    },
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
@@ -37,7 +40,7 @@ use crate::{
 };
 use ::futures::{
     channel::mpsc,
-    FutureExt,
+    // FutureExt,
 };
 use ::std::{
     net::SocketAddrV4,
@@ -46,7 +49,7 @@ use ::std::{
 
 #[derive(Clone)]
 pub struct EstablishedSocket<N: NetworkRuntime> {
-    pub cb: SharedControlBlock<N>,
+    pub cb: *mut SharedControlBlock<N>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
@@ -61,7 +64,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
-        mut runtime: SharedDemiRuntime,
+        runtime: SharedDemiRuntime,
         transport: N,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
@@ -78,14 +81,15 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         sender_mss: usize,
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
-        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        _dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        lock: *mut DPDKSpinLock,
     ) -> Result<Self, Fail> {
         // TODO: Maybe add the queue descriptor here.
-        let cb = SharedControlBlock::new(
+        let cb = Box::into_raw(Box::new(SharedControlBlock::new(
             local,
             remote,
             runtime.clone(),
-            transport,
+            transport.clone(),
             local_link_addr,
             tcp_config,
             arp,
@@ -101,17 +105,22 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
             congestion_control_options,
             recv_queue.clone(),
             ack_queue.clone(),
-        );
-        let qt: QToken = runtime.insert_background_coroutine(
-            "Inetstack::TCP::established::background",
-            Box::pin(background::background(cb.clone(), dead_socket_tx).fuse()),
-        )?;
+            lock,
+        )));
         Ok(Self {
             cb,
             recv_queue,
-            background_task_qt: qt.clone(),
+            background_task_qt: 0.into(),
             runtime: runtime.clone(),
         })
+    }
+
+    pub fn lock(&mut self) {
+        unsafe { (*(*self.cb).lock).lock() }
+    }
+
+    pub fn unlock(&mut self) {
+        unsafe { (*(*self.cb).lock).unlock() }
     }
 
     pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> {
@@ -119,31 +128,31 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
     }
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
-        self.cb.send(buf)
+        unsafe { (*self.cb).send(buf) }
     }
 
     pub async fn push(&mut self, nbytes: usize, yielder: Yielder) -> Result<(), Fail> {
-        self.cb.push(nbytes, yielder).await
+        unsafe { (*self.cb).push(nbytes, yielder).await }
     }
 
     pub async fn pop(&mut self, size: Option<usize>, yielder: Yielder) -> Result<DemiBuffer, Fail> {
-        self.cb.pop(size, yielder).await
+        unsafe { (*self.cb).pop(size, yielder).await }
     }
 
     pub async fn close(&mut self, yielder: Yielder) -> Result<(), Fail> {
-        self.cb.close(yielder).await
+        unsafe { (*self.cb).close(yielder).await }
     }
 
     pub fn remote_mss(&self) -> usize {
-        self.cb.remote_mss()
+        unsafe { (*self.cb).remote_mss() }
     }
 
     pub fn current_rto(&self) -> Duration {
-        self.cb.rto()
+        unsafe { (*self.cb).rto() }
     }
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
-        (self.cb.get_local(), self.cb.get_remote())
+        unsafe { ((*self.cb).get_local(), (*self.cb).get_remote()) }
     }
 }
 

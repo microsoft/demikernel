@@ -13,3 +13,7 @@
 #include <rte_memcpy.h>
 #include <rte_udp.h>
 #include <rte_mbuf.h>
+#include <rte_spinlock.h>
+#include <rte_malloc.h>
+#include <rte_hash.h>
+#include <rte_hash_crc.h>

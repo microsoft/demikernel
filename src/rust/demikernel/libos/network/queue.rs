@@ -145,7 +145,7 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
                     qtype: self.qtype,
                     state_machine: SocketStateMachine::new_established(),
                     socket: new_socket,
-                    local: None,
+                    local: self.local,
                     remote: Some(saddr),
                     transport: self.transport.clone(),
                 })))

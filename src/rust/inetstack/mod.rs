@@ -33,6 +33,7 @@ use crate::{
         scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
+        SharedBetweenCores,
     },
 };
 use ::socket2::{
@@ -78,7 +79,7 @@ pub mod protocols;
 // Constants
 //======================================================================================================================
 
-const MAX_RECV_ITERS: usize = 2;
+const MAX_RECV_ITERS: usize = 1;
 
 //======================================================================================================================
 // Structures
@@ -108,8 +109,8 @@ pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
 //======================================================================================================================
 
 impl<N: NetworkRuntime> SharedInetStack<N> {
-    pub fn new(config: Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
-        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr(), config.local_ipv4_addr())
+    pub fn new(config: Config, runtime: SharedDemiRuntime, network: N, shared_between_cores: *mut SharedBetweenCores) -> Result<Self, Fail> {
+        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr(), config.local_ipv4_addr(), shared_between_cores)
     }
 
     pub fn new_test(
@@ -117,6 +118,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
         network: N,
         local_link_addr: MacAddress,
         local_ipv4_addr: Ipv4Addr,
+        shared_between_cores: *mut SharedBetweenCores
     ) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
         let arp: SharedArpPeer<N> = SharedArpPeer::new(
@@ -135,6 +137,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             network.get_tcp_config(),
             arp.clone(),
             rng_seed,
+            shared_between_cores,
         )?;
         let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack::<N> {
             arp,
@@ -197,7 +200,6 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
         self.ipv4.get_local_addr()
     }
 
-    #[cfg(test)]
     pub fn get_network(&self) -> N {
         self.network.clone()
     }

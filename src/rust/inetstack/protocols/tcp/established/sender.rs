@@ -152,7 +152,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send<N: NetworkRuntime>(&mut self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
+    pub fn send<N: NetworkRuntime>(&mut self, buf: DemiBuffer, cb: *mut SharedControlBlock<N>) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
 
         // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
@@ -196,23 +196,23 @@ impl Sender {
             let in_flight_after_send: u32 = sent_data + buf_len;
 
             // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
-            cb.congestion_control_on_cwnd_check_before_send();
-            let cwnd: SharedWatchedValue<u32> = cb.congestion_control_get_cwnd();
+            unsafe { (*cb).congestion_control_on_cwnd_check_before_send() };
+            let cwnd: SharedWatchedValue<u32> = unsafe { (*cb).congestion_control_get_cwnd() };
 
             // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
-            let effective_cwnd: u32 = cwnd.get() + cb.congestion_control_get_limited_transmit_cwnd_increase().get();
+            let effective_cwnd: u32 = cwnd.get() + unsafe { (*cb).congestion_control_get_limited_transmit_cwnd_increase().get() };
 
             let win_sz: u32 = self.send_window.get();
 
             if win_sz > 0 && win_sz >= in_flight_after_send && effective_cwnd >= in_flight_after_send {
-                if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
+                // if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
                     // This hook is primarily intended to record the last time we sent data, so we can later tell if
                     // the connection has been idle.
-                    let rto: Duration = cb.rto();
-                    cb.congestion_control_on_send(rto, sent_data);
+                    let rto: Duration = unsafe { (*cb).rto() };
+                    unsafe { (*cb).congestion_control_on_send(rto, sent_data) };
 
                     // Prepare the segment and send it.
-                    let mut header: TcpHeader = cb.tcp_header();
+                    let mut header: TcpHeader = unsafe { (*cb).tcp_header() };
                     header.seq_num = send_next;
                     if buf_len == 0 {
                         // This buffer is the end-of-send marker.
@@ -223,7 +223,7 @@ impl Sender {
                         header.psh = true;
                     }
                     trace!("Send immediate");
-                    cb.emit(header, Some(buf.clone()), remote_link_addr);
+                    unsafe { (*cb).emit(header, Some(buf.clone()), (*cb).remote_link_addr); }
 
                     // Update SND.NXT.
                     self.send_next.modify(|s| s + SeqNumber::from(buf_len));
@@ -234,20 +234,22 @@ impl Sender {
                     // Put the segment we just sent on the retransmission queue.
                     let unacked_segment = UnackedSegment {
                         bytes: buf,
-                        initial_tx: Some(cb.get_timer().now()),
+                        initial_tx: Some(Instant::now()),
                     };
                     self.unacked_queue.borrow_mut().push_back(unacked_segment);
 
                     // Start the retransmission timer if it isn't already running.
-                    if cb.get_retransmit_deadline().is_none() {
-                        let rto: Duration = cb.rto();
-                        cb.set_retransmit_deadline(Some(cb.get_timer().now() + rto));
+                    unsafe { 
+                        if (*cb).get_retransmit_deadline().is_none() {
+                            let rto: Duration = (*cb).rto();
+                            (*cb).set_retransmit_deadline(Some(Instant::now() + rto));
+                        }
                     }
 
                     return Ok(());
-                } else {
-                    warn!("no ARP cache entry for send");
-                }
+                // } else {
+                //     warn!("no ARP cache entry for send");
+                // }
             }
         }
 

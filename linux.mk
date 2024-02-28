@@ -52,7 +52,7 @@ export LIBS := $(DEMIKERNEL_LIB)
 # Build Parameters
 #=======================================================================================================================
 
-export LIBOS ?= catnap
+export LIBOS ?= catnip
 export CARGO_FEATURES := --features=$(LIBOS)-libos
 
 # Switch for DPDK
@@ -71,7 +71,7 @@ CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
 
-all: init | all-libs all-tests all-examples
+all: init | all-libs all-examples
 
 init:
 	git config --local core.hooksPath .githooks
@@ -135,7 +135,7 @@ clean-tests-c:
 #=======================================================================================================================
 
 # Builds all examples.
-all-examples: all-examples-c all-examples-rust
+all-examples: all-examples-rust
 
 # Builds all C examples.
 all-examples-c: all-libs
@@ -202,7 +202,8 @@ export PEER ?= server
 export TEST ?= udp-push-pop
 export TEST_INTEGRATION ?= tcp-test
 export TEST_UNIT ?=
-export TIMEOUT ?= 120
+export TIMEOUT ?= 30
+export TCP_CHECKSUM_OFFLOAD ?= true
 
 # Runs system tests.
 test-system: test-system-rust

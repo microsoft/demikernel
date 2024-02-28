@@ -12,7 +12,7 @@ pub mod queue;
 // Imports
 //======================================================================================================================
 
-#[cfg(all(feature = "catnap-libos"))]
+#[cfg(any(feature = "catnap-libos", feature = "catnip-libos"))]
 use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
 use crate::{
     pal::constants::SOMAXCONN,
@@ -350,6 +350,30 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip { runtime, libos: _ } => runtime.has_completed(qt),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop { runtime, libos: _ } => runtime.has_completed(qt),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn set_qd(&mut self, qd: QDesc) {
+        match self {
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.set_qd(qd),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn get_qd(&self) -> QDesc {
+        match self {
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.get_qd(),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn wait_for_something(&mut self, qts: &[QToken]) -> Vec<demi_qresult_t> {
+        match self {
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip { runtime: _, libos } => libos.wait_for_something(qts),
         }
     }
 }

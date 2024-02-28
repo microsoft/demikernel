@@ -8,7 +8,7 @@
 #![feature(strict_provenance)]
 #![cfg_attr(target_os = "windows", feature(maybe_uninit_uninit_array))]
 
-mod collections;
+pub mod collections;
 mod pal;
 
 #[cfg(feature = "profiler")]
@@ -27,7 +27,7 @@ extern crate log;
 extern crate cfg_if;
 
 #[cfg(feature = "catnip-libos")]
-mod catnip;
+pub mod catnip;
 
 #[cfg(feature = "catpowder-libos")]
 mod catpowder;

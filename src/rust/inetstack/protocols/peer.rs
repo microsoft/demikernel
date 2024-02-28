@@ -22,6 +22,7 @@ use crate::{
             NetworkRuntime,
         },
         SharedDemiRuntime,
+        SharedBetweenCores,
     },
 };
 use ::std::{
@@ -49,6 +50,7 @@ impl<N: NetworkRuntime> Peer<N> {
         tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
+        shared_between_cores: *mut SharedBetweenCores,
     ) -> Result<Self, Fail> {
         let udp_offload_checksum: bool = udp_config.get_tx_checksum_offload();
         let udp: SharedUdpPeer<N> = SharedUdpPeer::<N>::new(
@@ -75,6 +77,7 @@ impl<N: NetworkRuntime> Peer<N> {
             tcp_config,
             arp,
             rng_seed,
+            shared_between_cores
         )?;
 
         Ok(Peer {

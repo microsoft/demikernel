@@ -12,7 +12,10 @@ use crate::{
             ipv4::Ipv4Header,
             tcp::{
                 active_open::SharedActiveOpenSocket,
-                established::EstablishedSocket,
+                established::{
+                    EstablishedSocket,
+                    ctrlblk::SharedControlBlock,
+                },
                 passive_open::SharedPassiveSocket,
                 segment::TcpHeader,
                 SeqNumber,
@@ -300,11 +303,32 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         }
     }
 
+    pub fn get_cb(&self) -> *mut SharedControlBlock<N> {
+        match self.state {
+            SocketState::Established(ref socket) => socket.cb,
+            _ => panic!("Socket is not establish"),
+        }
+    }
+
     pub fn receive(&mut self, ip_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
-        // If this queue has an allocated receive queue, then direct the packet there.
-        if let Some(recv_queue) = self.recv_queue.as_mut() {
-            recv_queue.push((ip_hdr, tcp_hdr, buf));
-            return;
+        // If this queue has an allocated receive queue, then direct the match self.state {
+            match self.state {
+            SocketState::Listening(ref mut socket) => {
+                socket.lock();
+                socket.get_recv_queue().push((ip_hdr, tcp_hdr, buf));
+                socket.unlock();
+            },
+            SocketState::Established(ref mut socket) => {
+                socket.lock();
+                socket.get_recv_queue().push((ip_hdr, tcp_hdr, buf));
+                socket.unlock();
+            },
+            _ => {
+                if let Some(recv_queue) = self.recv_queue.as_mut() {
+                    recv_queue.push((ip_hdr, tcp_hdr, buf));
+                    return
+                }
+            }
         }
     }
 

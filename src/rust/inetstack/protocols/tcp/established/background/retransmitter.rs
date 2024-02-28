@@ -24,7 +24,7 @@ use ::std::time::{
     Instant,
 };
 
-pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<Never, Fail> {
+pub async fn _retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<Never, Fail> {
     loop {
         // Pin future for timeout retransmission.
         let mut rtx_deadline_watched: SharedWatchedValue<Option<Instant>> = cb.watch_retransmit_deadline();

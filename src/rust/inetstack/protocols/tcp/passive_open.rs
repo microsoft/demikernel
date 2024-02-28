@@ -6,9 +6,12 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::{
-        AsyncQueue,
-        SharedAsyncQueue,
+    collections::{
+        dpdk_spinlock::DPDKSpinLock,
+        async_queue::{
+            AsyncQueue,
+            SharedAsyncQueue,
+        },
     },
     inetstack::protocols::{
         arp::SharedArpPeer,
@@ -92,6 +95,7 @@ pub struct PassiveSocket<N: NetworkRuntime> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     yielder_handle: YielderHandle,
     background_task_qt: Option<QToken>,
+    lock: *mut DPDKSpinLock,
 }
 
 #[derive(Clone)]
@@ -130,11 +134,24 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             dead_socket_tx,
             yielder_handle: yielder.get_handle(),
             background_task_qt: None,
+            lock: Box::into_raw(Box::new(DPDKSpinLock::new())),
         }));
         let qt: QToken = runtime
             .insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll(yielder).fuse()))?;
         me.background_task_qt = Some(qt);
         Ok(me)
+    }
+
+    pub fn lock(&mut self) {
+        unsafe { (*self.lock).lock() }
+    }
+
+    pub fn unlock(&mut self) {
+        unsafe { (*self.lock).unlock() }
+    }
+
+    pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> {
+        self.recv_queue.clone()
     }
 
     /// Returns the address that the socket is bound to.
@@ -149,10 +166,19 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
     async fn poll(mut self, yielder: Yielder) {
         loop {
-            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.pop(&yielder).await {
-                Ok(result) => result,
-                Err(_) => break,
+            unsafe { (*self.lock).lock() };
+            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.try_pop() {
+                Some((ipv4_hdr, tcp_hdr, buf)) => (ipv4_hdr, tcp_hdr, buf),
+                None => {
+                    unsafe { (*self.lock).unlock() };
+                    match yielder.yield_once().await {
+                        Ok(()) => continue,
+                        Err(_) => panic!("ERROR on PassiveSocket::poll()"),
+                    }
+                }
             };
+            unsafe { (*self.lock).unlock() };
+
             let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
             if let Some(recv_queue) = self.connections.get_mut(&remote) {
                 // Packet is either for an inflight request or established connection.
@@ -211,6 +237,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
+        let lock: *mut DPDKSpinLock = Box::into_raw(Box::new(DPDKSpinLock::new()));
         let future = self
             .clone()
             .send_syn_ack_and_wait_for_ack(
@@ -221,6 +248,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
                 recv_queue.clone(),
                 ack_queue,
                 yielder,
+                lock,
             )
             .fuse();
         match self
@@ -302,6 +330,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         yielder: Yielder,
+        lock: *mut DPDKSpinLock,
     ) {
         // Set up new inflight accept connection.
         let mut remote_window_scale = None;
@@ -350,6 +379,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
                     remote_window_scale,
                     mss,
                     &yielder,
+                    lock,
                 )
                 .fuse();
             // Pin futures.
@@ -431,6 +461,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         remote_window_scale: Option<u8>,
         mss: usize,
         yielder: &Yielder,
+        lock: *mut DPDKSpinLock,
     ) -> Result<EstablishedSocket<N>, Fail> {
         let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(&yielder).await?;
         debug!("Received ACK: {:?}", tcp_hdr);
@@ -444,7 +475,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             Some(w) => (self.tcp_config.get_window_scale() as u32, w),
             None => (0, 0),
         };
-        let remote_window_size = (header_window_size)
+        let remote_window_size = (header_window_size as u32)
             .checked_shl(remote_window_scale as u32)
             .expect("TODO: Window size overflow")
             .try_into()
@@ -487,6 +518,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             congestion_control::None::new,
             None,
             self.dead_socket_tx.clone(),
+            lock,
         )?;
 
         Ok(new_socket)

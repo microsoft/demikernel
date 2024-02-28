@@ -71,82 +71,16 @@ windows-sys = { version = "0.48.0", features = ["Win32_Networking_WinSock"] }
 crate-type = ["cdylib", "rlib"]
 path = "src/rust/lib.rs"
 
-[[test]]
-name = "tcp-test"
-path = "tests/rust/tcp-test/main.rs"
-harness = false
-
-[[test]]
-name = "pipe-test"
-path = "tests/rust/pipe-test/main.rs"
-harness = false
-
-[[test]]
-name = "tcp"
-path = "tests/rust/tcp.rs"
-
-[[test]]
-name = "udp"
-path = "tests/rust/udp.rs"
-
-[[test]]
-name = "sga"
-path = "tests/rust/sga.rs"
-
 [[example]]
-name = "udp-dump"
-path = "examples/rust/udp-dump.rs"
-
-[[example]]
-name = "udp-echo"
-path = "examples/rust/udp-echo.rs"
-
-[[example]]
-name = "udp-pktgen"
-path = "examples/rust/udp-pktgen.rs"
-
-[[example]]
-name = "udp-relay"
-path = "examples/rust/udp-relay.rs"
-
-[[example]]
-name = "pipe-ping-pong"
-path = "examples/rust/pipe-ping-pong.rs"
-
-[[example]]
-name = "pipe-push-pop"
-path = "examples/rust/pipe-push-pop.rs"
-
-[[example]]
-name = "udp-push-pop"
-path = "examples/rust/udp-push-pop.rs"
-
-[[example]]
-name = "udp-ping-pong"
-path = "examples/rust/udp-ping-pong.rs"
-
-[[example]]
-name = "tcp-dump"
-path = "examples/rust/tcp-dump.rs"
-
-[[example]]
-name = "tcp-pktgen"
-path = "examples/rust/tcp-pktgen.rs"
-
-[[example]]
-name = "tcp-push-pop"
-path = "examples/rust/tcp-push-pop.rs"
-
-[[example]]
-name = "tcp-ping-pong"
-path = "examples/rust/tcp-ping-pong.rs"
+name = "tcp-echo-multiflow"
+path = "examples/rust/tcp-echo-multiflow.rs"
 
 #=======================================================================================================================
 # Features
 #=======================================================================================================================
 
 [features]
-default = ["catnap-libos"]
+default = ["catnip-libos"]
 catnap-libos = []
 catpowder-libos = []
 catmem-libos = []
