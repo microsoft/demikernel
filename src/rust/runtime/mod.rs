@@ -33,7 +33,16 @@ pub use dpdk_rs as libdpdk;
 //======================================================================================================================
 
 use crate::{
-    pal::data_structures::SockAddr,
+    catnip::runtime::SharedDPDKRuntime, 
+    collections::{
+        async_queue::SharedAsyncQueue, 
+        dpdk_spinlock::DPDKSpinLock
+    }, 
+    inetstack::protocols::tcp::{
+        socket::SharedTcpSocket,
+        established::ctrlblk::SharedControlBlock, 
+    }, 
+    pal::data_structures::SockAddr, 
     runtime::{
         fail::Fail,
         memory::MemoryRuntime,
@@ -41,6 +50,7 @@ use crate::{
             ephemeral::EphemeralPorts,
             socket::SocketId,
             NetworkQueueTable,
+            NetworkRuntime,
         },
         queue::{
             IoQueue,
@@ -101,6 +111,17 @@ const TIMER_RESOLUTION: usize = 64;
 // Structures
 //======================================================================================================================
 
+/// Shared structure between different cores
+pub struct SharedBetweenCores {
+    qd: QDesc,
+    nr_runtimes: u16,
+    lock: *mut DPDKSpinLock,
+    addresses: *mut HashMap<SocketId, SharedTcpSocket<SharedDPDKRuntime>>,
+    qtable: *mut IoQueueTable,
+    pub conn_list: *mut Vec<SharedAsyncQueue<(QDesc, *mut SharedControlBlock<SharedDPDKRuntime>)>>,
+    pub qd_to_cb: *mut HashMap<QDesc, *mut SharedControlBlock<SharedDPDKRuntime>>,
+}
+
 /// Demikernel Runtime
 #[derive(Default)]
 pub struct DemiRuntime {
@@ -130,6 +151,91 @@ pub struct SharedBox<T: ?Sized>(SharedObject<Box<T>>);
 // Associate Functions
 //======================================================================================================================
 
+impl SharedBetweenCores {
+    pub fn new(nr_runtimes: u16) -> Self {
+        let mut conn_list = Vec::<SharedAsyncQueue<(QDesc, *mut SharedControlBlock<SharedDPDKRuntime>)>>::new();
+        for _ in 0..nr_runtimes {
+            let queue = SharedAsyncQueue::<(QDesc, *mut SharedControlBlock<SharedDPDKRuntime>)>::default();
+            conn_list.push(queue);
+        }
+
+        Self {
+            qd: 0.into(),
+            nr_runtimes,
+            lock: Box::into_raw(Box::new(DPDKSpinLock::new())),
+            addresses: Box::into_raw(Box::new(HashMap::<SocketId, SharedTcpSocket<SharedDPDKRuntime>>::new())),
+            qtable: Box::into_raw(Box::new(IoQueueTable::default())),
+            conn_list: Box::into_raw(Box::new(conn_list)),
+            qd_to_cb: Box::into_raw(Box::new(HashMap::<QDesc, *mut SharedControlBlock<SharedDPDKRuntime>>::new()))
+        }
+    }
+
+    #[allow(unused)]
+    pub fn add_background(&mut self, qd: QDesc, cb: *mut SharedControlBlock<SharedDPDKRuntime>) {
+        for i in 1..self.nr_runtimes {
+            unsafe { (*self.conn_list)[i as usize].push((qd, cb)) };
+        }
+
+        unsafe { (*self.qd_to_cb).insert(qd, cb) };
+    }
+
+    #[allow(unused)]
+    pub fn set_qd(&mut self, qd: QDesc) {
+        self.qd = qd;
+    }
+
+    #[allow(unused)]
+    pub fn get_qd(&self) -> QDesc {
+        self.qd
+    }
+
+    #[allow(unused)]
+    pub fn lock(&mut self) {
+        unsafe { (*self.lock).lock() };
+    }
+
+    #[allow(unused)]
+    pub fn unlock(&mut self) {
+        unsafe { (*self.lock).unlock() };
+    }
+
+    #[allow(unused)]
+    pub fn trylock(&mut self) -> bool {
+        unsafe { (*self.lock).trylock() }
+    }
+
+    #[allow(unused)]
+    pub fn insert_on_addresses<N: NetworkRuntime>(&mut self, k: SocketId, v: SharedTcpSocket<N>) {
+        if let Some(value) = (&v as &dyn std::any::Any).downcast_ref::<SharedTcpSocket<SharedDPDKRuntime>>() {
+            unsafe { (*self.addresses).insert(k, value.clone()) };
+        }
+    }
+
+    #[allow(unused)]
+    pub fn get_mut_on_addresses(&mut self, k: &SocketId) -> Option<&mut SharedTcpSocket<SharedDPDKRuntime>> {
+        unsafe { (*self.addresses).get_mut(k) }
+    }
+
+    #[allow(unused)]
+    /// Allocates a queue of type `T` and returns the associated queue descriptor.
+    pub fn alloc_queue<T: IoQueue>(&mut self, queue: T) -> QDesc {
+        self.lock();
+        let qd: QDesc = unsafe { (*self.qtable).alloc::<T>(queue) };
+        trace!("Allocating new queue: qd={:?}", qd);
+        self.unlock();
+        qd
+    }
+
+    #[allow(unused)]
+    pub fn get_shared_queue<T: IoQueue + Clone>(&mut self, qd: &QDesc) -> Result<T, Fail> {
+        self.lock();
+        let ret: T = unsafe { (*self.qtable).get::<T>(qd).unwrap().clone() };
+        self.unlock();
+
+        Ok(ret)
+    }
+}
+
 impl DemiRuntime {
     /// Checks if an operation should be retried based on the error code `err`.
     pub fn should_retry(errno: i32) -> bool {
@@ -138,6 +244,18 @@ impl DemiRuntime {
             return true;
         }
         false
+    }
+
+    pub fn new() -> Self {
+        Self {
+            scheduler: Scheduler::default(),
+            qtable: IoQueueTable::default(),
+            ephemeral_ports: EphemeralPorts::default(),
+            timer: SharedTimer::new(Instant::now()),
+            network_table: NetworkQueueTable::default(),
+            pending_ops: HashMap::<QDesc, HashMap<QToken, YielderHandle>>::new(),
+            ts_iters: 0,
+        }
     }
 }
 
@@ -205,7 +323,7 @@ impl SharedDemiRuntime {
             .expect("Removing task that does not exist (either was previously removed or never inserted");
         // 2. Cast to void and then downcast to operation task.
         trace!("Removing coroutine: {:?}", boxed_task.get_name());
-        let operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
+        let mut operation_task: OperationTask = OperationTask::from(boxed_task.as_any());
         let (qd, result): (QDesc, OperationResult) = operation_task.get_result().expect("coroutine not finished");
         self.cancel_or_remove_pending_ops_as_needed(&result, qd, qt);
         (qd, result)

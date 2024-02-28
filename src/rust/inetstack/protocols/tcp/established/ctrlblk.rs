@@ -472,7 +472,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
             let timeout: Duration = self.ack_delay_timeout;
             // Getting the current time is extremely cheap as it is just a variable lookup.
-            let now: Instant = self.get_timer().now();
+            let now: Instant = Instant::now();//self.get_timer().now();
             self.ack_deadline.set(Some(now + timeout));
         } else {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
@@ -674,7 +674,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             if header.ack_num <= send_next {
                 // Does not matter when we get this since the clock will not move between the beginning of packet
                 // processing and now without a call to advance_clock.
-                let now: Instant = self.get_timer().now();
+                let now: Instant = Instant::now();//self.get_timer().now();
 
                 // This segment acknowledges new data (possibly and/or FIN).
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();

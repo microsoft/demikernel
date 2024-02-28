@@ -23,6 +23,19 @@ use crate::inetstack::SharedInetStack;
 #[cfg(feature = "profiler")]
 use crate::timer;
 
+#[cfg(feature = "catnip-libos")]
+use crate::{
+    runtime::{
+        SharedBetweenCores,
+        libdpdk::load_mlx_driver
+    },
+    catnip::runtime::memory::MemoryManager,
+    // collections::{
+    //     dpdk_spinlock::DPDKSpinLock,
+    //     dpdk_ring::DPDKRing,
+    // }
+};
+
 use crate::{
     demikernel::{
         config::Config,
@@ -43,6 +56,7 @@ use crate::{
 };
 use ::std::{
     env,
+    sync::Arc,
     net::SocketAddr,
     time::Duration,
 };
@@ -72,8 +86,58 @@ pub enum LibOS {
 
 /// Associated functions for LibOS.
 impl LibOS {
+    /// Initializes the DPDK environment
+    #[cfg(feature = "catnip-libos")]
+    pub fn initialize(rx_queues: u16, tx_queues: u16) -> Result<(Arc<MemoryManager>, *mut SharedBetweenCores), Fail> {
+        logging::initialize();
+        load_mlx_driver();
+
+        // Read in configuration file.
+        let config_path: String = match std::env::var("CONFIG_PATH") {
+            Ok(config_path) => config_path,
+            Err(_) => {
+                return Err(Fail::new(
+                    libc::EINVAL,
+                    "missing value for CONFIG_PATH environment variable",
+                ))
+            }
+        };
+
+        let config: Config = Config::new(config_path);
+
+        // Initializes the SharedDPDKRuntime
+        let (memory_manager, port_id, _) = SharedDPDKRuntime::initialize_dpdk(
+            &config.eal_init_args(),
+            config.use_jumbo_frames(), 
+            config.mtu()?, 
+            config.tcp_checksum_offload(),
+            config.udp_checksum_offload(),
+        ).unwrap();
+
+        // Initializes the DPDK port and queues
+        SharedDPDKRuntime::initialize_dpdk_port(
+            port_id, 
+            rx_queues,
+            tx_queues,
+            &memory_manager, 
+            config.use_jumbo_frames(), 
+            config.mtu()?, 
+            config.tcp_checksum_offload(),
+            config.udp_checksum_offload(),
+        ).unwrap();
+
+        let shared_between_cores: *mut SharedBetweenCores = std::ptr::null_mut();
+
+        Ok((Arc::new(memory_manager), shared_between_cores))
+    }
+
     /// Instantiates a new LibOS.
-    pub fn new(libos_name: LibOSName) -> Result<Self, Fail> {
+    pub fn new(
+        libos_name: LibOSName,
+        port_id: u16, 
+        queue_id: u16, 
+        mm: Arc<MemoryManager>,
+    ) -> Result<Self, Fail> {
         #[cfg(feature = "profiler")]
         timer!("demikernel::new");
 
@@ -90,7 +154,7 @@ impl LibOS {
             },
         };
         let config: Config = Config::new(config_path);
-        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+        let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         // Instantiate LibOS.
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
@@ -117,13 +181,24 @@ impl LibOS {
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(config.clone())?;
+                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(
+                    config.local_ipv4_addr(),
+                    config.arp_table(),
+                    config.disable_arp(),
+                    config.mss().unwrap(),
+                    config.tcp_checksum_offload(),
+                    config.udp_checksum_offload(),
+                    port_id,
+                    queue_id,
+                    mm,
+                );
+
                 let inetstack: SharedInetStack<SharedDPDKRuntime> =
                     SharedInetStack::<SharedDPDKRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
 
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catnip {
                     runtime: runtime.clone(),
-                    libos: SharedNetworkLibOS::<SharedInetStack<SharedDPDKRuntime>>::new(runtime.clone(), inetstack),
+                    libos: SharedNetworkLibOS::<SharedInetStack<SharedDPDKRuntime>>::new(runtime.clone(), inetstack, std::ptr::null_mut()),
                 })
             },
             #[cfg(feature = "catmem-libos")]
@@ -430,6 +505,30 @@ impl LibOS {
         match self {
             LibOS::NetworkLibOS(libos) => libos.poll(),
             LibOS::MemoryLibOS(libos) => libos.poll(),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn set_qd(&mut self, qd: QDesc) {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.set_qd(qd),
+            LibOS::MemoryLibOS(_) => todo!(),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn get_qd(&self) -> QDesc {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.get_qd(),
+            LibOS::MemoryLibOS(_) => todo!(),
+        }
+    }
+
+    #[allow(unused)]
+    pub fn wait_for_something(&mut self, qts: &[QToken]) -> Vec<demi_qresult_t> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.wait_for_something(qts),
+            LibOS::MemoryLibOS(_) => todo!()
         }
     }
 }

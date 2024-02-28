@@ -7,6 +7,9 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
+#include <rte_spinlock.h>
+#include <rte_malloc.h>
+#include <rte_ring.h>
 
 void rte_pktmbuf_free_(struct rte_mbuf *packet)
 {
@@ -96,4 +99,79 @@ int rte_eth_rx_offload_udp_cksum_()
 int rte_eth_tx_offload_multi_segs_()
 {
     return RTE_ETH_TX_OFFLOAD_MULTI_SEGS;
+}
+
+int rte_eth_rss_tcp_()
+{
+    return RTE_ETH_RSS_TCP;
+}
+
+int rte_eth_rss_udp_()
+{
+    return RTE_ETH_RSS_UDP;
+}
+
+int rte_eth_tx_offload_ip_cksum_()
+{
+    return RTE_ETH_TX_OFFLOAD_IPV4_CKSUM;
+}
+
+int rte_eth_rx_offload_ip_cksum_()
+{
+    return RTE_ETH_RX_OFFLOAD_IPV4_CKSUM;
+}
+
+int rte_lcore_id_() 
+{
+    return rte_lcore_id();
+}
+
+uint64_t rte_get_timer_hz_() 
+{
+    return rte_get_timer_hz();
+}
+
+char *rte_pktmbuf_prepend_(struct rte_mbuf *m, uint16_t len)
+{
+    return rte_pktmbuf_prepend(m, len);
+}
+
+void rte_spinlock_init_(rte_spinlock_t *sl) 
+{
+    rte_spinlock_init(sl);
+}
+
+void rte_spinlock_lock_(rte_spinlock_t *sl) 
+{
+    rte_spinlock_lock(sl);
+}
+
+int rte_spinlock_trylock_(rte_spinlock_t *sl) 
+{
+    return rte_spinlock_trylock(sl);
+}
+
+void rte_spinlock_unlock_(rte_spinlock_t *sl) 
+{
+    rte_spinlock_unlock(sl);
+}
+
+struct rte_ring *rte_ring_create_(const char *name, unsigned int count, int socket_id, unsigned int flags)
+{
+    return rte_ring_create(name, count, socket_id, flags);
+}
+
+int rte_ring_enqueue_(struct rte_ring *r, void *obj)
+{
+    return rte_ring_enqueue(r, obj);
+}
+
+int rte_ring_dequeue_(struct rte_ring *r, void **obj)
+{
+    return rte_ring_dequeue(r, obj);
+}
+
+void *rte_zmalloc_(const char *t, size_t size, unsigned align)
+{
+    return rte_zmalloc(t, size, align);
 }

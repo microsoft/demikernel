@@ -27,9 +27,13 @@ use crate::{
             OperationResult,
         },
         scheduler::Yielder,
-        types::demi_sgarray_t,
+        types::{
+            demi_sgarray_t,
+            demi_qresult_t,
+        },
         QDesc,
         QToken,
+        SharedBetweenCores,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -67,6 +71,8 @@ pub struct NetworkLibOS<T: NetworkTransport> {
     runtime: SharedDemiRuntime,
     /// Underlying network transport.
     transport: T,
+    /// Shared structure between cores.
+    shared_between_cores: *mut SharedBetweenCores,
 }
 
 #[derive(Clone)]
@@ -79,10 +85,11 @@ pub struct SharedNetworkLibOS<T: NetworkTransport>(SharedObject<NetworkLibOS<T>>
 /// Associate Functions for Catnap LibOS
 impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Instantiates a Catnap LibOS.
-    pub fn new(runtime: SharedDemiRuntime, transport: T) -> Self {
+    pub fn new(runtime: SharedDemiRuntime, transport: T, shared_between_cores: *mut SharedBetweenCores) -> Self {
         Self(SharedObject::new(NetworkLibOS::<T> {
             runtime: runtime.clone(),
             transport,
+            shared_between_cores,
         }))
     }
 
@@ -506,6 +513,37 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// This exposes the transport for testing purposes.
     pub fn get_runtime(&self) -> SharedDemiRuntime {
         self.runtime.clone()
+    }
+
+    #[allow(unused)]
+    pub fn set_qd(&mut self, qd: QDesc) {
+        unsafe { (*self.shared_between_cores).set_qd(qd) }
+    }
+
+    #[allow(unused)]
+    pub fn get_qd(&self) -> QDesc {
+        unsafe { (*self.shared_between_cores).get_qd() }
+    }
+
+    #[allow(unused)]
+    pub fn wait_for_something(&mut self, qts: &[QToken]) -> Vec<demi_qresult_t> {
+        let mut output: Vec<demi_qresult_t> = Vec::<demi_qresult_t>::new();
+
+        loop {
+            self.runtime.poll();
+
+            for qt in qts {
+                if let Ok(true) = self.runtime.has_completed(*qt) {
+                    if let Ok(qr) = self.runtime.remove_coroutine_and_get_result(*qt) {
+                        output.push(qr);
+                    }
+                }
+            }
+
+            if !output.is_empty() {
+                return output;
+            }
+        }
     }
 }
 

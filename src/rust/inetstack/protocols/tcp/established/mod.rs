@@ -3,7 +3,7 @@
 
 mod background;
 pub mod congestion_control;
-mod ctrlblk;
+pub mod ctrlblk;
 mod rto;
 mod sender;
 

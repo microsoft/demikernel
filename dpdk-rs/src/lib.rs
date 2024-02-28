@@ -7,7 +7,7 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use ::std::os::raw::{c_char, c_int};
+use ::std::os::raw::{c_char, c_int, c_void};
 
 #[link(name = "inlined")]
 extern "C" {
@@ -29,6 +29,18 @@ extern "C" {
     fn rte_eth_rx_offload_tcp_cksum_() -> c_int;
     fn rte_eth_rx_offload_udp_cksum_() -> c_int;
     fn rte_eth_tx_offload_multi_segs_() -> c_int;
+    fn rte_get_timer_hz_() -> u64;
+    fn rte_eth_rss_tcp_() -> c_int;
+    fn rte_eth_rss_udp_() -> c_int;
+    fn rte_eth_tx_offload_ip_cksum_() -> c_int;
+    fn rte_eth_rx_offload_ip_cksum_() -> c_int;
+    fn rte_pktmbuf_prepend_(m: *mut rte_mbuf, len: u16) -> *mut c_char;
+    fn rte_spinlock_init_(sl: *mut rte_spinlock_t);
+    fn rte_spinlock_lock_(sl: *mut rte_spinlock_t);
+    fn rte_spinlock_trylock_(sl: *mut rte_spinlock_t) -> c_int;
+    fn rte_spinlock_unlock_(sl: *mut rte_spinlock_t);
+    fn rte_ring_enqueue_(r: *mut rte_ring, obj: *mut c_void) -> c_int;
+    fn rte_ring_dequeue_(r: *mut rte_ring, obj_p: *mut *mut c_void) -> c_int;
 }
 
 #[cfg(all(feature = "mlx5", target_os = "windows"))]
@@ -149,4 +161,64 @@ pub unsafe fn rte_eth_rx_offload_udp_cksum() -> c_int {
 #[inline]
 pub unsafe fn rte_eth_tx_offload_multi_segs() -> c_int {
     rte_eth_tx_offload_multi_segs_()
+}
+
+#[inline]
+pub unsafe fn rte_get_timer_hz() -> u64 {
+    rte_get_timer_hz_()
+}
+
+#[inline]
+pub unsafe fn rte_eth_rss_tcp() -> c_int {
+    rte_eth_rss_tcp_()
+}
+
+#[inline]
+pub unsafe fn rte_eth_rss_udp() -> c_int {
+    rte_eth_rss_udp_()
+}
+
+#[inline]
+pub unsafe fn rte_eth_tx_offload_ip_cksum() -> c_int {
+    rte_eth_tx_offload_ip_cksum_()
+}
+
+#[inline]
+pub unsafe fn rte_eth_rx_offload_ip_cksum() -> c_int {
+    rte_eth_rx_offload_ip_cksum_()
+}
+
+#[inline]
+pub unsafe fn rte_pktmbuf_prepend(m: *mut rte_mbuf, len: u16) -> *mut c_char {
+    rte_pktmbuf_prepend_(m, len)
+}
+
+#[inline]
+pub unsafe fn rte_spinlock_init(sl: *mut rte_spinlock_t) {
+    rte_spinlock_init_(sl)
+}
+
+#[inline]
+pub unsafe fn rte_spinlock_lock(sl: *mut rte_spinlock_t) {
+    rte_spinlock_lock_(sl)
+}
+
+#[inline]
+pub unsafe fn rte_spinlock_trylock(sl: *mut rte_spinlock_t) -> c_int {
+    rte_spinlock_trylock_(sl)
+}
+
+#[inline]
+pub unsafe fn rte_spinlock_unlock(sl: *mut rte_spinlock_t) {
+    rte_spinlock_unlock_(sl)
+}
+
+#[inline]
+pub unsafe fn rte_ring_enqueue(r: *mut rte_ring, obj: *mut c_void) -> c_int {
+    rte_ring_enqueue_(r, obj)
+}
+
+#[inline]
+pub unsafe fn rte_ring_dequeue(r: *mut rte_ring, obj_p: *mut *mut c_void) -> c_int {
+    rte_ring_dequeue_(r, obj_p)
 }
