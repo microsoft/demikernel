@@ -471,21 +471,21 @@ impl SharedCatnapTransport {
             };
             while let Some(event) = events.pop() {
                 let offset: usize = event.u64 as usize;
-                if event.events | (libc::EPOLLIN as u32) != 0 {
+                if event.events & (libc::EPOLLIN as u32) != 0 {
                     // Wake pop.
                     self.socket_table
                         .get_mut(offset)
                         .expect("should have allocated this when epoll was registered")
                         .poll_in();
                 }
-                if event.events | (libc::EPOLLOUT as u32) != 0 {
+                if event.events & (libc::EPOLLOUT as u32) != 0 {
                     // Wake push.
                     self.socket_table
                         .get_mut(offset)
                         .expect("should have allocated this when epoll was registered")
                         .poll_out();
                 }
-                if event.events | (libc::EPOLLERR as u32 | libc::EPOLLHUP as u32) != 0 {
+                if event.events & (libc::EPOLLERR as u32 | libc::EPOLLHUP as u32) != 0 {
                     // Wake both push and pop.
                     self.socket_table
                         .get_mut(offset)
