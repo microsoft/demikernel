@@ -190,7 +190,7 @@ impl SharedCatnapTransport {
             };
             while let Some(event) = events.pop() {
                 let offset: usize = event.u64 as usize;
-                if event.events | (libc::EPOLLIN as u32) != 0 {
+                if event.events & (libc::EPOLLIN as u32) != 0 {
                     // Wake pop.
                     expect_some!(
                         self.socket_table.get_mut(offset),
@@ -198,7 +198,7 @@ impl SharedCatnapTransport {
                     )
                     .poll_in();
                 }
-                if event.events | (libc::EPOLLOUT as u32) != 0 {
+                if event.events & (libc::EPOLLOUT as u32) != 0 {
                     // Wake push.
                     expect_some!(
                         self.socket_table.get_mut(offset),
@@ -206,7 +206,7 @@ impl SharedCatnapTransport {
                     )
                     .poll_out();
                 }
-                if event.events | (libc::EPOLLERR as u32 | libc::EPOLLHUP as u32) != 0 {
+                if event.events & (libc::EPOLLERR as u32 | libc::EPOLLHUP as u32) != 0 {
                     // Wake both push and pop.
                     expect_some!(
                         self.socket_table.get_mut(offset),
