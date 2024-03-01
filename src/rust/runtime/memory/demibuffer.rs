@@ -179,7 +179,7 @@ impl MetaData {
         while md.next.is_some() {
             // Safety: The call to as_mut is safe, as the pointer is aligned and dereferenceable, and the MetaData
             // struct it points to is initialized properly.
-            md = unsafe { md.next.unwrap().as_mut() };
+            md = unsafe { md.next.as_mut().unwrap().as_mut() };
         }
         &mut *md
     }
@@ -251,7 +251,7 @@ impl DemiBuffer {
 
     // Implementation Note:
     // This function is replacing the new() function of DataBuffer, which could return failure.  However, the only
-    // failure it actually reported was if the new DataBuffer request was for zero size.  A seperate empty() function
+    // failure it actually reported was if the new DataBuffer request was for zero size.  A separate empty() function
     // was provided to allocate zero-size buffers.  This new implementation does not have a special case for this,
     // instead, zero is a valid argument to new().  So we no longer need the failure return case of this function.
     //
@@ -292,7 +292,7 @@ impl DemiBuffer {
         }
 
         // Embed the buffer type into the lower bits of the pointer.
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
+        let tagged: NonNull<MetaData> = tag_ptr(temp, Tag::Heap);
 
         // Return the new DemiBuffer.
         DemiBuffer {
@@ -324,7 +324,7 @@ impl DemiBuffer {
     pub unsafe fn from_mbuf(mbuf_ptr: *mut rte_mbuf) -> Self {
         // Convert the raw pointer into a NonNull and add a tag indicating it is a DPDK buffer (i.e. a MBuf).
         let temp: NonNull<MetaData> = NonNull::new_unchecked(mbuf_ptr as *mut _);
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Dpdk);
+        let tagged: NonNull<MetaData> = tag_ptr(temp, Tag::Dpdk);
 
         DemiBuffer {
             tagged_ptr: tagged,
@@ -351,6 +351,41 @@ impl DemiBuffer {
     // Note that while we return a usize here (for convenience), the value is guaranteed to never exceed u16::MAX.
     pub fn len(&self) -> usize {
         self.as_metadata().data_len as usize
+    }
+
+    /// Get the next buffer in the chain, if any.
+    pub fn next(&self) -> Option<DemiBuffer> {
+        match self.get_tag() {
+            Tag::Heap => match self.as_metadata().next {
+                Some(metadata) => {
+                    let next: DemiBuffer = Self {
+                        tagged_ptr: tag_ptr(metadata, self.get_tag()),
+                        _phantom: PhantomData,
+                    };
+                    next.as_metadata().inc_refcnt();
+                    Some(next)
+                },
+
+                None => None,
+            },
+
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                let mbuf: *mut rte_mbuf = self.as_mbuf();
+                let next_mbuf: *mut rte_mbuf = unsafe {
+                    // Safety: The `mbuf` dereference below is safe, as it is aligned and dereferenceable.
+                    (*mbuf).next
+                };
+
+                if next_mbuf == std::ptr::null_mut() {
+                    None
+                } else {
+                    let result: DemiBuffer = DemiBuffer::from_mbuf(next_mbuf);
+                    result.as_metadata().inc_refcnt();
+                    Some(result)
+                }
+            },
+        }
     }
 
     /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
@@ -630,7 +665,7 @@ impl DemiBuffer {
     ///
     /// If the target [DemiBuffer] has multiple segments, `true` is returned. Otherwise, `false` is returned instead.
     ///
-    fn is_multi_segment(&self) -> bool {
+    pub fn is_multi_segment(&self) -> bool {
         match self.get_tag() {
             Tag::Heap => {
                 let md_front: &MetaData = self.as_metadata();
@@ -649,6 +684,11 @@ impl DemiBuffer {
 // ----------------
 // Helper Functions
 // ----------------
+
+// Add a tag to a MetaData address.
+fn tag_ptr(metadata: NonNull<MetaData>, tag: Tag) -> NonNull<MetaData> {
+    metadata.with_addr(metadata.addr() | tag)
+}
 
 // Allocates the MetaData (plus the space for any directly attached data) for a new heap-allocated DemiBuffer.
 fn allocate_metadata_data(direct_data_size: u16) -> NonNull<MetaData> {
@@ -793,7 +833,7 @@ impl Clone for DemiBuffer {
                 }
 
                 // Embed the buffer type into the lower bits of the pointer.
-                let tagged: NonNull<MetaData> = head.with_addr(head.addr() | Tag::Heap);
+                let tagged: NonNull<MetaData> = tag_ptr(head, Tag::Heap);
 
                 // Return the new DemiBuffer.
                 DemiBuffer {
@@ -983,7 +1023,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
         }
 
         // Embed the buffer type into the lower bits of the pointer.
-        let tagged: NonNull<MetaData> = temp.with_addr(temp.addr() | Tag::Heap);
+        let tagged: NonNull<MetaData> = tag_ptr(temp, Tag::Heap);
 
         // Return the new DemiBuffer.
         Ok(DemiBuffer {
