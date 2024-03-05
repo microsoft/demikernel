@@ -281,7 +281,6 @@ fn main() -> Result<()> {
         Err(e) => anyhow::bail!("{:?}", e),
     };
 
-    let run_mode: String = args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?;
     let mut threads = vec![];
     match args.peer_type.as_str() {
         "server" => {
@@ -292,6 +291,7 @@ fn main() -> Result<()> {
             }
         },
         "client" => {
+            let run_mode: String = args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?;
             for _ in 0..args.nthreads.unwrap_or(1) {
                 if let Ok(handle) = start_client_thread(
                     libos_name,
