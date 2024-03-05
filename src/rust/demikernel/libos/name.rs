@@ -12,6 +12,7 @@ use ::std::env;
 // Structures
 //======================================================================================================================
 
+#[derive(Clone, Copy)]
 /// Names of LibOSes.
 pub enum LibOSName {
     Catpowder,
