@@ -294,6 +294,7 @@ impl NetworkTransport for SharedCatnapTransport {
                     error!("new(): {}", cause);
                     return Err(Fail::new(get_libc_err(e), &cause));
                 }
+
                 if let Err(e) = socket.set_nonblocking(true) {
                     let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
                     socket.shutdown(Shutdown::Both)?;
@@ -335,6 +336,20 @@ impl NetworkTransport for SharedCatnapTransport {
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
         trace!("Bind to {:?}", local);
         let socket: &mut Socket = self.socket_from_sd(sd);
+
+        // Set SO_REUSE_PORT.
+        let optval: libc::c_int = 1;
+        let optval_len: libc::socklen_t = std::mem::size_of_val(&optval) as libc::socklen_t;
+        if unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_REUSEPORT,
+                &optval as *const _ as *const libc::c_void,
+                optval_len,
+            )
+        } < 0
+        {}
         if let Err(e) = socket.bind(&local.into()) {
             let cause: String = format!("failed to bind socket: {:?}", e);
             error!("bind(): {}", cause);
