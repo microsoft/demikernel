@@ -7,6 +7,8 @@
 
 use crate::{
     demikernel::libos::network::queue::SharedNetworkQueue,
+    expect_ok,
+    expect_some,
     pal::{
         constants::SOMAXCONN,
         data_structures::SockAddr,
@@ -229,14 +231,13 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                 // TODO: Do we need to add this to the socket id to queue descriptor table?
                 // It is safe to call except here because the new queue is connected and it should be connected to a
                 // remote address.
-                let addr: SocketAddr = new_queue
-                    .remote()
-                    .expect("An accepted socket must have a remote address");
+                let addr: SocketAddr =
+                    expect_some!(new_queue.remote(), "An accepted socket must have a remote address");
                 let new_qd: QDesc = self.runtime.alloc_queue(new_queue);
                 // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
                 (
                     qd,
-                    OperationResult::Accept((new_qd, unwrap_socketaddr(addr).expect("we only support IPv4"))),
+                    OperationResult::Accept((new_qd, expect_ok!(unwrap_socketaddr(addr), "we only support IPv4"))),
                 )
             },
             Err(e) => {
@@ -319,9 +320,10 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                 // If the queue was bound, remove from the socket id to queue descriptor table.
                 if let Some(local) = queue.local() {
                     // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(
-                        unwrap_socketaddr(local).expect("we only support IPv4"),
-                    ));
+                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(expect_ok!(
+                        unwrap_socketaddr(local),
+                        "we only support IPv4"
+                    )));
 
                     // Check if this is an ephemeral port.
                     if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
@@ -335,9 +337,10 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
                 // checks.
-                self.runtime
-                    .free_queue::<SharedNetworkQueue<T>>(&qd)
-                    .expect("queue should exist");
+                expect_ok!(
+                    self.runtime.free_queue::<SharedNetworkQueue<T>>(&qd),
+                    "queue should exist"
+                );
                 (qd, OperationResult::Close)
             },
             Err(e) => {
@@ -467,7 +470,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
             Ok((Some(addr), buf)) => (
                 qd,
-                OperationResult::Pop(Some(unwrap_socketaddr(addr).expect("we only support IPv4")), buf),
+                OperationResult::Pop(Some(expect_ok!(unwrap_socketaddr(addr), "we only support IPv4")), buf),
             ),
             Ok((None, buf)) => (qd, OperationResult::Pop(None, buf)),
             Err(e) => {
