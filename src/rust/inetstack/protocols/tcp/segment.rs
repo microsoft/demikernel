@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
+    expect_ok,
     inetstack::protocols::{
         ethernet2::Ethernet2Header,
         ip::IpProtocol,
@@ -386,8 +387,10 @@ impl TcpHeader {
             num_options,
             option_list,
         };
-        buf.adjust(data_offset)
-            .expect("buf should contain at least 'data_offset' bytes");
+        expect_ok!(
+            buf.adjust(data_offset),
+            "buf should contain at least 'data_offset' bytes"
+        );
         Ok((header, buf))
     }
 
