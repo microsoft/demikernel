@@ -43,6 +43,7 @@ use crate::{
         winsock::WinsockRuntime,
     },
     demikernel::config::Config,
+    expect_ok,
     runtime::{
         fail::Fail,
         memory::{
@@ -101,27 +102,28 @@ impl SharedCatnapTransport {
     /// Create a new transport instance.
     pub fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
         let config: WinConfig = WinConfig {
-            keepalive_params: config.tcp_keepalive().expect("failed to load TCP settings"),
-            linger_time: config.linger_time().expect("failed to load linger settings"),
-            nagle: config.nagle().expect("failed to load nagle's algorithm settings"),
+            keepalive_params: expect_ok!(config.tcp_keepalive(), "failed to load TCP settings"),
+            linger_time: expect_ok!(config.linger_time(), "failed to load linger settings"),
+            nagle: expect_ok!(config.nagle(), "failed to load nagle's algorithm settings"),
         };
 
         let me: Self = Self(SharedObject::new(CatnapTransport {
-            winsock: WinsockRuntime::new().expect("failed to initialize WinSock"),
-            iocp: IoCompletionPort::new().expect("failed to setup I/O completion port"),
+            winsock: expect_ok!(WinsockRuntime::new(), "failed to initialize WinSock"),
+            iocp: expect_ok!(IoCompletionPort::new(), "failed to setup I/O completion port"),
             config,
             runtime: runtime.clone(),
         }));
 
-        runtime
-            .insert_background_coroutine(
+        expect_ok!(
+            runtime.insert_background_coroutine(
                 "catnap::transport::epoll",
                 Box::pin({
                     let mut me: Self = me.clone();
                     async move { me.run_event_processor().await }.fuse()
                 }),
-            )
-            .expect("should be able to insert background coroutine");
+            ),
+            "should be able to insert background coroutine"
+        );
 
         me
     }

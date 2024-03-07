@@ -8,6 +8,7 @@
 use crate::{
     catnap::transport::get_libc_err,
     collections::async_queue::AsyncQueue,
+    expect_some,
     runtime::{
         fail::Fail,
         DemiRuntime,
@@ -45,7 +46,7 @@ impl PassiveSocketData {
             // Operation completed.
             Ok((new_socket, saddr)) => {
                 trace!("connection accepted ({:?})", new_socket);
-                let addr: SocketAddr = saddr.as_socket().expect("not a SocketAddrV4");
+                let addr: SocketAddr = expect_some!(saddr.as_socket(), "not a SocketAddrV4");
                 self.accept_queue.push(Ok((new_socket, addr)))
             },
             Err(e) => {
