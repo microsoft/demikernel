@@ -10,6 +10,7 @@ use super::{
     LinuxRuntime,
 };
 use crate::{
+    expect_ok,
     inetstack::protocols::ethernet2::Ethernet2Header,
     runtime::{
         limits,
@@ -79,9 +80,11 @@ impl NetworkRuntime for LinuxRuntime {
             unsafe {
                 let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
                     mem::transmute::<[MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX], [u8; limits::RECVBUF_SIZE_MAX]>(out);
-                let mut dbuf: DemiBuffer = DemiBuffer::from_slice(&bytes).expect("'bytes' should fit");
-                dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes)
-                    .expect("'bytes' <= RECVBUF_SIZE_MAX");
+                let mut dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&bytes), "'bytes' should fit");
+                expect_ok!(
+                    dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes),
+                    "'bytes' <= RECVBUF_SIZE_MAX"
+                );
                 ret.push(dbuf);
             }
             ret
