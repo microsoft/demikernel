@@ -5,6 +5,7 @@
 // Imports
 //======================================================================================================================
 
+use crate::check_for_network_error;
 use ::anyhow::Result;
 use ::demikernel::{
     runtime::types::demi_opcode_t,
@@ -88,7 +89,12 @@ fn wait_after_close_accepting_socket(libos: &mut LibOS, local: &SocketAddr) -> R
 
     // Poll again to check that the accept() coroutine returns an err and was properly canceled.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
+        Ok(qr) if check_for_network_error(&qr) => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on accept() after close(), instead returned this unknown \
+             error: {:?}",
+            qr.qr_ret
+        ),
         // If we found a connection to accept, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")
@@ -111,14 +117,23 @@ fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) ->
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && (qr.qr_ret == libc::ECONNREFUSED as i64) => {
+            connect_finished = true
+        },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {
             connect_finished = true
         },
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
         },
-        Ok(_) => anyhow::bail!("wait() should not succeed on connect()"),
+        Ok(qr) => {
+            anyhow::bail!(
+                "wait() should not succeed on connect(): opcode {:?} ret {:?}",
+                qr.qr_opcode,
+                qr.qr_ret
+            )
+        },
         Err(_) => anyhow::bail!("wait() should timeout"),
     }
 
@@ -128,9 +143,12 @@ fn wait_after_close_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) ->
     if !connect_finished {
         // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {},
+            Ok(qr) if check_for_network_error(&qr) => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+                "wait() should succeed with a specified error on connect() after close(), instead returned this \
+                 unknown error: {:?}",
+                qr.qr_ret
+            ),
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -174,8 +192,12 @@ fn wait_after_async_close_accepting_socket(libos: &mut LibOS, local: &SocketAddr
 
     // Poll again to check that the accept() co-routine completed with an error and was properly canceled.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+        Ok(qr) if check_for_network_error(&qr) => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on accept() after close(), instead returned this unknown \
+             error: {:?}",
+            qr.qr_ret
+        ),
         // If we found a connection to accept, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")
@@ -197,15 +219,23 @@ fn wait_after_async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAd
     // Poll once to ensure that the connect() co-routine runs.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
-        // Can only complete with ECONNREFUSED because remote does not exist.
+        // Can only complete with ECONNREFUSED or ECONNABORTED because remote does not exist.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {
+            connect_finished = true
+        },
+
         // If connect() completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
         },
-        Ok(_) => anyhow::bail!("wait() should not succeed with connect()"),
+        Ok(qr) => anyhow::bail!(
+            "wait() should not succeed with connect(): opcode {:?} error {:?}",
+            qr.qr_opcode,
+            qr.qr_ret
+        ),
         Err(_) => anyhow::bail!("wait() should timeout with connect()"),
     }
 
@@ -222,10 +252,12 @@ fn wait_after_async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAd
     if !connect_finished {
         // Poll again to check that the connect() co-routine completed with an error, either canceled or refused.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {},
+            Ok(qr) if check_for_network_error(&qr) => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+                "wait() should succeed with a specified error on connect() after async_close(), instead returned this \
+                 unknown error: {:?}",
+                qr.qr_ret
+            ),
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -287,13 +319,11 @@ fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAd
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
             anyhow::bail!("accept() should not succeed because remote should not be connecting")
         },
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-            accepted_completed = true
-        },
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {
-            accepted_completed = true
-        },
-
+        Ok(qr) if check_for_network_error(&qr) => accepted_completed = true,
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "accept should fail with a specified error, instead returned this unknown error: {:?}",
+            qr.qr_ret
+        ),
         Ok(_) => anyhow::bail!("wait() should not succeed with accept()"),
         Err(_) => anyhow::bail!("wait() should timeout with accept()"),
     }
@@ -308,13 +338,17 @@ fn wait_for_accept_after_issuing_async_close(libos: &mut LibOS, local: &SocketAd
     // Wait again on accept() and ensure it fails or gets cancelled.
     if !accepted_completed {
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+            Ok(qr) if check_for_network_error(&qr) => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+                "wait() should succeed with a specified error on accept() after async_close(), instead returned this \
+                 unknown error: {:?}",
+                qr.qr_ret
+            ),
             // If we found a connection to accept, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
                 anyhow::bail!("accept() should not succeed because remote should not be connecting")
             },
-            Ok(_) => anyhow::bail!("wait() should return an error on accept() after close()"),
+            Ok(_) => anyhow::bail!("wait() should return an error on accept() after async_close()"),
             Err(e) => anyhow::bail!("wait() should not time out. {:?}", e),
         }
     }
@@ -336,6 +370,9 @@ fn wait_for_connect_after_issuing_async_close(libos: &mut LibOS, remote: &Socket
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
             connect_finished = true
         },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNABORTED as i64 => {
+            connect_finished = true
+        },
         // If connect() completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -349,9 +386,12 @@ fn wait_for_connect_after_issuing_async_close(libos: &mut LibOS, remote: &Socket
     if !connect_finished {
         // Wait again on connect() and ensure it fails or gets cancelled.
         match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+            Ok(qr) if check_for_network_error(&qr) => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+                "wait() should succeed with a specified error on connect() after async(), instead returned this \
+                 unknown error: {:?}",
+                qr.qr_ret
+            ),
             // If connect() completes successfully, something has gone wrong.
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
                 anyhow::bail!("connect() should not succeed because remote does not exist")

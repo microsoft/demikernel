@@ -7,7 +7,6 @@
 
 use std::{
     fmt::Debug,
-    marker::PhantomPinned,
     mem::MaybeUninit,
     net::{
         Ipv4Addr,
@@ -115,10 +114,10 @@ pub struct Socket {
 }
 
 /// State type used by `Socket::start_accept` and `Socket::finish_accept`.
+/// This data structure will be pinned along with the completion during the entirety of the overlapped operation.
 pub struct AcceptState {
     new_socket: Option<Socket>,
     buffer: [u8; ACCEPT_BUFFER_LEN],
-    _marker: PhantomPinned,
 }
 
 /// State type used by `Socket::start_pop` and `Socket::finish_pop`.
@@ -126,7 +125,15 @@ pub struct PopState {
     buffer: DemiBuffer,
     address: MaybeUninit<SOCKADDR_STORAGE>,
     addr_len: i32,
-    _marker: PhantomPinned,
+}
+
+pub enum SocketOpState {
+    Accept(AcceptState),
+    // No state for connect.
+    Connect,
+    Pop(PopState),
+    Push(DemiBuffer),
+    Close,
 }
 
 //======================================================================================================================
@@ -139,7 +146,6 @@ impl AcceptState {
         Self {
             new_socket: None,
             buffer: [0u8; ACCEPT_BUFFER_LEN],
-            _marker: PhantomPinned,
         }
     }
 }
@@ -151,7 +157,6 @@ impl PopState {
             buffer,
             address: MaybeUninit::zeroed(),
             addr_len: 0,
-            _marker: PhantomPinned,
         }
     }
 }
@@ -163,7 +168,7 @@ impl Socket {
         protocol: libc::c_int,
         config: &WinConfig,
         extensions: Rc<SocketExtensions>,
-        iocp: &IoCompletionPort,
+        iocp: &IoCompletionPort<SocketOpState>,
     ) -> Result<Socket, Fail> {
         let s: Socket = Socket { s, extensions };
         s.setup_socket(protocol, config)?;
@@ -310,17 +315,15 @@ impl Socket {
 
     /// Start an overlapped accept operation; this must be called from inside IoCompletionPort::do_io/do_socket_io.
     /// Once the operation completes, the AcceptState can be given to `finish_accept` to finish the operation.
-    pub fn start_accept(
-        &self,
-        mut accept_result: Pin<&mut AcceptState>,
-        overlapped: *mut OVERLAPPED,
-    ) -> Result<(), Fail> {
+    pub fn start_accept(&self, state: Pin<&mut SocketOpState>, overlapped: *mut OVERLAPPED) -> Result<(), Fail> {
+        let accept_result: &mut AcceptState = match state.get_mut() {
+            SocketOpState::Accept(ref mut accept_result) => accept_result,
+            _ => unreachable!("must be an accept operation"),
+        };
         let new_socket: Socket = Socket::new_like(self)?;
 
         // Safety: getting the buffer pointer does not violate pinning invariants.
-        let buf_ptr: *mut u8 = unsafe { accept_result.as_mut().get_unchecked_mut() }
-            .buffer
-            .as_mut_ptr();
+        let buf_ptr: *mut u8 = accept_result.buffer.as_mut_ptr();
         let mut bytes_out: u32 = 0;
 
         // Safety: buffer pointers refer to valid, live locations for the duration of the call iff accept_result stays
@@ -341,7 +344,7 @@ impl Socket {
 
         get_overlapped_api_result(success).and_then(|_| {
             // Safety: the socket does not require structural pinning.
-            unsafe { accept_result.as_mut().get_unchecked_mut() }.new_socket = Some(new_socket);
+            accept_result.new_socket = Some(new_socket);
             Ok(())
         })
     }
@@ -351,19 +354,24 @@ impl Socket {
     /// with the (local, remote) address pair.
     pub fn finish_accept(
         &self,
-        mut accept_result: Pin<&mut AcceptState>,
-        iocp: &IoCompletionPort,
+        state: Pin<&mut SocketOpState>,
+        iocp: &IoCompletionPort<SocketOpState>,
         result: OverlappedResult,
     ) -> Result<(Socket, SocketAddr, SocketAddr), Fail> {
         if let Err(err) = result.ok() {
             return Err(err);
         }
 
+        let accept_result: &mut AcceptState = match state.get_mut() {
+            SocketOpState::Accept(ref mut accept_result) => accept_result,
+            _ => unreachable!("must be an accept operation"),
+        };
+
         // NB Windows docs are unclear whether the "bytes transferred" overlapped result should be 0 for AcceptEx with
         // no receive, or whether it is equal to the local+remote address buffer length. It is safe to assume addresses
         // were provisioned correctly by the API.
         // Safety: the socket does not require structural pinning.
-        let new_socket = unsafe { accept_result.as_mut().get_unchecked_mut() }
+        let new_socket = accept_result
             .new_socket
             .take()
             .ok_or_else(|| Fail::new(libc::EINVAL, "invalid state"))?;
@@ -465,14 +473,19 @@ impl Socket {
     /// Start a pop operation, as intended for use with `IoCompletionPort::do_io_with`. The operation may complete
     /// immediately, in which case an overlapped completion is not scheduled. To indicate this case, this method will
     /// return EAGAIN and update `buffer` according to the number of bytes received.
-    pub fn start_pop(&self, mut pop_state: Pin<&mut PopState>, overlapped: *mut OVERLAPPED) -> Result<(), Fail> {
+    pub fn start_pop(&self, state: Pin<&mut SocketOpState>, overlapped: *mut OVERLAPPED) -> Result<(), Fail> {
+        let pop_state: &mut PopState = match state.get_mut() {
+            SocketOpState::Pop(ref mut pop_state) => pop_state,
+            _ => unreachable!("must be an accept operation"),
+        };
+
         let mut bytes_transferred: u32 = 0;
         let mut flags: u32 = 0;
         let success: bool = unsafe {
             let wsa_buffer: WSABUF = WSABUF {
                 len: pop_state.buffer.len() as u32,
                 // Safety: loading the buffer pointer won't violate pinning invariants.
-                buf: PSTR::from_raw(pop_state.as_mut().get_unchecked_mut().buffer.as_mut_ptr()),
+                buf: PSTR::from_raw(pop_state.buffer.as_mut_ptr()),
             };
 
             // NB winsock service providers are required to capture the entire WSABUF array inline with the call, so
@@ -482,8 +495,8 @@ impl Socket {
                 std::slice::from_ref(&wsa_buffer),
                 Some(&mut bytes_transferred),
                 &mut flags,
-                Some(pop_state.as_mut().get_unchecked_mut().address.as_mut_ptr() as *mut SOCKADDR),
-                Some(&mut pop_state.as_mut().get_unchecked_mut().addr_len),
+                Some(pop_state.address.as_mut_ptr() as *mut SOCKADDR),
+                Some(&mut pop_state.addr_len),
                 Some(overlapped),
                 None,
             );
@@ -497,7 +510,7 @@ impl Socket {
     /// Finish an overlapped pop operation started with start_pop.
     pub fn finish_pop(
         &self,
-        mut pop_state: Pin<&mut PopState>,
+        state: Pin<&mut SocketOpState>,
         result: OverlappedResult,
     ) -> Result<(usize, Option<SocketAddr>), Fail> {
         // Note: the `flags` output of WSARecvFrom is not immediately avialable as written. These can be rehydrated by
@@ -509,14 +522,17 @@ impl Socket {
             return Err(err);
         }
 
+        let pop_state: &mut PopState = match state.get_mut() {
+            SocketOpState::Pop(ref mut pop_state) => pop_state,
+            _ => unreachable!("must be an accept operation"),
+        };
+
         let addr: Option<SocketAddr> = if pop_state.addr_len > 0 {
             // Safety: since we are done with the overlapped API, pinning is no longer required for pop_state. The
             // returned address and addr_len values come from the OS, so they will be valid to pass to socket2.
             unsafe {
                 socket2::SockAddr::new(
-                    std::mem::transmute(std::mem::take(
-                        pop_state.as_mut().get_unchecked_mut().address.assume_init_mut(),
-                    )),
+                    std::mem::transmute(std::mem::take(pop_state.address.assume_init_mut())),
                     pop_state.addr_len,
                 )
             }
@@ -531,16 +547,21 @@ impl Socket {
     /// Start a push operation, as intended for use with `IoCompletionPort::do_io_with`.
     pub fn start_push(
         &self,
-        buffer: Pin<&mut DemiBuffer>,
+        state: Pin<&mut SocketOpState>,
         addr: Option<SocketAddr>,
         overlapped: *mut OVERLAPPED,
     ) -> Result<(), Fail> {
+        let buffer: &mut DemiBuffer = match state.get_mut() {
+            SocketOpState::Push(ref mut buffer) => buffer,
+            _ => unreachable!("must be an accept operation"),
+        };
+
         let mut bytes_transferred: u32 = 0;
         let success: bool = unsafe {
             let wsa_buffer: WSABUF = WSABUF {
                 len: buffer.len() as u32,
                 // Safety: loading the buffer pointer won't violate pinning invariants.
-                buf: PSTR::from_raw(buffer.get_unchecked_mut().as_mut_ptr()),
+                buf: PSTR::from_raw(buffer.as_mut_ptr()),
             };
 
             let addr: Option<socket2::SockAddr> = addr.map(socket2::SockAddr::from);
@@ -570,7 +591,7 @@ impl Socket {
     }
 
     /// Finish a push operation started with start_push.
-    pub fn finish_push(&self, _buffer: Pin<&mut DemiBuffer>, result: OverlappedResult) -> Result<usize, Fail> {
+    pub fn finish_push(&self, result: OverlappedResult) -> Result<usize, Fail> {
         result.ok().and(Ok(result.bytes_transferred as usize))
     }
 }

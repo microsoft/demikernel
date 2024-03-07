@@ -13,7 +13,6 @@ use crate::{
             transport::NetworkTransport,
             unwrap_socketaddr,
         },
-        scheduler::Yielder,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -102,33 +101,30 @@ impl NetworkTransport for SharedCatloopTransport {
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
     /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
     /// the accept succeeds or fails.
-    async fn accept(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        yielder: Yielder,
-    ) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
-        sd.accept(self.runtime.clone(), self.catmem.clone(), &yielder).await
+    async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+        let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
+        match sd.accept(new_port, self.catmem.clone()).await {
+            Ok(new_socket) => Ok(new_socket),
+            Err(e) => {
+                self.runtime.free_ephemeral_port(new_port)?;
+                Err(e)
+            },
+        }
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
     /// asynchronously to connect a queue and performs any necessary multi-queue operations at the libOS-level after
     /// the connect succeeds or fails.
-    async fn connect(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        remote: SocketAddr,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
         // Wait for connect operation to complete.
-        sd.connect(self.runtime.clone(), self.catmem.clone(), remote, &yielder)
-            .await
+        sd.connect(self.catmem.clone(), remote).await
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
     /// and the underlying Catmem queue and performs any necessary multi-queue operations at the libOS-level after
     /// the close succeeds or fails.
-    async fn close(&mut self, sd: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
-        sd.close(self.catmem.clone(), yielder).await
+    async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
+        sd.close(self.catmem.clone()).await
     }
 
     fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
@@ -141,10 +137,9 @@ impl NetworkTransport for SharedCatloopTransport {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         _: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         // Wait for push to complete.
-        sd.push(self.catmem.clone(), buf, yielder).await
+        sd.push(self.catmem.clone(), buf).await
     }
 
     /// Coroutine to pop from a Catloop queue.
@@ -153,9 +148,8 @@ impl NetworkTransport for SharedCatloopTransport {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
-        sd.pop(self.catmem.clone(), buf, size, yielder).await
+        sd.pop(self.catmem.clone(), buf, size).await
     }
 
     fn get_runtime(&self) -> &SharedDemiRuntime {

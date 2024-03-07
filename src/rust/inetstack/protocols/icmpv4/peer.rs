@@ -2,10 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    collections::{
-        async_queue::AsyncQueue,
-        async_value::AsyncValue,
-    },
+    collections::async_queue::AsyncQueue,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -22,25 +19,19 @@ use crate::{
         ipv4::Ipv4Header,
     },
     runtime::{
+        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
             types::MacAddress,
             NetworkRuntime,
         },
-        scheduler::{
-            Yielder,
-            YielderHandle,
-        },
-        timer::UtilityMethods,
+        SharedConditionVariable,
         SharedDemiRuntime,
         SharedObject,
     },
 };
-use ::futures::{
-    pin_mut,
-    FutureExt,
-};
+use ::futures::FutureExt;
 use ::rand::{
     prelude::SmallRng,
     Rng,
@@ -61,9 +52,17 @@ use ::std::{
     },
 };
 
+/// Arbitrary time out for waiting for pings.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
 //==============================================================================
 // Icmpv4Peer
 //==============================================================================
+
+enum InflightRequest {
+    Inflight(SharedConditionVariable),
+    Complete,
+}
 
 ///
 /// Internet Control Message Protocol (ICMP)
@@ -95,11 +94,8 @@ pub struct Icmpv4Peer<N: NetworkRuntime> {
     /// Random number generator
     rng: SmallRng,
 
-    /// Polling coroutine yielder
-    yielder_handle: YielderHandle,
-
     /// Inflight ping requests.
-    inflight: HashMap<(u16, u16), AsyncValue<Result<(), Fail>>>,
+    inflight: HashMap<(u16, u16), InflightRequest>,
 }
 
 #[derive(Clone)]
@@ -115,7 +111,6 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let yielder: Yielder = Yielder::new();
         let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
             transport: transport.clone(),
@@ -125,20 +120,16 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             recv_queue: AsyncQueue::<(Ipv4Header, DemiBuffer)>::default(),
             seq: Wrapping(0),
             rng,
-            yielder_handle: yielder.get_handle(),
-            inflight: HashMap::<(u16, u16), AsyncValue<Result<(), Fail>>>::new(),
+            inflight: HashMap::<(u16, u16), InflightRequest>::new(),
         }));
-        runtime.insert_background_coroutine(
-            "Inetstack::ICMP::background",
-            Box::pin(peer.clone().poll(yielder).fuse()),
-        )?;
+        runtime.insert_background_coroutine("Inetstack::ICMP::background", Box::pin(peer.clone().poll().fuse()))?;
         Ok(peer)
     }
 
     /// Background task for replying to ICMP messages.
-    async fn poll(mut self, yielder: Yielder) {
+    async fn poll(mut self) {
         loop {
-            let (ipv4_hdr, buf): (Ipv4Header, DemiBuffer) = match self.recv_queue.pop(&yielder).await {
+            let (ipv4_hdr, buf): (Ipv4Header, DemiBuffer) = match self.recv_queue.pop(Some(PING_TIMEOUT)).await {
                 Ok(result) => result,
                 Err(_) => break,
             };
@@ -154,10 +145,11 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             let (id, seq_num, dst_ipv4_addr) = match icmpv4_hdr.get_protocol() {
                 Icmpv4Type2::EchoRequest { id, seq_num } => (id, seq_num, ipv4_hdr.get_src_addr()),
                 Icmpv4Type2::EchoReply { id, seq_num } => {
-                    if let Some(result) = self.inflight.get_mut(&(id, seq_num)) {
-                        trace!("Received reply to ping");
-                        result.set(Ok(()));
+                    match self.inflight.get_mut(&(id, seq_num)) {
+                        Some(InflightRequest::Inflight(condition_variable)) => condition_variable.signal(),
+                        _ => continue,
                     }
+                    self.inflight.insert((id, seq_num), InflightRequest::Complete);
                     continue;
                 },
                 _ => {
@@ -166,7 +158,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
                 },
             };
             debug!("initiating ARP query");
-            let dst_link_addr: MacAddress = match self.arp.query(dst_ipv4_addr, &Yielder::new()).await {
+            let dst_link_addr: MacAddress = match self.arp.query(dst_ipv4_addr).await {
                 Ok(dst_link_addr) => dst_link_addr,
                 Err(e) => {
                     warn!("reply_to_ping({}, {}, {}) failed: {:?}", dst_ipv4_addr, id, seq_num, e);
@@ -222,14 +214,13 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
 
     /// Sends a ping to a remote peer.
     pub async fn ping(&mut self, dst_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        let timeout: Duration = timeout.unwrap_or_else(|| Duration::from_millis(5000));
         let id: u16 = self.make_id();
         let seq_num: u16 = self.make_seq_num();
         let echo_request: Icmpv4Type2 = Icmpv4Type2::EchoRequest { id, seq_num };
 
         let t0: Instant = self.runtime.get_now();
         debug!("initiating ARP query");
-        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr, &Yielder::new()).await?;
+        let dst_link_addr: MacAddress = self.arp.query(dst_ipv4_addr).await?;
         debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
 
         let data: DemiBuffer = DemiBuffer::new(datagram::ICMPV4_ECHO_REQUEST_MESSAGE_SIZE);
@@ -241,24 +232,27 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             data,
         );
         self.transport.transmit(Box::new(msg));
-        self.inflight.insert((id, seq_num), AsyncValue::default());
-        let timeout_yielder: Yielder = Yielder::new();
-        let timeout = self.runtime.get_timer().wait(timeout, &timeout_yielder);
-        let mut me: Self = self.clone();
-        let result = me
-            .inflight
-            .get_mut(&(id, seq_num))
-            .expect("just inserted")
-            .get(Yielder::new())
-            .fuse();
-        pin_mut!(result);
-        match result.with_timeout(timeout).await? {
-            // Request completed successfully.
+        let condition_variable: SharedConditionVariable = SharedConditionVariable::default();
+        self.inflight
+            .insert((id, seq_num), InflightRequest::Inflight(condition_variable));
+        match conditional_yield_with_timeout(
+            // Yield into the scheduler until the request completes.
+            async {
+                while let Some(request) = self.inflight.get(&(id, seq_num)) {
+                    match request {
+                        InflightRequest::Inflight(condition_variable) => condition_variable.clone().wait().await,
+                        InflightRequest::Complete => return,
+                    }
+                }
+            },
+            timeout.unwrap_or(PING_TIMEOUT),
+        )
+        .await
+        {
             Ok(_) => {
                 self.inflight.remove(&(id, seq_num));
                 Ok(self.runtime.get_now() - t0)
             },
-            // Request expired.
             Err(_) => {
                 let message: String = format!("timer expired");
                 self.inflight.remove(&(id, seq_num));
@@ -284,12 +278,5 @@ impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
 impl<N: NetworkRuntime> DerefMut for SharedIcmpv4Peer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
-    }
-}
-
-impl<N: NetworkRuntime> Drop for Icmpv4Peer<N> {
-    fn drop(&mut self) {
-        self.yielder_handle
-            .wake_with(Err(Fail::new(libc::ECANCELED, "Closing this peer gracefully")))
     }
 }

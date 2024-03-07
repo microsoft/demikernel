@@ -2,49 +2,33 @@
 // Licensed under the MIT license.
 
 use crate::{
+    collections::async_value::SharedAsyncValue,
     inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
     runtime::{
+        conditional_yield_until,
         fail::Fail,
         network::NetworkRuntime,
-        scheduler::Yielder,
-        timer::SharedTimer,
-        watched::SharedWatchedValue,
     },
 };
 use ::futures::{
-    future::{
-        self,
-        Either,
-        FutureExt,
-    },
     never::Never,
+    pin_mut,
+    select_biased,
+    FutureExt,
 };
 use ::std::time::{
     Duration,
     Instant,
 };
 
-pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<Never, Fail> {
+pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
+    // Watch the retransmission deadline.
+    let mut rtx_deadline_watched: SharedAsyncValue<Option<Instant>> = cb.watch_retransmit_deadline();
+    // Watch the fast retransmit flag.
+    let mut rtx_fast_retransmit_watched: SharedAsyncValue<bool> = cb.congestion_control_watch_retransmit_now_flag();
     loop {
-        // Pin future for timeout retransmission.
-        let mut rtx_deadline_watched: SharedWatchedValue<Option<Instant>> = cb.watch_retransmit_deadline();
-        let rtx_yielder: Yielder = Yielder::new();
         let rtx_deadline: Option<Instant> = rtx_deadline_watched.get();
-        let rtx_deadline_changed = rtx_deadline_watched.watch(rtx_yielder).fuse();
-        futures::pin_mut!(rtx_deadline_changed);
-        let clock_ref: SharedTimer = cb.get_timer();
-        let rtx_future = match rtx_deadline {
-            Some(t) => Either::Left(clock_ref.wait_until(t, &yielder).fuse()),
-            None => Either::Right(future::pending()),
-        };
-        futures::pin_mut!(rtx_future);
-
-        // Pin future for fast retransmission.
-        let mut rtx_fast_retransmit_watched: SharedWatchedValue<bool> =
-            cb.congestion_control_watch_retransmit_now_flag();
-        let retransmit_yielder: Yielder = Yielder::new();
         let rtx_fast_retransmit: bool = rtx_fast_retransmit_watched.get();
-        let rtx_fast_retransmit_changed = rtx_fast_retransmit_watched.watch(retransmit_yielder).fuse();
         if rtx_fast_retransmit {
             // Notify congestion control about fast retransmit.
             cb.congestion_control_on_fast_retransmit();
@@ -53,18 +37,19 @@ pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yie
             cb.retransmit();
             continue;
         }
-        futures::pin_mut!(rtx_fast_retransmit_changed);
 
-        // Since these futures all share a single waker bit, they are all woken whenever one of them triggers.
-        futures::select_biased! {
-            _ = rtx_deadline_changed => continue,
-            _ = rtx_fast_retransmit_changed => continue,
-            _ = rtx_future => {
-                match cb.get_retransmit_deadline() {
-                    Some(timeout) if timeout > cb.get_now() => continue,
-                    None => continue,
-                    _ => {},
-                }
+        // If either changed, wake up.
+        let something_changed = async {
+            select_biased!(
+                _ = rtx_deadline_watched.wait_for_change(None).fuse() => (),
+                _ = rtx_fast_retransmit_watched.wait_for_change(None).fuse() => (),
+            )
+        };
+        pin_mut!(something_changed);
+        match conditional_yield_until(something_changed, rtx_deadline).await {
+            Ok(()) => continue,
+            Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                // Retransmit timeout.
 
                 // Notify congestion control about RTO.
                 // TODO: Is this the best place for this?
@@ -82,6 +67,11 @@ pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yie
                 let rto: Duration = cb.rto();
                 let deadline: Instant = cb.get_now() + rto;
                 cb.set_retransmit_deadline(Some(deadline));
+            },
+            Err(_) => {
+                unreachable!(
+                    "either the retransmit deadline changed or the deadline passed, no other errors are possible!"
+                )
             },
         }
     }

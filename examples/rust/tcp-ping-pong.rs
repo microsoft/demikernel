@@ -19,6 +19,7 @@ use ::std::{
     net::SocketAddr,
     slice,
     str::FromStr,
+    time::Duration,
     u8,
 };
 use log::{
@@ -49,6 +50,8 @@ const BUFFER_SIZE: usize = 64;
 
 /// Number of rounds to execute.
 const NROUNDS: usize = 1024;
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 //======================================================================================================================
 // mksga()
@@ -109,7 +112,7 @@ fn accept_and_wait(libos: &mut LibOS, sockqd: QDesc) -> Result<QDesc> {
         Ok(qt) => qt,
         Err(e) => anyhow::bail!("accept failed: {:?}", e),
     };
-    match libos.wait(qt, None) {
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => Ok(unsafe { qr.qr_value.ares.qd.into() }),
         Ok(_) => anyhow::bail!("unexpected result"),
         Err(e) => anyhow::bail!("operation failed: {:?}", e),
@@ -126,7 +129,7 @@ fn connect_and_wait(libos: &mut LibOS, sockqd: QDesc, remote: SocketAddr) -> Res
         Ok(qt) => qt,
         Err(e) => anyhow::bail!("connect failed: {:?}", e),
     };
-    match libos.wait(qt, None) {
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
         Ok(_) => anyhow::bail!("unexpected result"),
         Err(e) => anyhow::bail!("operation failed: {:?}", e),
@@ -146,7 +149,7 @@ fn push_and_wait(libos: &mut LibOS, sockqd: QDesc, sga: &demi_sgarray_t) -> Resu
         Ok(qt) => qt,
         Err(e) => anyhow::bail!("push failed: {:?}", e),
     };
-    match libos.wait(qt, None) {
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
         Ok(_) => anyhow::bail!("unexpected result"),
         Err(e) => anyhow::bail!("operation failed: {:?}", e),
@@ -169,7 +172,7 @@ fn pop_and_wait(libos: &mut LibOS, sockqd: QDesc, recvbuf: &mut [u8]) -> Result<
             Ok(qt) => qt,
             Err(e) => anyhow::bail!("pop failed: {:?}", e),
         };
-        let sga: demi_sgarray_t = match libos.wait(qt, None) {
+        let sga: demi_sgarray_t = match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
             Ok(_) => anyhow::bail!("unexpected result"),
             Err(e) => anyhow::bail!("operation failed: {:?}", e),

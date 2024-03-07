@@ -58,6 +58,9 @@ use crate::catnap::transport::SharedCatnapTransport;
 // Structures
 //======================================================================================================================
 
+// The following value was chosen arbitrarily.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// LibOS
 pub enum LibOS {
     /// Network LibOS
@@ -377,8 +380,8 @@ impl LibOS {
         #[cfg(feature = "profiler")]
         timer!("demikernel::wait");
         match self {
-            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout),
-            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout),
+            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
         }
     }
 
@@ -387,8 +390,8 @@ impl LibOS {
         #[cfg(feature = "profiler")]
         timer!("demikernel::wait_any");
         match self {
-            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout),
-            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout),
+            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
         }
     }
 
@@ -403,8 +406,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -418,8 +419,6 @@ impl LibOS {
                 LibOS::MemoryLibOS(libos) => libos.sgafree(sga),
             }
         };
-
-        self.poll();
 
         result
     }

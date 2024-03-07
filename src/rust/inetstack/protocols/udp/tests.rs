@@ -4,7 +4,10 @@
 use crate::{
     inetstack::test_helpers::{
         self,
-        engine::SharedEngine,
+        engine::{
+            SharedEngine,
+            DEFAULT_TIMEOUT,
+        },
     },
     runtime::{
         memory::DemiBuffer,
@@ -94,7 +97,7 @@ fn udp_push_pop() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     let alice_qt: QToken = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-    match alice.wait(alice_qt)? {
+    match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
@@ -103,8 +106,8 @@ fn udp_push_pop() -> Result<()> {
     // Receive data from Alice.
     bob.receive(alice.pop_frame()).unwrap();
     let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-    bob.poll();
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
+
+    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Pop(addr, buf)) => (addr, buf),
         _ => anyhow::bail!("Pop failed"),
     };
@@ -143,18 +146,17 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     let qt: QToken = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-    match alice.wait(qt)? {
+    match alice.wait(qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    alice.poll();
 
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
     bob.receive(alice.pop_frame()).unwrap();
     let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
+    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Pop(addr, buf)) => (addr, buf),
         _ => anyhow::bail!("Pop failed"),
     };
@@ -192,18 +194,18 @@ fn udp_ping_pong() -> Result<()> {
     // Send data to Bob.
     let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     let alice_qt: QToken = alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-    match alice.wait(alice_qt)? {
+    match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    alice.poll();
     now += Duration::from_micros(1);
 
     // Receive data from Alice.
     bob.receive(alice.pop_frame()).unwrap();
     let bob_qt: QToken = bob.udp_pop(bob_fd)?;
     bob.poll();
-    let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
+
+    let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Pop(addr, buf)) => (addr, buf),
         _ => anyhow::bail!("Pop failed"),
     };
@@ -215,23 +217,21 @@ fn udp_ping_pong() -> Result<()> {
     // Send data to Alice.
     let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     let bob_qt2: QToken = bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
-    bob.poll();
-    match bob.wait(bob_qt2)? {
+    match bob.wait(bob_qt2, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
     bob.poll();
-
     now += Duration::from_micros(1);
 
     // Receive data from Bob.
     alice.receive(bob.pop_frame()).unwrap();
     let alice_qt: QToken = alice.udp_pop(alice_fd)?;
-    alice.poll();
-    let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match alice.wait(alice_qt)? {
-        (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-        _ => anyhow::bail!("Pop failed"),
-    };
+    let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
+        match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
+            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+            _ => anyhow::bail!("Pop failed"),
+        };
     assert_eq!(remote_addr.unwrap(), bob_addr);
     assert_eq!(received_buf_b[..], buf_b[..]);
 
@@ -326,7 +326,7 @@ fn udp_loop2_push_pop() -> Result<()> {
         // Send data to Bob.
         let buf: DemiBuffer = DemiBuffer::from_slice(&vec![(b % 256) as u8; 32][..]).expect("slice should fit");
         let alice_qt: QToken = alice.udp_pushto(alice_fd, buf.clone(), bob_addr)?;
-        match alice.wait(alice_qt)? {
+        match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
@@ -337,7 +337,7 @@ fn udp_loop2_push_pop() -> Result<()> {
         // Receive data from Alice.
         bob.receive(alice.pop_frame()).unwrap();
         let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-        let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
+        let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Pop(addr, buf)) => (addr, buf),
             _ => anyhow::bail!("Pop failed"),
         };
@@ -389,7 +389,7 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Send data to Bob.
         let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
         let alice_qt: QToken = alice.udp_pushto(alice_fd, buf_a.clone(), bob_addr)?;
-        match alice.wait(alice_qt)? {
+        match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
@@ -400,10 +400,11 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Receive data from Alice.
         bob.receive(alice.pop_frame()).unwrap();
         let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-        let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
-            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-            _ => anyhow::bail!("Pop failed"),
-        };
+        let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
+            match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
+                (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+                _ => anyhow::bail!("Pop failed"),
+            };
         assert_eq!(remote_addr.unwrap(), alice_addr);
         assert_eq!(received_buf_a[..], buf_a[..]);
 
@@ -412,7 +413,7 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Send data to Alice.
         let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
         let bob_qt: QToken = bob.udp_pushto(bob_fd, buf_b.clone(), alice_addr)?;
-        match bob.wait(bob_qt)? {
+        match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
@@ -422,10 +423,11 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Receive data from Bob.
         alice.receive(bob.pop_frame()).unwrap();
         let alice_qt: QToken = alice.udp_pop(alice_fd)?;
-        let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match alice.wait(alice_qt)? {
-            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-            _ => anyhow::bail!("Pop failed"),
-        };
+        let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
+            match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
+                (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+                _ => anyhow::bail!("Pop failed"),
+            };
         assert_eq!(remote_addr.unwrap(), bob_addr);
         assert_eq!(received_buf_b[..], buf_b[..]);
     }
@@ -538,7 +540,7 @@ fn udp_pop_not_bound() -> Result<()> {
     // Send data to Bob.
     let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
     let alice_qt: QToken = alice.udp_pushto(alice_fd, buf, bob_addr)?;
-    match alice.wait(alice_qt)? {
+    match alice.wait(alice_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };

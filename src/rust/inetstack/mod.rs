@@ -30,7 +30,7 @@ use crate::{
             unwrap_socketaddr,
             NetworkRuntime,
         },
-        scheduler::Yielder,
+        poll_yield,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -143,16 +143,15 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             network,
             local_link_addr: local_link_addr,
         }));
-        let yielder: Yielder = Yielder::new();
         let background_task: String = format!("inetstack::poll_recv");
-        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll(yielder).fuse()))?;
+        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll().fuse()))?;
         Ok(me)
     }
 
     /// Scheduler will poll all futures that are ready to make progress.
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
-    pub async fn poll(mut self, yielder: Yielder) {
+    pub async fn poll(mut self) {
         #[cfg(feature = "profiler")]
         timer!("inetstack::poll");
         loop {
@@ -179,10 +178,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
                     }
                 }
             }
-            match yielder.yield_once().await {
-                Ok(()) => continue,
-                Err(_) => break,
-            };
+            poll_yield().await;
         }
     }
 
@@ -210,8 +206,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
 
     #[cfg(test)]
     pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
-        let yielder: Yielder = Yielder::new();
-        self.arp.query(addr, &yielder).await
+        self.arp.query(addr).await
     }
 
     #[cfg(test)]
@@ -354,17 +349,13 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    async fn accept(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        yielder: Yielder,
-    ) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+    async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
         trace!("accept()");
 
         // Search for target queue descriptor.
         match sd {
             Socket::Tcp(socket) => {
-                let socket = self.ipv4.tcp.accept(socket, yielder).await?;
+                let socket = self.ipv4.tcp.accept(socket).await?;
                 let addr = socket.remote().expect("accepted socket must have an endpoint");
                 Ok((Socket::Tcp(socket), addr.into()))
             },
@@ -385,19 +376,14 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    async fn connect(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-        remote: SocketAddr,
-        yielder: Yielder,
-    ) -> Result<(), Fail> {
+    async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
         trace!("connect(): remote={:?}", remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
 
         match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.connect(socket, remote, yielder).await,
+            Socket::Tcp(socket) => self.ipv4.tcp.connect(socket, remote).await,
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }
@@ -412,10 +398,10 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
-    async fn close(&mut self, sd: &mut Self::SocketDescriptor, yielder: Yielder) -> Result<(), Fail> {
+    async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
         match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.close(socket, yielder).await,
-            Socket::Udp(socket) => self.ipv4.udp.close(socket, yielder).await,
+            Socket::Tcp(socket) => self.ipv4.tcp.close(socket).await,
+            Socket::Udp(socket) => self.ipv4.udp.close(socket).await,
         }
     }
 
@@ -433,11 +419,10 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
-        yielder: Yielder,
     ) -> Result<(), Fail> {
         match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.push(socket, buf, yielder).await,
-            Socket::Udp(socket) => self.ipv4.udp.push(socket, buf, addr, yielder).await,
+            Socket::Tcp(socket) => self.ipv4.tcp.push(socket, buf).await,
+            Socket::Udp(socket) => self.ipv4.udp.push(socket, buf, addr).await,
         }
     }
 
@@ -448,11 +433,10 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         buf: &mut DemiBuffer,
         size: usize,
-        yielder: Yielder,
     ) -> Result<Option<SocketAddr>, Fail> {
         match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, buf, size, yielder).await,
-            Socket::Udp(socket) => self.ipv4.udp.pop(socket, buf, size, yielder).await,
+            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, buf, size).await,
+            Socket::Udp(socket) => self.ipv4.udp.pop(socket, buf, size).await,
         }
     }
 

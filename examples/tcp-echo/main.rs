@@ -25,6 +25,7 @@ use server::TcpEchoServer;
 use std::{
     net::SocketAddr,
     str::FromStr,
+    time::Duration,
 };
 
 #[cfg(target_os = "windows")]
@@ -41,6 +42,12 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
 mod client;
 mod server;
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 //======================================================================================================================
 // Program Arguments
