@@ -57,9 +57,15 @@ pub const AF_INET_VALUE: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
-//==============================================================================
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+//======================================================================================================================
 // Program Arguments
-//==============================================================================
+//======================================================================================================================
 
 /// Program Arguments
 #[derive(Debug)]
@@ -113,9 +119,9 @@ impl ProgramArguments {
     }
 }
 
-//==============================================================================
+//======================================================================================================================
 // Application
-//==============================================================================
+//======================================================================================================================
 
 /// Application
 struct Application {
@@ -181,7 +187,7 @@ impl Application {
                 last_log = Instant::now();
             }
 
-            let (i, qr) = match self.libos.wait_any(&qtokens, None) {
+            let (i, qr) = match self.libos.wait_any(&qtokens, Some(DEFAULT_TIMEOUT)) {
                 Ok((i, qr)) => (i, qr),
                 Err(e) => anyhow::bail!("operation failed: {:?}", e),
             };
@@ -193,8 +199,7 @@ impl Application {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    let saddr: SocketAddr = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr })
-                    {
+                    let saddr: SocketAddr = match Self::sockaddr_to_socketaddrv4(&unsafe { qr.qr_value.sga.sga_addr }) {
                         Ok(saddr) => SocketAddr::V4(saddr),
                         Err(e) => {
                             // If error, free scatter-gather array.
@@ -282,7 +287,9 @@ impl Drop for Application {
     }
 }
 
-//==============================================================================
+//======================================================================================================================
+// Main
+//======================================================================================================================
 
 fn main() -> Result<()> {
     let args: ProgramArguments = ProgramArguments::new(

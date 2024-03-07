@@ -19,7 +19,6 @@ use crate::{
             MemoryRuntime,
         },
         queue::downcast_queue,
-        scheduler::Yielder,
         types::demi_sgarray_t,
         Operation,
         OperationResult,
@@ -110,17 +109,14 @@ impl SharedCatmemLibOS {
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
-            let coroutine_factory =
-                |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().close_coroutine(qd, yielder).fuse()) };
-            self.runtime
-                .clone()
-                .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
+            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd).fuse());
+            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
         };
 
         queue.async_close(coroutine_constructor)
     }
 
-    pub async fn close_coroutine(mut self, qd: QDesc, yielder: Yielder) -> (QDesc, OperationResult) {
+    pub async fn close_coroutine(mut self, qd: QDesc) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
         let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
@@ -128,7 +124,7 @@ impl SharedCatmemLibOS {
         };
 
         // Wait for close operation to complete.
-        match queue.do_async_close(yielder).await {
+        match queue.do_async_close().await {
             // Operation completed successfully, thus free resources.
             Ok(()) => {
                 // Release the queue descriptor, even if pushing EoF failed. This will prevent any further
@@ -162,22 +158,19 @@ impl SharedCatmemLibOS {
         }
 
         let task_name: String = format!("Catmem::push for qd={:?}", qd);
-        let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().push_coroutine(qd, buf, yielder).fuse()) };
+        let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
 
-        self.runtime
-            .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
+        self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
     }
 
-    pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer, yielder: Yielder) -> (QDesc, OperationResult) {
+    pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
         let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };
         // Handle result.
-        match queue.do_push(buf, yielder).await {
+        match queue.do_push(buf).await {
             Ok(()) => (qd, OperationResult::Push),
             Err(e) => (qd, OperationResult::Failed(e)),
         }
@@ -191,15 +184,12 @@ impl SharedCatmemLibOS {
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
         let task_name: String = format!("Catmem::pop for qd={:?}", qd);
-        let coroutine_factory =
-            |yielder| -> Pin<Box<Operation>> { Box::pin(self.clone().pop_coroutine(qd, size, yielder).fuse()) };
+        let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
 
-        self.runtime
-            .clone()
-            .insert_coroutine_with_tracking(&task_name, coroutine_factory, qd)
+        self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
     }
 
-    pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>, yielder: Yielder) -> (QDesc, OperationResult) {
+    pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>) -> (QDesc, OperationResult) {
         // Make sure the queue still exists.
         let mut queue: SharedCatmemQueue = match self.get_queue(&qd) {
             Ok(queue) => queue,
@@ -207,7 +197,7 @@ impl SharedCatmemLibOS {
         };
 
         // Wait for pop to complete.
-        let (buf, _) = match queue.do_pop(size, yielder).await {
+        let (buf, _) = match queue.do_pop(size).await {
             Ok(result) => result,
             Err(e) => return (qd, OperationResult::Failed(e)),
         };

@@ -19,6 +19,7 @@ use ::std::{
     net::SocketAddr,
     slice,
     str::FromStr,
+    time::Duration,
 };
 use log::{
     error,
@@ -46,6 +47,7 @@ use ::demikernel::perftools::profiler;
 
 const BUFFER_SIZE: usize = 64;
 const FILL_CHAR: u8 = 0x65;
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 //======================================================================================================================
 // mksga()
@@ -151,7 +153,7 @@ impl TcpServer {
             Err(e) => anyhow::bail!("accept failed: {:?}", e.cause),
         };
 
-        self.accepted_qd = match self.libos.wait(qt, None) {
+        self.accepted_qd = match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT => unsafe { Some(qr.qr_value.ares.qd.into()) },
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("accept failed: {}", qr.qr_ret),
             Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
@@ -170,7 +172,7 @@ impl TcpServer {
                 Err(e) => anyhow::bail!("pop failed: {:?}", e.cause),
             };
 
-            self.sga = match self.libos.wait(qt, None) {
+            self.sga = match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("pop failed: {}", qr.qr_ret),
                 Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
@@ -252,7 +254,7 @@ impl TcpClient {
             Err(e) => anyhow::bail!("connect failed: {:?}", e.cause),
         };
 
-        match self.libos.wait(qt, None) {
+        match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("connect failed: {}", qr.qr_ret),
             Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
@@ -276,7 +278,7 @@ impl TcpClient {
                 Err(e) => anyhow::bail!("push failed: {:?}", e.cause),
             };
 
-            match self.libos.wait(qt, None) {
+            match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("push failed: {}", qr.qr_ret),
                 Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),

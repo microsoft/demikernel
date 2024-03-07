@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
+    collections::async_value::SharedAsyncValue,
     inetstack::protocols::tcp::{
         established::{
             ctrlblk::SharedControlBlock,
@@ -11,62 +12,60 @@ use crate::{
         SeqNumber,
     },
     runtime::{
+        conditional_yield_until,
         fail::Fail,
         memory::DemiBuffer,
         network::NetworkRuntime,
-        scheduler::Yielder,
-        timer::SharedTimer,
-        watched::SharedWatchedValue,
     },
 };
 use ::futures::{
     never::Never,
+    pin_mut,
+    select_biased,
     FutureExt,
 };
 use ::std::{
     cmp,
+    pin::pin,
     time::Duration,
 };
 
-pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Yielder) -> Result<Never, Fail> {
+pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.
-        let cb2 = cb.clone();
-        let mut unsent_seq_watched: SharedWatchedValue<SeqNumber> = cb2.get_unsent_seq_no();
+        let mut unsent_seq_watched: SharedAsyncValue<SeqNumber> = cb.get_unsent_seq_no();
         let unsent_seq: SeqNumber = unsent_seq_watched.get();
-        let unsent_yielder: Yielder = Yielder::new();
-        let unsent_seq_changed = unsent_seq_watched.watch(unsent_yielder).fuse();
-        futures::pin_mut!(unsent_seq_changed);
 
-        let cb3 = cb.clone();
-        let mut send_next_watched: SharedWatchedValue<SeqNumber> = cb3.get_send_next();
+        let mut send_next_watched: SharedAsyncValue<SeqNumber> = cb.get_send_next();
         let send_next: SeqNumber = send_next_watched.get();
-        let send_yielder: Yielder = Yielder::new();
-        let send_next_changed = send_next_watched.watch(send_yielder).fuse();
-        futures::pin_mut!(send_next_changed);
 
         if send_next == unsent_seq {
-            futures::select_biased! {
-                _ = unsent_seq_changed => continue 'top,
-                _ = send_next_changed => continue 'top,
-            }
+            let something_changed = async move {
+                select_biased! {
+                    _ = unsent_seq_watched.wait_for_change(None).fuse() => (),
+                    _ = send_next_watched.wait_for_change(None).fuse() => (),
+                }
+            };
+            pin_mut!(something_changed);
+            match conditional_yield_until(something_changed, None).await {
+                Ok(()) => continue 'top,
+                Err(_) => {
+                    unreachable!("either the sent or unsent sequence number changed, no other errors are possible!")
+                },
+            };
         }
 
         // Okay, we know we have some unsent data past this point. Next, check to see that the
         // remote side has available window.
-        let mut win_sz_watched: SharedWatchedValue<u32> = cb.get_send_window();
+        let mut win_sz_watched: SharedAsyncValue<u32> = cb.get_send_window();
         let win_sz: u32 = win_sz_watched.get();
-        let win_sz_yielder: Yielder = Yielder::new();
-        let win_sz_changed = win_sz_watched.watch(win_sz_yielder).fuse();
-        futures::pin_mut!(win_sz_changed);
 
         // If we don't have any window size at all, we need to transition to PERSIST mode and
         // repeatedly send window probes until window opens up.
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
-            let arp_yielder: Yielder = Yielder::new();
-            let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone(), &arp_yielder).await?;
+            let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
             let buf: DemiBuffer = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
@@ -81,52 +80,37 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Y
             };
             cb.push_unacked_segment(unacked_segment);
 
-            let mut header: TcpHeader = cb.tcp_header();
-            header.seq_num = send_next;
-            let mut cb4 = cb.clone();
-            cb4.emit(header, Some(buf.clone()), remote_link_addr);
-
             // Note that we loop here *forever*, exponentially backing off.
             // TODO: Use the correct PERSIST mode timer here.
             let mut timeout: Duration = Duration::from_secs(1);
             loop {
-                let clock_ref: SharedTimer = cb.get_timer();
-
-                futures::select_biased! {
-                    _ = win_sz_changed => continue 'top,
-                    _ = clock_ref.wait(timeout, &yielder).fuse() => {
-                        timeout *= 2;
-                    }
-                }
-                // Retransmit our window probe.
+                // Create packet.
                 let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = send_next;
-                let mut cb4 = cb.clone();
-                cb4.emit(header, Some(buf.clone()), remote_link_addr);
+                cb.emit(header, Some(buf.clone()), remote_link_addr);
+
+                match win_sz_watched.wait_for_change(Some(timeout)).await {
+                    Ok(_) => continue 'top,
+                    Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => timeout *= 2,
+                    Err(_) => unreachable!(
+                        "either the ack deadline changed or the deadline passed, no other errors are possible!"
+                    ),
+                }
             }
         }
 
         // The remote window is nonzero, but there still may not be room.
-        let mut send_unacked_watched: SharedWatchedValue<SeqNumber> = cb.get_send_unacked();
+        let mut send_unacked_watched: SharedAsyncValue<SeqNumber> = cb.get_send_unacked();
         let send_unacked: SeqNumber = send_unacked_watched.get();
-        let send_unacked_yielder: Yielder = Yielder::new();
-        let send_unacked_changed = send_unacked_watched.watch(send_unacked_yielder).fuse();
-        futures::pin_mut!(send_unacked_changed);
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
         cb.congestion_control_on_cwnd_check_before_send();
-        let mut cwnd_watched: SharedWatchedValue<u32> = cb.congestion_control_get_cwnd();
+        let mut cwnd_watched: SharedAsyncValue<u32> = cb.congestion_control_get_cwnd();
         let cwnd: u32 = cwnd_watched.get();
-        let cwnd_yielder: Yielder = Yielder::new();
-        let cwnd_changed = cwnd_watched.watch(cwnd_yielder).fuse();
-        futures::pin_mut!(cwnd_changed);
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
-        let mut ltci_watched: SharedWatchedValue<u32> = cb.congestion_control_get_limited_transmit_cwnd_increase();
+        let mut ltci_watched: SharedAsyncValue<u32> = cb.congestion_control_get_limited_transmit_cwnd_increase();
         let ltci: u32 = ltci_watched.get();
-        let ltci_yielder: Yielder = Yielder::new();
-        let ltci_changed = ltci_watched.watch(ltci_yielder).fuse();
-        futures::pin_mut!(ltci_changed);
 
         let effective_cwnd: u32 = cwnd + ltci;
         let next_buf_size: usize = cb.unsent_top_size().expect("no buffer in unsent queue");
@@ -137,12 +121,12 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Y
             || (effective_cwnd - sent_data) <= cb.get_mss() as u32
         {
             futures::select_biased! {
-                _ = send_unacked_changed => continue 'top,
-                _ = send_next_changed => continue 'top,
-                _ = win_sz_changed => continue 'top,
-                _ = cwnd_changed => continue 'top,
-                _ = ltci_changed => continue 'top,
-            }
+                _ = pin!(send_unacked_watched.wait_for_change(None).fuse()) => continue 'top,
+                _ = send_next_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = win_sz_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = cwnd_watched.wait_for_change(None).fuse() => continue 'top,
+                _ = ltci_watched.wait_for_change(None).fuse() => continue 'top,
+            };
         }
 
         // Past this point we have data to send and it's valid to send it!
@@ -151,8 +135,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>, yielder: Y
         // TODO: Silly window syndrome - See RFC 1122's discussion of the SWS avoidance algorithm.
 
         // TODO: Link-level concerns don't belong here, we should call an IP-level send routine below.
-        let arp_yielder: Yielder = Yielder::new();
-        let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone(), &arp_yielder).await?;
+        let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
 
         // Form an outgoing packet.
         let max_size: usize = cmp::min(

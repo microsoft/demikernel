@@ -19,6 +19,7 @@ use ::std::{
     net::SocketAddr,
     slice,
     str::FromStr,
+    time::Duration,
 };
 use log::{
     error,
@@ -47,6 +48,7 @@ use ::demikernel::perftools::profiler;
 const BUFFER_SIZE: usize = 64;
 const FILL_CHAR: u8 = 0x65;
 const NSENDS: usize = 1024;
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 //======================================================================================================================
 // mksga()
@@ -145,7 +147,7 @@ impl UdpServer {
                 Ok(qt) => qt,
                 Err(e) => anyhow::bail!("pop failed: {:?}", e),
             };
-            self.sga = match self.libos.wait(qt, None) {
+            self.sga = match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
                 Ok(_) => anyhow::bail!("unexpected result"),
                 Err(e) => anyhow::bail!("operation failed: {:?}", e),
@@ -242,7 +244,7 @@ impl UdpClient {
                     Err(e) => anyhow::bail!("push failed: {:?}", e),
                 };
 
-                match self.libos.wait(qt, None) {
+                match self.libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
                     Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
                     Err(e) => anyhow::bail!("operation failed: {:?}", e),
                     _ => anyhow::bail!("unexpected result"),

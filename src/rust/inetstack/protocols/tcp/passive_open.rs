@@ -35,16 +35,13 @@ use crate::{
         },
     },
     runtime::{
+        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
             types::MacAddress,
             NetworkRuntime,
-        },
-        scheduler::{
-            Yielder,
-            YielderHandle,
         },
         QDesc,
         SharedDemiRuntime,
@@ -54,8 +51,6 @@ use crate::{
 };
 use ::futures::{
     channel::mpsc,
-    pin_mut,
-    select_biased,
     FutureExt,
 };
 use ::libc::{
@@ -90,7 +85,7 @@ pub struct PassiveSocket<N: NetworkRuntime> {
     local_link_addr: MacAddress,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    yielder_handle: YielderHandle,
+
     background_task_qt: Option<QToken>,
 }
 
@@ -114,7 +109,6 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
-        let yielder: Yielder = Yielder::new();
         let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
             connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
@@ -128,11 +122,10 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             tcp_config,
             arp,
             dead_socket_tx,
-            yielder_handle: yielder.get_handle(),
             background_task_qt: None,
         }));
-        let qt: QToken = runtime
-            .insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll(yielder).fuse()))?;
+        let qt: QToken =
+            runtime.insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll().fuse()))?;
         me.background_task_qt = Some(qt);
         Ok(me)
     }
@@ -143,13 +136,13 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
     }
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
-    pub async fn do_accept(&mut self, yielder: Yielder) -> Result<EstablishedSocket<N>, Fail> {
-        self.ready.pop(&yielder).await?
+    pub async fn do_accept(&mut self) -> Result<EstablishedSocket<N>, Fail> {
+        self.ready.pop(None).await?
     }
 
-    async fn poll(mut self, yielder: Yielder) {
+    async fn poll(mut self) {
         loop {
-            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.pop(&yielder).await {
+            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.pop(None).await {
                 Ok(result) => result,
                 Err(_) => break,
             };
@@ -207,21 +200,12 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         let remote_isn = tcp_hdr.seq_num;
 
         // Allocate a new coroutine to send the SYN+ACK and retry if necessary.
-        let yielder: Yielder = Yielder::new();
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         let future = self
             .clone()
-            .send_syn_ack_and_wait_for_ack(
-                remote,
-                remote_isn,
-                local_isn,
-                tcp_hdr,
-                recv_queue.clone(),
-                ack_queue,
-                yielder,
-            )
+            .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, recv_queue.clone(), ack_queue)
             .fuse();
         match self
             .runtime
@@ -301,7 +285,6 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         tcp_hdr: TcpHeader,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
-        yielder: Yielder,
     ) {
         // Set up new inflight accept connection.
         let mut remote_window_scale = None;
@@ -331,57 +314,38 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             }
 
             // Start ack timer.
-            let timeout_yielder: Yielder = Yielder::new();
-            let timeout = self
-                .runtime
-                .get_timer()
-                .wait(handshake_timeout, &timeout_yielder)
-                .fuse();
+
             // Wait for ACK in response.
-            let ack = self
-                .clone()
-                .wait_for_ack(
-                    recv_queue.clone(),
-                    ack_queue.clone(),
-                    remote,
-                    local_isn,
-                    remote_isn,
-                    tcp_hdr.window_size,
-                    remote_window_scale,
-                    mss,
-                    &yielder,
-                )
-                .fuse();
-            // Pin futures.
-            pin_mut!(timeout);
-            pin_mut!(ack);
+            let ack = self.clone().wait_for_ack(
+                recv_queue.clone(),
+                ack_queue.clone(),
+                remote,
+                local_isn,
+                remote_isn,
+                tcp_hdr.window_size,
+                remote_window_scale,
+                mss,
+            );
 
             // Either we get an ack or a timeout.
-            select_biased! {
-                r = ack => match r {
-                    // Got an ack
-                    Ok(socket) => {
-                        self.ready.push(Ok(socket));
-                        return;
-                    },
-                    Err(e) => {
-                        self.ready.push(Err(e));
+            match conditional_yield_with_timeout(ack, handshake_timeout).await {
+                // Got an ack
+                Ok(result) => {
+                    self.ready.push(result);
+                    return;
+                },
+                Err(Fail { errno, cause: _ }) if errno == ETIMEDOUT => {
+                    if handshake_retries > 0 {
+                        handshake_retries = handshake_retries - 1;
+                        continue;
+                    } else {
+                        self.ready.push(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
                         return;
                     }
                 },
-                r = timeout => match r {
-                    Ok(()) if handshake_retries > 0  => {
-                        handshake_retries = handshake_retries - 1;
-                        continue;
-                    },
-                    Ok(()) => {
-                        self.ready.push(Err(Fail::new(ETIMEDOUT, "handshake timeout")));
-                        return;
-                    },
-                    Err(e) => {
-                        self.ready.push(Err(e));
-                        return;
-                    }
+                Err(e) => {
+                    self.ready.push(Err(e));
+                    return;
                 },
             }
         }
@@ -393,7 +357,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         remote_isn: SeqNumber,
         remote: SocketAddrV4,
     ) -> Result<(), Fail> {
-        let remote_link_addr = self.arp.query(remote.ip().clone(), &Yielder::new()).await?;
+        let remote_link_addr = self.arp.query(remote.ip().clone()).await?;
         let mut tcp_hdr = TcpHeader::new(self.local.port(), remote.port());
         tcp_hdr.syn = true;
         tcp_hdr.seq_num = local_isn;
@@ -430,9 +394,8 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         header_window_size: u16,
         remote_window_scale: Option<u8>,
         mss: usize,
-        yielder: &Yielder,
     ) -> Result<EstablishedSocket<N>, Fail> {
-        let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(&yielder).await?;
+        let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(None).await?;
         debug!("Received ACK: {:?}", tcp_hdr);
 
         // Check the ack sequence number.
@@ -508,17 +471,5 @@ impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
 impl<N: NetworkRuntime> DerefMut for SharedPassiveSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
-    }
-}
-
-impl<N: NetworkRuntime> Drop for PassiveSocket<N> {
-    fn drop(&mut self) {
-        if let Some(qt) = self.background_task_qt.take() {
-            self.yielder_handle
-                .wake_with(Err(Fail::new(libc::ECANCELED, "Socket is closing")));
-            if let Err(e) = self.runtime.remove_background_coroutine(qt) {
-                warn!("Could not remove background coroutine: {:?}", e);
-            }
-        }
     }
 }
