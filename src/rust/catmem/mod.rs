@@ -11,6 +11,7 @@ mod ring;
 use self::queue::SharedCatmemQueue;
 use crate::{
     demikernel::config::Config,
+    expect_ok,
     pal::linux::socketaddrv4_to_sockaddr,
     runtime::{
         fail::Fail,
@@ -140,9 +141,7 @@ impl SharedCatmemLibOS {
                 // be eventually released.
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                self.runtime
-                    .free_queue::<SharedCatmemQueue>(&qd)
-                    .expect("queue should exist");
+                expect_ok!(self.runtime.free_queue::<SharedCatmemQueue>(&qd), "queue should exist");
                 (qd, OperationResult::Close)
             },
             // Operation failed, thus warn and return an error.
