@@ -47,7 +47,7 @@ use ::demikernel::perftools::profiler;
 
 const BUFFER_SIZE: usize = 64;
 const FILL_CHAR: u8 = 0x65;
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 //======================================================================================================================
 // mksga()
