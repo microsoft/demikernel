@@ -349,7 +349,13 @@ impl NetworkTransport for SharedCatnapTransport {
                 optval_len,
             )
         } < 0
-        {}
+        {
+            let e: i32 = get_libc_err(io::Error::last_os_error());
+            let cause: String = format!("failed to bind socket: {:?}", e);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(e, &cause));
+        }
+
         if let Err(e) = socket.bind(&local.into()) {
             let cause: String = format!("failed to bind socket: {:?}", e);
             error!("bind(): {}", cause);
