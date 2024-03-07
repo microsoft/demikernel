@@ -7,6 +7,8 @@
 
 use crate::{
     catmem::SharedCatmemLibOS,
+    expect_ok,
+    expect_some,
     runtime::{
         conditional_yield_with_timeout,
         fail::Fail,
@@ -129,10 +131,7 @@ impl SharedMemorySocket {
     /// Attempts to accept a new connection on this socket. On success, returns a new Socket for the accepted connection.
     pub async fn accept(&mut self, new_port: u16, mut catmem: SharedCatmemLibOS) -> Result<(Self, SocketAddr), Fail> {
         // Allocate ephemeral port.
-        let ipv4: Ipv4Addr = *self
-            .local
-            .expect("Should be bound to a local address to accept connections")
-            .ip();
+        let ipv4: Ipv4Addr = *expect_some!(self.local, "Should be bound to a local address to accept connections").ip();
         let new_qd: QDesc = loop {
             // Check if backlog is full.
             if self.pending_request_ids.len() >= self.backlog {
@@ -147,7 +146,7 @@ impl SharedMemorySocket {
 
             // Grab next request from the control duplex pipe.
             let request_id: RequestId =
-                pop_request_id(catmem.clone(), self.catmem_qd.expect("should be connected")).await?;
+                pop_request_id(catmem.clone(), expect_some!(self.catmem_qd, "should be connected")).await?;
 
             // Received a request id so create the new connection. This involves create the new duplex pipe
             // and sending the port number to the remote.
@@ -157,7 +156,7 @@ impl SharedMemorySocket {
             } else {
                 self.pending_request_ids.insert(request_id);
                 break create_pipe(
-                    self.catmem_qd.expect("pipe should have been created"),
+                    expect_some!(self.catmem_qd, "pipe should have been created"),
                     catmem.clone(),
                     &ipv4,
                     new_port,
@@ -253,7 +252,7 @@ impl SharedMemorySocket {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        let qd: QDesc = expect_some!(self.catmem_qd, "socket should be connected");
         // TODO: Remove the copy eventually.
         match catmem.push_coroutine(qd, buf.clone()).await {
             (_, OperationResult::Push) => {
@@ -275,7 +274,7 @@ impl SharedMemorySocket {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
-        let qd: QDesc = self.catmem_qd.expect("socket should be connected");
+        let qd: QDesc = expect_some!(self.catmem_qd, "socket should be connected");
         match catmem.pop_coroutine(qd, Some(size)).await {
             (_, OperationResult::Pop(_, incoming)) => {
                 let len: usize = incoming.len();
@@ -457,9 +456,10 @@ fn extract_port_number(buf: DemiBuffer) -> Result<u16, Fail> {
             error!("extract_port_number(): {:?}", &cause);
             Err(Fail::new(libc::EBADF, &cause))
         },
-        len if len == 2 => Ok(u16::from_ne_bytes(
-            buf.to_vec().try_into().expect("should be the right size"),
-        )),
+        len if len == 2 => Ok(u16::from_ne_bytes(expect_ok!(
+            buf.to_vec().try_into(),
+            "should be the right size"
+        ))),
         len => {
             let cause: String = format!("server sent invalid port number (len={:?})", len);
             error!("extract_port_number(): {:?}", &cause);
