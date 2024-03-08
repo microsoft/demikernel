@@ -35,33 +35,23 @@ pub use dpdk_rs as libdpdk;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    pal::data_structures::SockAddr,
-    runtime::{
-        fail::Fail,
-        memory::MemoryRuntime,
-        network::{
-            ephemeral::EphemeralPorts,
-            socket::SocketId,
-            NetworkQueueTable,
-        },
-        poll::PollFuture,
-        queue::{
-            IoQueue,
-            IoQueueTable,
-        },
-        scheduler::{
-            SharedScheduler,
-            TaskWithResult,
-        },
-        timer::SharedTimer,
-        types::{
-            demi_accept_result_t,
-            demi_opcode_t,
-            demi_qr_value_t,
-            demi_qresult_t,
-        },
+use crate::runtime::{
+    fail::Fail,
+    network::{
+        ephemeral::EphemeralPorts,
+        socket::SocketId,
+        NetworkQueueTable,
     },
+    poll::PollFuture,
+    queue::{
+        IoQueue,
+        IoQueueTable,
+    },
+    scheduler::{
+        SharedScheduler,
+        TaskWithResult,
+    },
+    timer::SharedTimer,
 };
 use ::futures::{
     future::FusedFuture,
@@ -78,7 +68,6 @@ use ::std::{
         AsMut,
         AsRef,
     },
-    mem,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -95,12 +84,6 @@ use ::std::{
         SystemTime,
     },
 };
-
-#[cfg(target_os = "windows")]
-use crate::pal::functions::socketaddrv4_to_sockaddr;
-
-#[cfg(target_os = "linux")]
-use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 //======================================================================================================================
 // Thread local variable
@@ -210,22 +193,19 @@ impl SharedDemiRuntime {
     }
 
     /// This is just a single-token convenience wrapper for wait_any().
-    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<demi_qresult_t, Fail> {
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<(usize, QToken, QDesc, OperationResult), Fail> {
         trace!("wait(): qt={:?}, timeout={:?}", qt, timeout);
 
         // Put the QToken into a single element array.
         let qt_array: [QToken; 1] = [qt];
 
         // Call wait_any() to do the real work.
-        let (offset, qr): (usize, demi_qresult_t) = self.wait_any(&qt_array, timeout)?;
-        debug_assert_eq!(offset, 0);
-        Ok(qr)
+        self.wait_any(&qt_array, timeout)
     }
 
-    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<demi_qresult_t, Fail> {
+    pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<(QDesc, OperationResult), Fail> {
         if let Some((qd, result)) = self.completed_tasks.remove(&qt) {
-            let result: demi_qresult_t = self.create_result(result, qd, qt);
-            return Ok(result);
+            return Ok((qd, result));
         }
         if !THREAD_SCHEDULER.with(|s| s.is_valid_task(&TaskId::from(qt))) {
             let cause: String = format!("{:?} is not a valid queue token", qt);
@@ -248,8 +228,7 @@ impl SharedDemiRuntime {
 
                     // Check whether it matches any of the queue tokens that we are waiting on.
                     if completed_qt == qt {
-                        let result: demi_qresult_t = self.create_result(result, qd, qt);
-                        return Ok(result);
+                        return Ok((qd, result));
                     }
 
                     // If not a queue token that we are waiting on, then insert into our list of completed tasks.
@@ -269,11 +248,15 @@ impl SharedDemiRuntime {
     }
 
     /// Waits until one of the tasks in qts has completed and returns the result.
-    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
+    pub fn wait_any(
+        &mut self,
+        qts: &[QToken],
+        timeout: Duration,
+    ) -> Result<(usize, QToken, QDesc, OperationResult), Fail> {
         for (i, qt) in qts.iter().enumerate() {
             // 1. Check if any of these queue tokens point to already completed tasks.
             if let Some((qd, result)) = self.get_completed_task(&qt) {
-                return Ok((i, self.create_result(result, qd, *qt)));
+                return Ok((i, *qt, qd, result));
             }
 
             // 2. Make sure these queue tokens all point to valid tasks.
@@ -292,7 +275,7 @@ impl SharedDemiRuntime {
         loop {
             // Run for one quanta and if one of our queue tokens completed, then return.
             if let Some((i, qd, result)) = self.run_any(qts) {
-                return Ok((i, self.create_result(result, qd, qts[i])));
+                return Ok((i, qts[i], qd, result));
             }
             // Otherwise, move time forward.
             self.advance_clock_to_now();
@@ -489,83 +472,6 @@ impl SharedDemiRuntime {
         trace!("Check address in use: {:?}", local);
         self.network_table.addr_in_use(local)
     }
-
-    pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {
-        match result {
-            OperationResult::Connect => demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_CONNECT,
-                qr_qd: qd.into(),
-                qr_qt: qt.into(),
-                qr_ret: 0,
-                qr_value: unsafe { mem::zeroed() },
-            },
-            OperationResult::Accept((new_qd, addr)) => {
-                let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
-                let qr_value: demi_qr_value_t = demi_qr_value_t {
-                    ares: demi_accept_result_t {
-                        qd: new_qd.into(),
-                        addr: saddr,
-                    },
-                };
-                demi_qresult_t {
-                    qr_opcode: demi_opcode_t::DEMI_OPC_ACCEPT,
-                    qr_qd: qd.into(),
-                    qr_qt: qt.into(),
-                    qr_ret: 0,
-                    qr_value,
-                }
-            },
-            OperationResult::Push => demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
-                qr_qd: qd.into(),
-                qr_qt: qt.into(),
-                qr_ret: 0,
-                qr_value: unsafe { mem::zeroed() },
-            },
-            OperationResult::Pop(addr, bytes) => match self.into_sgarray(bytes) {
-                Ok(mut sga) => {
-                    if let Some(addr) = addr {
-                        sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
-                    }
-                    let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_POP,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_ret: 0,
-                        qr_value,
-                    }
-                },
-                Err(e) => {
-                    warn!("Operation Failed: {:?}", e);
-                    demi_qresult_t {
-                        qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                        qr_qd: qd.into(),
-                        qr_qt: qt.into(),
-                        qr_ret: e.errno as i64,
-                        qr_value: unsafe { mem::zeroed() },
-                    }
-                },
-            },
-            OperationResult::Close => demi_qresult_t {
-                qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
-                qr_qd: qd.into(),
-                qr_qt: qt.into(),
-                qr_ret: 0,
-                qr_value: unsafe { mem::zeroed() },
-            },
-            OperationResult::Failed(e) => {
-                warn!("Operation Failed: {:?}", e);
-                demi_qresult_t {
-                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
-                    qr_qd: qd.into(),
-                    qr_qt: qt.into(),
-                    qr_ret: e.errno as i64,
-                    qr_value: unsafe { mem::zeroed() },
-                }
-            },
-        }
-    }
 }
 
 impl<T> SharedObject<T> {
@@ -630,9 +536,6 @@ pub async fn poll_yield() {
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
-
-/// Memory Runtime Trait Implementation for POSIX Runtime
-impl MemoryRuntime for SharedDemiRuntime {}
 
 impl Default for SharedDemiRuntime {
     fn default() -> Self {

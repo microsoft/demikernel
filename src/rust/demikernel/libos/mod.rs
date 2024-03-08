@@ -98,13 +98,13 @@ impl LibOS {
         #[allow(unreachable_patterns)]
         let libos: LibOS = match libos_name {
             #[cfg(all(feature = "catnap-libos"))]
-            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap {
-                runtime: runtime.clone(),
-                libos: SharedNetworkLibOS::<SharedCatnapTransport>::new(
-                    runtime.clone(),
-                    SharedCatnapTransport::new(&config, &mut runtime),
-                ),
-            }),
+            LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap(SharedNetworkLibOS::<
+                SharedCatnapTransport,
+            >::new(
+                runtime.clone(),
+                SharedCatnapTransport::new(&config, &mut runtime),
+            ))),
+
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
@@ -112,10 +112,11 @@ impl LibOS {
                 // This is our transport for Catpowder.
                 let inetstack: SharedInetStack<LinuxRuntime> =
                     SharedInetStack::<LinuxRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder {
-                    runtime: runtime.clone(),
-                    libos: SharedNetworkLibOS::<SharedInetStack<LinuxRuntime>>::new(runtime.clone(), inetstack),
-                })
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
+                    SharedInetStack<LinuxRuntime>,
+                >::new(
+                    runtime.clone(), inetstack
+                )))
             },
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {
@@ -124,24 +125,23 @@ impl LibOS {
                 let inetstack: SharedInetStack<SharedDPDKRuntime> =
                     SharedInetStack::<SharedDPDKRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
 
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip {
-                    runtime: runtime.clone(),
-                    libos: SharedNetworkLibOS::<SharedInetStack<SharedDPDKRuntime>>::new(runtime.clone(), inetstack),
-                })
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
+                    SharedInetStack<SharedDPDKRuntime>,
+                >::new(
+                    runtime.clone(), inetstack
+                )))
             },
             #[cfg(feature = "catmem-libos")]
-            LibOSName::Catmem => Self::MemoryLibOS(MemoryLibOS::Catmem {
-                runtime: runtime.clone(),
-                libos: SharedCatmemLibOS::new(&config, runtime.clone()),
-            }),
+            LibOSName::Catmem => {
+                Self::MemoryLibOS(MemoryLibOS::Catmem(SharedCatmemLibOS::new(&config, runtime.clone())))
+            },
             #[cfg(feature = "catloop-libos")]
-            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop {
-                runtime: runtime.clone(),
-                libos: SharedNetworkLibOS::<SharedCatloopTransport>::new(
-                    runtime.clone(),
-                    SharedCatloopTransport::new(&config, runtime.clone()),
-                ),
-            }),
+            LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop(SharedNetworkLibOS::<
+                SharedCatloopTransport,
+            >::new(
+                runtime.clone(),
+                SharedCatloopTransport::new(&config, runtime.clone()),
+            ))),
             _ => panic!("unsupported libos"),
         };
 
