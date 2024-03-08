@@ -132,10 +132,10 @@ impl SharedSocketData {
     }
 
     /// Pop some data on an active established connection.
-    pub async fn pop(&mut self, buf: &mut DemiBuffer, size: usize) -> Result<Option<SocketAddr>, Fail> {
+    pub async fn pop(&mut self, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         match self.deref_mut() {
             SocketData::Inactive(_) => unreachable!("Cannot read on an inactive socket"),
-            SocketData::Active(data) => data.pop(buf, size).await,
+            SocketData::Active(data) => data.pop(size).await,
             SocketData::Passive(_) => unreachable!("Cannot read on a passive socket"),
         }
     }

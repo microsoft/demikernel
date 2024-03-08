@@ -150,15 +150,10 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
     pub async fn pop(
         &mut self,
         socket: &mut SharedUdpSocket<N>,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
-        let (addr, incoming): (SocketAddrV4, DemiBuffer) = socket.pop(size).await?;
-        // TODO: Remove copy.
-        let len: usize = incoming.len();
-        buf.trim(size - len)?;
-        buf.copy_from_slice(&incoming[0..len]);
-        Ok(Some(addr.into()))
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        let (addr, buf) = socket.pop(size).await?;
+        Ok((Some(addr.into()), buf))
     }
 
     /// Consumes the payload from a buffer.

@@ -244,9 +244,9 @@ impl NetworkTransport for SharedCatnapTransport {
     async fn pop(
         &mut self,
         socket: &mut Self::SocketDescriptor,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
         unsafe {
             self.0.iocp.do_io(
                 SocketOpState::Pop(PopState::new(buf.clone())),
@@ -266,7 +266,7 @@ impl NetworkTransport for SharedCatnapTransport {
             } else {
                 trace!("not data received");
             }
-            Ok(sockaddr)
+            Ok((sockaddr, buf))
         })
     }
 
