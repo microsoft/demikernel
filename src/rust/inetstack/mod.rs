@@ -447,7 +447,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<N: NetworkRuntime> MemoryRuntime for InetStack<N> {
+impl<N: NetworkRuntime + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
         self.network.clone_sgarray(sga)
     }

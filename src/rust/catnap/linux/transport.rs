@@ -21,7 +21,10 @@ use crate::{
     demikernel::config::Config,
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         network::transport::NetworkTransport,
         poll_yield,
         DemiRuntime,
@@ -500,3 +503,5 @@ impl NetworkTransport for SharedCatnapTransport {
         &self.runtime
     }
 }
+
+impl MemoryRuntime for SharedCatnapTransport {}

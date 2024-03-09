@@ -8,7 +8,10 @@ use crate::{
     demikernel::config::Config,
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
         network::{
             transport::NetworkTransport,
             unwrap_socketaddr,
@@ -174,3 +177,5 @@ impl DerefMut for SharedCatloopTransport {
         self.0.deref_mut()
     }
 }
+
+impl MemoryRuntime for SharedCatloopTransport {}
