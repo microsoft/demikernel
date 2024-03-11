@@ -487,11 +487,6 @@ impl<T: ?Sized> SharedBox<T> {
 // Static Functions
 //======================================================================================================================
 
-/// Check whether this task (and therefore its waker) is still valid.
-fn is_valid_task_id(task_id: &TaskId) -> bool {
-    THREAD_SCHEDULER.with(|s| s.is_valid_task(task_id))
-}
-
 pub async fn yield_with_timeout(timeout: Duration) {
     timer::wait(timeout).await
 }

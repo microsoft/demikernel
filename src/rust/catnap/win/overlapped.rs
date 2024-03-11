@@ -192,7 +192,7 @@ impl<S: Unpin> IoCompletionPort<S> {
         let result: Result<R, Fail> = match start(pinned_completion.as_mut().get_state(), overlapped) {
             // Operation in progress, pending overlapped completion.
             Ok(()) => {
-                while let Some(cv) = pinned_completion.as_ref().get_cv() {
+                while let Some(mut cv) = pinned_completion.as_ref().get_cv() {
                     cv.wait().await;
                 }
 
@@ -523,7 +523,7 @@ mod tests {
         const COMPLETION_KEY: usize = 123;
         let mut iocp: IoCompletionPort<()> = make_iocp()?;
         let overlapped: OverlappedCompletion<()> = OverlappedCompletion::new(());
-        let cv: SharedConditionVariable = overlapped.condition_variable.clone().unwrap();
+        let mut cv: SharedConditionVariable = overlapped.condition_variable.clone().unwrap();
         pin_mut!(overlapped);
 
         // Insert coroutine

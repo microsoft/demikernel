@@ -246,6 +246,7 @@ impl Scheduler {
         InternalId::from((usize::from(self.current_group_id) + 1) % self.groups.len())
     }
 
+    #[allow(unused)]
     /// Returns whether this task id points to a valid task.
     pub fn is_valid_task(&self, task_id: &TaskId) -> bool {
         if let Some(group) = self.get_group(task_id) {
