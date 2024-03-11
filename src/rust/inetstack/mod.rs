@@ -432,12 +432,11 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     async fn pop(
         &mut self,
         sd: &mut Self::SocketDescriptor,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, buf, size).await,
-            Socket::Udp(socket) => self.ipv4.udp.pop(socket, buf, size).await,
+            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, size).await,
+            Socket::Udp(socket) => self.ipv4.udp.pop(socket, size).await,
         }
     }
 

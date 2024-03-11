@@ -429,7 +429,7 @@ impl NetworkTransport for SharedCatnapTransport {
                         libc::ENOTCONN => break,
                         errno if DemiRuntime::should_retry(errno) => {
                             // Wait for a new incoming event.
-                            data.pop(&mut DemiBuffer::new(0), 0).await?;
+                            data.pop(0).await?;
                             continue;
                         },
                         errno => return Err(Fail::new(errno, "operation failed")),
@@ -469,10 +469,9 @@ impl NetworkTransport for SharedCatnapTransport {
     async fn pop(
         &mut self,
         sd: &mut Self::SocketDescriptor,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
-        self.data_from_sd(sd).pop(buf, size).await
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        self.data_from_sd(sd).pop(size).await
     }
 
     /// Close the socket on the underlying transport. Also unregisters the socket with epoll.

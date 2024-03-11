@@ -149,10 +149,9 @@ impl NetworkTransport for SharedCatloopTransport {
     async fn pop(
         &mut self,
         sd: &mut Self::SocketDescriptor,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
-        sd.pop(self.catmem.clone(), buf, size).await
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        sd.pop(self.catmem.clone(), size).await
     }
 
     fn get_runtime(&self) -> &SharedDemiRuntime {

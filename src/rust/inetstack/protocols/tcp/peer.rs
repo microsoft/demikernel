@@ -186,18 +186,13 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub async fn pop(
         &self,
         socket: &mut SharedTcpSocket<N>,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
         // structure and the SharedTcpQueue will not be freed until this coroutine finishes.
         let incoming: DemiBuffer = socket.pop(Some(size)).await?;
-        let len: usize = incoming.len();
-        // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
-        buf.trim(size - len)?;
-        buf.copy_from_slice(&incoming[0..len]);
-        Ok(None)
+        Ok((None, incoming))
     }
 
     /// Frees an ephemeral port (if any) allocated to a given socket.

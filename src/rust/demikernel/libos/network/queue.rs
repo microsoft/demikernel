@@ -309,22 +309,18 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     pub async fn pop_coroutine(&mut self, size: Option<usize>) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         self.state_machine.may_pop()?;
         let size: usize = size.unwrap_or(limits::RECVBUF_SIZE_MAX);
-        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
 
-        let result = {
-            let mut state_machine: SocketStateMachine = self.state_machine.clone();
-            let mut transport: T = self.transport.clone();
-            let state_tracker = state_machine.while_may_pop().fuse();
-            let operation = transport.pop(&mut self.socket, &mut buf, size).fuse();
-            pin_mut!(state_tracker);
-            pin_mut!(operation);
+        let mut state_machine: SocketStateMachine = self.state_machine.clone();
+        let mut transport: T = self.transport.clone();
+        let state_tracker = state_machine.while_may_pop().fuse();
+        let operation = transport.pop(&mut self.socket, size).fuse();
+        pin_mut!(state_tracker);
+        pin_mut!(operation);
 
-            select_biased! {
-                fail = state_tracker => return Err(fail),
-                result = operation => result,
-            }
-        };
-        Ok((result?, buf))
+        select_biased! {
+            fail = state_tracker => Err(fail),
+            result = operation => result,
+        }
     }
 
     /// Generic function for spawning a control-path coroutine on [self].

@@ -69,9 +69,8 @@ pub trait NetworkTransport: Clone + 'static + MemoryRuntime {
     fn pop(
         &mut self,
         sd: &mut Self::SocketDescriptor,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> impl std::future::Future<Output = Result<Option<SocketAddr>, Fail>>;
+    ) -> impl std::future::Future<Output = Result<(Option<SocketAddr>, DemiBuffer), Fail>>;
 
     /// Asynchronously close a socket.
     fn close(&mut self, sd: &mut Self::SocketDescriptor) -> impl std::future::Future<Output = Result<(), Fail>>;
