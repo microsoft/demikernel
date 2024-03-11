@@ -83,6 +83,7 @@ fn os_build() -> Result<()> {
     // Step 2: Generate bindings for the DPDK headers.
     let bindings: Bindings = Builder::default()
         .clang_arg(&format!("-I{}", include_path))
+        .clang_arg("-std=c11")
         .allowlist_recursively(true)
         .allowlist_type("rte_mbuf")
         .allowlist_type("rte_mempool")
@@ -161,6 +162,7 @@ fn os_build() -> Result<()> {
     // that aren't compiled into the libraries.
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
+    builder.flag("-std=c11");
     builder.flag("-march=native");
     builder.file("inlined.c");
     builder.include(include_path);
@@ -298,6 +300,7 @@ fn os_build() -> Result<()> {
         .allowlist_function("rte_eth_tx_burst")
         .allowlist_function("rte_eth_rx_burst")
         .allowlist_function("rte_eal_init")
+        .clang_arg("-std=c11")
         .clang_arg("-mavx")
         .header("wrapper.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
@@ -312,6 +315,7 @@ fn os_build() -> Result<()> {
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
     builder.pic(true);
+    builder.flag("-std=c11");
     builder.flag("-march=native");
     builder.file("inlined.c");
     for header_location in &header_locations {
