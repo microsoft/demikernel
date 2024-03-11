@@ -11,6 +11,8 @@ mod ring;
 use self::queue::SharedCatmemQueue;
 use crate::{
     demikernel::config::Config,
+    expect_ok,
+    pal::linux::socketaddrv4_to_sockaddr,
     runtime::{
         fail::Fail,
         limits,
@@ -19,7 +21,12 @@ use crate::{
             MemoryRuntime,
         },
         queue::downcast_queue,
-        types::demi_sgarray_t,
+        types::{
+            demi_opcode_t,
+            demi_qr_value_t,
+            demi_qresult_t,
+            demi_sgarray_t,
+        },
         Operation,
         OperationResult,
         SharedDemiRuntime,
@@ -30,11 +37,13 @@ use crate::{
 };
 use ::futures::FutureExt;
 use ::std::{
+    mem,
     ops::{
         Deref,
         DerefMut,
     },
     pin::Pin,
+    time::Duration,
 };
 
 //======================================================================================================================
@@ -132,9 +141,7 @@ impl SharedCatmemLibOS {
                 // be eventually released.
                 // Expect is safe here because we looked up the queue to schedule this coroutine and no other close
                 // coroutine should be able to run due to state machine checks.
-                self.runtime
-                    .free_queue::<SharedCatmemQueue>(&qd)
-                    .expect("queue should exist");
+                expect_ok!(self.runtime.free_queue::<SharedCatmemQueue>(&qd), "queue should exist");
                 (qd, OperationResult::Close)
             },
             // Operation failed, thus warn and return an error.
@@ -149,7 +156,7 @@ impl SharedCatmemLibOS {
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         trace!("push() qd={:?}", qd);
 
-        let buf: DemiBuffer = self.runtime.clone_sgarray(sga)?;
+        let buf: DemiBuffer = self.clone_sgarray(sga)?;
 
         if buf.len() == 0 {
             let cause: String = format!("zero-length buffer (qd={:?})", qd);
@@ -204,6 +211,73 @@ impl SharedCatmemLibOS {
         (qd, OperationResult::Pop(None, buf))
     }
 
+    /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
+    pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
+        let (offset, qt, qd, result) = self.runtime.wait_any(qts, timeout)?;
+        Ok((offset, self.create_result(result, qd, qt)))
+    }
+
+    /// Waits for any operation in an I/O queue.
+    pub fn poll(&mut self) {
+        self.runtime.poll()
+    }
+
+    pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {
+        match result {
+            OperationResult::Connect => unreachable!("Memory libOSes do not support connect"),
+            OperationResult::Accept((_, _)) => unreachable!("Memory libOSes do not support connect"),
+            OperationResult::Push => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_PUSH,
+                qr_qd: qd.into(),
+                qr_qt: qt.into(),
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            OperationResult::Pop(addr, bytes) => match self.into_sgarray(bytes) {
+                Ok(mut sga) => {
+                    if let Some(addr) = addr {
+                        sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
+                    }
+                    let qr_value: demi_qr_value_t = demi_qr_value_t { sga };
+                    demi_qresult_t {
+                        qr_opcode: demi_opcode_t::DEMI_OPC_POP,
+                        qr_qd: qd.into(),
+                        qr_qt: qt.into(),
+                        qr_ret: 0,
+                        qr_value,
+                    }
+                },
+                Err(e) => {
+                    warn!("Operation Failed: {:?}", e);
+                    demi_qresult_t {
+                        qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                        qr_qd: qd.into(),
+                        qr_qt: qt.into(),
+                        qr_ret: e.errno as i64,
+                        qr_value: unsafe { mem::zeroed() },
+                    }
+                },
+            },
+            OperationResult::Close => demi_qresult_t {
+                qr_opcode: demi_opcode_t::DEMI_OPC_CLOSE,
+                qr_qd: qd.into(),
+                qr_qt: qt.into(),
+                qr_ret: 0,
+                qr_value: unsafe { mem::zeroed() },
+            },
+            OperationResult::Failed(e) => {
+                warn!("Operation Failed: {:?}", e);
+                demi_qresult_t {
+                    qr_opcode: demi_opcode_t::DEMI_OPC_FAILED,
+                    qr_qd: qd.into(),
+                    qr_qt: qt.into(),
+                    qr_ret: e.errno as i64,
+                    qr_value: unsafe { mem::zeroed() },
+                }
+            },
+        }
+    }
+
     pub fn get_queue(&self, qd: &QDesc) -> Result<SharedCatmemQueue, Fail> {
         Ok(self.runtime.get_qtable().get::<SharedCatmemQueue>(qd)?.clone())
     }
@@ -240,3 +314,5 @@ impl Drop for CatmemLibOS {
         }
     }
 }
+
+impl MemoryRuntime for SharedCatmemLibOS {}

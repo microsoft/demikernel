@@ -7,6 +7,7 @@
 
 use crate::{
     collections::async_queue::SharedAsyncQueue,
+    expect_some,
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
@@ -135,8 +136,10 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
         self.state = SocketState::Listening(SharedPassiveSocket::new(
-            self.local()
-                .expect("If we were able to prepare, then the socket must be bound"),
+            expect_some!(
+                self.local(),
+                "If we were able to prepare, then the socket must be bound"
+            ),
             backlog,
             self.runtime.clone(),
             recv_queue.clone(),

@@ -176,6 +176,11 @@ impl TcpServer {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("pop failed: {}", qr.qr_ret),
                 Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
+                Err(e) if e.errno == libc::ETIMEDOUT => {
+                    // We haven't heard from the client in a while, so we'll assume it's done.
+                    eprintln!("we haven't heard from the client in a while, aborting");
+                    break;
+                },
                 Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
             };
 

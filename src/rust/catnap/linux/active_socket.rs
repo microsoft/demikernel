@@ -11,6 +11,7 @@ use crate::{
         async_queue::AsyncQueue,
         async_value::SharedAsyncValue,
     },
+    expect_ok,
     runtime::{
         fail::Fail,
         limits,
@@ -84,8 +85,10 @@ impl ActiveSocketData {
                 // Operation completed.
                 Ok(nbytes) => {
                     trace!("data pushed ({:?}/{:?} bytes)", nbytes, buf.len());
-                    buf.adjust(nbytes as usize)
-                        .expect("OS should not have sent more bytes than in the buffer");
+                    expect_ok!(
+                        buf.adjust(nbytes as usize),
+                        "OS should not have sent more bytes than in the buffer"
+                    );
                     if buf.is_empty() {
                         // Done sending this buffer
                         result.set(Some(Ok(())));
@@ -169,16 +172,16 @@ impl ActiveSocketData {
         // Figure out how much data we got.
         let bytes_read: usize = min(incoming_buf.len(), size);
         // Trim the buffer down to the amount that we received.
-        buf.trim(buf.len() - bytes_read)
-            .expect("DemiBuffer must be bigger than size");
+        expect_ok!(buf.trim(buf.len() - bytes_read), "DemiBuffer must be bigger than size");
         // Move it if the buffer isn't empty.
         if !incoming_buf.is_empty() {
             buf.copy_from_slice(&incoming_buf[0..bytes_read]);
         }
         // Trim off everything that we moved.
-        incoming_buf
-            .adjust(bytes_read)
-            .expect("bytes_read will be less than incoming buf len because it is a min of incoming buf len and size ");
+        expect_ok!(
+            incoming_buf.adjust(bytes_read),
+            "bytes_read will be less than incoming buf len because it is a min of incoming buf len and size "
+        );
         // We didn't consume all of the incoming data.
         if !incoming_buf.is_empty() {
             self.recv_queue.push_front(Ok((addr, incoming_buf)));

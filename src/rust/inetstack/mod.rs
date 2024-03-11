@@ -8,6 +8,7 @@
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
+    expect_some,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -356,7 +357,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         match sd {
             Socket::Tcp(socket) => {
                 let socket = self.ipv4.tcp.accept(socket).await?;
-                let addr = socket.remote().expect("accepted socket must have an endpoint");
+                let addr = expect_some!(socket.remote(), "accepted socket must have an endpoint");
                 Ok((Socket::Tcp(socket), addr.into()))
             },
             // This queue descriptor does not concern a TCP socket.
@@ -447,7 +448,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<N: NetworkRuntime> MemoryRuntime for InetStack<N> {
+impl<N: NetworkRuntime + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
         self.network.clone_sgarray(sga)
     }

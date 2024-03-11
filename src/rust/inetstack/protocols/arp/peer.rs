@@ -11,6 +11,7 @@ use super::{
 };
 use crate::{
     collections::async_queue::AsyncQueue,
+    expect_ok,
     inetstack::protocols::ethernet2::{
         EtherType2,
         Ethernet2Header,
@@ -143,7 +144,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                 self.waiters.insert(ipv4_addr, wait_queue);
             }
         }
-        rx.await.expect("Dropped waiter?")
+        expect_ok!(rx.await, "Dropped waiter?")
     }
 
     async fn poll(mut self) {

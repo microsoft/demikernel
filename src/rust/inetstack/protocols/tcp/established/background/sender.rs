@@ -3,6 +3,7 @@
 
 use crate::{
     collections::async_value::SharedAsyncValue,
+    expect_some,
     inetstack::protocols::tcp::{
         established::{
             ctrlblk::SharedControlBlock,
@@ -113,7 +114,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
         let ltci: u32 = ltci_watched.get();
 
         let effective_cwnd: u32 = cwnd + ltci;
-        let next_buf_size: usize = cb.unsent_top_size().expect("no buffer in unsent queue");
+        let next_buf_size: usize = expect_some!(cb.unsent_top_size(), "no buffer in unsent queue");
 
         let sent_data: u32 = (send_next - send_unacked).into();
         if win_sz <= (sent_data + next_buf_size as u32)
@@ -142,9 +143,10 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
             (effective_cwnd - sent_data) as usize,
         );
-        let (segment_data, do_push): (DemiBuffer, bool) = cb
-            .pop_unsent_segment(max_size)
-            .expect("No unsent data with sequence number gap?");
+        let (segment_data, do_push): (DemiBuffer, bool) = expect_some!(
+            cb.pop_unsent_segment(max_size),
+            "No unsent data with sequence number gap?"
+        );
         let mut segment_data_len: u32 = segment_data.len() as u32;
 
         let rto: Duration = cb.rto();

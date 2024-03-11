@@ -33,6 +33,7 @@ use windows::Win32::{
 use crate::{
     catnap::transport::error::translate_ntstatus,
     collections::pin_slab::PinSlab,
+    expect_some,
     runtime::{
         fail::Fail,
         SharedConditionVariable,
@@ -182,7 +183,7 @@ impl<S: Unpin> IoCompletionPort<S> {
         };
         // Grab a reference to the new completion in the pin slab.
         let mut pinned_completion: Pin<&mut OverlappedCompletion<S>> =
-            self.ops.get_pin_mut(pinslab_index).expect("Just inserted this");
+            expect_some!(self.ops.get_pin_mut(pinslab_index), "Just inserted this");
 
         // Set the pinslab index so the I/O processor can remove it later if necessary.
         pinned_completion.as_mut().set_pinslab_index(pinslab_index);
