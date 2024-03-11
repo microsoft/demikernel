@@ -268,21 +268,17 @@ impl SharedMemorySocket {
     pub async fn pop(
         &mut self,
         catmem: SharedCatmemLibOS,
-        buf: &mut DemiBuffer,
         size: usize,
-    ) -> Result<Option<SocketAddr>, Fail> {
+    ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         // It is safe to unwrap here, because we have just checked for the socket state
         // and by construction it should be connected. If not, the socket state machine
         // was not correctly driven.
         let qd: QDesc = expect_some!(self.catmem_qd, "socket should be connected");
         match catmem.pop_coroutine(qd, Some(size)).await {
             (_, OperationResult::Pop(_, incoming)) => {
-                let len: usize = incoming.len();
                 // TODO: Remove this copy. Our API should support passing back a buffer without sending in a buffer.
-                buf.trim(size - len)?;
-                buf.copy_from_slice(&incoming[0..len]);
                 // We do not keep a socket address for the remote socket, so none to return.
-                Ok(None)
+                Ok((None, incoming))
             },
             (_, OperationResult::Failed(e)) => Err(e),
             _ => unreachable!("Should not return anything other than push or fail"),
