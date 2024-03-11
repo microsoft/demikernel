@@ -34,6 +34,7 @@ crossbeam-channel = "0.5.11"
 eui48 = "1.1.0"
 flexi_logger = "0.27.4"
 futures = "0.3.30"
+histogram = "0.9.1"
 libc = "0.2.153"
 log = "0.4.20"
 mimalloc = { version = "0.1.39", default-features = false }
