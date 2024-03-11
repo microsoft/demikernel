@@ -35,23 +35,26 @@ pub use dpdk_rs as libdpdk;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    network::{
-        ephemeral::EphemeralPorts,
-        socket::SocketId,
-        NetworkQueueTable,
+use crate::{
+    expect_some,
+    runtime::{
+        fail::Fail,
+        network::{
+            ephemeral::EphemeralPorts,
+            socket::SocketId,
+            NetworkQueueTable,
+        },
+        poll::PollFuture,
+        queue::{
+            IoQueue,
+            IoQueueTable,
+        },
+        scheduler::{
+            SharedScheduler,
+            TaskWithResult,
+        },
+        timer::SharedTimer,
     },
-    poll::PollFuture,
-    queue::{
-        IoQueue,
-        IoQueueTable,
-    },
-    scheduler::{
-        SharedScheduler,
-        TaskWithResult,
-    },
-    timer::SharedTimer,
 };
 use ::futures::{
     future::FusedFuture,
@@ -224,7 +227,7 @@ impl SharedDemiRuntime {
                 // If an operation task (and not a background task), then check the task to see if it is one of ours.
                 if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                     let (qd, result): (QDesc, OperationResult) =
-                        operation_task.get_result().expect("coroutine not finished");
+                        expect_some!(operation_task.get_result(), "coroutine not finished");
 
                     // Check whether it matches any of the queue tokens that we are waiting on.
                     if completed_qt == qt {
@@ -300,7 +303,7 @@ impl SharedDemiRuntime {
             // If an operation task, then take a look at the result.
             if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
-                    operation_task.get_result().expect("coroutine not finished");
+                    expect_some!(operation_task.get_result(), "coroutine not finished");
 
                 // Check whether it matches any of the queue tokens that we are waiting on.
                 for i in 0..qts.len() {
@@ -325,7 +328,7 @@ impl SharedDemiRuntime {
 
             if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
-                    operation_task.get_result().expect("coroutine not finished");
+                    expect_some!(operation_task.get_result(), "coroutine not finished");
                 self.completed_tasks.insert(qt, (qd, result));
             }
         }

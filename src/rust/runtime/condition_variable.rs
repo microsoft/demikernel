@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::{
+    expect_some,
     runtime,
     runtime::{
         SharedObject,
@@ -141,9 +142,10 @@ impl Future for YieldFuture {
             Poll::Ready(())
         } else {
             if self_.state == YieldState::Running {
-                let task_id: TaskId = runtime::THREAD_SCHEDULER
-                    .with(|s| s.get_task_id())
-                    .expect("All async functions run in a coroutine");
+                let task_id: TaskId = expect_some!(
+                    runtime::THREAD_SCHEDULER.with(|s| s.get_task_id()),
+                    "All async functions run in a coroutine"
+                );
                 self_.cond_var.add_waiter(task_id, context.waker().clone());
             }
             self_.state = YieldState::Yielded;

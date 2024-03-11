@@ -5,9 +5,12 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::{
-    SharedConditionVariable,
-    SharedObject,
+use crate::{
+    expect_some,
+    runtime::{
+        SharedConditionVariable,
+        SharedObject,
+    },
 };
 use ::core::cmp::Reverse;
 use ::std::{
@@ -58,11 +61,8 @@ impl SharedTimer {
             if now < entry.expiry {
                 break;
             }
-            let mut entry: TimerQueueEntry = self
-                .heap
-                .pop()
-                .expect("should have an entry because we were able to peek")
-                .0;
+            let mut entry: TimerQueueEntry =
+                expect_some!(self.heap.pop(), "should have an entry because we were able to peek").0;
             entry.cond_var.broadcast();
         }
         self.now = now;

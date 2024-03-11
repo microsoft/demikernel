@@ -101,6 +101,7 @@ impl MemoryLibOS {
         Ok(qr)
     }
 
+    #[allow(unreachable_patterns, unused_variables)]
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {

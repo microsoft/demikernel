@@ -6,6 +6,7 @@
 //==============================================================================
 
 use crate::{
+    expect_ok,
     inetstack::protocols::ip::IpProtocol,
     runtime::{
         fail::Fail,
@@ -252,9 +253,8 @@ impl Ipv4Header {
 
     /// Serializes the target IPv4 header.
     pub fn serialize(&self, buf: &mut [u8], payload_len: usize) {
-        let buf: &mut [u8; IPV4_HEADER_MIN_SIZE as usize] = buf
-            .try_into()
-            .expect("buffer should be large enough to hold an IPv4 header");
+        let buf: &mut [u8; IPV4_HEADER_MIN_SIZE as usize] =
+            expect_ok!(buf.try_into(), "buffer should be large enough to hold an IPv4 header");
 
         // Version + IHL.
         buf[0] = (self.version << 4) | self.ihl;

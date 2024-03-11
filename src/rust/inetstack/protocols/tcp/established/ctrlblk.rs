@@ -20,6 +20,7 @@ use crate::{
         },
         async_value::SharedAsyncValue,
     },
+    expect_ok,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -554,8 +555,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                         header.syn = false;
                         duplicate -= 1;
                     }
-                    data.adjust(duplicate as usize)
-                        .expect("'data' should contain at least 'duplicate' bytes");
+                    expect_ok!(
+                        data.adjust(duplicate as usize),
+                        "'data' should contain at least 'duplicate' bytes"
+                    );
                 }
             } else {
                 // This segment contains entirely new data, but is later in the sequence than what we're expecting.
@@ -590,8 +593,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                 header.fin = false;
                 excess -= 1;
             }
-            data.trim(excess as usize)
-                .expect("'data' should contain at least 'excess' bytes");
+            expect_ok!(
+                data.trim(excess as usize),
+                "'data' should contain at least 'excess' bytes"
+            );
         }
 
         // From here on, the entire new segment (including any SYN or FIN flag remaining) is in the window.
@@ -857,9 +862,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
     fn hdr_window_size(&self) -> u16 {
         let window_size: u32 = self.get_receive_window_size();
-        let hdr_window_size: u16 = (window_size >> self.window_scale)
-            .try_into()
-            .expect("Window size overflow");
+        let hdr_window_size: u16 = expect_ok!((window_size >> self.window_scale).try_into(), "Window size overflow");
         debug!(
             "Window size -> {} (hdr {}, scale {})",
             (hdr_window_size as u32) << self.window_scale,
@@ -958,8 +961,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     // Trim the end of the new segment and stop checking for out-of-order overlap.
                     let excess: u32 = u32::from(new_end - stored_start) + 1;
                     new_end = new_end - SeqNumber::from(excess);
-                    buf.trim(excess as usize)
-                        .expect("'buf' should contain at least 'excess' bytes");
+                    expect_ok!(
+                        buf.trim(excess as usize),
+                        "'buf' should contain at least 'excess' bytes"
+                    );
                     break;
                 } else {
                     // The new segment starts at or after the start of this out-of-order segment.
@@ -979,8 +984,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     // Adjust the beginning of the new segment and continue on to check the next out-of-order segment.
                     let duplicate: u32 = u32::from(stored_end - new_start);
                     new_start = new_start + SeqNumber::from(duplicate);
-                    buf.adjust(duplicate as usize)
-                        .expect("'buf' should contain at least 'duplicate' bytes");
+                    expect_ok!(
+                        buf.adjust(duplicate as usize),
+                        "'buf' should contain at least 'duplicate' bytes"
+                    );
                     continue;
                 }
             }

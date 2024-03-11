@@ -10,6 +10,7 @@ use crate::{
         active_socket::ActiveSocketData,
         passive_socket::PassiveSocketData,
     },
+    expect_some,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -68,7 +69,7 @@ impl SharedSocketData {
     /// Moves an inactive socket to a passive listening socket.
     pub fn move_socket_to_passive(&mut self) {
         let socket: Socket = match self.deref_mut() {
-            SocketData::Inactive(socket) => socket.take().expect("should have data"),
+            SocketData::Inactive(socket) => expect_some!(socket.take(), "should have data"),
             SocketData::Active(_) => unreachable!("should not be able to move an active socket to a passive one"),
             SocketData::Passive(_) => return,
         };
@@ -78,7 +79,7 @@ impl SharedSocketData {
     /// Moves an inactive socket to an active established socket.
     pub fn move_socket_to_active(&mut self) {
         let socket: Socket = match self.deref_mut() {
-            SocketData::Inactive(socket) => socket.take().expect("should have data"),
+            SocketData::Inactive(socket) => expect_some!(socket.take(), "should have data"),
             SocketData::Active(_) => return,
             SocketData::Passive(_) => unreachable!("should not be able to move a passive socket to an active one"),
         };

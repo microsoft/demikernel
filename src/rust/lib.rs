@@ -180,6 +180,20 @@ macro_rules! dump_test {
     }};
 }
 
+#[macro_export]
+macro_rules! expect_some {
+    ( $var:expr, $ex:expr $( , $arg:expr )* ) => {
+        $var.unwrap_or_else(|| panic!( $ex $(, $arg )* ))
+    };
+}
+
+#[macro_export]
+macro_rules! expect_ok {
+    ( $var:expr, $ex:expr $( , $arg:expr )* ) => {
+        $var.unwrap_or_else(|_| panic!( $ex $(, $arg )* ))
+    };
+}
+
 #[test]
 fn test_ensure() -> Result<(), anyhow::Error> {
     ensure_eq!(1, 1);

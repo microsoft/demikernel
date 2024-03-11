@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use crate::expect_some;
 /// A Task is the abstraction that represents processes in Demikernel. Each Task runs a single async function, which
 /// represents a coroutine, until it completes. The Task then stores the result until get_result is called.
 ///
@@ -140,7 +141,7 @@ impl<R: Unpin + Clone + Any> Task for TaskWithResult<R> {
     }
 
     fn get_id(&self) -> TaskId {
-        self.task_id.expect("should have this set immediately")
+        expect_some!(self.task_id, "should have this set immediately")
     }
 
     fn set_id(&mut self, id: TaskId) {

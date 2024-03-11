@@ -13,6 +13,7 @@
 
 use crate::{
     collections::id_map::IdMap,
+    expect_some,
     runtime::{
         scheduler::{
             group::TaskGroup,
@@ -152,10 +153,10 @@ impl Scheduler {
     }
 
     fn poll_notified_task_and_remove_if_ready(&mut self) -> Option<Box<dyn Task>> {
-        let group: &mut TaskGroup = self
-            .groups
-            .get_mut(self.current_group_id.into())
-            .expect("task group should exist: ");
+        let group: &mut TaskGroup = expect_some!(
+            self.groups.get_mut(self.current_group_id.into()),
+            "task group should exist: "
+        );
         assert!(self.current_running_task.is_none());
         *self.current_running_task = Some(group.unchecked_internal_to_external_id(self.current_task_id));
         assert!(self.current_running_task.is_some());
@@ -350,12 +351,15 @@ impl From<InternalId> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::scheduler::{
-        scheduler::{
-            Scheduler,
-            TaskId,
+    use crate::{
+        expect_some,
+        runtime::scheduler::{
+            scheduler::{
+                Scheduler,
+                TaskId,
+            },
+            task::TaskWithResult,
         },
-        task::TaskWithResult,
     };
     use ::anyhow::Result;
     use ::futures::FutureExt;
@@ -588,9 +592,7 @@ mod tests {
                 String::from("testing"),
                 Box::pin(black_box(DummyCoroutine::default().fuse())),
             );
-            let task_id: TaskId = scheduler
-                .insert_task(task)
-                .expect("couldn't insert future in scheduler");
+            let task_id: TaskId = expect_some!(scheduler.insert_task(task), "couldn't insert future in scheduler");
             black_box(task_id);
         });
     }
