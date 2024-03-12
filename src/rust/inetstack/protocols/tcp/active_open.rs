@@ -191,8 +191,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 
         let rx_window_size: u32 = expect_ok!(
             expect_some!(
-                self.tcp_config
-                    .get_receive_window_size()
+                (self.tcp_config.get_receive_window_size() as u32)
                     .checked_shl(local_window_scale as u32),
                 "TODO: Window size overflow"
             )
@@ -202,7 +201,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 
         let tx_window_size: u32 = expect_ok!(
             expect_some!(
-                (header.window_size).checked_shl(remote_window_scale as u32),
+                (header.window_size as u32).checked_shl(remote_window_scale as u32),
                 "TODO: Window size overflow"
             )
             .try_into(),
