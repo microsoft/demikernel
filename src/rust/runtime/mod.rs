@@ -225,7 +225,7 @@ impl SharedDemiRuntime {
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
                 // If an operation task (and not a background task), then check the task to see if it is one of ours.
-                if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                     let (qd, result): (QDesc, OperationResult) =
                         expect_some!(operation_task.get_result(), "coroutine not finished");
 
@@ -301,7 +301,7 @@ impl SharedDemiRuntime {
             let qt: QToken = boxed_task.get_id().into();
 
             // If an operation task, then take a look at the result.
-            if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+            if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
                     expect_some!(operation_task.get_result(), "coroutine not finished");
 
@@ -326,7 +326,7 @@ impl SharedDemiRuntime {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
-            if let Ok(operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+            if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
                     expect_some!(operation_task.get_result(), "coroutine not finished");
                 self.completed_tasks.insert(qt, (qd, result));

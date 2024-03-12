@@ -92,8 +92,8 @@ impl<R: Unpin + Clone + Any> TaskWithResult<R> {
     }
 
     /// Returns the result of the coroutine once it completes. Returns None if the coroutine is still running.
-    pub fn get_result(&self) -> Option<<Self as TaskWith>::ResultType> {
-        self.result.clone()
+    pub fn get_result(&mut self) -> Option<<Self as TaskWith>::ResultType> {
+        self.result.take()
     }
 }
 
