@@ -26,7 +26,10 @@ pub async fn acknowledger<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> R
                 deadline = value;
                 continue;
             },
-            Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => cb.send_ack(),
+            Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                cb.send_ack();
+                deadline = ack_deadline.get();
+            },
             Err(_) => {
                 unreachable!("either the ack deadline changed or the deadline passed, no other errors are possible!")
             },
