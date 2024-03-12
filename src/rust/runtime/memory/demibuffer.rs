@@ -132,8 +132,8 @@ pub(super) struct MetaData {
     // Various fields for TX offload.
     _tx_offload: MaybeUninit<u64>,
 
-    // Pointer to shared info (rte_mbuf_ext_shared_info).  DPDK uses this for external MBufs.
-    _shinfo: MaybeUninit<u64>,
+    // Pointer to shared info. Used to manage external buffers.
+    shinfo: Option<NonNull<ExternalSharedInfo>>,
 
     // Size of private data (between rte_mbuf struct and the data) in direct MBufs.
     _priv_size: MaybeUninit<u16>,
@@ -141,6 +141,19 @@ pub(super) struct MetaData {
     _timesync: MaybeUninit<u16>,
     // Reserved for dynamic fields.
     _dynfield: MaybeUninit<[u32; DYNFIELD_COUNT]>,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub(super) struct ExternalSharedInfo {
+    // Callback function when the shared count reaches zero.
+    free_callback: fn(*mut u8, usize),
+
+    // Opaque integer passed back to free_callback.
+    opaque: usize,
+
+    // Refcount for the external buffer.
+    refcnt: u16,
 }
 
 /// The minimal set of metadata used by the Demikernel runtime. Used to safely initialize MetaData.
@@ -175,6 +188,9 @@ struct DemiMetaData {
 
     // Pointer to the MetaData of the next segment in this packet's chain (must be NULL in last segment).
     next: Option<NonNull<MetaData>>,
+
+    // Pointer to optional external buffer share info.
+    shinfo: Option<NonNull<ExternalSharedInfo>>,
 }
 
 // Check MetaData structure alignment and size at compile time.
@@ -184,6 +200,9 @@ const _: () = assert!(std::mem::align_of::<MetaData>() == arch::CPU_DATA_CACHE_L
 const _: () = assert!(std::mem::size_of::<MetaData>() == 2 * arch::CPU_DATA_CACHE_LINE_SIZE);
 
 // MetaData "offload flags".  These exactly mimic those of DPDK MBufs.
+
+// Indicates that this MetaData use an external buffer (i.e., the data may not follow the MetaData)
+const METADATA_F_EXTERNAL: u64 = 1 << 61;
 
 // Indicates this MetaData struct doesn't have the actual data directly attached, but rather this MetaData's buf_addr
 // points to another MetaData's directly attached data.
@@ -195,6 +214,43 @@ impl MetaData {
     // We should rework the implementation of inc_refcnt() and dec_refcnt() to use atomic operations if this changes.
     // Also, we intentionally don't check for refcnt overflow.  This matches DPDK's behavior, which doesn't check for
     // reference count overflow either (we're highly unlikely to ever have 2^16 copies of the same data).
+
+    // Hydrate a MetaData instance from the subset of values used by Demikernel.
+    fn new(values: DemiMetaData) -> Self {
+        MetaData {
+            buf_addr: values.buf_addr,
+            data_off: values.data_off,
+            refcnt: values.refcnt,
+            nb_segs: values.nb_segs,
+            ol_flags: values.ol_flags,
+            pkt_len: values.pkt_len,
+            data_len: values.data_len,
+            buf_len: values.buf_len,
+            pool: values.pool,
+            next: values.next,
+            shinfo: values.shinfo,
+
+            // Unused fields
+            _buf_iova: MaybeUninit::uninit(),
+            _port: MaybeUninit::uninit(),
+            _packet_type: MaybeUninit::uninit(),
+            _vlan_tci: MaybeUninit::uninit(),
+            _various1: MaybeUninit::uninit(),
+            _various2: MaybeUninit::uninit(),
+            _vlan_tci_outer: MaybeUninit::uninit(),
+            _tx_offload: MaybeUninit::uninit(),
+            _timesync: MaybeUninit::uninit(),
+            _dynfield: MaybeUninit::uninit(),
+
+            // Initialize select MetaData fields in debug builds for sanity checking.
+            // We check in debug builds that they aren't accidentally messed with.
+            _priv_size: if cfg!(debug_assertions) {
+                MaybeUninit::new(0)
+            } else {
+                MaybeUninit::uninit()
+            },
+        }
+    }
 
     // Increments the reference count and returns the new value.
     #[inline]
@@ -209,6 +265,11 @@ impl MetaData {
         // We should never decrement an already zero reference count.  Check this on debug builds.
         debug_assert_ne!(self.refcnt, 0);
         self.refcnt -= 1;
+        self.refcnt
+    }
+
+    // Load the reference count, returning it.
+    fn load_refcnt(&self) -> u16 {
         self.refcnt
     }
 
@@ -302,41 +363,57 @@ impl DemiBuffer {
     // status quo, and assume this allocation never fails.
     pub fn new(capacity: u16) -> Self {
         // Allocate some memory off the heap.
-        let (temp, buf_addr): (&mut MaybeUninit<MetaData>, &mut [MaybeUninit<u8>]) = allocate_metadata_data(capacity);
+        let (metadata_buf, buffer): (&mut MaybeUninit<MetaData>, &mut [MaybeUninit<u8>]) =
+            allocate_metadata_data(capacity);
 
+        Self::new_from_parts(metadata_buf, buffer.as_mut_ptr(), capacity, None)
+    }
+
+    /// Create a new buffer in the specified memory.
+    ///
+    /// Panics: panics if `buffer.len() < size_of::<MetaData>()` or
+    /// `buffer.len() > (u16::MAX as usize) + size_of::<MetaData>()`
+    ///
+    /// Safety: buffer must be aligned to [`MetaData`].
+    pub(super) unsafe fn new_in(buffer: &mut [MaybeUninit<u8>], pool: Option<NonNull<BufferPool>>) -> Self {
+        let (metadata_buf, buffer): (&mut MaybeUninit<MetaData>, &mut [MaybeUninit<u8>]) =
+            split_buffer_for_metadata(buffer);
+
+        assert!(buffer.len() <= (u16::MAX as usize));
+
+        Self::new_from_parts(metadata_buf, buffer.as_mut_ptr(), buffer.len() as u16, pool)
+    }
+
+    /// Create a new DemiBuffer in the specified memory, with relevant configuration values.
+    fn new_from_parts(
+        metadata_buf: &mut MaybeUninit<MetaData>,
+        buf_addr: *mut MaybeUninit<u8>,
+        capacity: u16,
+        pool: Option<NonNull<BufferPool>>,
+    ) -> Self {
         let buf_addr: *mut u8 = if capacity > 0 {
             // TODO: casting the MaybeUninit away can cause UB (when deref'd). Change the exposed data type from
             // DemiBuffer to better expose un/initialized values.
-            buf_addr.as_mut_ptr().cast()
+            buf_addr.cast()
         } else {
             ptr::null_mut()
         };
 
-        Self::new_in(temp, buf_addr, capacity, None)
-    }
-
-    /// Create a new DemiBuffer in the specified memory, with relevant configuration values.
-    pub(super) fn new_in(
-        metadata_buf: &mut MaybeUninit<MetaData>,
-        buf_addr: *mut u8,
-        capacity: u16,
-        pool: Option<NonNull<BufferPool>>,
-    ) -> Self {
-        let metadata: NonNull<MetaData> = NonNull::from(init_metadata(
-            metadata_buf,
-            DemiMetaData {
-                buf_addr,
-                data_off: 0,
-                refcnt: 1,
-                nb_segs: 1,
-                ol_flags: 0,
-                pkt_len: capacity as u32,
-                data_len: capacity,
-                buf_len: capacity,
-                next: None,
-                pool,
-            },
-        ));
+        let metadata: NonNull<MetaData> = NonNull::from(metadata_buf.write(MetaData::new(DemiMetaData {
+            buf_addr,
+            data_off: 0,
+            refcnt: 1,
+            nb_segs: 1,
+            ol_flags: 0,
+            pkt_len: capacity as u32,
+            // Note: this is not consistent with DPDK behavior: presumably, zero bytes of data are initialized at this
+            // point
+            data_len: capacity,
+            buf_len: capacity,
+            next: None,
+            pool,
+            shinfo: None,
+        })));
 
         // Embed the buffer type into the lower bits of the pointer.
         let tagged: NonNull<MetaData> = metadata.with_addr(metadata.addr() | Tag::Heap);
@@ -345,6 +422,45 @@ impl DemiBuffer {
         DemiBuffer {
             tagged_ptr: tagged,
             _phantom: PhantomData,
+        }
+    }
+
+    /// Attach an external buffer to this DemiBuffer. This operation is only valid for singleton direct buffers. Once
+    /// attached, the external buffer will take the place of the existing data buffer.
+    pub(super) fn attach_external_buffer(
+        &mut self,
+        buffer: &mut [MaybeUninit<u8>],
+        shinfo: &mut ExternalSharedInfo,
+    ) -> Result<(), Fail> {
+        if buffer.len() > u16::MAX as usize {
+            return Err(Fail::new(libc::EMSGSIZE, "buffer is too large"));
+        }
+
+        match self.get_tag() {
+            Tag::Heap => {
+                if !self.is_direct() {
+                    return Err(Fail::new(
+                        libc::EINVAL,
+                        "only direct buffers may attach to external buffers",
+                    ));
+                }
+
+                let metadata: &mut MetaData = self.as_metadata();
+                if metadata.load_refcnt() != 1 {
+                    return Err(Fail::new(libc::EINVAL, "buffer has too many referents"));
+                }
+
+                metadata.shinfo = Some(NonNull::from(shinfo));
+                metadata.buf_addr = buffer.as_mut_ptr().cast();
+                metadata.buf_len = buffer.len() as u16;
+                metadata.pkt_len = metadata.buf_len as u32;
+                metadata.data_len = metadata.buf_len;
+
+                Ok(())
+            },
+
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => Err(Fail::new(libc::ENOTSUP, "not supported")),
         }
     }
 
@@ -696,48 +812,26 @@ impl DemiBuffer {
             },
         }
     }
+
+    ///
+    /// **Description**
+    ///
+    /// Checks if the target [DemiBuffer] is a direct buffer.
+    ///
+    /// **Return Value**
+    ///
+    /// If the target [DemiBuffer] is a direct buffer (i.e., is neither external nor indirect), `true` is returned.
+    /// Otherwise, `false` is returned instead.
+    ///
+    fn is_direct(&self) -> bool {
+        let metadata: &MetaData = self.as_metadata();
+        (metadata.ol_flags & (METADATA_F_EXTERNAL | METADATA_F_INDIRECT)) == 0
+    }
 }
 
 // ----------------
 // Helper Functions
 // ----------------
-
-/// Initialize an allocated MetaData structure with `values`, returning the initialized reference.
-fn init_metadata(mut metadata: &mut MaybeUninit<MetaData>, values: DemiMetaData) -> &mut MetaData {
-    metadata.write(MetaData {
-        buf_addr: values.buf_addr,
-        data_off: values.data_off,
-        refcnt: values.refcnt,
-        nb_segs: values.nb_segs,
-        ol_flags: values.ol_flags,
-        pkt_len: values.pkt_len,
-        data_len: values.data_len,
-        buf_len: values.buf_len,
-        pool: values.pool,
-        next: values.next,
-
-        // Unused fields
-        _buf_iova: MaybeUninit::uninit(),
-        _port: MaybeUninit::uninit(),
-        _packet_type: MaybeUninit::uninit(),
-        _vlan_tci: MaybeUninit::uninit(),
-        _various1: MaybeUninit::uninit(),
-        _various2: MaybeUninit::uninit(),
-        _vlan_tci_outer: MaybeUninit::uninit(),
-        _tx_offload: MaybeUninit::uninit(),
-        _shinfo: MaybeUninit::uninit(),
-        _timesync: MaybeUninit::uninit(),
-        _dynfield: MaybeUninit::uninit(),
-
-        // Initialize select MetaData fields in debug builds for sanity checking.
-        // We check in debug builds that they aren't accidentally messed with.
-        _priv_size: if cfg!(debug_assertions) {
-            MaybeUninit::new(0)
-        } else {
-            MaybeUninit::uninit()
-        },
-    })
-}
 
 // Allocates the MetaData (plus the space for any directly attached data) for a new heap-allocated DemiBuffer.
 fn allocate_metadata_data<'a>(direct_data_size: u16) -> (&'a mut MaybeUninit<MetaData>, &'a mut [MaybeUninit<u8>]) {
@@ -748,22 +842,37 @@ fn allocate_metadata_data<'a>(direct_data_size: u16) -> (&'a mut MaybeUninit<Met
     let layout: Layout = Layout::from_size_align(amount, arch::CPU_DATA_CACHE_LINE_SIZE).unwrap();
 
     // Safety: This is safe, as we check for a null return value before dereferencing "allocation".
-    let allocation: *mut u8 = unsafe { alloc(layout) };
+    let allocation: *mut MaybeUninit<u8> = unsafe { alloc(layout) }.cast();
     if allocation.is_null() {
         handle_alloc_error(layout);
     }
 
-    // Safety: the offset value is within bounds of the original allocation. Because the allocation is contiguous, it
-    // will not wrap. The allocation is limited to u16, so isize overflow is not an issue.
-    let data_buf: *mut u8 = unsafe { allocation.offset(size_of::<MetaData>() as isize) };
+    // Safety: the slice is valid based on the constraints to the above allocation.
+    let buffer: &mut [MaybeUninit<u8>] = unsafe { slice::from_raw_parts_mut(allocation, amount) };
 
-    (
-        // Safety: allocation is not null. It is properly aligned per `layout` and does not require initialization.
-        unsafe { &mut *allocation.cast::<MaybeUninit<MetaData>>() },
-        // Safety: the slice range is valid based on the above allocation. MaybeUninit does not require initialization.
-        // The memory is not aliased after allocation. The size is limited to u16::MAX, so cannot overflow isize.
-        unsafe { slice::from_raw_parts_mut(data_buf.cast(), direct_data_size as usize) },
-    )
+    // Safety: buffer is aligned to CPU_DATA_CACHE_LINE_SIZE (which is overaligned for MetaData) and will always be no
+    // smaller than MetaData.
+    unsafe { split_buffer_for_metadata(buffer) }
+}
+
+/// Split a buffer into (metadata, data) parts.
+///
+/// Panics: panics if `buffer.len() < size_of::<MetaData>()`.
+///
+/// Safety: `buffer` must be suitably aligned for and large enough to hold a [`MetaData`].
+unsafe fn split_buffer_for_metadata<'a>(
+    buffer: &'a mut [MaybeUninit<u8>],
+) -> (&'a mut MaybeUninit<MetaData>, &'a mut [MaybeUninit<u8>]) {
+    assert!(buffer.len() >= size_of::<MetaData>());
+
+    let (metadata_buf, data_buf) = buffer.split_at_mut(size_of::<MetaData>());
+
+    // Safety: buffer is not null and properly aligned since it comes from a reference. MaybeUninit does not
+    // require initialization.
+    let metadata: &mut MaybeUninit<MetaData> =
+        unsafe { &mut *metadata_buf.as_mut_ptr().cast::<MaybeUninit<MetaData>>() };
+
+    (metadata, data_buf)
 }
 
 // Frees the MetaData (plus the space for any directly attached data) for a heap-allocated DemiBuffer.
@@ -809,7 +918,7 @@ impl Clone for DemiBuffer {
 
                 // Allocate space for a new MetaData struct without any direct data.  This will become the clone.
                 let (head, _): (&mut MaybeUninit<MetaData>, _) = allocate_metadata_data(0);
-                let mut temp: NonNull<MaybeUninit<MetaData>> = NonNull::from(head);
+                let mut temp: NonNull<MaybeUninit<MetaData>> = NonNull::from(&*head);
 
                 // This might be a chain of buffers.  If so, we'll walk the list.  There is always a first one.
                 let mut next_entry: Option<NonNull<MetaData>> = Some(self.get_ptr::<MetaData>());
@@ -854,9 +963,10 @@ impl Clone for DemiBuffer {
                             data_len: original.data_len,
                             ol_flags,
                             pool: None,
+                            shinfo: None,
                         };
 
-                        init_metadata(clone, values);
+                        clone.write(MetaData::new(values));
 
                         // Special case for zero-length buffers.
                         if original.buf_len == 0 {
@@ -981,37 +1091,46 @@ impl Drop for DemiBuffer {
                     // Remember the next entry in the chain (if any) before we potentially free the current one.
                     next_entry = metadata.next;
                     metadata.next = None;
+                    metadata.nb_segs = 1;
 
                     // Decrement the reference count.
                     if metadata.dec_refcnt() == 0 {
                         // See if the data is directly attached, or indirectly attached.
                         if metadata.ol_flags & METADATA_F_INDIRECT != 0 {
-                            // This is an indirect buffer.  Find the direct buffer that holds the actual data.
-                            let offset: isize = -(size_of::<MetaData>() as isize);
-                            let direct: &mut MetaData = unsafe {
-                                // Safety: The offset call is safe as `offset` is known to be "in bounds" for buf_addr.
-                                // Safety: The as_mut call is safe as the pointer is aligned, dereferenceable, and
-                                // points to an initialized MetaData instance.
-                                // The returned address is known to be non-Null, so the unwrap call will never panic.
-                                metadata.buf_addr.offset(offset).cast::<MetaData>().as_mut().unwrap()
-                            };
+                            if let Some(pool) = metadata.pool {
+                                // TODO: Decref on the original; return to the pool if necessary. Probably use shinfo to
+                                // find original.
+                                // ALSO: are all pool bufs indirect in DPDK? If so, this will need refactoring, as we
+                                // don't need to deal with shinfo.
+                            } else {
+                                // This is an indirect buffer.  Find the direct buffer that holds the actual data.
+                                let offset: isize = -(size_of::<MetaData>() as isize);
+                                let direct: &mut MetaData = unsafe {
+                                    // Safety: The offset call is safe as `offset` is known to be "in bounds" for buf_addr.
+                                    // Safety: The as_mut call is safe as the pointer is aligned, dereferenceable, and
+                                    // points to an initialized MetaData instance.
+                                    // The returned address is known to be non-Null, so the unwrap call will never panic.
+                                    metadata.buf_addr.offset(offset).cast::<MetaData>().as_mut().unwrap()
+                                };
 
-                            // Restore buf_addr and buf_len to their unattached values.
-                            metadata.buf_addr = null_mut();
-                            metadata.buf_len = 0;
-                            metadata.ol_flags = metadata.ol_flags & !METADATA_F_INDIRECT;
+                                // Restore buf_addr and buf_len to their unattached values.
+                                metadata.buf_addr = null_mut();
+                                metadata.buf_len = 0;
+                                metadata.ol_flags = metadata.ol_flags & !METADATA_F_INDIRECT;
 
-                            // Drop our reference to the direct buffer, and free it if ours was the last one.
-                            if direct.dec_refcnt() == 0 {
-                                // Verify this is a direct buffer in debug builds.
-                                debug_assert_eq!(direct.ol_flags & METADATA_F_INDIRECT, 0);
+                                // Drop our reference to the direct buffer, and free it if ours was the last one.
+                                if direct.dec_refcnt() == 0 {
+                                    // Verify this is a direct buffer in debug builds.
+                                    debug_assert_eq!(direct.ol_flags & METADATA_F_INDIRECT, 0);
 
-                                // Convert to NonNull<MetaData> type.
-                                // Safety: The NonNull::new_unchecked call is safe, as `direct` is known to be non-null.
-                                let allocation: NonNull<MetaData> = unsafe { NonNull::new_unchecked(direct as *mut _) };
+                                    // Convert to NonNull<MetaData> type.
+                                    // Safety: The NonNull::new_unchecked call is safe, as `direct` is known to be non-null.
+                                    let allocation: NonNull<MetaData> =
+                                        unsafe { NonNull::new_unchecked(direct as *mut _) };
 
-                                // Free the direct buffer.
-                                free_metadata_data(allocation);
+                                    // Free the direct buffer.
+                                    free_metadata_data(allocation);
+                                }
                             }
                         }
 
@@ -1063,21 +1182,19 @@ impl TryFrom<&[u8]> for DemiBuffer {
         };
 
         // Set field values as appropriate.
-        let metadata: NonNull<MetaData> = NonNull::from(init_metadata(
-            temp,
-            DemiMetaData {
-                buf_addr,
-                data_off: 0,
-                refcnt: 1,
-                nb_segs: 1,
-                ol_flags: 0,
-                pkt_len: size as u32,
-                data_len: size,
-                buf_len: size,
-                next: None,
-                pool: None,
-            },
-        ));
+        let metadata: NonNull<MetaData> = NonNull::from(temp.write(MetaData::new(DemiMetaData {
+            buf_addr,
+            data_off: 0,
+            refcnt: 1,
+            nb_segs: 1,
+            ol_flags: 0,
+            pkt_len: size as u32,
+            data_len: size,
+            buf_len: size,
+            next: None,
+            pool: None,
+            shinfo: None,
+        })));
 
         // Embed the buffer type into the lower bits of the pointer.
         let tagged: NonNull<MetaData> = metadata.with_addr(metadata.addr() | Tag::Heap);

@@ -3,6 +3,7 @@
 
 mod buffer_pool;
 mod demibuffer;
+mod memory_pool;
 
 //==============================================================================
 // Imports
