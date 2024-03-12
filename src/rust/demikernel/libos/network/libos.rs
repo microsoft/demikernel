@@ -402,7 +402,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        let buf: DemiBuffer = self.transport.clone_sgarray(sga)?;
+        let buf: DemiBuffer = self.transport.into_buf(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
