@@ -452,7 +452,6 @@ mod tests {
 
     #[test]
     fn test_small_power_2_one_page() -> Result<()> {
-        // Test small buffers in single "page"
         run_basic_test(
             BasicTestSettings {
                 pool_size: 128,
@@ -469,7 +468,6 @@ mod tests {
 
     #[test]
     fn test_small_power_2_many_pages() -> Result<()> {
-        // Test small buffers in multiple "pages"
         run_basic_test(
             BasicTestSettings {
                 pool_size: 2048,
@@ -485,8 +483,23 @@ mod tests {
     }
 
     #[test]
+    fn test_small_odd_size_many_pages() -> Result<()> {
+        run_basic_test(
+            BasicTestSettings {
+                pool_size: 2048,
+                page_size: 128,
+                buf_size_ea: 59,
+                buf_align: 1,
+            },
+            BasicTestResults {
+                number_of_buffers: 32,
+                bytes_left_over: 10,
+            },
+        )
+    }
+
+    #[test]
     fn test_small_power_2_overaligned() -> Result<()> {
-        // Test small over-aligned buffers.
         run_basic_test(
             BasicTestSettings {
                 pool_size: 2048,
@@ -503,7 +516,6 @@ mod tests {
 
     #[test]
     fn test_large_power_2_one_page() -> Result<()> {
-        // Test single page-sized buffer
         run_basic_test(
             BasicTestSettings {
                 pool_size: 128,
@@ -520,7 +532,6 @@ mod tests {
 
     #[test]
     fn test_large_power_2_many_pages() -> Result<()> {
-        // Test multiple two-page buffers
         run_basic_test(
             BasicTestSettings {
                 pool_size: 2048,
@@ -532,8 +543,24 @@ mod tests {
                 number_of_buffers: 8,
                 bytes_left_over: 0,
             },
-        )?;
+        )
+    }
 
-        Ok(())
+    #[test]
+    fn test_large_odd_size_many_pages() -> Result<()> {
+        // NB 2048 bytes could fit 9 227-byte buffers if they were packed; each buffer here will get over-aligned to
+        // 256 bytes to prevent any buffer spanning three pages.
+        run_basic_test(
+            BasicTestSettings {
+                pool_size: 2048,
+                page_size: 128,
+                buf_size_ea: 227,
+                buf_align: 1,
+            },
+            BasicTestResults {
+                number_of_buffers: 8,
+                bytes_left_over: 29,
+            },
+        )
     }
 }
