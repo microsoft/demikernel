@@ -12,9 +12,8 @@ pub mod queue;
 // Imports
 //======================================================================================================================
 
-#[cfg(all(feature = "catnap-libos"))]
-use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
 use crate::{
+    demikernel::libos::network::libos::SharedNetworkLibOS,
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
