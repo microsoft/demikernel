@@ -116,6 +116,7 @@ impl SharedCatnapTransport {
 
         expect_ok!(
             runtime.insert_background_coroutine(
+                #[cfg(debug)]
                 "catnap::transport::epoll",
                 Box::pin({
                     let mut me: Self = me.clone();

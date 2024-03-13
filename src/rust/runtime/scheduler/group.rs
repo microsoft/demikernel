@@ -74,6 +74,7 @@ impl TaskGroup {
         };
         waker_page_ref.clear(waker_page_offset);
         if let Some(task) = self.tasks.remove_unpin(pin_slab_index) {
+            #[cfg(debug)]
             trace!(
                 "remove(): name={:?}, id={:?}, pin_slab_index={:?}",
                 task.get_name(),
@@ -92,6 +93,7 @@ impl TaskGroup {
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
     pub fn insert(&mut self, task: Box<dyn Task>) -> Option<TaskId> {
+        #[cfg(debug)]
         let task_name: String = task.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: usize = self.tasks.insert(task)?;
@@ -106,6 +108,7 @@ impl TaskGroup {
         };
         waker_page_ref.initialize(waker_page_offset);
 
+        #[cfg(debug)]
         trace!(
             "insert(): name={:?}, id={:?}, pin_slab_index={:?}",
             task_name,

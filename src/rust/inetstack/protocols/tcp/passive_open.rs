@@ -126,8 +126,11 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             dead_socket_tx,
             background_task_qt: None,
         }));
-        let qt: QToken =
-            runtime.insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll().fuse()))?;
+        let qt: QToken = runtime.insert_background_coroutine(
+            #[cfg(debug)]
+            "passive_listening::poll",
+            Box::pin(me.clone().poll().fuse()),
+        )?;
         me.background_task_qt = Some(qt);
         Ok(me)
     }
@@ -209,10 +212,11 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             .clone()
             .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, recv_queue.clone(), ack_queue)
             .fuse();
-        match self
-            .runtime
-            .insert_background_coroutine("Inetstack::TCP::passiveopen::background", Box::pin(future))
-        {
+        match self.runtime.insert_background_coroutine(
+            #[cfg(debug)]
+            "Inetstack::TCP::passiveopen::background",
+            Box::pin(future),
+        ) {
             Ok(qt) => qt,
             Err(e) => {
                 let cause = "Could not allocate coroutine for passive open";

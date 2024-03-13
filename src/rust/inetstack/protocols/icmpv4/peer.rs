@@ -122,7 +122,11 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             rng,
             inflight: HashMap::<(u16, u16), InflightRequest>::new(),
         }));
-        runtime.insert_background_coroutine("Inetstack::ICMP::background", Box::pin(peer.clone().poll().fuse()))?;
+        runtime.insert_background_coroutine(
+            #[cfg(debug)]
+            "Inetstack::ICMP::background",
+            Box::pin(peer.clone().poll().fuse()),
+        )?;
         Ok(peer)
     }
 

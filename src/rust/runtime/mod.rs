@@ -164,31 +164,48 @@ impl SharedDemiRuntime {
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_io_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
-        self.insert_coroutine(task_name, coroutine)
+    pub fn insert_io_coroutine(
+        &mut self,
+        #[cfg(debug)] task_name: &str,
+        coroutine: Pin<Box<Operation>>,
+    ) -> Result<QToken, Fail> {
+        self.insert_coroutine(
+            #[cfg(debug)]
+            task_name,
+            coroutine,
+        )
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler
     pub fn insert_background_coroutine(
         &mut self,
-        task_name: &str,
+        #[cfg(debug)] task_name: &str,
         coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
     ) -> Result<QToken, Fail> {
-        self.insert_coroutine(task_name, coroutine)
+        self.insert_coroutine(
+            #[cfg(debug)]
+            task_name,
+            coroutine,
+        )
     }
 
     /// Inserts a coroutine of type T and task
     pub fn insert_coroutine<R: Unpin + Clone + Any>(
         &mut self,
-        task_name: &str,
+        #[cfg(debug)] task_name: &str,
         coroutine: Pin<Box<dyn FusedFuture<Output = R>>>,
     ) -> Result<QToken, Fail> {
+        #[cfg(debug)]
         trace!("Inserting coroutine: {:?}", task_name);
-        let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name.to_string(), coroutine);
+        let task: TaskWithResult<R> = TaskWithResult::<R>::new(
+            #[cfg(debug)]
+            task_name.to_string(),
+            coroutine,
+        );
         match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
             Some(task_id) => Ok(task_id.into()),
             None => {
-                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                let cause: String = format!("cannot schedule coroutine");
                 error!("insert_background_coroutine(): {}", cause);
                 Err(Fail::new(libc::EAGAIN, &cause))
             },
@@ -222,6 +239,7 @@ impl SharedDemiRuntime {
         loop {
             if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
                 // Perform bookkeeping for the completed and removed task.
+                #[cfg(debug)]
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
                 // If an operation task (and not a background task), then check the task to see if it is one of ours.
@@ -297,6 +315,7 @@ impl SharedDemiRuntime {
     pub fn run_any(&mut self, qts: &[QToken]) -> Option<(usize, QDesc, OperationResult)> {
         if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
             // Perform bookkeeping for the completed and removed task.
+            #[cfg(debug)]
             trace!("Removing coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
@@ -323,6 +342,7 @@ impl SharedDemiRuntime {
     pub fn poll(&mut self) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
         for boxed_task in THREAD_SCHEDULER.with(|s| s.clone().poll_all()) {
+            #[cfg(debug)]
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 

@@ -201,7 +201,11 @@ fn arp_cache_timeout() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &local_mac, &local_ipv4, &remote_mac, &remote_ipv4)?;
 
     let coroutine = Box::pin(engine.clone().arp_query(other_remote_ipv4).fuse());
-    let qt: QToken = engine.get_runtime().clone().insert_coroutine("arp query", coroutine)?;
+    let qt: QToken = engine.get_runtime().clone().insert_coroutine(
+        #[cfg(debug)]
+        "arp query",
+        coroutine,
+    )?;
     engine.poll();
     engine.poll();
 

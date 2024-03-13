@@ -206,9 +206,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::accept for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.accept(coroutine_constructor)
@@ -256,9 +261,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::connect for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, remote).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.connect(coroutine_constructor)
@@ -295,9 +305,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::close for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.close(coroutine_constructor)
@@ -363,9 +378,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::push for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.push(coroutine_constructor)
@@ -405,9 +425,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::pushto for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pushto_coroutine(qd, buf, remote).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.push(coroutine_constructor)
@@ -445,9 +470,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
+            #[cfg(debug)]
             let task_name: String = format!("NetworkLibOS::pop for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime.clone().insert_io_coroutine(
+                #[cfg(debug)]
+                &task_name,
+                coroutine,
+            )
         };
 
         queue.pop(coroutine_constructor)

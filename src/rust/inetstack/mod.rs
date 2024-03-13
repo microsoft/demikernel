@@ -144,8 +144,13 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             network,
             local_link_addr: local_link_addr,
         }));
+        #[cfg(debug)]
         let background_task: String = format!("inetstack::poll_recv");
-        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll().fuse()))?;
+        runtime.insert_background_coroutine(
+            #[cfg(debug)]
+            &background_task,
+            Box::pin(me.clone().poll().fuse()),
+        )?;
         Ok(me)
     }
 

@@ -109,6 +109,7 @@ impl SharedCatnapTransport {
         let mut me2: Self = me.clone();
         expect_ok!(
             runtime.insert_background_coroutine(
+                #[cfg(debug)]
                 "catnap::transport::epoll",
                 Box::pin(async move { me2.poll().await }.fuse()),
             ),
