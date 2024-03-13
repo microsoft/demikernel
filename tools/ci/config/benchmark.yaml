@@ -1,0 +1,306 @@
+catnap:
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario1:
+      bufsize: 64
+      nclients: 2
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario2:
+      bufsize: 64
+      nclients: 3
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario3:
+      bufsize: 64
+      nclients: 4
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario4:
+      bufsize: 64
+      nclients: 5
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario5:
+      bufsize: 64
+      nclients: 6
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario6:
+      bufsize: 64
+      nclients: 7
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario7:
+      bufsize: 64
+      nclients: 8
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario8:
+      bufsize: 64
+      nclients: 9
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario9:
+      bufsize: 64
+      nclients: 10
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario10:
+      bufsize: 64
+      nclients: 11
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario11:
+      bufsize: 64
+      nclients: 12
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario12:
+      bufsize: 64
+      nclients: 13
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario13:
+      bufsize: 64
+      nclients: 14
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario14:
+      bufsize: 64
+      nclients: 15
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario15:
+      bufsize: 64
+      nclients: 16
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario16:
+      bufsize: 64
+      nclients: 17
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario17:
+      bufsize: 64
+      nclients: 18
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario18:
+      bufsize: 64
+      nclients: 19
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario19:
+      bufsize: 64
+      nclients: 20
+      nrequests: 1000000
+      run_mode: concurrent
+catnip:
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario1:
+      bufsize: 64
+      nclients: 2
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario2:
+      bufsize: 64
+      nclients: 3
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario3:
+      bufsize: 64
+      nclients: 4
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario4:
+      bufsize: 64
+      nclients: 5
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario5:
+      bufsize: 64
+      nclients: 6
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario6:
+      bufsize: 64
+      nclients: 7
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario7:
+      bufsize: 64
+      nclients: 8
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario8:
+      bufsize: 64
+      nclients: 9
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario9:
+      bufsize: 64
+      nclients: 10
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario10:
+      bufsize: 64
+      nclients: 11
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario11:
+      bufsize: 64
+      nclients: 12
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario12:
+      bufsize: 64
+      nclients: 13
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario13:
+      bufsize: 64
+      nclients: 14
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario14:
+      bufsize: 64
+      nclients: 15
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario15:
+      bufsize: 64
+      nclients: 16
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario16:
+      bufsize: 64
+      nclients: 17
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario17:
+      bufsize: 64
+      nclients: 18
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario18:
+      bufsize: 64
+      nclients: 19
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario19:
+      bufsize: 64
+      nclients: 20
+      nrequests: 1000000
+      run_mode: concurrent
+catpowder:
+  tcp_echo:
+    scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario1:
+      bufsize: 64
+      nclients: 2
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario2:
+      bufsize: 64
+      nclients: 3
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario3:
+      bufsize: 64
+      nclients: 4
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario4:
+      bufsize: 64
+      nclients: 5
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario5:
+      bufsize: 64
+      nclients: 6
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario6:
+      bufsize: 64
+      nclients: 7
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario7:
+      bufsize: 64
+      nclients: 8
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario8:
+      bufsize: 64
+      nclients: 9
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario9:
+      bufsize: 64
+      nclients: 10
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario10:
+      bufsize: 64
+      nclients: 11
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario11:
+      bufsize: 64
+      nclients: 12
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario12:
+      bufsize: 64
+      nclients: 13
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario13:
+      bufsize: 64
+      nclients: 14
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario14:
+      bufsize: 64
+      nclients: 15
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario15:
+      bufsize: 64
+      nclients: 16
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario16:
+      bufsize: 64
+      nclients: 17
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario17:
+      bufsize: 64
+      nclients: 18
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario18:
+      bufsize: 64
+      nclients: 19
+      nrequests: 1000000
+      run_mode: concurrent
+    scenario19:
+      bufsize: 64
+      nclients: 20
+      nrequests: 1000000
+      run_mode: concurrent
