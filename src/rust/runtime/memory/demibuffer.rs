@@ -76,6 +76,7 @@ use ::std::{
     },
     slice,
 };
+use std::rc::Rc;
 
 // Buffer Metadata.
 // This is defined to match a DPDK MBuf (rte_mbuf) in order to potentially use the same code for some DemiBuffer
@@ -126,7 +127,7 @@ pub(super) struct MetaData {
     buf_len: u16,
 
     // Pointer to memory pool (rte_mempool) from which mbuf was allocated.
-    pool: Option<NonNull<MemoryPool>>,
+    pool: Option<Rc<MemoryPool>>,
 
     // Second cache line (64 bytes) begins here.
 
@@ -175,7 +176,7 @@ struct DemiMetaData {
     buf_len: u16,
 
     // Pointer to memory pool (rte_mempool) from which mbuf was allocated.
-    pool: Option<NonNull<MemoryPool>>,
+    pool: Option<Rc<MemoryPool>>,
 
     // Pointer to the MetaData of the next segment in this packet's chain (must be NULL in last segment).
     next: Option<NonNull<MetaData>>,
@@ -186,6 +187,7 @@ struct DemiMetaData {
 // be used.  So, if the alignment assert is firing, change the value in the align() to match CPU_DATA_CACHE_LINE_SIZE.
 const _: () = assert!(std::mem::align_of::<MetaData>() == arch::CPU_DATA_CACHE_LINE_SIZE);
 const _: () = assert!(std::mem::size_of::<MetaData>() == 2 * arch::CPU_DATA_CACHE_LINE_SIZE);
+const _: () = assert!(std::mem::size_of::<Option<Rc<MemoryPool>>>() == std::mem::size_of::<*const ()>());
 
 // MetaData "offload flags".  These exactly mimic those of DPDK MBufs.
 
@@ -355,13 +357,13 @@ impl DemiBuffer {
     /// Note that currently `DemiBuffer` carries static lifetime, so the `BufferPool` must also meet this requirement.
     /// Possibly this requirement could be relaxed with more buffer reference types, or buffers which carry an explicit
     /// lifetime. Until a compelling use case arises, this will cap to `'static`.
-    pub fn new_in_pool(pool: &'static BufferPool) -> Option<Self> {
+    pub fn new_in_pool(pool: &BufferPool) -> Option<Self> {
         let buffer: PoolBuf = match pool.pool().get() {
             Some(buffer) => buffer,
             None => return None,
         };
 
-        let (mut buffer, pool): (NonNull<[MaybeUninit<u8>]>, &'static MemoryPool) = PoolBuf::into_raw(buffer);
+        let (mut buffer, pool): (NonNull<[MaybeUninit<u8>]>, Rc<MemoryPool>) = PoolBuf::into_raw(buffer);
 
         // Safety: the buffer size and alignment requirements are enforced by BufferPool.
         let (metadata_buf, buffer): (&mut MaybeUninit<MetaData>, &mut [MaybeUninit<u8>]) =
@@ -373,7 +375,7 @@ impl DemiBuffer {
             metadata_buf,
             buffer.as_mut_ptr(),
             buffer.len() as u16,
-            Some(NonNull::from(pool)),
+            Some(pool),
         ))
     }
 
@@ -382,7 +384,7 @@ impl DemiBuffer {
         metadata_buf: &mut MaybeUninit<MetaData>,
         buf_addr: *mut MaybeUninit<u8>,
         capacity: u16,
-        pool: Option<NonNull<MemoryPool>>,
+        pool: Option<Rc<MemoryPool>>,
     ) -> Self {
         let buf_addr: *mut u8 = if capacity > 0 {
             // TODO: casting the MaybeUninit away can cause UB (when deref'd). Change the exposed data type from
@@ -811,17 +813,17 @@ unsafe fn split_buffer_for_metadata<'a>(
 }
 
 // Frees the MetaData (plus the space for any directly attached data) for a heap-allocated DemiBuffer.
-fn free_metadata_data(buffer: NonNull<MetaData>) {
-    let (amount, pool): (usize, Option<NonNull<MemoryPool>>) = {
+fn free_metadata_data(mut buffer: NonNull<MetaData>) {
+    let (amount, pool): (usize, Option<Rc<MemoryPool>>) = {
         // Safety: This is safe, as `buffer` is aligned, dereferenceable, and we don't let `metadata` escape this function.
-        let metadata: &MetaData = unsafe { buffer.as_ref() };
+        let metadata: &mut MetaData = unsafe { buffer.as_mut() };
 
         // Determine the size of the original allocation.
         // Note that this code currently assumes we're not using a "private data" feature akin to DPDK's.
         // Safety: _priv_size will be initialized when debug_assertions is turned on.
         debug_assert_eq!(unsafe { metadata._priv_size.assume_init() }, 0);
 
-        (size_of::<MetaData>() + metadata.buf_len as usize, metadata.pool)
+        (size_of::<MetaData>() + metadata.buf_len as usize, metadata.pool.take())
     };
 
     // Drop the instance.
@@ -836,7 +838,6 @@ fn free_metadata_data(buffer: NonNull<MetaData>) {
             // `buffer` will also be valid and dereferenceable. The `MetaData` buffer is created from
             // `PoolBuf::into_raw` by the constructor, so the buffer may be passed back to `PoolBuf::from_raw`.
             unsafe {
-                let pool: &MemoryPool = pool.as_ref();
                 let pool_layout: Layout = pool.layout();
                 let mem_slice: &mut [MaybeUninit<u8>] =
                     slice::from_raw_parts_mut(buffer.cast::<MaybeUninit<u8>>().as_ptr(), pool_layout.size());
