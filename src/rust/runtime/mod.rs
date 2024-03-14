@@ -53,7 +53,6 @@ use crate::{
             SharedScheduler,
             TaskWithResult,
         },
-        timer::SharedTimer,
     },
 };
 use ::futures::{
@@ -96,8 +95,6 @@ thread_local! {
 /// Each Demikernel thread has its own instance of the scheduler stored in a thread local variable for access from
 /// different coroutines. It is important to note that this is NEVER accessed directly from outside of the runtime.
 static THREAD_SCHEDULER: SharedScheduler = SharedScheduler::default();
-/// This is our shared sense of time. It is explicitly moved forward ONLY by the runtime and used to trigger time outs.
-static THREAD_TIME: SharedTimer = SharedTimer::default();
 }
 
 //======================================================================================================================
@@ -150,10 +147,7 @@ impl DemiRuntime {
 impl SharedDemiRuntime {
     #[cfg(test)]
     pub fn new(now: Instant) -> Self {
-        THREAD_TIME.with(|s| {
-            s.clone().set_time(now);
-        });
-
+        timer::global_set_time(now);
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
@@ -418,7 +412,7 @@ impl SharedDemiRuntime {
 
     /// Moves time forward deterministically.
     pub fn advance_clock(&mut self, now: Instant) {
-        THREAD_TIME.with(|t| t.clone().advance_clock(now));
+        timer::global_advance_clock(now)
     }
 
     /// Moves time forward to the current real time.
@@ -431,7 +425,7 @@ impl SharedDemiRuntime {
 
     /// Gets the current time according to our internal timer.
     pub fn get_now(&self) -> Instant {
-        THREAD_TIME.with(|t| t.now())
+        timer::global_get_time()
     }
 
     /// Checks if an identifier is in use and returns the queue descriptor if it is.
@@ -499,18 +493,14 @@ fn is_valid_task_id(task_id: &TaskId) -> bool {
 }
 
 pub async fn yield_with_timeout(timeout: Duration) {
-    let timer_cond: SharedConditionVariable = SharedConditionVariable::default();
-    THREAD_TIME.with(|t| t.clone().wait(timeout, timer_cond.clone())).await
+    timer::wait(timeout).await
 }
 
 /// Yield until either the condition completes or we time out. If the timeout is 0, then run
 pub async fn conditional_yield_with_timeout<F: Future>(condition: F, timeout: Duration) -> Result<F::Output, Fail> {
-    let mut timer_cond: SharedConditionVariable = SharedConditionVariable::default();
     select_biased! {
-        result = pin!(condition.fuse()) => {
-            timer_cond.cancel();
-            Ok(result)},
-        _ = THREAD_TIME.with(|t| {t.clone().wait(timeout, timer_cond.clone()).fuse()}) => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
+        result = pin!(condition.fuse()) => Ok(result),
+        _ = timer::wait(timeout).fuse() => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
     }
 }
 
@@ -518,12 +508,9 @@ pub async fn conditional_yield_with_timeout<F: Future>(condition: F, timeout: Du
 /// the condition completes.
 pub async fn conditional_yield_until<F: Future>(condition: F, expiry: Option<Instant>) -> Result<F::Output, Fail> {
     if let Some(expiry) = expiry {
-        let mut timer_cond: SharedConditionVariable = SharedConditionVariable::default();
         select_biased! {
-            result = pin!(condition.fuse()) => {
-                timer_cond.cancel();
-                Ok(result)},
-            _ = THREAD_TIME.with(|t| {t.clone().wait_until(expiry, timer_cond.clone()).fuse()}) => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
+            result = pin!(condition.fuse()) => Ok(result),
+            _ = timer::wait_until(expiry).fuse() => Err(Fail::new(libc::ETIMEDOUT, "a conditional wait timed out"))
         }
     } else {
         Ok(condition.await)
@@ -542,11 +529,7 @@ pub async fn poll_yield() {
 
 impl Default for SharedDemiRuntime {
     fn default() -> Self {
-        let now: Instant = Instant::now();
-        THREAD_TIME.with(|s| {
-            s.clone().set_time(now);
-        });
-
+        timer::global_set_time(Instant::now());
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
             ephemeral_ports: EphemeralPorts::default(),
