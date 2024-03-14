@@ -88,16 +88,6 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Thread local variable
-//======================================================================================================================
-
-thread_local! {
-/// Each Demikernel thread has its own instance of the scheduler stored in a thread local variable for access from
-/// different coroutines. It is important to note that this is NEVER accessed directly from outside of the runtime.
-static THREAD_SCHEDULER: SharedScheduler = SharedScheduler::default();
-}
-
-//======================================================================================================================
 // Constants
 //======================================================================================================================
 
@@ -111,6 +101,8 @@ const TIMER_RESOLUTION: usize = 64;
 pub struct DemiRuntime {
     /// Shared IoQueueTable.
     qtable: IoQueueTable,
+    /// Shared coroutine scheduler.
+    scheduler: SharedScheduler,
     /// Shared ephemeral port allocator.
     ephemeral_ports: EphemeralPorts,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
@@ -150,6 +142,7 @@ impl SharedDemiRuntime {
         timer::global_set_time(now);
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
+            scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
             ts_iters: 0,
@@ -179,7 +172,7 @@ impl SharedDemiRuntime {
     ) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
         let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name.to_string(), coroutine);
-        match THREAD_SCHEDULER.with(|s| s.clone().insert_task(task)) {
+        match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -204,7 +197,7 @@ impl SharedDemiRuntime {
         if let Some((qd, result)) = self.completed_tasks.remove(&qt) {
             return Ok((qd, result));
         }
-        if !THREAD_SCHEDULER.with(|s| s.is_valid_task(&TaskId::from(qt))) {
+        if !self.scheduler.is_valid_task(&TaskId::from(qt)) {
             let cause: String = format!("{:?} is not a valid queue token", qt);
             warn!("wait_any: {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
@@ -214,7 +207,7 @@ impl SharedDemiRuntime {
         self.advance_clock_to_now();
 
         loop {
-            if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
+            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
                 // Perform bookkeeping for the completed and removed task.
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
@@ -257,7 +250,7 @@ impl SharedDemiRuntime {
             }
 
             // 2. Make sure these queue tokens all point to valid tasks.
-            if !THREAD_SCHEDULER.with(|s| s.is_valid_task(&TaskId::from(*qt))) {
+            if !self.scheduler.is_valid_task(&TaskId::from(*qt)) {
                 let cause: String = format!("{:?} is not a valid queue token", qt);
                 warn!("wait_any: {}", cause);
                 return Err(Fail::new(libc::EINVAL, &cause));
@@ -289,7 +282,7 @@ impl SharedDemiRuntime {
 
     /// Runs the scheduler for one [TIMER_RESOLUTION] quanta. Importantly does not modify the clock.
     pub fn run_any(&mut self, qts: &[QToken]) -> Option<(usize, QDesc, OperationResult)> {
-        if let Some(boxed_task) = THREAD_SCHEDULER.with(|s| s.clone().get_next_completed_task(TIMER_RESOLUTION)) {
+        if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
             // Perform bookkeeping for the completed and removed task.
             trace!("Removing coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
@@ -316,7 +309,7 @@ impl SharedDemiRuntime {
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
-        for boxed_task in THREAD_SCHEDULER.with(|s| s.clone().poll_all()) {
+        for boxed_task in self.scheduler.poll_all() {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
@@ -487,11 +480,6 @@ impl<T: ?Sized> SharedBox<T> {
 // Static Functions
 //======================================================================================================================
 
-/// Check whether this task (and therefore its waker) is still valid.
-fn is_valid_task_id(task_id: &TaskId) -> bool {
-    THREAD_SCHEDULER.with(|s| s.is_valid_task(task_id))
-}
-
 pub async fn yield_with_timeout(timeout: Duration) {
     timer::wait(timeout).await
 }
@@ -532,6 +520,7 @@ impl Default for SharedDemiRuntime {
         timer::global_set_time(Instant::now());
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
+            scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
             ts_iters: 0,
