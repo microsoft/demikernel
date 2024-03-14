@@ -13,16 +13,16 @@ from ci.src.ci_map import CIMap
 from ci.src.test_instantiator import TestInstantiator
 from common import *
 
+
 # =====================================================================================================================
 
 
 # Runs the CI pipeline.
 def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
-        test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
+        server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
-    step: int = 0
     status: dict[str, bool] = {}
 
     # Create folder for test logs
@@ -37,45 +37,6 @@ def run_pipeline(
         move(log_directory, old_dir)
     mkdir(log_directory)
 
-    if libos == "catnapw":
-        libos = "catnap"
-        status["checkout"] = job_checkout_windows(
-            repository, branch, server, client, enable_nfs, log_directory)
-
-        # STEP 2: Compile debug.
-        if status["checkout"]:
-            status["compile"] = job_compile_windows(
-                repository, libos, is_debug, server, client, enable_nfs, log_directory)
-
-        # STEP 3: Run unit tests.
-        if test_unit:
-            if status["checkout"] and status["compile"]:
-                status["unit_tests"] = job_test_unit_rust_windows(repository, libos, is_debug, server, client,
-                                                                  is_sudo, config_path, log_directory)
-                # FIXME: https://github.com/microsoft/demikernel/issues/1030
-                if False:
-                    status["integration_tests"] = job_test_integration_tcp_rust_windows(
-                        repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
-
-        # STEP 4: Run system tests.
-        if test_system:
-            if status["checkout"] and status["compile"]:
-                scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
-                                                       repository, delay, config_path, log_directory)
-                ci_map: CIMap = get_ci_map()
-                test_names: List = get_tests_to_run(
-                    scaffolding, ci_map) if test_system == "all" else [test_system]
-                for test_name in test_names:
-                    t: BaseTest = create_test_instance_windows(
-                        scaffolding, ci_map, test_name)
-                    status[test_name] = t.execute()
-
-        # Setp 5: Clean up.
-        status["cleanup"] = job_cleanup_windows(
-            repository, server, client, is_sudo, enable_nfs, log_directory)
-
-        return status
-
     # STEP 1: Check out.
     status["checkout"] = job_checkout(
         repository, branch, server, client, enable_nfs, log_directory)
@@ -85,49 +46,18 @@ def run_pipeline(
         status["compile"] = job_compile(
             repository, libos, is_debug, server, client, enable_nfs, log_directory)
 
-    # STEP 3: Run unit tests.
-    if test_unit:
-        if status["checkout"] and status["compile"]:
-            status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
-                                                      is_sudo, config_path, log_directory)
-            if libos == "catnap" or libos == "catloop":
-                status["integration_tests"] = job_test_integration_tcp_rust(
-                    repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
-            elif libos == "catmem":
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "standalone", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "push-wait", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "pop-wait", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "push-wait-async", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "pop-wait-async", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-
     # STEP 4: Run system tests.
-    if test_system:
-        if status["checkout"] and status["compile"]:
-            scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
-                                                   repository, delay, config_path, log_directory)
-            ci_map: CIMap = get_ci_map()
-            test_names: List = get_tests_to_run(
-                scaffolding, ci_map) if test_system == "all" else [test_system]
-            for test_name in test_names:
-                # Skip this tests for now
-                if is_debug and (test_name == "tcp_ping_pong" or test_name == "tcp_push_pop") and (libos == "catnip" or libos == "catpowder"):
-                    continue
-                else:
-                    t: BaseTest = create_test_instance(
-                        scaffolding, ci_map, test_name)
-                    status[test_name] = t.execute()
+    if status["checkout"] and status["compile"]:
+        scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
+                                               repository, delay, config_path, log_directory)
+        ci_map: CIMap = get_ci_map()
+        test_names: List = get_tests_to_run(
+            scaffolding, ci_map)
+        for test_name in test_names:
+            t: BaseTest = create_test_instance(scaffolding, ci_map, test_name)
+            status[test_name] = t.execute()
 
-    # Setp 5: Clean up.
+    # # Setp 5: Clean up.
     status["cleanup"] = job_cleanup(
         repository, server, client, is_sudo, enable_nfs, log_directory)
 
@@ -153,7 +83,7 @@ def create_scaffolding(libos: str, server_name: str, server_addr: str, client_na
 
 
 def get_ci_map() -> CIMap:
-    path = "tools/ci/config/ci_map.yaml"
+    path = "tools/ci/config/benchmark.yaml"
     yaml_str = ""
     with open(path, "r") as f:
         yaml_str = f.read()
@@ -172,23 +102,16 @@ def create_test_instance(scaffolding: dict, ci_map: CIMap, test_name: str) -> Ba
     return t
 
 
-def create_test_instance_windows(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
-    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
-    t: BaseTest = ti.get_test_instance(job_test_system_rust_windows)
-    return t
-
-
 # Reads and parses command line arguments.
 def read_args() -> argparse.Namespace:
     description: str = ""
-    description += "Use this utility to run the regression system of Demikernel on a pair of remote host machines.\n"
+    description += "Use this utility to run the performance regression system of Demikernel on a pair of remote host machines.\n"
     description += "Before using this utility, ensure that you have correctly setup the development environment on the remote machines.\n"
     description += "For more information, check out the README.md file of the project."
 
     # Initialize parser.
     parser = argparse.ArgumentParser(
-        prog="demikernel_ci.py", description=description)
+        prog="benchmark.py", description=description)
 
     # Host options.
     parser.add_argument("--server", required=True, help="set server host name")
@@ -209,13 +132,9 @@ def read_args() -> argparse.Namespace:
                         action="store_true", help="enable building on nfs directories")
 
     # Test options.
-    parser.add_argument("--test-unit", action='store_true',
-                        required=False, help="run unit tests")
-    parser.add_argument("--test-system", type=str,
-                        required=False, help="run system tests")
-    parser.add_argument("--server-addr", required="--test-system" in sys.argv,
+    parser.add_argument("--server-addr", required=True,
                         help="sets server address in tests")
-    parser.add_argument("--client-addr", required="--test-system" in sys.argv,
+    parser.add_argument("--client-addr", required=True,
                         help="sets client address in tests")
     parser.add_argument("--config-path", required=False,
                         default="\$HOME/config.yaml", help="sets config path")
@@ -251,8 +170,6 @@ def main():
     enable_nfs: bool = args.enable_nfs
 
     # Extract test options.
-    test_unit: bool = args.test_unit
-    test_system: str = args.test_system
     server_addr: str = args.server_addr
     client_addr: str = args.client_addr
 
@@ -268,13 +185,9 @@ def main():
     global LIBOS
     LIBOS = libos
 
-    status: dict = run_pipeline(repository, branch, libos, is_debug, server,
-                                client, test_unit, test_system, server_addr,
-                                client_addr, delay, config_path, output_dir, enable_nfs)
-    if False in status.values():
-        sys.exit(-1)
-    else:
-        sys.exit(0)
+    run_pipeline(repository, branch, libos, is_debug, server,
+                 client, server_addr,
+                 client_addr, delay, config_path, output_dir, enable_nfs)
 
 
 if __name__ == "__main__":
