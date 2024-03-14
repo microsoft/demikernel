@@ -1,9 +1,0 @@
-libos: catnap
-server_ip: 10.9.0.10
-client_ip: 10.9.0.11
-is_debug: False
-is_sudo: False
-repository: /home/abonde/demikernel/
-delay: 2
-config_path: ~/demikernel_config.yaml
-log_directory: /tmp/abonde/demikernel/ci_logs/

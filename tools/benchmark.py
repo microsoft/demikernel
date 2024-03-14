@@ -8,10 +8,10 @@ from shutil import move, rmtree
 from os.path import isdir
 from typing import List
 
-from ci.src.base_test import BaseTest
-from ci.src.ci_map import CIMap
-from ci.src.test_instantiator import TestInstantiator
-from common import *
+import yaml
+
+from ci.job.linux import CheckoutJobOnLinux, CleanupJobOnLinux, CompileJobOnLinux, TcpEchoTest
+from ci.job.utils import get_commit_hash, CONNECTION_STRING, TABLE_NAME, LIBOS
 
 
 # =====================================================================================================================
@@ -37,69 +37,54 @@ def run_pipeline(
         move(log_directory, old_dir)
     mkdir(log_directory)
 
+    config: dict = {
+        "server": server,
+        "server_name": server,
+        "client": client,
+        "client_name": client,
+        "repository": repository,
+        "branch": branch,
+        "libos": libos,
+        "is_debug": is_debug,
+        "server_addr": server_addr,
+        "server_ip": server_addr,
+        "client_addr": client_addr,
+        "client_ip": client_addr,
+        "delay": delay,
+        "config_path": config_path,
+        "output_dir": output_dir,
+        "enable_nfs": enable_nfs,
+        "log_directory": log_directory,
+        "is_sudo": is_sudo,
+    }
+
     # STEP 1: Check out.
-    status["checkout"] = job_checkout(
-        repository, branch, server, client, enable_nfs, log_directory)
+    status["checkout"] = CheckoutJobOnLinux(config).execute()
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = job_compile(
-            repository, libos, is_debug, server, client, enable_nfs, log_directory)
+        status["compile"] = CompileJobOnLinux(config).execute()
 
     # STEP 4: Run system tests.
     if status["checkout"] and status["compile"]:
-        scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
-                                               repository, delay, config_path, log_directory)
-        ci_map: CIMap = get_ci_map()
-        test_names: List = get_tests_to_run(
-            scaffolding, ci_map)
-        for test_name in test_names:
-            t: BaseTest = create_test_instance(scaffolding, ci_map, test_name)
-            status[test_name] = t.execute()
+        ci_map = read_yaml()
+        if 'tcp_echo' in ci_map[libos]:
+            for scenario in ci_map[libos]['tcp_echo']:
+                status["tcp_echo"] = TcpEchoTest(
+                    config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests']).execute()
 
-    # # Setp 5: Clean up.
-    status["cleanup"] = job_cleanup(
-        repository, server, client, is_sudo, enable_nfs, log_directory)
+    # Setp 5: Clean up.
+    status["cleanup"] = CleanupJobOnLinux(config).execute()
 
     return status
 
 
-def create_scaffolding(libos: str, server_name: str, server_addr: str, client_name: str, client_addr: str,
-                       is_debug: bool, is_sudo: bool, repository: str, delay: float, config_path: str,
-                       log_directory: str) -> dict:
-    return {
-        "libos": libos,
-        "server_name": server_name,
-        "server_ip": server_addr,
-        "client_name": client_name,
-        "client_ip": client_addr,
-        "is_debug": is_debug,
-        "is_sudo": is_sudo,
-        "repository": repository,
-        "delay": delay,
-        "config_path": config_path,
-        "log_directory": log_directory
-    }
-
-
-def get_ci_map() -> CIMap:
+def read_yaml():
     path = "tools/ci/config/benchmark.yaml"
     yaml_str = ""
-    with open(path, "r") as f:
+    with open(path) as f:
         yaml_str = f.read()
-    return CIMap(yaml_str)
-
-
-def get_tests_to_run(scaffolding: dict, ci_map: CIMap) -> List:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name="all")
-    return td.keys()
-
-
-def create_test_instance(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
-    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
-    t: BaseTest = ti.get_test_instance(job_test_system_rust)
-    return t
+    return yaml.safe_load(yaml_str)
 
 
 # Reads and parses command line arguments.

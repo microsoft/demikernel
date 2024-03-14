@@ -6,12 +6,11 @@ import argparse
 from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
-from typing import List
+import yaml
 
-from ci.src.base_test import BaseTest
-from ci.src.ci_map import CIMap
-from ci.src.test_instantiator import TestInstantiator
-from common import *
+from ci.job.linux import CheckoutJobOnLinux, CompileJobOnLinux, UnitTestJobOnLinux, IntegrationTestJobOnLinux, CleanupJobOnLinux, PipeIntegrationTestJobOnLinux, TcpCloseTest, TcpEchoTest, TcpPingPongTest, TcpPushPopTest, TcpWaitTest, UdpPingPongTest, UdpPushPopTest, PipeOpenTest, PipePingPongTest, PipePushPopTest
+from ci.job.windows import job_checkout_windows, job_compile_windows, job_test_unit_rust_windows, job_test_integration_tcp_rust_windows, job_cleanup_windows
+from ci.job.utils import get_commit_hash, CONNECTION_STRING, TABLE_NAME, LIBOS
 
 # =====================================================================================================================
 
@@ -37,6 +36,29 @@ def run_pipeline(
         move(log_directory, old_dir)
     mkdir(log_directory)
 
+    config: dict = {
+        "server": server,
+        "server_name": server,
+        "client": client,
+        "client_name": client,
+        "repository": repository,
+        "branch": branch,
+        "libos": libos,
+        "is_debug": is_debug,
+        "test_unit": test_unit,
+        "test_system": test_system,
+        "server_addr": server_addr,
+        "server_ip": server_addr,
+        "client_addr": client_addr,
+        "client_ip": client_addr,
+        "delay": delay,
+        "config_path": config_path,
+        "output_dir": output_dir,
+        "enable_nfs": enable_nfs,
+        "log_directory": log_directory,
+        "is_sudo": is_sudo,
+    }
+
     if libos == "catnapw":
         libos = "catnap"
         status["checkout"] = job_checkout_windows(
@@ -57,19 +79,6 @@ def run_pipeline(
                     status["integration_tests"] = job_test_integration_tcp_rust_windows(
                         repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
 
-        # STEP 4: Run system tests.
-        if test_system:
-            if status["checkout"] and status["compile"]:
-                scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
-                                                       repository, delay, config_path, log_directory)
-                ci_map: CIMap = get_ci_map()
-                test_names: List = get_tests_to_run(
-                    scaffolding, ci_map) if test_system == "all" else [test_system]
-                for test_name in test_names:
-                    t: BaseTest = create_test_instance_windows(
-                        scaffolding, ci_map, test_name)
-                    status[test_name] = t.execute()
-
         # Setp 5: Clean up.
         status["cleanup"] = job_cleanup_windows(
             repository, server, client, is_sudo, enable_nfs, log_directory)
@@ -77,106 +86,76 @@ def run_pipeline(
         return status
 
     # STEP 1: Check out.
-    status["checkout"] = job_checkout(
-        repository, branch, server, client, enable_nfs, log_directory)
+    status["checkout"] = CheckoutJobOnLinux(config).execute()
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = job_compile(
-            repository, libos, is_debug, server, client, enable_nfs, log_directory)
+        status["compile"] = CompileJobOnLinux(config).execute()
 
     # STEP 3: Run unit tests.
     if test_unit:
         if status["checkout"] and status["compile"]:
-            status["unit_tests"] = job_test_unit_rust(repository, libos, is_debug, server, client,
-                                                      is_sudo, config_path, log_directory)
+            status["unit_tests"] = UnitTestJobOnLinux(config).execute()
             if libos == "catnap" or libos == "catloop":
-                status["integration_tests"] = job_test_integration_tcp_rust(
-                    repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
+                status["integration_tests"] = IntegrationTestJobOnLinux(
+                    config).execute()
             elif libos == "catmem":
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "standalone", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "push-wait", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "pop-wait", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "push-wait-async", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
-                status["integration_tests"] = job_test_integration_pipe_rust(
-                    repository, libos, is_debug, "pop-wait-async", server, client, server_addr, delay, is_sudo,
-                    config_path, log_directory)
+                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
+                    config, "standalone").execute()
+                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
+                    config, "push-wait").execute()
+                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
+                    config, "pop-wait").execute()
+                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
+                    config, "push-wait-async").execute()
+                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
+                    config, "pop-wait-async").execute()
 
     # STEP 4: Run system tests.
     if test_system:
         if status["checkout"] and status["compile"]:
-            scaffolding: dict = create_scaffolding(libos, server, server_addr, client, client_addr, is_debug, is_sudo,
-                                                   repository, delay, config_path, log_directory)
-            ci_map: CIMap = get_ci_map()
-            test_names: List = get_tests_to_run(
-                scaffolding, ci_map) if test_system == "all" else [test_system]
-            for test_name in test_names:
-                # Skip this tests for now
-                if is_debug and (test_name == "tcp_ping_pong" or test_name == "tcp_push_pop") and (libos == "catnip" or libos == "catpowder"):
-                    continue
-                else:
-                    t: BaseTest = create_test_instance(
-                        scaffolding, ci_map, test_name)
-                    status[test_name] = t.execute()
+            ci_map = read_yaml()
+            if 'pipe-open' in ci_map[libos] and (test_system == "pipe-open" or test_system == "all"):
+                scenario = ci_map[libos]['pipe-open']
+                status["pipe-open"] = PipeOpenTest(config,
+                                                   scenario['niterations']).execute()
+            if 'pipe-ping-pong' in ci_map[libos] and (test_system == "pipe-ping-pong" or test_system == "all"):
+                status["pipe-ping-pong"] = PipePingPongTest(config).execute()
+            if 'pipe-push-pop' in ci_map[libos] and (test_system == "pipe-push-pop" or test_system == "all"):
+                status["pipe-push-pop"] = PipePushPopTest(config).execute()
+            if 'tcp_echo' in ci_map[libos] and (test_system == "tcp-echo" or test_system == "all"):
+                for scenario in ci_map[libos]['tcp_echo']:
+                    status["tcp_echo"] = TcpEchoTest(
+                        config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests']).execute()
+            if 'tcp_close' in ci_map[libos] and (test_system == "tcp-close" or test_system == "all"):
+                for scenario in ci_map[libos]['tcp_close']:
+                    status["tcp_close"] = TcpCloseTest(
+                        config, scenario['run_mode'], scenario['who_closes'], scenario['nclients']).execute()
+            if 'tcp_wait' in ci_map[libos] and (test_system == "tcp-wait" or test_system == "all"):
+                for scenario in ci_map[libos]['tcp_wait']:
+                    status["tcp_wait"] = TcpWaitTest(
+                        config, scenario['scenario'], scenario['nclients']).execute()
+            if 'tcp_ping_pong' in ci_map[libos] and (test_system == "tcp-ping-pong" or test_system == "all"):
+                status["tcp_ping_pong"] = TcpPingPongTest(config).execute()
+            if 'tcp_push_pop' in ci_map[libos] and (test_system == "tcp-push-pop" or test_system == "all"):
+                status["tcp_push_pop"] = TcpPushPopTest(config).execute()
+            if 'udp_ping_pong' in ci_map[libos] and (test_system == "udp-ping-pong" or test_system == "all"):
+                status["udp_ping_pong"] = UdpPingPongTest(config).execute()
+            if 'udp_push_pop' in ci_map[libos] and (test_system == "udp-push-pop" or test_system == "all"):
+                status["udp_push_pop"] = UdpPushPopTest(config).execute()
 
     # Setp 5: Clean up.
-    status["cleanup"] = job_cleanup(
-        repository, server, client, is_sudo, enable_nfs, log_directory)
+    status["cleanup"] = CleanupJobOnLinux(config).execute()
 
     return status
 
 
-def create_scaffolding(libos: str, server_name: str, server_addr: str, client_name: str, client_addr: str,
-                       is_debug: bool, is_sudo: bool, repository: str, delay: float, config_path: str,
-                       log_directory: str) -> dict:
-    return {
-        "libos": libos,
-        "server_name": server_name,
-        "server_ip": server_addr,
-        "client_name": client_name,
-        "client_ip": client_addr,
-        "is_debug": is_debug,
-        "is_sudo": is_sudo,
-        "repository": repository,
-        "delay": delay,
-        "config_path": config_path,
-        "log_directory": log_directory
-    }
-
-
-def get_ci_map() -> CIMap:
+def read_yaml():
     path = "tools/ci/config/ci_map.yaml"
     yaml_str = ""
-    with open(path, "r") as f:
+    with open(path) as f:
         yaml_str = f.read()
-    return CIMap(yaml_str)
-
-
-def get_tests_to_run(scaffolding: dict, ci_map: CIMap) -> List:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name="all")
-    return td.keys()
-
-
-def create_test_instance(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
-    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
-    t: BaseTest = ti.get_test_instance(job_test_system_rust)
-    return t
-
-
-def create_test_instance_windows(scaffolding: dict, ci_map: CIMap, test_name: str) -> BaseTest:
-    td: dict = ci_map.get_test_details(scaffolding["libos"], test_name)
-    ti: TestInstantiator = TestInstantiator(test_name, scaffolding, td)
-    t: BaseTest = ti.get_test_instance(job_test_system_rust_windows)
-    return t
+    return yaml.safe_load(yaml_str)
 
 
 # Reads and parses command line arguments.
