@@ -135,9 +135,7 @@ fn async_close_pipe_multiple_times_2(libos: &mut LibOS, pipe_name: &str) -> Resu
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
     match libos.wait(qt1, Some(Duration::from_micros(0))) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => closed = true,
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
-            cancelled = true
-        },
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => cancelled = true,
         Ok(_) => {
             println!("[ERROR] leaking pipeqd={:?}", pipeqd);
             anyhow::bail!("wait() should succeed with async_close()")
@@ -206,7 +204,7 @@ fn async_close_pipe_multiple_times_3(libos: &mut LibOS, pipe_name: &str) -> Resu
     if let Some(qt2) = qt2 {
         match libos.wait(qt2, Some(Duration::from_micros(0))) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => closed = true,
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {
                 cancelled = true
             },
             Ok(_) => {
