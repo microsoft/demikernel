@@ -13,6 +13,7 @@ fn os_build() -> Result<()> {
     let out_dir_s: String = env::var("OUT_DIR")?;
     let out_dir: &Path = Path::new(&out_dir_s);
 
+    let devxlib_path: String = env::var("DEVX_LIB_PATH")?;
     let libdpdk_path: String = env::var("LIBDPDK_PATH")?;
 
     let include_path: String = format!("{}{}", libdpdk_path, "\\include");
@@ -64,18 +65,19 @@ fn os_build() -> Result<()> {
         "librte_stack",
         "librte_telemetry",
         "librte_timer",
-        "mlx5devx",
     ];
 
     let cflags: &str = "-mavx";
 
     // Step 1: Now that we've compiled and installed DPDK, point cargo to the libraries.
     println!("cargo:rustc-link-search={}", library_path);
+    println!("cargo:rustc-link-search={}", devxlib_path);
 
     for lib in &libraries {
         println!("cargo:rustc-link-lib=static:-bundle,+whole-archive={}", lib);
     }
 
+    println!("cargo:rustc-link-lib=dylib={}", "mlx5devx");
     println!("cargo:rustc-link-lib=dylib={}", "setupapi");
     println!("cargo:rustc-link-lib=dylib={}", "dbghelp");
     println!("cargo:rustc-link-lib=dylib={}", "mincore");
