@@ -83,6 +83,8 @@ fn os_build() -> Result<()> {
     // Step 2: Generate bindings for the DPDK headers.
     let bindings: Bindings = Builder::default()
         .clang_arg(&format!("-I{}", include_path))
+        .clang_arg("-mrtm")
+        .clang_arg("-mcldemote")
         .allowlist_recursively(true)
         .allowlist_type("rte_mbuf")
         .allowlist_type("rte_mempool")
@@ -162,6 +164,9 @@ fn os_build() -> Result<()> {
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
     builder.flag("-march=native");
+    builder.flag("-mavx");
+    builder.flag("-mrtm");
+    builder.flag("-mcldemote");
     builder.file("inlined.c");
     builder.include(include_path);
     builder.compile("inlined");
