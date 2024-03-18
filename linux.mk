@@ -62,7 +62,7 @@ CARGO_FEATURES += --features=$(DRIVER)
 endif
 
 # Switch for profiler.
-export PROFILER=no
+export PROFILER ?= no
 ifeq ($(PROFILER),yes)
 CARGO_FEATURES += --features=profiler
 endif
