@@ -87,6 +87,9 @@ use ::std::{
     },
 };
 
+#[cfg(feature = "profiler")]
+use crate::async_timer;
+
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -151,14 +154,18 @@ impl SharedDemiRuntime {
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_io_coroutine(&mut self, task_name: &str, coroutine: Pin<Box<Operation>>) -> Result<QToken, Fail> {
+    pub fn insert_io_coroutine(
+        &mut self,
+        task_name: &'static str,
+        coroutine: Pin<Box<Operation>>,
+    ) -> Result<QToken, Fail> {
         self.insert_coroutine(task_name, coroutine)
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler
     pub fn insert_background_coroutine(
         &mut self,
-        task_name: &str,
+        task_name: &'static str,
         coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
     ) -> Result<QToken, Fail> {
         self.insert_coroutine(task_name, coroutine)
@@ -167,10 +174,12 @@ impl SharedDemiRuntime {
     /// Inserts a coroutine of type T and task
     pub fn insert_coroutine<R: Unpin + Clone + Any>(
         &mut self,
-        task_name: &str,
+        task_name: &'static str,
         coroutine: Pin<Box<dyn FusedFuture<Output = R>>>,
     ) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
+        #[cfg(feature = "profiler")]
+        let coroutine = async_timer!(task_name, coroutine);
         let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name, coroutine);
         match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
