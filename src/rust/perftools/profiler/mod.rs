@@ -28,51 +28,10 @@ use std::{
 #[cfg(feature = "auto-calibrate")]
 const SAMPLE_SIZE: usize = 16641;
 
-#[cfg(feature = "profiler")]
 thread_local!(
     /// Global thread-local instance of the profiler.
     pub static PROFILER: RefCell<Profiler> = RefCell::new(Profiler::new())
 );
-
-/// Use this macro to add the current scope to profiling. In effect, the time
-/// taken from entering to leaving the scope will be measured.
-///
-/// Internally, the scope is inserted in the scope tree of the global
-/// thread-local [`PROFILER`](constant.PROFILER.html).
-///
-/// # Example
-///
-/// The following example will profile the scope `"foo"`, which has the scope
-/// `"bar"` as a child.
-///
-/// ```
-/// use inetstack::timer;
-///
-/// {
-///     timer!("foo");
-///
-///     {
-///         timer!("bar");
-///         // ... do something ...
-///     }
-///
-///     // ... do some more ...
-/// }
-/// ```
-
-#[macro_export]
-macro_rules! timer {
-    ($name:expr) => {
-        let _guard = $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
-    };
-}
-
-#[macro_export]
-macro_rules! async_timer {
-    ($name:expr, $future:expr) => {
-        $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().async_scope($name, $future))
-    };
-}
 
 /// Print profiling scope tree.
 ///
@@ -209,15 +168,16 @@ impl<R> Future for AsyncScope<R> {
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut Self = self.get_mut();
-        trace!("Entering async scope: {:?}", self_.scope);
+        info!("Entering async scope: {:?}", self_.scope);
+
         let _guard = PROFILER.with(|p| p.borrow_mut().enter_scope(self_.scope.clone()));
         match Future::poll(self_.future.as_mut(), ctx) {
             Poll::Pending => {
-                trace!("Exiting async scope still pending: {:?}", self_.scope);
+                info!("Exiting async scope still pending: {:?}", self_.scope);
                 Poll::Pending
             },
             Poll::Ready(result) => {
-                trace!("Exiting async scope complete: {:?}", self_.scope);
+                info!("Exiting async scope complete: {:?}", self_.scope);
                 Poll::Ready(result)
             },
         }
@@ -252,6 +212,7 @@ impl Drop for Guard {
     fn drop(&mut self) {
         let (now, _): (u64, u32) = unsafe { x86::time::rdtscp() };
         let duration: u64 = now - self.enter_time;
+
         PROFILER.with(|p| p.borrow_mut().leave_scope(duration));
     }
 }
@@ -433,7 +394,6 @@ impl Profiler {
 
 impl Drop for Profiler {
     fn drop(&mut self) {
-        #[cfg(feature = "profiler")]
         self.write(&mut std::io::stdout(), None)
             .expect("failed to write to stdout");
     }

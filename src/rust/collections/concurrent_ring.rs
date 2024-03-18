@@ -29,7 +29,6 @@ use ::std::{
     ptr::copy,
 };
 
-#[cfg(feature = "profiler")]
 use crate::timer;
 
 //======================================================================================================================
@@ -87,7 +86,6 @@ impl ConcurrentRingBuffer {
     /// Creates a ring buffer.
     #[allow(unused)]
     pub fn new(capacity: usize) -> Result<Self, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::new");
         // Check if capacity is invalid.
         if capacity == 0 {
@@ -118,14 +116,12 @@ impl ConcurrentRingBuffer {
     /// Returns the effective capacity of the target ring buffer in bytes.
     #[allow(unused)]
     pub fn capacity(&self) -> usize {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::capacity");
         self.buffer.capacity()
     }
 
     #[allow(unused)]
     pub fn remaining_capacity(&self) -> usize {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::remaining_capacity");
         let push_offset: usize = peek(self.push_offset);
         let pop_offset: usize = peek(self.pop_offset);
@@ -134,7 +130,6 @@ impl ConcurrentRingBuffer {
 
     /// Attempts to insert a buffer of [len] bytes into the ring buffer.
     pub fn try_push(&self, buf: &[u8]) -> Result<usize, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::try_push");
         let len: usize = buf.len();
         if len == 0 {
@@ -183,7 +178,6 @@ impl ConcurrentRingBuffer {
     /// Inserts an item at the enqueue of the target ring buffer. This function may block (spin).
     #[allow(unused)]
     pub fn push(&self, buf: &[u8]) -> Option<usize> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::push");
         loop {
             match self.try_push(buf) {
@@ -197,7 +191,6 @@ impl ConcurrentRingBuffer {
     /// Attempts to remove next message from the ring buffer up to [len] bytes and copies into [buf]. This function
     /// does not block.
     pub fn try_pop(&self, buf: &mut [u8]) -> Result<usize, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::try_pop");
         let len: usize = buf.len();
         if len == 0 {
@@ -255,7 +248,6 @@ impl ConcurrentRingBuffer {
     /// (spin).
     #[allow(unused)]
     pub fn pop(&self, buf: &mut [u8]) -> Option<usize> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::pop");
         loop {
             match self.try_pop(buf) {
@@ -268,7 +260,6 @@ impl ConcurrentRingBuffer {
 
     /// Atomically writes a header at the indicated offset and returns the previous one.
     fn write_header(&self, offset: usize, val: usize) -> usize {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::write_header");
         assert!(offset % 2 == 0);
         let buffer_ptr: *mut u8 = unsafe { self.buffer.get_mut() }.as_mut_ptr();
@@ -280,7 +271,6 @@ impl ConcurrentRingBuffer {
     /// Given a [push_offset] and [pop_offset] into the ring buffer, return available space for writing data. Always
     /// leave one [HEADER_SIZE] space for distinguishing a full from empty buffer.
     fn available_space(&self, push_offset: usize, pop_offset: usize) -> usize {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::available_space");
         debug_assert!(push_offset + self.capacity() > pop_offset);
         let used_space: usize = (push_offset + self.capacity() - pop_offset) % self.capacity();
@@ -291,7 +281,6 @@ impl ConcurrentRingBuffer {
     /// Reserves [len] + HEADER_SIZE bytes from the ring buffer. If successful, returns the offset of the beginning of
     /// the buffer, else returns `None`.
     fn reserve_space(&self, len: usize) -> Option<usize> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::reserve_space");
         let len_: usize = align_header(len + HEADER_SIZE);
         let push_offset: usize = peek(self.push_offset);
@@ -315,7 +304,6 @@ impl ConcurrentRingBuffer {
 
     /// Frees [len] + HEADER_SIZE bytes from the ring buffer.
     fn release_space(&self, current_offset: usize, len: usize) {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::release_space");
         let len_: usize = align_header(len + HEADER_SIZE);
         let new_offset: usize = (current_offset + len_) % self.capacity();
@@ -325,7 +313,6 @@ impl ConcurrentRingBuffer {
 
     #[allow(unused)]
     pub fn is_full(&self) -> bool {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::is_full");
         let push_offset = peek(self.push_offset);
         let pop_offset = peek(self.pop_offset);
@@ -336,7 +323,6 @@ impl ConcurrentRingBuffer {
     /// Peeks the target ring buffer and checks if it is empty.
     #[allow(unused)]
     pub fn is_empty(&self) -> bool {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::is_empty");
         let push_offset = peek(self.push_offset);
         let pop_offset = peek(self.pop_offset);
@@ -346,7 +332,6 @@ impl ConcurrentRingBuffer {
 
     /// Allocates a memory area.
     fn alloc<T>() -> Result<*mut T, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::alloc");
         let layout: Layout = Layout::new::<T>();
         let ptr: *mut T = unsafe { alloc::alloc(layout) as *mut T };
@@ -365,7 +350,6 @@ impl Ring for ConcurrentRingBuffer {
     /// the amount of storage space in bytes that should be available. [size] must be at least large enough to hold
     /// capacity, plus the push and pop offsets and a [HEADER_SIZE] piece of padding.
     fn from_raw_parts(init: bool, ptr: *mut u8, capacity: usize) -> Result<Self, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("collections::concurrent_ring::from_raw_parts");
         // Check if we have a valid pointer.
         if ptr.is_null() {

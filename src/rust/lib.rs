@@ -194,6 +194,56 @@ macro_rules! expect_ok {
     };
 }
 
+/// Use this macro to add the current scope to profiling. In effect, the time
+/// taken from entering to leaving the scope will be measured.
+///
+/// Internally, the scope is inserted in the scope tree of the global
+/// thread-local [`PROFILER`](constant.PROFILER.html).
+///
+/// # Example
+///
+/// The following example will profile the scope `"foo"`, which has the scope
+/// `"bar"` as a child.
+///
+/// ```
+/// use inetstack::timer;
+///
+/// {
+///     timer!("foo");
+///
+///     {
+///         timer!("bar");
+///         // ... do something ...
+///     }
+///
+///     // ... do some more ...
+/// }
+/// ```
+
+#[macro_export]
+macro_rules! timer {
+    ($name:expr) => {
+        #[cfg(feature = "profiler")]
+        let _guard = $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().sync_scope($name));
+    };
+}
+
+#[cfg(feature = "profiler")]
+#[macro_export]
+macro_rules! async_timer {
+    ($name:expr, $future:expr) => {
+        $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().async_scope($name, $future))
+    };
+}
+
+#[cfg(not(feature = "profiler"))]
+#[macro_export]
+macro_rules! async_timer {
+    ($name:expr, $future:expr) => {
+        $future
+    };
+}
+
 #[test]
 fn test_ensure() -> Result<(), anyhow::Error> {
     ensure_eq!(1, 1);

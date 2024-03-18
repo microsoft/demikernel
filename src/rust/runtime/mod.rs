@@ -36,6 +36,7 @@ pub use dpdk_rs as libdpdk;
 //======================================================================================================================
 
 use crate::{
+    async_timer,
     expect_some,
     runtime::{
         fail::Fail,
@@ -86,9 +87,6 @@ use ::std::{
         SystemTime,
     },
 };
-
-#[cfg(feature = "profiler")]
-use crate::async_timer;
 
 //======================================================================================================================
 // Constants
@@ -178,9 +176,7 @@ impl SharedDemiRuntime {
         coroutine: Pin<Box<dyn FusedFuture<Output = R>>>,
     ) -> Result<QToken, Fail> {
         trace!("Inserting coroutine: {:?}", task_name);
-        #[cfg(feature = "profiler")]
-        let coroutine = async_timer!(task_name, coroutine);
-        let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name, coroutine);
+        let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name, async_timer!(task_name, coroutine));
         match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
