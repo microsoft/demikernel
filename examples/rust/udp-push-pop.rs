@@ -38,9 +38,6 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
-#[cfg(feature = "profiler")]
-use ::demikernel::perftools::profiler;
-
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -173,9 +170,6 @@ impl UdpServer {
             println!("pop ({:?})", i);
         }
 
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
         // TODO: close socket when we get close working properly in catnip.
         Ok(())
     }
@@ -258,9 +252,6 @@ impl UdpClient {
 
             println!("push ({:?})", i);
         }
-
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
         // TODO: close socket when we get close working properly in catnip.
         Ok(())

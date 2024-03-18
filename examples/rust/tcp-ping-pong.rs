@@ -39,9 +39,6 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
-#[cfg(feature = "profiler")]
-use ::demikernel::perftools::profiler;
-
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -295,9 +292,6 @@ impl TcpServer {
             println!("pong {:?}", i);
         }
 
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
         // TODO: close socket when we get close working properly in catnip.
 
         Ok(())
@@ -387,9 +381,6 @@ impl TcpClient {
 
             println!("ping {:?}", i);
         }
-
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
         // TODO: close socket when we get close working properly in catnip.
 

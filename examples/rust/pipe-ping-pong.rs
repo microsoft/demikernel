@@ -16,9 +16,6 @@ use ::demikernel::{
 };
 use ::std::env;
 
-#[cfg(feature = "profiler")]
-use ::demikernel::perftools::profiler;
-
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -194,9 +191,6 @@ impl PipeServer {
             println!("pong {:?}", i);
         }
 
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
         Ok(())
     }
 
@@ -246,9 +240,6 @@ impl PipeClient {
             }
             println!("pong {:?}", i);
         }
-
-        #[cfg(feature = "profiler")]
-        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
 
         Ok(())
     }
