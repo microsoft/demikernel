@@ -168,19 +168,9 @@ impl<R> Future for AsyncScope<R> {
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut Self = self.get_mut();
-        info!("Entering async scope: {:?}", self_.scope);
 
         let _guard = PROFILER.with(|p| p.borrow_mut().enter_scope(self_.scope.clone()));
-        match Future::poll(self_.future.as_mut(), ctx) {
-            Poll::Pending => {
-                info!("Exiting async scope still pending: {:?}", self_.scope);
-                Poll::Pending
-            },
-            Poll::Ready(result) => {
-                info!("Exiting async scope complete: {:?}", self_.scope);
-                Poll::Ready(result)
-            },
-        }
+        Future::poll(self_.future.as_mut(), ctx)
     }
 }
 
