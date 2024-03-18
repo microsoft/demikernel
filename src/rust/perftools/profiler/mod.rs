@@ -1,13 +1,24 @@
 // Copyright(c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//! This module provides a small performance profiler for the Demikernel libOSes.
+
 #[cfg(test)]
 mod tests;
 
+use ::futures::future::FusedFuture;
 use std::{
     cell::RefCell,
+    fmt,
+    fmt::Debug,
+    future::Future,
     io,
+    pin::Pin,
     rc::Rc,
+    task::{
+        Context,
+        Poll,
+    },
     time::{
         Duration,
         SystemTime,
@@ -21,39 +32,6 @@ thread_local!(
     /// Global thread-local instance of the profiler.
     pub static PROFILER: RefCell<Profiler> = RefCell::new(Profiler::new())
 );
-
-/// Use this macro to add the current scope to profiling. In effect, the time
-/// taken from entering to leaving the scope will be measured.
-///
-/// Internally, the scope is inserted in the scope tree of the global
-/// thread-local [`PROFILER`](constant.PROFILER.html).
-///
-/// # Example
-///
-/// The following example will profile the scope `"foo"`, which has the scope
-/// `"bar"` as a child.
-///
-/// ```
-/// use inetstack::timer;
-///
-/// {
-///     timer!("foo");
-///
-///     {
-///         timer!("bar");
-///         // ... do something ...
-///     }
-///
-///     // ... do some more ...
-/// }
-/// ```
-
-#[macro_export]
-macro_rules! timer {
-    ($name:expr) => {
-        let _guard = $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().enter($name));
-    };
-}
 
 /// Print profiling scope tree.
 ///
@@ -167,6 +145,51 @@ impl Scope {
     }
 }
 
+impl Debug for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+/// A scope over an async block that may yield and re-enter several times.
+pub struct AsyncScope<R> {
+    scope: Rc<RefCell<Scope>>,
+    future: Pin<Box<dyn FusedFuture<Output = R>>>,
+}
+
+impl<R> AsyncScope<R> {
+    fn new(future: Pin<Box<dyn FusedFuture<Output = R>>>, scope: Rc<RefCell<Scope>>) -> Pin<Box<Self>> {
+        Box::pin(Self { scope, future })
+    }
+}
+
+impl<R> Future for AsyncScope<R> {
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let self_: &mut Self = self.get_mut();
+        info!("Entering async scope: {:?}", self_.scope);
+
+        let _guard = PROFILER.with(|p| p.borrow_mut().enter_scope(self_.scope.clone()));
+        match Future::poll(self_.future.as_mut(), ctx) {
+            Poll::Pending => {
+                info!("Exiting async scope still pending: {:?}", self_.scope);
+                Poll::Pending
+            },
+            Poll::Ready(result) => {
+                info!("Exiting async scope complete: {:?}", self_.scope);
+                Poll::Ready(result)
+            },
+        }
+    }
+}
+
+impl<R> FusedFuture for AsyncScope<R> {
+    fn is_terminated(&self) -> bool {
+        self.future.is_terminated()
+    }
+}
+
 //==============================================================================
 //
 //==============================================================================
@@ -189,7 +212,8 @@ impl Drop for Guard {
     fn drop(&mut self) {
         let (now, _): (u64, u32) = unsafe { x86::time::rdtscp() };
         let duration: u64 = now - self.enter_time;
-        PROFILER.with(|p| p.borrow_mut().leave(duration));
+
+        PROFILER.with(|p| p.borrow_mut().leave_scope(duration));
     }
 }
 
@@ -222,17 +246,33 @@ impl Profiler {
         }
     }
 
-    /// Enter a scope. Returns a [`Guard`](struct.Guard.html) that should be
+    /// Create and enter a syncronous scope. Returns a [`Guard`](struct.Guard.html) that should be
     /// dropped upon leaving the scope.
     ///
     /// Usually, this method will be called by the
     /// [`profile`](macro.profile.html) macro, so it does not need to be used
     /// directly.
     #[inline]
-    pub fn enter(&mut self, name: &'static str) -> Guard {
+    pub fn sync_scope(&mut self, name: &'static str) -> Guard {
+        let scope = self.get_scope(name);
+        self.enter_scope(scope)
+    }
+
+    /// Create an asynchronous scope. Returns a wrapped Future that enters the scope when polled.
+    pub fn async_scope<R: 'static>(
+        &mut self,
+        name: &'static str,
+        future: Pin<Box<dyn FusedFuture<Output = R>>>,
+    ) -> Pin<Box<dyn FusedFuture<Output = R>>> {
+        let scope = self.get_scope(name);
+        AsyncScope::new(future, scope)
+    }
+
+    /// Look up the scope using the name.
+    fn get_scope(&mut self, name: &'static str) -> Rc<RefCell<Scope>> {
         // Check if we have already registered `name` at the current point in
         // the tree.
-        let succ = if let Some(current) = self.current.as_ref() {
+        if let Some(current) = self.current.as_ref() {
             // We are currently in some scope.
             let existing_succ = current
                 .borrow()
@@ -264,11 +304,14 @@ impl Profiler {
 
                 succ
             })
-        };
+        }
+    }
 
-        let guard = succ.borrow_mut().enter();
+    /// Actually enter a scope.
+    fn enter_scope(&mut self, scope: Rc<RefCell<Scope>>) -> Guard {
+        let guard = scope.borrow_mut().enter();
 
-        self.current = Some(succ);
+        self.current = Some(scope);
 
         guard
     }
@@ -285,7 +328,7 @@ impl Profiler {
 
     /// Leave the current scope.
     #[inline]
-    fn leave(&mut self, duration: u64) {
+    fn leave_scope(&mut self, duration: u64) {
         self.current = if let Some(current) = self.current.as_ref() {
             cfg_if::cfg_if! {
                 if #[cfg(feature = "auto-calibrate")] {
@@ -346,5 +389,12 @@ impl Profiler {
         }
 
         total / (nsamples as u64)
+    }
+}
+
+impl Drop for Profiler {
+    fn drop(&mut self) {
+        self.write(&mut std::io::stdout(), None)
+            .expect("failed to write to stdout");
     }
 }

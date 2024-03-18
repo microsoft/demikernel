@@ -20,7 +20,7 @@ use crate::catnip::runtime::SharedDPDKRuntime;
 use crate::catpowder::runtime::LinuxRuntime;
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
-#[cfg(feature = "profiler")]
+
 use crate::timer;
 
 use crate::{
@@ -77,7 +77,6 @@ pub enum LibOS {
 impl LibOS {
     /// Instantiates a new LibOS.
     pub fn new(libos_name: LibOSName) -> Result<Self, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("demikernel::new");
 
         logging::initialize();
@@ -151,7 +150,6 @@ impl LibOS {
     /// Creates a new memory queue and connect to consumer end.
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::create_pipe");
             match self {
                 LibOS::NetworkLibOS(_) => Err(Fail::new(
@@ -170,7 +168,6 @@ impl LibOS {
     /// Opens an existing memory queue and connects to producer end.
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::open_pipe");
             match self {
                 LibOS::NetworkLibOS(_) => Err(Fail::new(
@@ -194,7 +191,6 @@ impl LibOS {
         protocol: libc::c_int,
     ) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::socket");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
@@ -210,7 +206,6 @@ impl LibOS {
     /// Binds a socket to a local address.
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::bind");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
@@ -226,7 +221,6 @@ impl LibOS {
     /// Marks a socket as a passive one.
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::listen");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
@@ -242,7 +236,6 @@ impl LibOS {
     /// Accepts an incoming connection on a TCP socket.
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::accept");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.accept(sockqd),
@@ -258,7 +251,6 @@ impl LibOS {
     /// Initiates a connection with a remote TCP socket.
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::connect");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
@@ -275,7 +267,6 @@ impl LibOS {
     /// async_close() + wait() achieves the same effect as synchronous close.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::close");
             match self {
                 LibOS::NetworkLibOS(libos) => match libos.async_close(qd) {
@@ -302,7 +293,6 @@ impl LibOS {
 
     pub fn async_close(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::async_close");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.async_close(qd),
@@ -318,7 +308,6 @@ impl LibOS {
     /// Pushes a scatter-gather array to an I/O queue.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::push");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.push(qd, sga),
@@ -334,7 +323,6 @@ impl LibOS {
     /// Pushes a scatter-gather array to a UDP socket.
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::pushto");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
@@ -350,7 +338,6 @@ impl LibOS {
     /// Pops data from a an I/O queue.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::pop");
 
             // Check if this is a fixed-size pop.
@@ -377,7 +364,6 @@ impl LibOS {
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
     pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
-        #[cfg(feature = "profiler")]
         timer!("demikernel::wait");
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
@@ -387,7 +373,6 @@ impl LibOS {
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
-        #[cfg(feature = "profiler")]
         timer!("demikernel::wait_any");
         match self {
             LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
@@ -398,7 +383,6 @@ impl LibOS {
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&mut self, size: usize) -> Result<demi_sgarray_t, Fail> {
         let result: Result<demi_sgarray_t, Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::sgaalloc");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.sgaalloc(size),
@@ -412,7 +396,6 @@ impl LibOS {
     /// Releases a scatter-gather array.
     pub fn sgafree(&mut self, sga: demi_sgarray_t) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            #[cfg(feature = "profiler")]
             timer!("demikernel::sgafree");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.sgafree(sga),
@@ -424,7 +407,6 @@ impl LibOS {
     }
 
     fn poll(&mut self) {
-        #[cfg(feature = "profiler")]
         timer!("demikernel::poll");
         match self {
             LibOS::NetworkLibOS(libos) => libos.poll(),

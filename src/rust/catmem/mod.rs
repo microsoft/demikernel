@@ -117,9 +117,10 @@ impl SharedCatmemLibOS {
         trace!("async_close() qd={:?}", qd);
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let task_name: String = format!("Catmem::async_close for qd={:?}", qd);
             let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd).fuse());
-            self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+            self.runtime
+                .clone()
+                .insert_io_coroutine("Catmem::async_close", coroutine)
         };
 
         queue.async_close(coroutine_constructor)
@@ -164,10 +165,9 @@ impl SharedCatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let task_name: String = format!("Catmem::push for qd={:?}", qd);
         let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
 
-        self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+        self.runtime.clone().insert_io_coroutine("Catmem::push", coroutine)
     }
 
     pub async fn push_coroutine(self, qd: QDesc, buf: DemiBuffer) -> (QDesc, OperationResult) {
@@ -190,10 +190,9 @@ impl SharedCatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let task_name: String = format!("Catmem::pop for qd={:?}", qd);
         let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
 
-        self.runtime.clone().insert_io_coroutine(&task_name, coroutine)
+        self.runtime.clone().insert_io_coroutine("Catmem::pop", coroutine)
     }
 
     pub async fn pop_coroutine(self, qd: QDesc, size: Option<usize>) -> (QDesc, OperationResult) {

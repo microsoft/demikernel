@@ -92,7 +92,7 @@ impl TaskGroup {
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
     pub fn insert(&mut self, task: Box<dyn Task>) -> Option<TaskId> {
-        let task_name: String = task.get_name();
+        let task_name: &'static str = task.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: usize = self.tasks.insert(task)?;
         let task_id: TaskId = self.ids.insert_with_new_id(pin_slab_index.into());

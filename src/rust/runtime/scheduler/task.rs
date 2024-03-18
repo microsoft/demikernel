@@ -50,7 +50,7 @@ pub struct TaskId(pub u64);
 /// Task runs a single coroutine to completion and stores the result for later. Thus, it implements Future but
 /// never directly returns anything.
 pub trait Task: FusedFuture<Output = ()> + Unpin + Any {
-    fn get_name(&self) -> String;
+    fn get_name(&self) -> &'static str;
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
     fn get_id(&self) -> TaskId;
     fn set_id(&mut self, id: TaskId);
@@ -66,7 +66,7 @@ pub trait TaskWith: TryFrom<Box<dyn Any>> {
 /// A specific instance of Task that returns a particular return type [R].
 pub struct TaskWithResult<R: Unpin + Clone + Any> {
     /// Task name. The libOS should use this to identify the type of task.
-    name: String,
+    name: &'static str,
     /// Task identifier.
     task_id: Option<TaskId>,
     /// Underlying coroutine to run.
@@ -82,7 +82,7 @@ pub struct TaskWithResult<R: Unpin + Clone + Any> {
 /// Associate Functions for TaskWithResults.
 impl<R: Unpin + Clone + Any> TaskWithResult<R> {
     /// Instantiates a new Task.
-    pub fn new(name: String, coroutine: Pin<<Self as TaskWith>::Coroutine>) -> Self {
+    pub fn new(name: &'static str, coroutine: Pin<<Self as TaskWith>::Coroutine>) -> Self {
         Self {
             name,
             task_id: None,
@@ -132,8 +132,8 @@ impl<R: Unpin + Clone + Any> TryFrom<Box<dyn Any>> for TaskWithResult<R> {
 
 impl<R: Unpin + Clone + Any> Task for TaskWithResult<R> {
     // The coroutine type that this task will run.
-    fn get_name(&self) -> String {
-        self.name.clone()
+    fn get_name(&self) -> &'static str {
+        self.name
     }
 
     fn as_any(self: Box<Self>) -> Box<dyn Any> {

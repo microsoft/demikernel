@@ -61,7 +61,6 @@ use ::std::{
     },
 };
 
-#[cfg(feature = "profiler")]
 use crate::timer;
 
 //======================================================================================================================
@@ -144,8 +143,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             network,
             local_link_addr: local_link_addr,
         }));
-        let background_task: String = format!("inetstack::poll_recv");
-        runtime.insert_background_coroutine(&background_task, Box::pin(me.clone().poll().fuse()))?;
+        runtime.insert_background_coroutine("inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
         Ok(me)
     }
 
@@ -153,19 +151,16 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
     /// Then ask the runtime to receive new data which we will forward to the engine to parse and
     /// route to the correct protocol.
     pub async fn poll(mut self) {
-        #[cfg(feature = "profiler")]
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
                 let batch = {
-                    #[cfg(feature = "profiler")]
                     timer!("inetstack::poll_bg_work::for::receive");
 
                     self.network.receive()
                 };
 
                 {
-                    #[cfg(feature = "profiler")]
                     timer!("inetstack::poll_bg_work::for::for");
 
                     if batch.is_empty() {

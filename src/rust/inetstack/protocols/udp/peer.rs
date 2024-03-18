@@ -38,7 +38,6 @@ use ::std::{
     },
 };
 
-#[cfg(feature = "profiler")]
 use crate::timer;
 
 //======================================================================================================================
@@ -158,7 +157,6 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
 
     /// Consumes the payload from a buffer.
     pub fn receive(&mut self, ipv4_hdr: Ipv4Header, buf: DemiBuffer) {
-        #[cfg(feature = "profiler")]
         timer!("udp::receive");
         // Parse datagram.
         let (hdr, data): (UdpHeader, DemiBuffer) = match UdpHeader::parse(&ipv4_hdr, buf, self.checksum_offload) {
