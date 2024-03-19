@@ -237,6 +237,8 @@ impl Scheduler {
             if self.current_group_id == starting_group_index {
                 return;
             }
+            // Update the current_group_id
+            self.current_group_id = self.get_next_group_index();
         }
     }
 
