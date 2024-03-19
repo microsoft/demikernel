@@ -228,15 +228,23 @@ impl Scheduler {
         let starting_group_index: InternalId = self.current_group_id;
         self.current_group_id = self.get_next_group_index();
 
+        let mut offsets: Vec<InternalId> = Vec::<InternalId>::new();
+
         loop {
-            self.current_ready_tasks = self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks();
-            if !self.current_ready_tasks.is_empty() {
+            offsets.clear();
+            
+            self.groups[self.current_group_id.into()].get_offsets_for_ready_tasks(&mut offsets);
+            if !offsets.is_empty() {
+                self.current_ready_tasks = offsets;
                 return;
             }
             // If we reach this point, then we have looped all the way around without finding any runnable tasks.
             if self.current_group_id == starting_group_index {
                 return;
             }
+
+            // Update the current_group_id
+            self.current_group_id = self.get_next_group_index();
         }
     }
 
