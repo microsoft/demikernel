@@ -122,6 +122,18 @@ catnap:
       nclients: 32
       nrequests: 1024
       run_mode: concurrent
+    scenario8:
+      bufsize: 64
+      nclients: 32
+      nrequests: 1024
+      run_mode: concurrent
+      nthreads: 2
+    scenario9:
+      bufsize: 64
+      nclients: 32
+      nrequests: 1024
+      run_mode: concurrent
+      nthreads: 4   
   tcp_ping_pong: {}
   tcp_push_pop: {}
   tcp_wait:
