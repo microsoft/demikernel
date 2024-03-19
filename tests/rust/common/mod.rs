@@ -1,7 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+#[cfg(any(
+    feature = "catnap-libos",
+    feature = "catnip-libos",
+    feature = "catpowder-libos",
+    feature = "catloop-libos"
+))]
 pub mod libos;
+
+#[cfg(any(
+    feature = "catnap-libos",
+    feature = "catnip-libos",
+    feature = "catpowder-libos",
+    feature = "catloop-libos"
+))]
 pub mod runtime;
 
 use ::demikernel::runtime::network::types::MacAddress;
