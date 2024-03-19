@@ -620,3 +620,88 @@ impl DerefMut for SharedDemiRuntime {
 
 /// Demikernel Runtime
 pub trait Runtime: Clone + Unpin + 'static {}
+
+//======================================================================================================================
+// Benchmarks
+//======================================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use crate::runtime::{
+        poll_yield,
+        OperationResult,
+        QDesc,
+        QToken,
+        SharedDemiRuntime,
+    };
+    use futures::FutureExt;
+    use test::Bencher;
+
+    async fn dummy_coroutine(iterations: usize) -> (QDesc, OperationResult) {
+        for _ in 0..iterations {
+            poll_yield().await;
+        }
+        (QDesc::from(0), OperationResult::Close)
+    }
+
+    async fn dummy_background_coroutine() {
+        loop {
+            poll_yield().await
+        }
+    }
+
+    #[bench]
+    fn benchmark_insert_io_coroutine(b: &mut Bencher) {
+        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+
+        b.iter(|| runtime.insert_io_coroutine("dummy coroutine", Box::pin(dummy_coroutine(10).fuse())));
+    }
+
+    #[bench]
+    fn benchmark_insert_background_coroutine(b: &mut Bencher) {
+        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+
+        b.iter(|| {
+            runtime.insert_background_coroutine(
+                "dummy background coroutine",
+                Box::pin(dummy_background_coroutine().fuse()),
+            )
+        });
+    }
+
+    #[bench]
+    fn benchmark_run_any(b: &mut Bencher) {
+        const NUM_TASKS: usize = 1024;
+        let mut qts: [QToken; NUM_TASKS] = [QToken::from(0); NUM_TASKS];
+        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+        // Insert a large number of coroutines.
+        for i in 0..NUM_TASKS {
+            // Make the arg big enough that the coroutine doesn't exit.
+            qts[i] = runtime
+                .insert_io_coroutine("dummy coroutine", Box::pin(dummy_coroutine(1000000000).fuse()))
+                .expect("should be able to insert tasks");
+        }
+
+        // Run all of the tasks for one quanta
+        b.iter(|| runtime.run_any(&qts));
+    }
+
+    #[bench]
+    fn benchmark_run_any_background(b: &mut Bencher) {
+        const NUM_TASKS: usize = 1024;
+        let mut qts: [QToken; NUM_TASKS] = [QToken::from(0); NUM_TASKS];
+        let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
+        // Insert a large number of coroutines.
+        for i in 0..NUM_TASKS {
+            qts[i] = runtime
+                .insert_background_coroutine(
+                    "dummy background coroutine",
+                    Box::pin(dummy_background_coroutine().fuse()),
+                )
+                .expect("should be able to insert tasks");
+        }
+
+        // Run all of the tasks for one quanta
+        b.iter(|| runtime.run_any(&qts));
+    }
+}
