@@ -294,7 +294,6 @@ impl NetworkTransport for SharedCatnapTransport {
                     error!("new(): {}", cause);
                     return Err(Fail::new(get_libc_err(e), &cause));
                 }
-
                 if let Err(e) = socket.set_nonblocking(true) {
                     let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
                     socket.shutdown(Shutdown::Both)?;
