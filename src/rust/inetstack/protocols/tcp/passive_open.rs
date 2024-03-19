@@ -411,7 +411,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         };
         let remote_window_size = expect_ok!(
             expect_some!(
-                (header_window_size).checked_shl(remote_window_scale as u32),
+                (header_window_size as u32).checked_shl(remote_window_scale as u32),
                 "TODO: Window size overflow"
             )
             .try_into(),
