@@ -8,3 +8,5 @@
 // ------------------------
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub const CPU_DATA_CACHE_LINE_SIZE: usize = 64;
+
+const _: () = assert!(CPU_DATA_CACHE_LINE_SIZE.is_power_of_two());
