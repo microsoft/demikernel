@@ -167,6 +167,7 @@ impl LibOS {
     }
 
     /// Creates a new memory queue and connect to consumer end.
+    #[allow(unused_variables)]
     pub fn create_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
             timer!("demikernel::create_pipe");
@@ -192,6 +193,7 @@ impl LibOS {
     }
 
     /// Opens an existing memory queue and connects to producer end.
+    #[allow(unused_variables)]
     pub fn open_pipe(&mut self, name: &str) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
             timer!("demikernel::open_pipe");
@@ -217,6 +219,7 @@ impl LibOS {
     }
 
     /// Creates a socket.
+    #[allow(unused_variables)]
     pub fn socket(
         &mut self,
         domain: libc::c_int,
@@ -244,6 +247,7 @@ impl LibOS {
     }
 
     /// Binds a socket to a local address.
+    #[allow(unused_variables)]
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::bind");
@@ -266,6 +270,7 @@ impl LibOS {
     }
 
     /// Marks a socket as a passive one.
+    #[allow(unused_variables)]
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::listen");
@@ -288,6 +293,7 @@ impl LibOS {
     }
 
     /// Accepts an incoming connection on a TCP socket.
+    #[allow(unused_variables)]
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::accept");
@@ -310,6 +316,7 @@ impl LibOS {
     }
 
     /// Initiates a connection with a remote TCP socket.
+    #[allow(unused_variables)]
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::connect");
@@ -410,6 +417,7 @@ impl LibOS {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
+    #[allow(unused_variables)]
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::pushto");

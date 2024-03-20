@@ -182,6 +182,7 @@ impl NetworkLibOSWrapper {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
+    #[allow(unused_variables)]
     pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]
