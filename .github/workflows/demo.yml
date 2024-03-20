@@ -1,0 +1,36 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+name: Demo
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  comment:
+    if: startsWith(github.head_ref, 'wip-')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      packages: none
+      pull-requests: write
+      security-events: write
+    steps:
+    - name: View context attributes
+      uses: actions/github-script@v7
+      with:
+        script: console.log(context)
+    - name: Post Comment
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '👋 Thanks for reporting!'
+          })
