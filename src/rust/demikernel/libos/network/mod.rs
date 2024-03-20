@@ -12,9 +12,8 @@ pub mod queue;
 // Imports
 //======================================================================================================================
 
-#[cfg(all(feature = "catnap-libos"))]
-use crate::demikernel::libos::network::libos::SharedNetworkLibOS;
 use crate::{
+    demikernel::libos::network::libos::SharedNetworkLibOS,
     pal::constants::SOMAXCONN,
     runtime::{
         fail::Fail,
@@ -183,6 +182,7 @@ impl NetworkLibOSWrapper {
     }
 
     /// Pushes a scatter-gather array to a UDP socket.
+    #[allow(unused_variables)]
     pub fn pushto(&mut self, sockqd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         match self {
             #[cfg(feature = "catpowder-libos")]

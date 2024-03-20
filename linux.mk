@@ -53,7 +53,7 @@ export LIBS := $(DEMIKERNEL_LIB)
 #=======================================================================================================================
 
 export LIBOS ?= catnap
-export CARGO_FEATURES := --features=$(LIBOS)-libos
+export CARGO_FEATURES := --features=$(LIBOS)-libos --no-default-features
 
 # Switch for DPDK
 ifeq ($(LIBOS),catnip)

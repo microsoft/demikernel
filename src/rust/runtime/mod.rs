@@ -35,16 +35,17 @@ pub use dpdk_rs as libdpdk;
 // Imports
 //======================================================================================================================
 
+use crate::runtime::network::{
+    ephemeral::EphemeralPorts,
+    socket::SocketId,
+    NetworkQueueTable,
+};
+
 use crate::{
     async_timer,
     expect_some,
     runtime::{
         fail::Fail,
-        network::{
-            ephemeral::EphemeralPorts,
-            socket::SocketId,
-            NetworkQueueTable,
-        },
         poll::PollFuture,
         queue::{
             IoQueue,

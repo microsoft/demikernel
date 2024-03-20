@@ -16,6 +16,12 @@ pub mod perftools;
 
 pub mod runtime;
 
+#[cfg(any(
+    feature = "catnap-libos",
+    feature = "catnip-libos",
+    feature = "catpowder-libos",
+    feature = "catloop-libos"
+))]
 pub mod inetstack;
 
 extern crate test;
