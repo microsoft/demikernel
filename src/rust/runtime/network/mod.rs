@@ -120,7 +120,7 @@ pub trait PacketBuf {
     /// Returns the body size of the target [PacketBuf].
     fn body_size(&self) -> usize;
     /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&self) -> Option<DemiBuffer>;
+    fn take_body(&mut self) -> Option<DemiBuffer>;
 }
 
 /// Network Runtime
