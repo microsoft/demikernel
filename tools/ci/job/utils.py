@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import datetime
 import subprocess
 import time
 from typing import List
@@ -98,6 +99,7 @@ def extract_performance(job_name, file):
                 entry["TotalTime"] = float(total_time)
                 entry["AverageCyclesPerSyscall"] = float(average_cycles)
                 entry["AverageTimePerSyscall"] = float(average_time)
+                entry["DateTime"] = datetime.datetime.now()
 
                 table_client.delete_entity(partition_key, row_key)
                 table_client.create_entity(entry)
