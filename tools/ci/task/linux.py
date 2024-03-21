@@ -30,7 +30,8 @@ class RunOnLinux(BaseLinuxTask):
     def __init__(self, host: str, repository: str, target: str, is_debug: bool, is_sudo: bool, config_path: str):
         debug_flag: str = "DEBUG=yes" if is_debug else "DEBUG=no"
         sudo_cmd: str = "sudo -E" if is_sudo else ""
-        cmd: str = f"cd {repository} && {sudo_cmd} make -j 1 CONFIG_PATH={config_path} {debug_flag} {target} 2> out.stderr && cat out.stderr >&2 || ( cat out.stderr >&2 ; exit 1 )"
+        profiler_flag: str = "PROFILER=yes" if not is_debug else "PROFILER=no"
+        cmd: str = f"cd {repository} && {sudo_cmd} make -j 1 CONFIG_PATH={config_path} {profiler_flag} {debug_flag} {target} 2> out.stderr && cat out.stderr >&2 || ( cat out.stderr >&2 ; exit 1 )"
         super().__init__(host, cmd)
 
 
