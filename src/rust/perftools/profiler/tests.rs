@@ -2,10 +2,21 @@
 // Licensed under the MIT license.
 
 use crate::{
+    async_timer,
     perftools::profiler,
     timer,
 };
 use ::anyhow::Result;
+use ::std::{
+    future::Future,
+    task::{
+        Context,
+        Poll,
+        Waker,
+    },
+};
+use futures::FutureExt;
+use std::pin::Pin;
 
 #[test]
 fn test_multiple_roots() -> Result<()> {
@@ -26,15 +37,15 @@ fn test_multiple_roots() -> Result<()> {
         crate::ensure_eq!(p.roots.len(), 2);
 
         for root in p.roots.iter() {
-            crate::ensure_eq!(root.borrow().pred.is_none(), true);
-            crate::ensure_eq!(root.borrow().succs.is_empty(), true);
+            crate::ensure_eq!(root.borrow().get_pred().is_none(), true);
+            crate::ensure_eq!(root.borrow().get_succs().is_empty(), true);
         }
 
-        crate::ensure_eq!(p.roots[0].borrow().name, "b");
-        crate::ensure_eq!(p.roots[1].borrow().name, "a");
+        crate::ensure_eq!(p.roots[0].borrow().get_name(), "b");
+        crate::ensure_eq!(p.roots[1].borrow().get_name(), "a");
 
-        crate::ensure_eq!(p.roots[0].borrow().num_calls, 6);
-        crate::ensure_eq!(p.roots[1].borrow().num_calls, 1);
+        crate::ensure_eq!(p.roots[0].borrow().get_num_calls(), 6);
+        crate::ensure_eq!(p.roots[1].borrow().get_num_calls(), 1);
 
         Ok(())
     })
@@ -61,16 +72,19 @@ fn test_succ_reuse() -> Result<()> {
         crate::ensure_eq!(p.roots.len(), 1);
 
         let root = p.roots[0].borrow();
-        crate::ensure_eq!(root.name, "a");
-        crate::ensure_eq!(root.pred.is_none(), true);
-        crate::ensure_eq!(root.succs.len(), 1);
-        crate::ensure_eq!(root.num_calls, 6);
+        crate::ensure_eq!(root.get_name(), "a");
+        crate::ensure_eq!(root.get_pred().is_none(), true);
+        crate::ensure_eq!(root.get_succs().len(), 1);
+        crate::ensure_eq!(root.get_num_calls(), 6);
 
-        let succ = root.succs[0].borrow();
-        crate::ensure_eq!(succ.name, "b");
-        crate::ensure_eq!(ptr::eq(succ.pred.as_ref().unwrap().as_ref(), p.roots[0].as_ref()), true);
-        crate::ensure_eq!(succ.succs.is_empty(), true);
-        crate::ensure_eq!(succ.num_calls, 3);
+        let succ = root.get_succs()[0].borrow();
+        crate::ensure_eq!(succ.get_name(), "b");
+        crate::ensure_eq!(
+            ptr::eq(succ.get_pred().as_ref().unwrap().as_ref(), p.roots[0].as_ref()),
+            true
+        );
+        crate::ensure_eq!(succ.get_succs().is_empty(), true);
+        crate::ensure_eq!(succ.get_num_calls(), 3);
 
         Ok(())
     })
@@ -103,4 +117,46 @@ fn test_reset_during_frame() -> Result<()> {
 
         Ok(())
     })
+}
+
+struct DummyCoroutine {
+    iterations: usize,
+}
+
+impl Future for DummyCoroutine {
+    type Output = Result<()>;
+
+    fn poll(self: Pin<&mut Self>, _ctx: &mut Context) -> Poll<Self::Output> {
+        match profiler::PROFILER.with(|p| -> Result<()> {
+            let p = p.borrow();
+            crate::ensure_eq!(p.roots.len(), 1);
+
+            let root = p.roots[0].borrow();
+            crate::ensure_eq!(root.get_name(), "dummy");
+            crate::ensure_eq!(root.get_num_calls(), self.as_ref().iterations);
+            Ok(())
+        }) {
+            Ok(()) => {
+                self.get_mut().iterations += 1;
+                Poll::Pending
+            },
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+#[test]
+fn test_async() -> Result<()> {
+    let mut task = async_timer!("dummy", Box::pin(DummyCoroutine { iterations: 0 }.fuse()));
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(&waker);
+
+    for _ in 0..10 {
+        match Future::poll(task.as_mut(), &mut context) {
+            Poll::Pending => (),
+            Poll::Ready(r) => return r,
+        }
+    }
+
+    Ok(())
 }
