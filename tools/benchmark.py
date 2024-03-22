@@ -11,7 +11,7 @@ from typing import List
 import yaml
 
 from ci.job.linux import CheckoutJobOnLinux, CleanupJobOnLinux, CompileJobOnLinux, TcpEchoTest
-from ci.job.utils import get_commit_hash, CONNECTION_STRING, TABLE_NAME, LIBOS
+from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
 
 
 # =====================================================================================================================
@@ -163,12 +163,9 @@ def main():
 
     # Initialize glboal variables.
     get_commit_hash()
-    global CONNECTION_STRING
-    CONNECTION_STRING = args.connection_string if args.connection_string != "" else CONNECTION_STRING
-    global TABLE_NAME
-    TABLE_NAME = args.table_name if args.table_name != "" else TABLE_NAME
-    global LIBOS
-    LIBOS = libos
+    set_connection_string(args.connection_string)
+    set_table_name(args.table_name)
+    set_libos(libos)
 
     run_pipeline(repository, branch, libos, is_debug, server,
                  client, server_addr,

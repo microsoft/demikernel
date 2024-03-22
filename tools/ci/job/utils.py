@@ -33,6 +33,21 @@ def get_commit_hash() -> str:
     assert len(COMMIT_HASH) == 40
 
 
+def set_connection_string(connection_string: str) -> None:
+    global CONNECTION_STRING
+    CONNECTION_STRING = connection_string
+
+
+def set_table_name(table_name: str) -> None:
+    global TABLE_NAME
+    TABLE_NAME = table_name
+
+
+def set_libos(libos: str) -> None:
+    global LIBOS
+    LIBOS = libos
+
+
 def timing(f):
     def wrap(*args, **kwargs):
         time1 = time.time()
@@ -44,6 +59,10 @@ def timing(f):
 
 
 def extract_performance(job_name, file):
+    global COMMIT_HASH
+    global CONNECTION_STRING
+    global TABLE_NAME
+    global LIBOS
 
     # Connect to Azure Tables.
     if not CONNECTION_STRING == "":
