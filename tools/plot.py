@@ -39,13 +39,6 @@ def read_args() -> argparse.Namespace:
     # Initialize parser.
     parser = argparse.ArgumentParser(prog="plot.py", description=description)
 
-<<<<<<< Updated upstream
-    # Build options.
-    parser.add_argument("--libos", required=True,
-                        help="set target libos in remote hosts")
-
-=======
->>>>>>> Stashed changes
     # Other options.
     parser.add_argument("--connection-string", required=True,
                         default="", help="connection string to access Azure tables")
@@ -64,10 +57,6 @@ def main():
     args: argparse.Namespace = read_args()
 
     # Extract build options.
-<<<<<<< Updated upstream
-    libos: str = args.libos
-=======
->>>>>>> Stashed changes
     key: str = args.key
     connection_string: str = args.connection_string
     table_name: str = args.table_name
@@ -75,13 +64,8 @@ def main():
     # Initialize glboal variables.
     get_commit_hash()
 
-<<<<<<< Updated upstream
-    extract_performance(connection_string, key, libos,
-                        "demikernel", table_name, "benchmark-tcp-echo")
-=======
     extract_performance(connection_string, key, "demikernel",
                         table_name, "benchmark-tcp-echo")
->>>>>>> Stashed changes
 
 
 def get_commit_hash() -> str:
@@ -111,11 +95,7 @@ def get_datetime_of_commit(commit_hash: str) -> str:
 
 
 def get_distance_of_commits(commit_hash1: str) -> int:
-<<<<<<< Updated upstream
-    cmd = "git rev-list --count {}..HEAD".format(commit_hash1)
-=======
     cmd = "git rev-list --count dev..{}".format(commit_hash1)
->>>>>>> Stashed changes
     git_cmd = "bash -l -c \'{}\'".format(cmd)
     git_process = subprocess.Popen(
         git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -124,62 +104,13 @@ def get_distance_of_commits(commit_hash1: str) -> int:
     return int(git_stdout)
 
 
-<<<<<<< Updated upstream
-def extract_performance(connection_string, key, libos, account_name, table_name, container_name):
-=======
 def extract_performance(connection_string, key, account_name, table_name, container_name):
->>>>>>> Stashed changes
     # Connect to Azure Tables.
     table_service = TableServiceClient.from_connection_string(
         connection_string)
     table_client = table_service.get_table_client(table_name)
 
     # Retrieve all entities from the table.
-<<<<<<< Updated upstream
-    query_filter = "LibOS eq @libos"
-    parameters = {"libos": libos}
-    data = table_client.query_entities(
-        query_filter=query_filter, select=["DateTime", "JobName", "CommitHash", "Syscall", "AverageCyclesPerSyscall"], parameters=parameters
-    )
-
-    df = pandas.DataFrame(data)
-
-    df['Diff'] = df['CommitHash'].apply(get_distance_of_commits).astype(int)
-
-    pop_syscall = ["pop", 1000]
-    push_syscall = ["push", 1000]
-    syscall_names = [push_syscall, pop_syscall]
-
-    for syscall in syscall_names:
-        syscall_name = syscall[0]
-        syscall_y_max = syscall[1]
-        print(f"Plotting {syscall_name}...")
-        df_syscall: pandas.DataFrame = df[df["Syscall"].str.contains(
-            syscall_name)]
-
-        # Use the function
-        plot_and_upload(df_syscall, "server", syscall_name,
-                        syscall_y_max, account_name, key, container_name)
-        plot_and_upload(df_syscall, "client", syscall_name,
-                        syscall_y_max, account_name, key, container_name)
-
-
-def plot_and_upload(df: pandas.DataFrame, job_type, syscall_name, syscall_y_max, account_name, key, container_name):
-    df = df[df["JobName"].str.contains(job_type)]
-    df = df.sort_values(by="Diff")
-    df['AverageCyclesPerSyscallInThousands'] = df['AverageCyclesPerSyscall'] / 1000
-    filename: str = f"{syscall_name}-{job_type}.png"
-    plot = df.plot(x="Diff", y="AverageCyclesPerSyscall",
-                   kind="line", marker="o")
-    plot.xaxis.set_major_locator(MaxNLocator(integer=True))
-    plot.set_xlabel("Commit Distance")
-    plot.set_title(
-        f"Performance for {syscall_name}() in {job_type.capitalize()}")
-    plot.legend(labels=[])
-    plot.set_ylim(bottom=0, top=syscall_y_max)
-    plot.set_ymargin(0.0)
-    plot.set_ylabel("Average Cycles Spent in Syscall")
-=======
     query_filter = ""
     parameters = {}
     data = table_client.query_entities(
@@ -309,7 +240,6 @@ def plot_and_upload(libos: str, df: pandas.DataFrame, job_type, syscall_name, sy
     plt.ylabel("Average Cycles Spent in Syscall")
     plt.legend()
 
->>>>>>> Stashed changes
     plt.savefig(filename)
     upload_image_to_blob(account_name, key, container_name, filename, filename)
 
