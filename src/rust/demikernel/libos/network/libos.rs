@@ -25,7 +25,6 @@ use crate::{
         queue::{
             downcast_queue,
             IoQueue,
-            Operation,
             OperationResult,
         },
         types::{
@@ -59,7 +58,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    pin::Pin,
     time::Duration,
 };
 
@@ -206,7 +204,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().accept_coroutine(qd).fuse());
+            let coroutine = Box::pin(self.clone().accept_coroutine(qd).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("NetworkLibOS::accept", coroutine)
@@ -257,7 +255,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().connect_coroutine(qd, remote).fuse());
+            let coroutine = Box::pin(self.clone().connect_coroutine(qd, remote).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("NetworkLibOS::connect", coroutine)
@@ -297,7 +295,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd).fuse());
+            let coroutine = Box::pin(self.clone().close_coroutine(qd).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("NetworkLibOS::close", coroutine)
@@ -366,7 +364,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
+            let coroutine = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("NetworkLibOS::push", coroutine)
@@ -409,7 +407,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pushto_coroutine(qd, buf, remote).fuse());
+            let coroutine = Box::pin(self.clone().pushto_coroutine(qd, buf, remote).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("NetworkLibOS::pushto", coroutine)
@@ -450,7 +448,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
+            let coroutine = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
             self.runtime.clone().insert_io_coroutine("NetworkLibOS::pop", coroutine)
         };
 

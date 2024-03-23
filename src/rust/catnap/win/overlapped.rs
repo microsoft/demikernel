@@ -336,7 +336,6 @@ mod tests {
         ensure_eq,
         runtime::{
             conditional_yield_with_timeout,
-            Operation,
             SharedDemiRuntime,
         },
         OperationResult,
@@ -579,7 +578,7 @@ mod tests {
         iocp.get_mut().associate_handle(server_pipe.0, COMPLETION_KEY)?;
         let iocp_ref: &mut IoCompletionPort<Rc<Vec<u8>>> = unsafe { &mut *iocp.get() };
 
-        let server: Pin<Box<Operation>> = Box::pin(
+        let server = Box::pin(
             run_as_io_op(async move {
                 unsafe {
                     iocp_ref.do_io(
