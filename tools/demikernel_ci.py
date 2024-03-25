@@ -126,7 +126,7 @@ def run_pipeline(
             if 'tcp_echo' in ci_map[libos] and (test_system == "tcp-echo" or test_system == "all"):
                 for scenario in ci_map[libos]['tcp_echo']:
                     status["tcp_echo"] = TcpEchoTest(
-                        config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests']).execute()
+                        config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests'], scenario['nthreads']).execute()
             if 'tcp_close' in ci_map[libos] and (test_system == "tcp-close" or test_system == "all"):
                 for scenario in ci_map[libos]['tcp_close']:
                     status["tcp_close"] = TcpCloseTest(

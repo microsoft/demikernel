@@ -284,7 +284,13 @@ fn main() -> Result<()> {
     let mut threads = vec![];
     match args.peer_type.as_str() {
         "server" => {
-            for _ in 0..args.nthreads.unwrap_or(1) {
+            // Multi-threaded server is only supported by Catnap.
+            // TODO: Check/add support for other libOSes.
+            let nthreads: usize = match libos_name {
+                LibOSName::Catnap => args.nthreads.unwrap_or(1),
+                _ => 1,
+            };
+            for _ in 0..nthreads {
                 if let Ok(handle) = start_server_thread(libos_name, args.addr, args.log_interval) {
                     threads.push(handle)
                 }

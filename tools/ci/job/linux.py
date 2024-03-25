@@ -206,11 +206,11 @@ class TcpCloseTest(SystemTestJobOnLinux):
 
 
 class TcpEchoTest(SystemTestJobOnLinux):
-    def __init__(self, config: dict, run_mode: str, nclients: int, bufsize: int, nrequests: int):
+    def __init__(self, config: dict, run_mode: str, nclients: int, bufsize: int, nrequests: int, nthreads: int):
         config["test_name"] = "tcp-echo"
-        config["test_alias"] = f"tcp-echo-{run_mode}-{nclients}-{bufsize}-{nrequests}"
+        config["test_alias"] = f"tcp-echo-{run_mode}-{nclients}-{bufsize}-{nrequests}-{nthreads}"
         config["all_pass"] = True
-        config["server_args"] = f"--peer server --address {config['server_addr']}:12345"
+        config["server_args"] = f"--peer server --address {config['server_addr']}:12345 --nthreads {nthreads}"
         config["client_args"] = f"--peer client --address {config['server_addr']}:12345 --nclients {nclients} --nrequests {nrequests} --bufsize {bufsize} --run-mode {run_mode}"
         super().__init__(config)
 
