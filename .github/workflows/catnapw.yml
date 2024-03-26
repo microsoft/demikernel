@@ -10,6 +10,11 @@ concurrency:
 on:
   pull_request:
     types: [opened, synchronize]
+  push:
+    branches:
+      - main
+      - unstable
+      - dev
 
 env:
   LIBOS: catnapw
@@ -41,13 +46,18 @@ jobs:
         echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
     - name: Run
       run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          branch_name="${{ github.head_ref }}"
+        else
+          branch_name="${{ github.ref }}"
+        fi
         pip install --pre azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
           --repository 'c:\demikernel' \
           --config-path 'c:\config.yaml' \
-          --branch origin/${{ github.head_ref }} \
+          --branch origin/$branch_name \
           --libos $LIBOS \
           --debug \
           --server-addr $SERVER_ADDR \
@@ -83,13 +93,18 @@ jobs:
         echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
     - name: Run
       run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          branch_name="${{ github.head_ref }}"
+        else
+          branch_name="${{ github.ref }}"
+        fi
         pip install --pre azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
           --repository 'c:\demikernel' \
           --config-path 'c:\config.yaml' \
-          --branch origin/${{ github.head_ref }} \
+          --branch origin/$branch_name \
           --libos $LIBOS \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
