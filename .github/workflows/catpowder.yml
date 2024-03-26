@@ -2,21 +2,14 @@
 # Licensed under the MIT license.
 
 name: Main Catpowder
+
 concurrency:
   group: catpowder
   cancel-in-progress: false
 
 on:
-  push:
-    branches:
-      - bugfix-*
-      - enhancement-*
-      - feature-*
-      - workaround-*
-      - dev
-      - unstable
-      - main
-  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 env:
   LIBOS: catpowder
@@ -53,7 +46,7 @@ jobs:
           --server $SERVER \
           --client $CLIENT \
           --repository demikernel \
-          --branch origin/${{ github.ref_name }} \
+          --branch origin/${{ github.head_ref }} \
           --debug \
           --libos $LIBOS \
           --test-unit --test-system all --delay 2 \
@@ -96,7 +89,7 @@ jobs:
           --server $SERVER \
           --client $CLIENT \
           --repository demikernel \
-          --branch origin/${{ github.ref_name }} \
+          --branch origin/${{ github.head_ref }} \
           --libos $LIBOS \
           --test-unit --test-system all --delay 2 \
           --server-addr $SERVER_ADDR \
