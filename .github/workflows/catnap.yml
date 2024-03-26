@@ -49,7 +49,7 @@ jobs:
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           branch_name="${{ github.head_ref }}"
         else
-          branch_name="${{ github.ref }}"
+          branch_name="${{ github.ref_name }}"
         fi
         pip install --pre azure-data-tables
         python3 tools/demikernel_ci.py \
@@ -96,7 +96,7 @@ jobs:
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           branch_name="${{ github.head_ref }}"
         else
-          branch_name="${{ github.ref }}"
+          branch_name="${{ github.ref_name }}"
         fi
         pip install --pre azure-data-tables
         python3 tools/demikernel_ci.py \
