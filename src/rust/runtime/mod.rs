@@ -41,8 +41,10 @@ use crate::runtime::network::{
     NetworkQueueTable,
 };
 
+#[cfg(feature = "profiler")]
+use crate::coroutine_timer;
+
 use crate::{
-    async_timer,
     expect_some,
     runtime::{
         fail::Fail,
@@ -178,12 +180,9 @@ impl SharedDemiRuntime {
         F::Output: Unpin + Clone + Any,
     {
         trace!("Inserting coroutine: {:?}", task_name);
-        let boxed_coroutine = {
-            #[cfg(feature = "profiler")]
-            let coroutine = Box::pin(async_timer!(task_name, coroutine).fuse());
-            coroutine
-        };
-        let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, boxed_coroutine);
+        #[cfg(feature = "profiler")]
+        let coroutine = coroutine_timer!(task_name, coroutine);
+        let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, coroutine);
         match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {

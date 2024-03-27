@@ -239,7 +239,13 @@ macro_rules! timer {
 #[macro_export]
 macro_rules! async_timer {
     ($name:expr, $future:expr) => {
-        $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().async_scope($name, $future))
+        async {
+            std::pin::pin!($crate::perftools::profiler::AsyncScope::new(
+                $crate::perftools::profiler::PROFILER.with(|p| p.borrow_mut().get_scope($name)),
+                std::pin::pin!($future).as_mut()
+            ))
+            .await
+        }
     };
 }
 
@@ -248,6 +254,14 @@ macro_rules! async_timer {
 macro_rules! async_timer {
     ($name:expr, $future:expr) => {
         $future
+    };
+}
+
+#[cfg(feature = "profiler")]
+#[macro_export]
+macro_rules! coroutine_timer {
+    ($name:expr, $future:expr) => {
+        Box::pin($crate::perftools::profiler::Profiler::coroutine_scope($name, $future).fuse())
     };
 }
 
