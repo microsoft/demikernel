@@ -239,7 +239,7 @@ def main():
     output_dir: str = args.output_dir
 
     # Initialize glboal variables.
-    get_commit_hash()
+    get_commit_hash(branch)
     set_connection_string(args.connection_string)
     set_table_name(args.table_name)
     set_libos(libos)
