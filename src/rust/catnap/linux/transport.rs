@@ -335,6 +335,26 @@ impl NetworkTransport for SharedCatnapTransport {
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
         trace!("Bind to {:?}", local);
         let socket: &mut Socket = self.socket_from_sd(sd);
+
+        // Set SO_REUSE_PORT.
+        let optval: libc::c_int = 1;
+        let optval_len: libc::socklen_t = std::mem::size_of_val(&optval) as libc::socklen_t;
+        if unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_REUSEPORT,
+                &optval as *const _ as *const libc::c_void,
+                optval_len,
+            )
+        } < 0
+        {
+            let e: i32 = get_libc_err(io::Error::last_os_error());
+            let cause: String = format!("failed to bind socket: {:?}", e);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(e, &cause));
+        }
+
         if let Err(e) = socket.bind(&local.into()) {
             let cause: String = format!("failed to bind socket: {:?}", e);
             error!("bind(): {}", cause);

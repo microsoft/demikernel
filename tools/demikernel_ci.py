@@ -125,8 +125,12 @@ def run_pipeline(
                 status["pipe-push-pop"] = PipePushPopTest(config).execute()
             if 'tcp_echo' in ci_map[libos] and (test_system == "tcp-echo" or test_system == "all"):
                 for scenario in ci_map[libos]['tcp_echo']:
-                    status["tcp_echo"] = TcpEchoTest(
-                        config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests']).execute()
+                    if libos == "catnap":
+                        status["tcp_echo"] = TcpEchoTest(
+                            config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests'], scenario['nthreads']).execute()
+                    else:
+                        status["tcp_echo"] = TcpEchoTest(
+                            config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests'], 1).execute()
             if 'tcp_close' in ci_map[libos] and (test_system == "tcp-close" or test_system == "all"):
                 for scenario in ci_map[libos]['tcp_close']:
                     status["tcp_close"] = TcpCloseTest(

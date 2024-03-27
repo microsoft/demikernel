@@ -25,6 +25,8 @@ use server::TcpEchoServer;
 use std::{
     net::SocketAddr,
     str::FromStr,
+    thread,
+    thread::JoinHandle,
     time::Duration,
 };
 
@@ -66,6 +68,8 @@ pub struct ProgramArguments {
     nrequests: Option<usize>,
     /// Number of clients.
     nclients: Option<usize>,
+    /// Number of threads.
+    nthreads: Option<usize>,
     /// Log interval.
     log_interval: Option<u64>,
     /// Peer type.
@@ -110,7 +114,15 @@ impl ProgramArguments {
                     .value_parser(clap::value_parser!(usize))
                     .required(false)
                     .value_name("NUMBER")
-                    .help("Sets number of clients"),
+                    .help("Sets number of clients (per thread)"),
+            )
+            .arg(
+                Arg::new("nthreads")
+                    .long("nthreads")
+                    .value_parser(clap::value_parser!(usize))
+                    .required(false)
+                    .value_name("NUMBER")
+                    .help("Sets number of threads"),
             )
             .arg(
                 Arg::new("nrequests")
@@ -151,6 +163,7 @@ impl ProgramArguments {
             bufsize: None,
             nrequests: None,
             nclients: None,
+            nthreads: None,
             log_interval: None,
             peer_type: "server".to_string(),
         };
@@ -181,6 +194,13 @@ impl ProgramArguments {
             }
         }
 
+        // Number of clients.
+        if let Some(nthreads) = matches.get_one::<usize>("nthreads") {
+            if *nthreads > 0 {
+                args.nthreads = Some(*nthreads);
+            }
+        }
+
         // Log interval.
         if let Some(log_interval) = matches.get_one::<u64>("log") {
             if *log_interval > 0 {
@@ -203,6 +223,50 @@ impl ProgramArguments {
     }
 }
 
+fn start_server_thread(
+    libos_name: LibOSName,
+    addr: SocketAddr,
+    log_interval: Option<u64>,
+) -> Result<JoinHandle<Result<()>>> {
+    Ok(thread::spawn(move || -> Result<()> {
+        let libos: LibOS = match LibOS::new(libos_name) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+        };
+        let mut server: TcpEchoServer = TcpEchoServer::new(libos, addr)?;
+        server.run(log_interval)
+    }))
+}
+
+fn start_client_thread(
+    libos_name: LibOSName,
+    nclients: usize,
+    nrequests: Option<usize>,
+    bufsize: usize,
+    run_mode: &String,
+    addr: SocketAddr,
+    log_interval: Option<u64>,
+) -> Result<JoinHandle<Result<()>>> {
+    match run_mode.as_str() {
+        "sequential" => Ok(thread::spawn(move || -> Result<()> {
+            let libos: LibOS = match LibOS::new(libos_name) {
+                Ok(libos) => libos,
+                Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+            };
+            let mut client: TcpEchoClient = TcpEchoClient::new(libos, bufsize, addr)?;
+            client.run_sequential(log_interval, nclients, nrequests)
+        })),
+        "concurrent" => Ok(thread::spawn(move || -> Result<()> {
+            let libos: LibOS = match LibOS::new(libos_name) {
+                Ok(libos) => libos,
+                Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+            };
+            let mut client: TcpEchoClient = TcpEchoClient::new(libos, bufsize, addr)?;
+            client.run_concurrent(log_interval, nclients, nrequests)
+        })),
+        _ => anyhow::bail!("invalid run mode"),
+    }
+}
 //======================================================================================================================
 
 fn main() -> Result<()> {
@@ -216,31 +280,43 @@ fn main() -> Result<()> {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
     };
-    let libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
-        Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
-    };
 
+    let mut threads = vec![];
     match args.peer_type.as_str() {
         "server" => {
-            let mut server: TcpEchoServer = TcpEchoServer::new(libos, args.addr)?;
-            server.run(args.log_interval)?;
+            // Multi-threaded server is only supported by Catnap.
+            // TODO: Check/add support for other libOSes.
+            let nthreads: usize = match libos_name {
+                LibOSName::Catnap => args.nthreads.unwrap_or(1),
+                _ => 1,
+            };
+            for _ in 0..nthreads {
+                if let Ok(handle) = start_server_thread(libos_name, args.addr, args.log_interval) {
+                    threads.push(handle)
+                }
+            }
         },
         "client" => {
-            let mut client: TcpEchoClient = TcpEchoClient::new(
-                libos,
-                args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
-                args.addr,
-            )?;
-            let nclients: usize = args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?;
-            match args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?.as_str() {
-                "sequential" => client.run_sequential(args.log_interval, nclients, args.nrequests)?,
-                "concurrent" => client.run_concurrent(args.log_interval, nclients, args.nrequests)?,
-                _ => anyhow::bail!("invalid run mode"),
+            let run_mode: String = args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?;
+            for _ in 0..args.nthreads.unwrap_or(1) {
+                if let Ok(handle) = start_client_thread(
+                    libos_name,
+                    args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
+                    args.nrequests,
+                    args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
+                    &run_mode,
+                    args.addr,
+                    args.log_interval,
+                ) {
+                    threads.push(handle);
+                }
             }
         },
         _ => todo!(),
     }
 
+    for handle in threads {
+        handle.join().unwrap()?;
+    }
     Ok(())
 }

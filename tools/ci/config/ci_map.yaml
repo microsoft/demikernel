@@ -87,41 +87,61 @@ catnap:
       nclients: 1
       nrequests: 128
       run_mode: sequential
+      nthreads: 1
     - scenario1:
       bufsize: 64
       nclients: 1
       nrequests: 1024
       run_mode: sequential
+      nthreads: 1
     - scenario2:
       bufsize: 1024
       nclients: 1
       nrequests: 128
       run_mode: sequential
+      nthreads: 1
     - scenario3:
       bufsize: 1024
       nclients: 1
       nrequests: 1024
       run_mode: sequential
+      nthreads: 1
     - scenario4:
       bufsize: 64
       nclients: 32
       nrequests: 128
       run_mode: concurrent
+      nthreads: 1
     - scenario5:
       bufsize: 64
       nclients: 32
       nrequests: 1024
       run_mode: concurrent
+      nthreads: 1
     - scenario6:
       bufsize: 1024
       nclients: 32
       nrequests: 128
       run_mode: concurrent
+      nthreads: 1
     - scenario7:
       bufsize: 1024
       nclients: 32
       nrequests: 1024
       run_mode: concurrent
+      nthreads: 1
+    - scenario8:
+      bufsize: 64
+      nclients: 32
+      nrequests: 1024
+      run_mode: concurrent
+      nthreads: 2
+    - scenario9:
+      bufsize: 64
+      nclients: 32
+      nrequests: 1024
+      run_mode: concurrent
+      nthreads: 4
   tcp_ping_pong: {}
   tcp_push_pop: {}
   tcp_wait:
