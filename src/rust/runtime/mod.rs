@@ -41,8 +41,10 @@ use crate::runtime::network::{
     NetworkQueueTable,
 };
 
+#[cfg(feature = "profiler")]
+use crate::coroutine_timer;
+
 use crate::{
-    async_timer,
     expect_some,
     runtime::{
         fail::Fail,
@@ -77,10 +79,7 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    pin::{
-        pin,
-        Pin,
-    },
+    pin::pin,
     rc::Rc,
     time::{
         Duration,
@@ -88,6 +87,7 @@ use ::std::{
         SystemTime,
     },
 };
+use std::pin::Pin;
 
 //======================================================================================================================
 // Constants
@@ -153,31 +153,36 @@ impl SharedDemiRuntime {
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
-    pub fn insert_io_coroutine(
+    pub fn insert_io_coroutine<F: FusedFuture<Output = (QDesc, OperationResult)> + 'static>(
         &mut self,
         task_name: &'static str,
-        coroutine: Pin<Box<Operation>>,
+        coroutine: Pin<Box<F>>,
     ) -> Result<QToken, Fail> {
         self.insert_coroutine(task_name, coroutine)
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler
-    pub fn insert_background_coroutine(
+    pub fn insert_background_coroutine<F: FusedFuture<Output = ()> + 'static>(
         &mut self,
         task_name: &'static str,
-        coroutine: Pin<Box<dyn FusedFuture<Output = ()>>>,
+        coroutine: Pin<Box<F>>,
     ) -> Result<QToken, Fail> {
         self.insert_coroutine(task_name, coroutine)
     }
 
     /// Inserts a coroutine of type T and task
-    pub fn insert_coroutine<R: Unpin + Clone + Any>(
+    pub fn insert_coroutine<F: FusedFuture + 'static>(
         &mut self,
         task_name: &'static str,
-        coroutine: Pin<Box<dyn FusedFuture<Output = R>>>,
-    ) -> Result<QToken, Fail> {
+        coroutine: Pin<Box<F>>,
+    ) -> Result<QToken, Fail>
+    where
+        F::Output: Unpin + Clone + Any,
+    {
         trace!("Inserting coroutine: {:?}", task_name);
-        let task: TaskWithResult<R> = TaskWithResult::<R>::new(task_name, async_timer!(task_name, coroutine));
+        #[cfg(feature = "profiler")]
+        let coroutine = coroutine_timer!(task_name, coroutine);
+        let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, coroutine);
         match self.scheduler.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {

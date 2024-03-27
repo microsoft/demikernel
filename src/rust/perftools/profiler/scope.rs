@@ -8,7 +8,6 @@
 //======================================================================================================================
 
 use crate::perftools::profiler::PROFILER;
-use ::futures::future::FusedFuture;
 use std::{
     cell::RefCell,
     fmt::{
@@ -54,10 +53,9 @@ pub struct Guard {
 }
 
 /// A scope over an async block that may yield and re-enter several times.
-/// A scope over an async block that may yield and re-enter several times.
-pub struct AsyncScope<R> {
+pub struct AsyncScope<'a, F: Future> {
     scope: Rc<RefCell<Scope>>,
-    future: Pin<Box<dyn FusedFuture<Output = R>>>,
+    future: Pin<&'a mut F>,
 }
 
 //======================================================================================================================
@@ -163,9 +161,9 @@ impl Scope {
     }
 }
 
-impl<R> AsyncScope<R> {
-    pub fn new(future: Pin<Box<dyn FusedFuture<Output = R>>>, scope: Rc<RefCell<Scope>>) -> Pin<Box<Self>> {
-        Box::pin(Self { scope, future })
+impl<'a, F: Future> AsyncScope<'a, F> {
+    pub fn new(scope: Rc<RefCell<Scope>>, future: Pin<&'a mut F>) -> Self {
+        Self { scope, future }
     }
 }
 
@@ -187,20 +185,14 @@ impl Debug for Scope {
     }
 }
 
-impl<R> Future for AsyncScope<R> {
-    type Output = R;
+impl<'a, F: Future> Future for AsyncScope<'a, F> {
+    type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut Self = self.get_mut();
 
         let _guard = PROFILER.with(|p| p.borrow_mut().enter_scope(self_.scope.clone()));
         Future::poll(self_.future.as_mut(), ctx)
-    }
-}
-
-impl<R> FusedFuture for AsyncScope<R> {
-    fn is_terminated(&self) -> bool {
-        self.future.is_terminated()
     }
 }
 

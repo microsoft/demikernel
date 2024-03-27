@@ -27,7 +27,6 @@ use crate::{
             demi_qresult_t,
             demi_sgarray_t,
         },
-        Operation,
         OperationResult,
         SharedDemiRuntime,
         SharedObject,
@@ -42,7 +41,6 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    pin::Pin,
     time::Duration,
 };
 
@@ -117,7 +115,7 @@ impl SharedCatmemLibOS {
         trace!("async_close() qd={:?}", qd);
         let mut queue: SharedCatmemQueue = self.get_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
-            let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().close_coroutine(qd).fuse());
+            let coroutine = Box::pin(self.clone().close_coroutine(qd).fuse());
             self.runtime
                 .clone()
                 .insert_io_coroutine("Catmem::async_close", coroutine)
@@ -165,7 +163,7 @@ impl SharedCatmemLibOS {
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
+        let coroutine = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
 
         self.runtime.clone().insert_io_coroutine("Catmem::push", coroutine)
     }
@@ -190,7 +188,7 @@ impl SharedCatmemLibOS {
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
         debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
 
-        let coroutine: Pin<Box<Operation>> = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
+        let coroutine = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
 
         self.runtime.clone().insert_io_coroutine("Catmem::pop", coroutine)
     }

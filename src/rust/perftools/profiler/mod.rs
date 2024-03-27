@@ -8,6 +8,7 @@
 //======================================================================================================================
 
 mod scope;
+pub use crate::perftools::profiler::scope::AsyncScope;
 #[cfg(test)]
 mod tests;
 
@@ -16,7 +17,6 @@ mod tests;
 //======================================================================================================================
 
 use crate::perftools::profiler::scope::{
-    AsyncScope,
     Guard,
     Scope,
 };
@@ -102,19 +102,35 @@ impl Profiler {
         self.enter_scope(scope)
     }
 
-    /// Create an asynchronous scope. Returns a wrapped Future that enters the scope when polled.
+    /// Create and enter a coroutine scope. These are special async scopes that are always rooted because they do not
+    /// run under other scopes.
     #[inline]
-    pub fn async_scope<R: 'static>(
-        &mut self,
-        name: &'static str,
-        future: Pin<Box<dyn FusedFuture<Output = R>>>,
-    ) -> Pin<Box<dyn FusedFuture<Output = R>>> {
-        let scope = self.get_scope(name);
-        AsyncScope::new(future, scope)
+    pub async fn coroutine_scope<F: FusedFuture>(name: &'static str, mut coroutine: Pin<Box<F>>) -> F::Output {
+        AsyncScope::new(
+            PROFILER.with(|p| p.borrow_mut().get_root_scope(name)),
+            coroutine.as_mut(),
+        )
+        .await
+    }
+
+    /// Looks up the scope at the root level using the name, creating a new one if not found.
+    fn get_root_scope(&mut self, name: &'static str) -> Rc<RefCell<Scope>> {
+        //Check if `name` already is a root.
+        let existing_root = self.roots.iter().find(|root| root.borrow().get_name() == name).cloned();
+
+        existing_root.unwrap_or_else(|| {
+            // Add a new root node.
+            let new_scope = Scope::new(name, None);
+            let succ = Rc::new(RefCell::new(new_scope));
+
+            self.roots.push(succ.clone());
+
+            succ
+        })
     }
 
     /// Look up the scope using the name.
-    fn get_scope(&mut self, name: &'static str) -> Rc<RefCell<Scope>> {
+    pub fn get_scope(&mut self, name: &'static str) -> Rc<RefCell<Scope>> {
         // Check if we have already registered `name` at the current point in
         // the tree.
         if let Some(current) = self.current.as_ref() {
@@ -136,19 +152,8 @@ impl Profiler {
                 succ
             })
         } else {
-            // We are currently not within any scope. Check if `name` already
-            // is a root.
-            let existing_root = self.roots.iter().find(|root| root.borrow().get_name() == name).cloned();
-
-            existing_root.unwrap_or_else(|| {
-                // Add a new root node.
-                let new_scope = Scope::new(name, None);
-                let succ = Rc::new(RefCell::new(new_scope));
-
-                self.roots.push(succ.clone());
-
-                succ
-            })
+            // We are currently not within any scope.
+            self.get_root_scope(name)
         }
     }
 

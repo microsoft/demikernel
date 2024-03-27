@@ -15,8 +15,10 @@ use ::std::{
         Waker,
     },
 };
-use futures::FutureExt;
-use std::pin::Pin;
+use std::pin::{
+    pin,
+    Pin,
+};
 
 #[test]
 fn test_multiple_roots() -> Result<()> {
@@ -147,7 +149,8 @@ impl Future for DummyCoroutine {
 
 #[test]
 fn test_async() -> Result<()> {
-    let mut task = async_timer!("dummy", Box::pin(DummyCoroutine { iterations: 0 }.fuse()));
+    let mut coroutine = DummyCoroutine { iterations: 0 };
+    let mut task = pin!(async_timer!("dummy", pin!(coroutine)));
     let waker = Waker::noop();
     let mut context = Context::from_waker(&waker);
 
