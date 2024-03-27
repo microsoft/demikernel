@@ -20,16 +20,14 @@ LIBOS = ""
 # ======================================================================================================================
 
 
-def get_commit_hash() -> str:
-    cmd = "git rev-parse HEAD"
-    git_cmd = "bash -l -c \'{}\'".format(cmd)
-    git_process = subprocess.Popen(
-        git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    git_stdout, _ = git_process.communicate()
-    git_stdout = git_stdout.replace("\n", "")
-
+def get_commit_hash(branch_name: str):
     global COMMIT_HASH
-    COMMIT_HASH = git_stdout
+    cmd = f"git show --format=%H -s {branch_name}"
+    git_cmd = "bash -l -c \'{}\'".format(cmd)
+    git_process = subprocess.Popen(git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git_stdout, _ = git_process.communicate()
+    COMMIT_HASH = git_stdout.replace("\n", "")
+    print(f"Commit Hash: {COMMIT_HASH}")
     assert len(COMMIT_HASH) == 40
 
 
