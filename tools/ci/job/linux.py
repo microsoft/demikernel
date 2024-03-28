@@ -5,65 +5,19 @@ import subprocess
 import time
 from ci.task.linux import BaseLinuxTask, CheckoutOnLinux, CompileOnLinux, RunOnLinux, CleanupOnLinux
 from ci.job.utils import wait_and_report
+from ci.job.generic import BaseJob
 
 # ======================================================================================================================
 # Generic Jobs for Linux
 # ======================================================================================================================
 
 
-class BaseLinuxJob:
+class BaseLinuxJob(BaseJob):
     def __init__(self, config, name):
-        self.name = name
-        self.config = config
+        super().__init__(config, name)
 
     def execute(self, serverTask: BaseLinuxTask, clientTask: BaseLinuxTask = None) -> bool:
-        jobs: dict[str, subprocess.Popen[str]] = {}
-
-        jobs[self.name + "-server-" + self.server()] = serverTask.execute()
-
-        if clientTask is not None:
-            jobs[self.name + "-client-" +
-                 self.client()] = clientTask.execute()
-        return wait_and_report(self.name, self.log_directory(), jobs)
-
-    def branch(self) -> str:
-        return self.config["branch"]
-
-    def server(self) -> str:
-        return self.config["server"]
-
-    def client(self) -> str:
-        return self.config["client"]
-
-    def repository(self) -> str:
-        return self.config["repository"]
-
-    def enable_nfs(self) -> bool:
-        return self.config["enable_nfs"]
-
-    def is_sudo(self) -> bool:
-        return self.config["is_sudo"]
-
-    def config_path(self) -> str:
-        return self.config["config_path"]
-
-    def is_debug(self) -> bool:
-        return self.config["is_debug"]
-
-    def libos(self) -> str:
-        return self.config["libos"]
-
-    def log_directory(self) -> str:
-        return self.config["log_directory"]
-
-    def delay(self) -> float:
-        return self.config["delay"]
-
-    def server_addr(self) -> str:
-        return self.config["server_addr"]
-
-    def client_addr(self) -> str:
-        return self.config["client_addr"]
+        return super().execute(serverTask, clientTask)
 
 
 class CheckoutJobOnLinux(BaseLinuxJob):
@@ -85,8 +39,7 @@ class CheckoutJobOnLinux(BaseLinuxJob):
 class CompileJobOnLinux(BaseLinuxJob):
 
     def __init__(self, config: dict):
-        name = "compile-{}".format("debug" if config["is_debug"]
-                                   else "release")
+        name = "compile-{}".format("debug" if config["is_debug"] else "release")
         super().__init__(config, name)
 
     def execute(self) -> bool:

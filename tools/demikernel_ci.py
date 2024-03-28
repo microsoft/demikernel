@@ -7,10 +7,8 @@ from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 import yaml
-
-from ci.job.linux import CheckoutJobOnLinux, CompileJobOnLinux, UnitTestJobOnLinux, IntegrationTestJobOnLinux, CleanupJobOnLinux, PipeIntegrationTestJobOnLinux, TcpCloseTest, TcpEchoTest, TcpPingPongTest, TcpPushPopTest, TcpWaitTest, UdpPingPongTest, UdpPushPopTest, PipeOpenTest, PipePingPongTest, PipePushPopTest
-from ci.job.windows import job_checkout_windows, job_compile_windows, job_test_unit_rust_windows, job_test_integration_tcp_rust_windows, job_cleanup_windows
 from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
+from ci.job.factory import JobFactory
 
 # =====================================================================================================================
 
@@ -43,7 +41,7 @@ def run_pipeline(
         "client_name": client,
         "repository": repository,
         "branch": branch,
-        "libos": libos,
+        "libos": libos if libos != "catnapw" else "catnap",
         "is_debug": is_debug,
         "test_unit": test_unit,
         "test_system": test_system,
@@ -57,101 +55,81 @@ def run_pipeline(
         "enable_nfs": enable_nfs,
         "log_directory": log_directory,
         "is_sudo": is_sudo,
+        "platform": "linux" if libos != "catnapw" else "windows"
     }
 
-    if libos == "catnapw":
-        libos = "catnap"
-        status["checkout"] = job_checkout_windows(
-            repository, branch, server, client, enable_nfs, log_directory)
-
-        # STEP 2: Compile debug.
-        if status["checkout"]:
-            status["compile"] = job_compile_windows(
-                repository, libos, is_debug, server, client, enable_nfs, log_directory)
-
-        # STEP 3: Run unit tests.
-        if test_unit:
-            if status["checkout"] and status["compile"]:
-                status["unit_tests"] = job_test_unit_rust_windows(repository, libos, is_debug, server, client,
-                                                                  is_sudo, config_path, log_directory)
-                # FIXME: https://github.com/microsoft/demikernel/issues/1030
-                if False:
-                    status["integration_tests"] = job_test_integration_tcp_rust_windows(
-                        repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
-
-        # Setp 5: Clean up.
-        status["cleanup"] = job_cleanup_windows(
-            repository, server, client, is_sudo, enable_nfs, log_directory)
-
-        return status
+    factory: JobFactory = JobFactory(config)
 
     # STEP 1: Check out.
-    status["checkout"] = CheckoutJobOnLinux(config).execute()
+    status["checkout"] = factory.checkout().execute()
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = CompileJobOnLinux(config).execute()
+        status["compile"] = factory.compile().execute()
 
     # STEP 3: Run unit tests.
     if test_unit:
         if status["checkout"] and status["compile"]:
-            status["unit_tests"] = UnitTestJobOnLinux(config).execute()
+            status["unit_tests"] = factory.unit_test().execute()
             if libos == "catnap" or libos == "catloop":
-                status["integration_tests"] = IntegrationTestJobOnLinux(
-                    config).execute()
+                status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":
-                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
-                    config, "standalone").execute()
-                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
-                    config, "push-wait").execute()
-                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
-                    config, "pop-wait").execute()
-                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
-                    config, "push-wait-async").execute()
-                status["integration_tests"] = PipeIntegrationTestJobOnLinux(
-                    config, "pop-wait-async").execute()
+                status["integration_tests"] = factory.integration_test("standalone").execute()
+                status["integration_tests"] = factory.integration_test("push-wait").execute()
+                status["integration_tests"] = factory.integration_test("pop-wait").execute()
+                status["integration_tests"] = factory.integration_test("push-wait-async").execute()
+                status["integration_tests"] = factory.integration_test("pop-wait-async").execute()
 
     # STEP 4: Run system tests.
-    if test_system:
+    if test_system and config["platform"] == "linux":
         if status["checkout"] and status["compile"]:
             ci_map = read_yaml()
-            if 'pipe-open' in ci_map[libos] and (test_system == "pipe-open" or test_system == "all"):
-                scenario = ci_map[libos]['pipe-open']
-                status["pipe-open"] = PipeOpenTest(config,
-                                                   scenario['niterations']).execute()
-            if 'pipe-ping-pong' in ci_map[libos] and (test_system == "pipe-ping-pong" or test_system == "all"):
-                status["pipe-ping-pong"] = PipePingPongTest(config).execute()
-            if 'pipe-push-pop' in ci_map[libos] and (test_system == "pipe-push-pop" or test_system == "all"):
-                status["pipe-push-pop"] = PipePushPopTest(config).execute()
-            if 'tcp_echo' in ci_map[libos] and (test_system == "tcp-echo" or test_system == "all"):
+            # Run pipe-open test.
+            if __should_run(ci_map[libos], "pipe_open", test_system):
+                scenario = ci_map[libos]['pipe_open']
+                status["pipe-open"] = factory.system_test(test_name="open-close",
+                                                          niterations=scenario['niterations']).execute()
+            # Run pipe-ping-pong test.
+            if __should_run(ci_map[libos], "pipe_ping_pong", test_system):
+                status["pipe-ping-pong"] = factory.system_test(test_name="ping-pong").execute()
+            # Run pipe-push-pop test.
+            if __should_run(ci_map[libos], "pipe_push_pop", test_system):
+                status["pipe-push-pop"] = factory.system_test(test_name="push-pop").execute()
+            if __should_run(ci_map[libos], "tcp_echo", test_system):
                 for scenario in ci_map[libos]['tcp_echo']:
                     if libos == "catnap":
-                        status["tcp_echo"] = TcpEchoTest(
-                            config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests'], scenario['nthreads']).execute()
+                        status["tcp_echo"] = factory.system_test(
+                            test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'], bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=scenario['nthreads']).execute()
                     else:
-                        status["tcp_echo"] = TcpEchoTest(
-                            config, scenario['run_mode'], scenario['nclients'], scenario['bufsize'], scenario['nrequests'], 1).execute()
-            if 'tcp_close' in ci_map[libos] and (test_system == "tcp-close" or test_system == "all"):
+                        status["tcp_echo"] = factory.system_test(
+                            test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'],
+                            bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=1).execute()
+            if __should_run(ci_map[libos], "tcp_close", test_system):
                 for scenario in ci_map[libos]['tcp_close']:
-                    status["tcp_close"] = TcpCloseTest(
-                        config, scenario['run_mode'], scenario['who_closes'], scenario['nclients']).execute()
-            if 'tcp_wait' in ci_map[libos] and (test_system == "tcp-wait" or test_system == "all"):
+                    status["tcp_close"] = factory.system_test(
+                        test_name="tcp_close", run_mode=scenario['run_mode'], who_closes=scenario['who_closes'], nclients=scenario['nclients']).execute()
+            if __should_run(ci_map[libos], "tcp_wait", test_system):
                 for scenario in ci_map[libos]['tcp_wait']:
-                    status["tcp_wait"] = TcpWaitTest(
-                        config, scenario['scenario'], scenario['nclients']).execute()
-            if 'tcp_ping_pong' in ci_map[libos] and (test_system == "tcp-ping-pong" or test_system == "all"):
-                status["tcp_ping_pong"] = TcpPingPongTest(config).execute()
-            if 'tcp_push_pop' in ci_map[libos] and (test_system == "tcp-push-pop" or test_system == "all"):
-                status["tcp_push_pop"] = TcpPushPopTest(config).execute()
-            if 'udp_ping_pong' in ci_map[libos] and (test_system == "udp-ping-pong" or test_system == "all"):
-                status["udp_ping_pong"] = UdpPingPongTest(config).execute()
-            if 'udp_push_pop' in ci_map[libos] and (test_system == "udp-push-pop" or test_system == "all"):
-                status["udp_push_pop"] = UdpPushPopTest(config).execute()
+                    status["tcp_wait"] = factory.system_test(test_name="tcp_wait",
+                                                             scenario=scenario['scenario'], nclients=scenario['nclients']).execute()
+            if __should_run(ci_map[libos], "tcp_ping_pong", test_system):
+                status["tcp_ping_pong"] = factory.system_test(test_name="tcp_ping_pong").execute()
+            if __should_run(ci_map[libos], "tcp_push_pop", test_system):
+                status["tcp_push_pop"] = factory.system_test(test_name="tcp_push_pop").execute()
+            if __should_run(ci_map[libos], "udp_ping_pong", test_system):
+                status["udp_ping_pong"] = factory.system_test(test_name="udp_ping_pong").execute()
+            if __should_run(ci_map[libos], "udp_push_pop", test_system):
+                status["udp_push_pop"] = factory.system_test(test_name="udp_push_pop").execute()
 
     # Setp 5: Clean up.
-    status["cleanup"] = CleanupJobOnLinux(config).execute()
+    status["cleanup"] = factory.cleanup().execute()
 
     return status
+
+
+def __should_run(ci_map, test_name: str, test_system: str) -> bool:
+    """Checks if we should run a given system test."""
+    return test_name in ci_map and (test_system == "all" or test_system == test_name)
 
 
 def read_yaml():
