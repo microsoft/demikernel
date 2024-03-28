@@ -7,7 +7,6 @@ from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 import yaml
-from ci.job.windows import job_checkout_windows, job_compile_windows, job_test_unit_rust_windows, job_test_integration_tcp_rust_windows, job_cleanup_windows
 from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
 from ci.job.factory import JobFactory
 
@@ -42,7 +41,7 @@ def run_pipeline(
         "client_name": client,
         "repository": repository,
         "branch": branch,
-        "libos": libos,
+        "libos": libos if libos != "catnapw" else "catnap",
         "is_debug": is_debug,
         "test_unit": test_unit,
         "test_system": test_system,
@@ -58,32 +57,6 @@ def run_pipeline(
         "is_sudo": is_sudo,
         "platform": "linux" if libos != "catnapw" else "windows"
     }
-
-    if libos == "catnapw":
-        libos = "catnap"
-        status["checkout"] = job_checkout_windows(
-            repository, branch, server, client, enable_nfs, log_directory)
-
-        # STEP 2: Compile debug.
-        if status["checkout"]:
-            status["compile"] = job_compile_windows(
-                repository, libos, is_debug, server, client, enable_nfs, log_directory)
-
-        # STEP 3: Run unit tests.
-        if test_unit:
-            if status["checkout"] and status["compile"]:
-                status["unit_tests"] = job_test_unit_rust_windows(repository, libos, is_debug, server, client,
-                                                                  is_sudo, config_path, log_directory)
-                # FIXME: https://github.com/microsoft/demikernel/issues/1030
-                if False:
-                    status["integration_tests"] = job_test_integration_tcp_rust_windows(
-                        repository, libos, is_debug, server, client, server_addr, client_addr, is_sudo, config_path, log_directory)
-
-        # Setp 5: Clean up.
-        status["cleanup"] = job_cleanup_windows(
-            repository, server, client, is_sudo, enable_nfs, log_directory)
-
-        return status
 
     factory: JobFactory = JobFactory(config)
 
@@ -155,6 +128,7 @@ def run_pipeline(
 
 
 def __should_run(ci_map, test_name: str, test_system: str) -> bool:
+    """Checks if we should run a given system test."""
     return test_name in ci_map and (test_system == "all" or test_system == test_name)
 
 
