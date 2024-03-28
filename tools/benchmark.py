@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import sys
 import argparse
 from os import mkdir
 from shutil import move, rmtree
@@ -12,7 +11,6 @@ import yaml
 
 from ci.job.linux import CheckoutJobOnLinux, CleanupJobOnLinux, CompileJobOnLinux, TcpEchoTest
 from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
-
 
 # =====================================================================================================================
 

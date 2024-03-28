@@ -148,10 +148,8 @@ jobs:
           --connection "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
           --table  ${{ secrets.AZURE_STORAGE_TABLE_NAME }} \
           --key ${{ secrets.AZURE_STORAGE_KEY }} \
-          --container ${{ secrets.AZURE_STORAGE_CONTAINER }} \
           --branch origin/${{ github.head_ref }} \
-          --libos $LIBOS \
-          --no-plot)
+          --libos $LIBOS)
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
         echo "MESSAGE<<$EOF" >> $GITHUB_OUTPUT
         echo "$stats" >> $GITHUB_OUTPUT
