@@ -20,7 +20,8 @@ extern "C"
      * @return On successful completion, the allocated scatter-gather array is returned. On error, a null scatter-gather
      * array is returned instead.
      */
-    extern demi_sgarray_t demi_sgaalloc(size_t size);
+    ATTR_NODISCARD
+    extern demi_sgarray_t demi_sgaalloc(_In_ size_t size);
 
     /**
      * @brief Releases a scatter-gather array.
@@ -29,7 +30,7 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_sgafree(demi_sgarray_t *sga);
+    extern int demi_sgafree(_In_ demi_sgarray_t *sga);
 
 #ifdef __cplusplus
 }

@@ -21,7 +21,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *timeout);
+    extern int demi_wait(_Out_ demi_qresult_t *qr_out, _In_ demi_qtoken_t qt, _In_opt_ const struct timespec *timeout)
+        ATTR_NONNULL(1);
 
     /**
      * @brief Waits for the first asynchronous I/O operation in a list to complete.
@@ -34,8 +35,25 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts,
-                             const struct timespec *timeout);
+    extern int demi_wait_any(_Out_ demi_qresult_t *qr_out, _Out_ int *ready_offset,
+                             _In_reads_(num_qts) const demi_qtoken_t qts[], _In_ int num_qts,
+                             _In_opt_ const struct timespec *timeout)
+        ATTR_NONNULL(1, 2, 3);
+
+    /**
+     * @brief Waits for the next n asynchronous I/O operations to complete.
+     *
+     * @param qr_out       Store location for the result of the completed I/O operation.
+     * @param ready_offset Store location for the offset in the list of I/O queue tokens of the completed I/O operation.
+     * @param qts          List of I/O queue tokens to wait for completion.
+     * @param num_qts      Length of the list of I/O queue tokens to wait for completion.
+     * @param timeout      Timeout interval in seconds and nanoseconds.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    extern int demi_wait_any(_Out_writes_to_(num_qrs, *ready_offset) demi_qresult_t *qr_out, _In_ int num_qrs,
+                             _Out_ int *ready_offset, _In_opt_ const struct timespec *timeout)
+        ATTR_NONNULL(1, 3);
 
 #ifdef __cplusplus
 }

@@ -42,6 +42,7 @@ use ::libc::{
     sockaddr,
 };
 use ::socket2::SockAddr;
+use std::mem::MaybeUninit;
 use ::std::{
     cell::RefCell,
     ffi::CStr,
@@ -622,6 +623,72 @@ pub extern "C" fn demi_wait_any(
     }
 }
 
+//======================================================================================================================
+// wait_next_n
+//======================================================================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_wait_next_n(
+    qr_out: *mut demi_qresult_t,
+    qr_out_size: c_int,
+    qr_written: *mut c_int,
+    timeout: *const libc::timespec,
+) -> c_int {
+    trace!(
+        "demi_wait_next_n() {:?} {:?} {:?}",
+        qr_out,
+        qr_out_size,
+        timeout
+    );
+
+    // Check for invalid storage location for queue result.
+    if qr_out.is_null() {
+        warn!("qr_out is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Check arguments.
+    if qr_out_size <= 0 {
+        return libc::EINVAL;
+    }
+
+    if qr_written.is_null() {
+        warn!("qr_written is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Convert timespec to Duration.
+    let duration: Option<Duration> = if timeout.is_null() {
+        None
+    } else {
+        // Safety: We have to trust that our user is providing a valid timeout pointer for us to dereference.
+        Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
+    };
+
+    let out_slice: &mut [MaybeUninit<demi_qresult_t>] = unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
+    let mut result_idx: c_int = 0;
+    let wait_callback = |result: demi_qresult_t| -> bool {
+        out_slice[result_idx as usize] = MaybeUninit::new(result);
+        result_idx += 1;
+        result_idx < qr_out_size
+    };
+
+    // Issue wait_any operation.
+    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait_next_n(wait_callback, duration) {
+        Ok(()) => 0,
+        Err(e) => {
+            trace!("demi_wait_any() failed: {:?}", e);
+            e.errno
+        },
+    });
+
+    unsafe { *qr_written = result_idx };
+
+    match ret {
+        Ok(ret) => ret,
+        Err(e) => e.errno,
+    }
+}
 //======================================================================================================================
 // sgaalloc
 //======================================================================================================================

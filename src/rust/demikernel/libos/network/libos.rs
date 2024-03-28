@@ -47,6 +47,7 @@ use ::socket2::{
     Protocol,
     Type,
 };
+use std::mem::MaybeUninit;
 use ::std::{
     mem,
     net::{
@@ -500,6 +501,19 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
         let (offset, qt, qd, result) = self.runtime.wait_any(qts, timeout)?;
         Ok((offset, self.create_result(result, qd, qt)))
+    }
+
+    /// Waits in a loop until the next task is complete, passing the result to `acceptor`. This process continues until
+    /// either the acceptor returns false (in which case the method returns Ok), or the timeout has expired (in which
+    /// the method returns an `Err` indicating timeout).
+    pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
+        &mut self,
+        mut acceptor: Acceptor,
+        timeout: Duration
+    ) -> Result<(), Fail>
+    {
+        self.runtime.clone().wait_next_n(
+            |qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
     }
 
     pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {

@@ -21,6 +21,33 @@ extern "C"
 {
 #endif
 
+#ifndef __has_include
+#define __has_include(x) false
+#endif
+
+#if __has_include(<sal.h>)
+#  include <sal.h>
+#elif defined(_MSC_VER)
+#  include <sal.h>
+#else
+#  define _In_
+#  define _In_z_
+#  define _In_opt_
+#  define _In_reads_(s)
+#  define _In_reads_bytes_(b)
+#  define _Out_
+#  define _Out_writes_to_(s,c)
+#  define _Deref_pre_z_
+#endif
+
+#ifdef __has_c_attribute
+#  define FUNC_NONNULL(...) [[gnu::nonnull(__VA_ARGS__)]]
+#elif defined(__GNUC__)
+#  define FUNC_NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#else
+#  define FUNC_NONNULL(...)
+#endif
+
 /**
  * @brief Maximum number of segments in a scatter-gather array.
  */

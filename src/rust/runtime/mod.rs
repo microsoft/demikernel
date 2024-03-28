@@ -286,8 +286,63 @@ impl SharedDemiRuntime {
         self.completed_tasks.remove(qt)
     }
 
-    /// Runs the scheduler for one [TIMER_RESOLUTION] quanta. Importantly does not modify the clock.
+    /// Waits until the next task is complete, passing the result to `acceptor`. The acceptor may return true to
+    /// continue waiting or false to exit the wait. The method will return when either the acceptor returns false
+    /// (returning Ok) or the timeout has expired (returning a Fail indicating timeout).
+    pub fn wait_next_n<Acceptor: FnMut(QToken, QDesc, OperationResult) -> bool>(
+        &mut self,
+        mut acceptor: Acceptor,
+        timeout: Duration,
+    ) -> Result<(), Fail> {
+        // 1. Check if any tasks are completed.
+        for (qt, (qd, result)) in self.completed_tasks.extract_if(|_, _| { true }) {
+            if acceptor(qt, qd, result) == false {
+                return Ok(());
+            }
+        }
+
+        // 2. None of the tasks have already completed, so start a timer and move the clock.
+        self.advance_clock_to_now();
+        let start: Instant = self.get_now();
+
+        // 3. Invoke the scheduler and run some tasks.
+        loop {
+            // Run for one quanta and if one of our queue tokens completed, then return.
+            if let Some((qt, qd, result)) = self.run_next() {
+                if acceptor(qt, qd, result) == false {
+                    return Ok(());
+                }
+            }
+            // Otherwise, move time forward.
+            self.advance_clock_to_now();
+            let now: Instant = self.get_now();
+            if now >= start + timeout {
+                return Err(Fail::new(libc::ETIMEDOUT, "wait timed out"));
+            }
+        }
+    }
+
+    /// Runs the scheduler for one [TIMER_RESOLUTION] quanta, returning any task in `qts`. Importantly does not modify
+    /// the clock.
     pub fn run_any(&mut self, qts: &[QToken]) -> Option<(usize, QDesc, OperationResult)> {
+        if let Some((qt, qd, result)) = self.run_next() {
+            // Check whether it matches any of the queue tokens that we are waiting on.
+            for i in 0..qts.len() {
+                if qts[i] == qt {
+                    return Some((i, qd, result));
+                }
+            }
+
+            // If not a queue token that we are waiting on, then insert into our list of completed tasks.
+            self.completed_tasks.insert(qt, (qd, result));
+        }
+
+        None
+    }
+
+    /// Runs the scheduler for one [TIMER_RESOLUTION] quanta, returning any ready task. Importantly does not modify
+    /// the clock.
+    pub fn run_next(&mut self) -> Option<(QToken, QDesc, OperationResult)> {
         if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
             // Perform bookkeeping for the completed and removed task.
             trace!("Removing coroutine: {:?}", boxed_task.get_name());
@@ -298,17 +353,10 @@ impl SharedDemiRuntime {
                 let (qd, result): (QDesc, OperationResult) =
                     expect_some!(operation_task.get_result(), "coroutine not finished");
 
-                // Check whether it matches any of the queue tokens that we are waiting on.
-                for i in 0..qts.len() {
-                    if qts[i] == qt {
-                        return Some((i, qd, result));
-                    }
-                }
-
-                // If not a queue token that we are waiting on, then insert into our list of completed tasks.
-                self.completed_tasks.insert(qt, (qd, result));
+                return Some((qt, qd, result));
             }
         }
+
         None
     }
 
