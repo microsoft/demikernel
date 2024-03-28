@@ -84,7 +84,7 @@ def run_pipeline(
     # STEP 4: Run system tests.
     if test_system and config["platform"] == "linux":
         if status["checkout"] and status["compile"]:
-            ci_map = read_yaml()
+            ci_map = read_yaml(libos)
             # Run pipe-open test.
             if __should_run(ci_map[libos], "pipe_open", test_system):
                 scenario = ci_map[libos]['pipe_open']
@@ -133,8 +133,8 @@ def __should_run(ci_map, test_name: str, test_system: str) -> bool:
     return test_name in ci_map and (test_system == "all" or test_system == test_name)
 
 
-def read_yaml():
-    path = "tools/ci/config/ci_map.yaml"
+def read_yaml(libos: str):
+    path: str = f"tools/ci/config/test/{libos}.yaml"
     yaml_str = ""
     with open(path) as f:
         yaml_str = f.read()
