@@ -27,7 +27,6 @@ def get_commit_hash(branch_name: str):
     git_process = subprocess.Popen(git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     git_stdout, _ = git_process.communicate()
     COMMIT_HASH = git_stdout.replace("\n", "")
-    print(f"Commit Hash: {COMMIT_HASH}")
     assert len(COMMIT_HASH) == 40
 
 
