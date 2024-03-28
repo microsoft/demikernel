@@ -5,12 +5,10 @@ import argparse
 from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
-from typing import List
-
 import yaml
-
 from ci.job.linux import CheckoutJobOnLinux, CleanupJobOnLinux, CompileJobOnLinux, TcpEchoTest
-from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
+from ci.job.utils import set_commit_hash, set_connection_string, set_libos, set_table_name
+import ci.git as git
 
 # =====================================================================================================================
 
@@ -160,7 +158,8 @@ def main():
     output_dir: str = args.output_dir
 
     # Initialize glboal variables.
-    get_commit_hash(branch)
+    head_commit: str = git.get_head_commit(branch)
+    set_commit_hash(head_commit)
     set_connection_string(args.connection_string)
     set_table_name(args.table_name)
     set_libos(libos)
