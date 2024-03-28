@@ -1,0 +1,5 @@
+catmem:
+  pipe_open:
+      niterations: 128
+  pipe_ping_pong: {}
+  pipe_push_pop: {}

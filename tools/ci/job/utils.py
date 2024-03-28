@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import subprocess
 import time
 from typing import List
 from azure.data.tables import TableServiceClient
@@ -12,7 +11,7 @@ from azure.data.tables import TableServiceClient
 
 COMMIT_HASH: str = ""
 CONNECTION_STRING: str = ""
-TABLE_NAME = "test"
+TABLE_NAME = ""
 LIBOS = ""
 
 # ======================================================================================================================
@@ -20,29 +19,56 @@ LIBOS = ""
 # ======================================================================================================================
 
 
-def get_commit_hash(branch_name: str):
+def set_commit_hash(commit_hash: str):
     global COMMIT_HASH
-    cmd = f"git show --format=%H -s {branch_name}"
-    git_cmd = "bash -l -c \'{}\'".format(cmd)
-    git_process = subprocess.Popen(git_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    git_stdout, _ = git_process.communicate()
-    COMMIT_HASH = git_stdout.replace("\n", "")
-    assert len(COMMIT_HASH) == 40
+    if COMMIT_HASH != "":
+        raise Exception("Commit hash is already set.")
+    COMMIT_HASH = commit_hash
 
 
 def set_connection_string(connection_string: str) -> None:
     global CONNECTION_STRING
+    if CONNECTION_STRING != "":
+        raise Exception("Connection string is already set.")
     CONNECTION_STRING = connection_string
 
 
 def set_table_name(table_name: str) -> None:
     global TABLE_NAME
+    if TABLE_NAME != "":
+        raise Exception("Table name is already set.")
     TABLE_NAME = table_name
 
 
 def set_libos(libos: str) -> None:
     global LIBOS
+    if LIBOS != "":
+        raise Exception("LibOS is already set.")
     LIBOS = libos
+
+
+def get_commit_hash() -> str:
+    global COMMIT_HASH
+    if COMMIT_HASH == "":
+        raise Exception("Commit hash is not set.")
+    return COMMIT_HASH
+
+
+def get_connection_string() -> str:
+    global CONNECTION_STRING
+    return CONNECTION_STRING
+
+
+def get_table_name() -> str:
+    global TABLE_NAME
+    return TABLE_NAME
+
+
+def get_libos() -> str:
+    global LIBOS
+    if LIBOS == "":
+        raise Exception("LibOS is not set.")
+    return LIBOS
 
 
 def timing(f):
@@ -56,16 +82,15 @@ def timing(f):
 
 
 def extract_performance(job_name, file):
-    global COMMIT_HASH
-    global CONNECTION_STRING
-    global TABLE_NAME
-    global LIBOS
+    connection_string: str = get_connection_string()
+    table_name: str = get_table_name()
+    libos: str = get_libos()
+    commit_hash: str = get_commit_hash()
 
     # Connect to Azure Tables.
-    if not CONNECTION_STRING == "":
-        table_service = TableServiceClient.from_connection_string(
-            CONNECTION_STRING)
-        table_client = table_service.get_table_client(TABLE_NAME)
+    if not connection_string == "":
+        table_service = TableServiceClient.from_connection_string(connection_string)
+        table_client = table_service.get_table_client(table_name)
 
         # Filter profiler lines.
         lines = [line for line in file if line.startswith("+")]
@@ -81,15 +106,14 @@ def extract_performance(job_name, file):
                 average_cycles = columns[4]
                 average_time = columns[5]
 
-                partition_key: str = "-".join([COMMIT_HASH, LIBOS, job_name])
+                partition_key: str = f"{commit_hash}-{get_libos()}-{job_name}"
                 row_key: str = syscall
 
-                entry: dict[str, str, str, str, str,
-                            str, float, float, float] = {}
+                entry: dict[str, str, str, str, str, str, float, float, float] = {}
                 entry["PartitionKey"] = partition_key
                 entry["RowKey"] = row_key
-                entry["CommitHash"] = COMMIT_HASH
-                entry["LibOS"] = LIBOS
+                entry["CommitHash"] = commit_hash
+                entry["LibOS"] = libos
                 entry["JobName"] = job_name
                 entry["Syscall"] = syscall
                 entry["TotalTime"] = float(total_time)

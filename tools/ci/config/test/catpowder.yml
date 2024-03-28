@@ -1,0 +1,26 @@
+catpowder:
+  tcp_ping_pong: {}
+  tcp_push_pop: {}
+  udp_ping_pong: {}
+  udp_push_pop: {}
+  tcp_echo:
+    - scenario0:
+      bufsize: 64
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
+    - scenario1:
+      bufsize: 64
+      nclients: 1
+      nrequests: 1024
+      run_mode: sequential
+    - scenario2:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 128
+      run_mode: sequential
+    - scenario3:
+      bufsize: 1024
+      nclients: 1
+      nrequests: 1024
+      run_mode: sequential
