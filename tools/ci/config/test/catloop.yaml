@@ -1,0 +1,19 @@
+catloop:
+  tcp_close:
+    nclients: [1]
+    run_mode: [sequential, concurrent]
+    who_closes: [client, server]
+  tcp_wait:
+    nclients: [1]
+    scenario: [push_close_wait, push_async_close_wait,
+               push_async_close_pending_wait, pop_close_wait,
+               pop_async_close_wait,
+               pop_async_close_pending_wait]
+  tcp_ping_pong: {}
+  tcp_push_pop: {}
+  tcp_echo:
+    bufsize: [64, 1024]
+    nclients: [1]
+    nrequests: [128, 1024]
+    run_mode: [sequential]
+    nthreads: [1]

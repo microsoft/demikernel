@@ -1,0 +1,11 @@
+catpowder:
+  udp_ping_pong: {}
+  udp_push_pop: {}
+  tcp_ping_pong: {}
+  tcp_push_pop: {}
+  tcp_echo:
+    bufsize: [64, 1024]
+    nclients: [1]
+    nrequests: [128, 1024]
+    run_mode: [sequential]
+    nthreads: [1]

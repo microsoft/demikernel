@@ -1,14 +1,16 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import copy
 import sys
 import argparse
 from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 import yaml
-from ci.job.utils import get_commit_hash, set_connection_string, set_libos, set_table_name
+from ci.job.utils import set_commit_hash, set_connection_string, set_libos, set_table_name
 from ci.job.factory import JobFactory
+import ci.git as git
 
 # =====================================================================================================================
 
@@ -83,7 +85,7 @@ def run_pipeline(
     # STEP 4: Run system tests.
     if test_system and config["platform"] == "linux":
         if status["checkout"] and status["compile"]:
-            ci_map = read_yaml()
+            ci_map = read_yaml(libos)
             # Run pipe-open test.
             if __should_run(ci_map[libos], "pipe_open", test_system):
                 scenario = ci_map[libos]['pipe_open']
@@ -96,7 +98,14 @@ def run_pipeline(
             if __should_run(ci_map[libos], "pipe_push_pop", test_system):
                 status["pipe-push-pop"] = factory.system_test(test_name="push-pop").execute()
             if __should_run(ci_map[libos], "tcp_echo", test_system):
-                for scenario in ci_map[libos]['tcp_echo']:
+                test_config = ci_map[libos]['tcp_echo']
+                names = [p for p in test_config]
+                scenarios = build_combinations(test_config, names, {})
+                for scenario in scenarios:
+                    # Skipt if scenario requires more threads then clients.
+                    if scenario['nthreads'] > scenario['nclients']:
+                        continue
+
                     if libos == "catnap":
                         status["tcp_echo"] = factory.system_test(
                             test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'], bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=scenario['nthreads']).execute()
@@ -105,11 +114,17 @@ def run_pipeline(
                             test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'],
                             bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=1).execute()
             if __should_run(ci_map[libos], "tcp_close", test_system):
-                for scenario in ci_map[libos]['tcp_close']:
+                test_config = ci_map[libos]['tcp_close']
+                names = [p for p in test_config]
+                scenarios = build_combinations(test_config, names, {})
+                for scenario in scenarios:
                     status["tcp_close"] = factory.system_test(
                         test_name="tcp_close", run_mode=scenario['run_mode'], who_closes=scenario['who_closes'], nclients=scenario['nclients']).execute()
             if __should_run(ci_map[libos], "tcp_wait", test_system):
-                for scenario in ci_map[libos]['tcp_wait']:
+                test_config = ci_map[libos]['tcp_wait']
+                names = [p for p in test_config]
+                scenarios = build_combinations(test_config, names, {})
+                for scenario in scenarios:
                     status["tcp_wait"] = factory.system_test(test_name="tcp_wait",
                                                              scenario=scenario['scenario'], nclients=scenario['nclients']).execute()
             if __should_run(ci_map[libos], "tcp_ping_pong", test_system):
@@ -127,13 +142,29 @@ def run_pipeline(
     return status
 
 
+# Recursively builds all combinations
+def build_combinations(scenario: dict, names: list, params: dict) -> list:
+    if len(names) == 0:
+        l = [copy.deepcopy(params)]
+        return l
+    else:
+        name = names[0]
+        values = [v for v in scenario[name]]
+        scenarios = []
+        for value in values:
+            params[name] = value
+            scenarios += build_combinations(scenario, names[1:], params)
+            del params[name]
+        return scenarios
+
+
 def __should_run(ci_map, test_name: str, test_system: str) -> bool:
     """Checks if we should run a given system test."""
     return test_name in ci_map and (test_system == "all" or test_system == test_name)
 
 
-def read_yaml():
-    path = "tools/ci/config/ci_map.yaml"
+def read_yaml(libos: str):
+    path: str = f"tools/ci/config/test/{libos}.yaml"
     yaml_str = ""
     with open(path) as f:
         yaml_str = f.read()
@@ -221,7 +252,8 @@ def main():
     output_dir: str = args.output_dir
 
     # Initialize glboal variables.
-    get_commit_hash(branch)
+    head_commit: str = git.get_head_commit(branch)
+    set_commit_hash(head_commit)
     set_connection_string(args.connection_string)
     set_table_name(args.table_name)
     set_libos(libos)
