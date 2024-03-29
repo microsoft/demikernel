@@ -14,10 +14,7 @@ use ::libc::{
     EBADMSG,
     ENOTSUP,
 };
-use ::std::{
-    convert::TryInto,
-    net::Ipv4Addr,
-};
+use ::std::net::Ipv4Addr;
 
 //======================================================================================================================
 // Constants

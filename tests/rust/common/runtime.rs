@@ -6,7 +6,6 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::crossbeam_channel;
 use ::demikernel::runtime::{
     memory::{
         DemiBuffer,

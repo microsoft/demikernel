@@ -49,7 +49,6 @@ use crate::{
 };
 use ::futures::channel::mpsc;
 use ::std::{
-    convert::TryInto,
     net::SocketAddrV4,
     ops::{
         Deref,
@@ -191,8 +190,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 
         let rx_window_size: u32 = expect_ok!(
             expect_some!(
-                (self.tcp_config.get_receive_window_size() as u32)
-                    .checked_shl(local_window_scale as u32),
+                (self.tcp_config.get_receive_window_size() as u32).checked_shl(local_window_scale as u32),
                 "TODO: Window size overflow"
             )
             .try_into(),

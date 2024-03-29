@@ -16,7 +16,6 @@ use crate::{
     },
 };
 use ::libc::EBADMSG;
-use ::std::convert::TryInto;
 use std::slice::ChunksExact;
 
 //==============================================================================

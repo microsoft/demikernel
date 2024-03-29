@@ -6,7 +6,6 @@
 //==============================================================================
 
 use crate::runtime::fail::Fail;
-use ::eui48;
 use ::libc::EINVAL;
 use ::std::fmt;
 

@@ -68,12 +68,7 @@ use ::futures::{
 
 use ::std::{
     any::Any,
-    boxed::Box,
     collections::HashMap,
-    convert::{
-        AsMut,
-        AsRef,
-    },
     net::SocketAddrV4,
     ops::{
         Deref,

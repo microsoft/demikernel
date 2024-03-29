@@ -133,10 +133,7 @@ mod test {
             ip::IpProtocol,
             ipv4::IPV4_HEADER_MIN_SIZE,
         },
-        runtime::{
-            memory::DemiBuffer,
-            network::types::MacAddress,
-        },
+        runtime::network::types::MacAddress,
     };
     use ::anyhow::Result;
     use ::std::net::Ipv4Addr;

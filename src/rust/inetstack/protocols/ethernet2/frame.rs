@@ -10,10 +10,6 @@ use crate::{
     },
 };
 use ::libc::EBADMSG;
-use ::std::convert::{
-    TryFrom,
-    TryInto,
-};
 
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 pub const MIN_PAYLOAD_SIZE: usize = 46;

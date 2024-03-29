@@ -26,7 +26,6 @@ use ::std::{
         max,
         min,
     },
-    convert::TryInto,
     fmt::Debug,
     time::{
         Duration,

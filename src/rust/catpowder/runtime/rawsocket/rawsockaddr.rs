@@ -9,11 +9,7 @@ use crate::pal::data_structures::{
     SockAddr,
     Socklen,
 };
-use ::libc;
-use ::std::{
-    convert::TryInto,
-    mem,
-};
+use ::std::mem;
 
 //======================================================================================================================
 // Constants & Structures

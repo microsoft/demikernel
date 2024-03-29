@@ -52,7 +52,6 @@ use crate::{
 use ::futures::never::Never;
 use ::std::{
     collections::VecDeque,
-    convert::TryInto,
     net::SocketAddrV4,
     ops::{
         Deref,

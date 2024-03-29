@@ -17,7 +17,6 @@ use crate::{
 };
 use ::libc::EBADMSG;
 use ::std::{
-    convert::TryInto,
     io::{
         Cursor,
         Read,
