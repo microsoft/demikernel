@@ -36,7 +36,7 @@ flexi_logger = "0.28.0"
 futures = "0.3.30"
 histogram = "0.9.1"
 libc = "0.2.153"
-log = "0.4.20"
+log = "0.4.21"
 mimalloc = { version = "0.1.39", default-features = false }
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
