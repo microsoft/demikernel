@@ -16,6 +16,9 @@
  * System Calls in demi/libos.h                                                                                      *
  *===================================================================================================================*/
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonnull"
+
 /**
  * @brief Issues an invalid call to demi_socket().
  */
@@ -177,6 +180,8 @@ static bool inval_wait_any(void)
 
     return (demi_wait_any(qr, ready_offset, qts, num_qts, timeout) != 0);
 }
+
+#pragma GCC diagnostic pop
 
 /*===================================================================================================================*
  * main()                                                                                                            *

@@ -40,13 +40,18 @@ extern "C"
 #  define _Deref_pre_z_
 #endif
 
-#ifdef __has_c_attribute
-#  define ATTR_NONNULL(...) [[gnu::nonnull(__VA_ARGS__)]]
-#  define ATTR_NODISCARD [[nodiscard]]
-#elif defined(__GNUC__)
+#if defined(__GNUC__)
+// GCC and clang both support __attribute__((nonnull(...)))
+// Indices are one-based.
+// Note that while clang support _Nonnull and _Nullable, they have different positional syntax
+// w.r.t. SAL, so supporting both is complex.
 #  define ATTR_NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
 #  define ATTR_NODISCARD __attribute__((warn_unused_result))
 #elif defined(_MSC_VER)
+// MSVC uses SAL; NONNULL is supported via _In_/_Out_/etc.
+#  define ATTR_NONNULL(...)
+#  define ATTR_NODISCARD _Check_return_
+#else
 #  define ATTR_NONNULL(...)
 #  define ATTR_NODISCARD _Check_return_
 #endif
