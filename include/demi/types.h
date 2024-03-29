@@ -21,13 +21,13 @@ extern "C"
 {
 #endif
 
-#ifndef __has_include
-#define __has_include(x) false
-#endif
-
+#ifdef __has_include
 #if __has_include(<sal.h>)
 #  include <sal.h>
-#elif defined(_MSC_VER)
+#endif
+#endif
+
+#if !defined(_SAL_VERSION) && defined(_MSC_VER)
 #  include <sal.h>
 #else
 #  define _In_
@@ -41,11 +41,14 @@ extern "C"
 #endif
 
 #ifdef __has_c_attribute
-#  define FUNC_NONNULL(...) [[gnu::nonnull(__VA_ARGS__)]]
+#  define ATTR_NONNULL(...) [[gnu::nonnull(__VA_ARGS__)]]
+#  define ATTR_NODISCARD [[nodiscard]]
 #elif defined(__GNUC__)
-#  define FUNC_NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
-#else
-#  define FUNC_NONNULL(...)
+#  define ATTR_NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
+#  define ATTR_NODISCARD __attribute__((warn_unused_result))
+#elif defined(_MSC_VER)
+#  define ATTR_NONNULL(...)
+#  define ATTR_NODISCARD _Check_return_
 #endif
 
 /**
