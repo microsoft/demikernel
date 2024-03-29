@@ -25,7 +25,6 @@ use ::std::{
         RefCell,
     },
     collections::VecDeque,
-    convert::TryInto,
     fmt,
     time::{
         Duration,

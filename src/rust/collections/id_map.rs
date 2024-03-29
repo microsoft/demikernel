@@ -12,7 +12,6 @@ use ::rand::{
 };
 use ::std::{
     collections::HashMap,
-    convert::From,
     hash::Hash,
 };
 

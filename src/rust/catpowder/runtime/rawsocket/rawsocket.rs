@@ -14,7 +14,6 @@ use crate::{
     },
     runtime::fail::Fail,
 };
-use ::libc;
 use ::std::{
     mem,
     mem::MaybeUninit,

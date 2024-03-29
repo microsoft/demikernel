@@ -19,10 +19,6 @@ use crate::{
 };
 use ::socket2::Socket;
 use ::std::{
-    convert::{
-        AsMut,
-        AsRef,
-    },
     net::SocketAddr,
     ops::{
         Deref,

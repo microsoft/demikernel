@@ -45,16 +45,12 @@ mod test {
         Type,
     };
     use crossbeam_channel::{
-        self,
         Receiver,
         Sender,
     };
 
     #[cfg(target_os = "windows")]
     pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
-
-    #[cfg(target_os = "windows")]
-    pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM.0 as i32;
 
     #[cfg(target_os = "linux")]
     pub const AF_INET: i32 = libc::AF_INET;

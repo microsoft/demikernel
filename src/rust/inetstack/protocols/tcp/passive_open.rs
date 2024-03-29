@@ -61,7 +61,6 @@ use ::libc::{
 };
 use ::std::{
     collections::HashMap,
-    convert::TryInto,
     net::SocketAddrV4,
     ops::{
         Deref,

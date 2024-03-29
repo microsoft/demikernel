@@ -14,9 +14,9 @@ repository = "https://github.com/demikernel/demikernel"
 cfg-if = "1.0.0"
 
 [build-dependencies]
-anyhow = "1.0.79"
-bindgen = "0.69.2"
-cc = "1.0.83"
+anyhow = "1.0.81"
+bindgen = "0.69.4"
+cc = "1.0.90"
 
 [features]
 mlx4 = []

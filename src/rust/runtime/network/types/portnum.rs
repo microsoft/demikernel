@@ -7,10 +7,7 @@
 
 use crate::runtime::fail::Fail;
 use ::libc::ERANGE;
-use ::std::{
-    convert::TryFrom,
-    num::NonZeroU16,
-};
+use ::std::num::NonZeroU16;
 
 //==============================================================================
 // Structures

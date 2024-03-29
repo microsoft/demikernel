@@ -6,7 +6,6 @@
 //======================================================================================================================
 
 use crate::runtime::fail::Fail;
-use ::std::convert::TryFrom;
 
 // See https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml for more details.
 const ETHERTYPE2_ARP: u16 = 0x806; // ARP Frames

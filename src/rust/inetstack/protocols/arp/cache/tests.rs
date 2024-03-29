@@ -4,7 +4,6 @@
 use super::*;
 use crate::inetstack::test_helpers;
 use ::anyhow::Result;
-use ::std::time::Instant;
 
 /// Tests that an entry of the ARP Cache gets evicted at the right time.
 #[test]

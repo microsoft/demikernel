@@ -24,7 +24,6 @@ use ::libc::{
     EBADF,
 };
 use ::std::{
-    convert::TryFrom,
     net::{
         Ipv4Addr,
         SocketAddrV4,
