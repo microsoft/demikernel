@@ -116,13 +116,13 @@ impl MemoryLibOS {
     /// either the acceptor returns false (in which case the method returns Ok), or the timeout has expired (in which
     /// the method returns an `Err` indicating timeout).
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn wait_next_n<Acceptor: FnMut(QToken, QDesc, demi_qresult_t) -> bool>(
+    pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         acceptor: Acceptor,
         timeout: Duration
     ) -> Result<(), Fail>
     {
-        trace!("wait_next_n(): acceptor={:?}, timeout={:?}", acceptor, timeout);
+        trace!("wait_next_n(): acceptor, timeout={:?}", timeout);
         match self {
             #[cfg(feature = "catmem-libos")]
             MemoryLibOS::Catmem(libos) => libos.wait_next_n(acceptor, timeout),

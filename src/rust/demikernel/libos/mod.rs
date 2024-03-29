@@ -525,7 +525,7 @@ impl LibOS {
             ))]
             LibOS::NetworkLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
             #[cfg(feature = "catmem-libos")]
-            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
         }
     }
 
