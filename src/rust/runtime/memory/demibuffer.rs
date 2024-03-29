@@ -992,6 +992,11 @@ impl Deref for DemiBuffer {
         // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
         match self.get_tag() {
             Tag::Heap => {
+                // If the buffer is empty, return an empty slice.
+                if self.len() == 0 {
+                    return &[];
+                }
+
                 // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
                 // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
                 // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
