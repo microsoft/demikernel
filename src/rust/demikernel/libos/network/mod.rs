@@ -25,7 +25,6 @@ use crate::{
         QToken,
     },
 };
-use std::mem::MaybeUninit;
 use ::std::{
     net::SocketAddr,
     time::Duration,

@@ -21,8 +21,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait(_Out_ demi_qresult_t *qr_out, _In_ demi_qtoken_t qt, _In_opt_ const struct timespec *timeout)
-        ATTR_NONNULL(1);
+    ATTR_NONNULL(1)
+    extern int demi_wait(_Out_ demi_qresult_t *qr_out, _In_ demi_qtoken_t qt, _In_opt_ const struct timespec *timeout);
 
     /**
      * @brief Waits for the first asynchronous I/O operation in a list to complete.
@@ -35,10 +35,10 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
+    ATTR_NONNULL(1, 2, 3)
     extern int demi_wait_any(_Out_ demi_qresult_t *qr_out, _Out_ int *ready_offset,
                              _In_reads_(num_qts) const demi_qtoken_t qts[], _In_ int num_qts,
-                             _In_opt_ const struct timespec *timeout)
-        ATTR_NONNULL(1, 2, 3);
+                             _In_opt_ const struct timespec *timeout);
 
     /**
      * @brief Waits for the next n asynchronous I/O operations to complete.
@@ -51,9 +51,9 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait_any(_Out_writes_to_(num_qrs, *ready_offset) demi_qresult_t *qr_out, _In_ int num_qrs,
-                             _Out_ int *ready_offset, _In_opt_ const struct timespec *timeout)
-        ATTR_NONNULL(1, 3);
+    ATTR_NONNULL(1, 3)
+    extern int demi_wait_next_n(_Out_writes_to_(num_qrs, *ready_offset) demi_qresult_t *qr_out, _In_ int num_qrs,
+                                _Out_ int *ready_offset, _In_opt_ const struct timespec *timeout);
 
 #ifdef __cplusplus
 }

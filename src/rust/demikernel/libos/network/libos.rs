@@ -47,7 +47,6 @@ use ::socket2::{
     Protocol,
     Type,
 };
-use std::mem::MaybeUninit;
 use ::std::{
     mem,
     net::{
