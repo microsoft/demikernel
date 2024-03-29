@@ -1,60 +1,19 @@
 catloop:
-  tcp_echo:
-    - scenario0:
-      bufsize: 64
-      nclients: 1
-      nrequests: 128
-      run_mode: sequential
-    - scenario1:
-      bufsize: 64
-      nclients: 1
-      nrequests: 1024
-      run_mode: sequential
-    - scenario2:
-      bufsize: 1024
-      nclients: 1
-      nrequests: 128
-      run_mode: sequential
-    - scenario3:
-      bufsize: 1024
-      nclients: 1
-      nrequests: 1024
-      run_mode: sequential
   tcp_close:
-    - scenario0:
-      nclients: 1
-      run_mode: sequential
-      who_closes: client
-    - scenario1:
-      nclients: 1
-      run_mode: sequential
-      who_closes: server
-    - scenario2:
-      nclients: 1
-      run_mode: concurrent
-      who_closes: client
-    - scenario3:
-      nclients: 1
-      run_mode: concurrent
-      who_closes: server
+    nclients: [1]
+    run_mode: [sequential, concurrent]
+    who_closes: [client, server]
   tcp_wait:
-    - scenario0:
-      nclients: 1
-      scenario: push_close_wait
-    - scenario1:
-      nclients: 1
-      scenario: push_async_close_wait
-    - scenario2:
-      nclients: 1
-      scenario: push_async_close_pending_wait
-    - scenario3:
-      nclients: 1
-      scenario: pop_close_wait
-    - scenario4:
-      nclients: 1
-      scenario: pop_async_close_wait
-    - scenario5:
-      nclients: 1
-      scenario: pop_async_close_pending_wait
+    nclients: [1]
+    scenario: [push_close_wait, push_async_close_wait,
+               push_async_close_pending_wait, pop_close_wait,
+               pop_async_close_wait,
+               pop_async_close_pending_wait]
   tcp_ping_pong: {}
   tcp_push_pop: {}
+  tcp_echo:
+    bufsize: [64, 1024]
+    nclients: [1]
+    nrequests: [128, 1024]
+    run_mode: [sequential]
+    nthreads: [1]
