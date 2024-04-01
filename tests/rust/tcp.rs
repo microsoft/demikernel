@@ -52,8 +52,14 @@ mod test {
     #[cfg(target_os = "windows")]
     pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
 
+    #[cfg(target_os = "windows")]
+    pub const SOMAXCONN: i32 = WinSock::SOMAXCONN as i32;
+
     #[cfg(target_os = "linux")]
     pub const AF_INET: i32 = libc::AF_INET;
+
+    #[cfg(target_os = "linux")]
+    pub const SOMAXCONN: i32 = libc::SOMAXCONN;
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
@@ -560,7 +566,7 @@ mod test {
         let local2: SocketAddr = SocketAddr::new(ALICE_IP, port2);
 
         // Invalid queue descriptor.
-        match libos.listen(QDesc::from(0), 8) {
+        match libos.listen(QDesc::from(0), SOMAXCONN as usize) {
             Err(e) if e.errno == libc::EBADF => (),
             _ => {
                 // Close socket if not error because this test cannot continue.
@@ -587,7 +593,7 @@ mod test {
         let sockqd: QDesc = safe_socket(&mut libos)?;
         safe_bind(&mut libos, sockqd, local2)?;
         safe_listen(&mut libos, sockqd)?;
-        match libos.listen(sockqd, 16) {
+        match libos.listen(sockqd, SOMAXCONN as usize) {
             Err(e) if e.errno == libc::EADDRINUSE => (),
             _ => {
                 // Close socket if not error because this test cannot continue.
@@ -601,7 +607,7 @@ mod test {
 
         // Listen on unbound socket.
         let sockqd: QDesc = safe_socket(&mut libos)?;
-        match libos.listen(sockqd, 16) {
+        match libos.listen(sockqd, SOMAXCONN as usize) {
             Err(e) if e.errno == libc::EDESTADDRREQ => (),
             Err(e) => {
                 // Close socket if not the correct error because this test cannot continue.
@@ -1147,7 +1153,7 @@ mod test {
 
     /// Safe call to `listen()`.
     fn safe_listen(libos: &mut DummyLibOS, sockqd: QDesc) -> Result<()> {
-        match libos.listen(sockqd, 8) {
+        match libos.listen(sockqd, SOMAXCONN as usize) {
             Ok(_) => Ok(()),
             Err(e) => {
                 // Close socket on error.
