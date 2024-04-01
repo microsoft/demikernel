@@ -374,7 +374,7 @@ impl Simulation {
     }
 
     /// Runs a socket system call.
-    fn run_socket_syscall(&mut self, args: &SocketArgs, ret: u32) -> Result<()> {
+    fn run_socket_syscall(&mut self, args: &SocketArgs, ret: i32) -> Result<()> {
         // Check for unsupported socket domain.
         if args.domain != nettest::glue::SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
@@ -399,7 +399,7 @@ impl Simulation {
         // Issue demi_socket().
         match self.engine.tcp_socket() {
             Ok(qd) => {
-                self.local_qd = Some((ret, qd));
+                self.local_qd = Some((ret as u32, qd));
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -412,7 +412,7 @@ impl Simulation {
     }
 
     /// Runs a bind system call.
-    fn run_bind_syscall(&mut self, args: &BindArgs, ret: u32) -> Result<()> {
+    fn run_bind_syscall(&mut self, args: &BindArgs, ret: i32) -> Result<()> {
         // Extract bind address.
         let local_addr: SocketAddrV4 = match args.addr {
             None => {
@@ -458,7 +458,7 @@ impl Simulation {
     }
 
     /// Runs a listen system call.
-    fn run_listen_syscall(&mut self, args: &ListenArgs, ret: u32) -> Result<()> {
+    fn run_listen_syscall(&mut self, args: &ListenArgs, ret: i32) -> Result<()> {
         // Check if backlog length was informed.
         let backlog: usize = match args.backlog {
             Some(backlog) => backlog,
@@ -499,7 +499,7 @@ impl Simulation {
     }
 
     /// Runs an accept system call.
-    fn run_accept_syscall(&mut self, args: &AcceptArgs, ret: u32) -> Result<()> {
+    fn run_accept_syscall(&mut self, args: &AcceptArgs, ret: i32) -> Result<()> {
         // Extract local queue descriptor.
         let local_qd: QDesc = match args.qd {
             Some(local_fd) => match self.local_qd {
@@ -520,7 +520,7 @@ impl Simulation {
         // Issue demi_accept().
         match self.engine.tcp_accept(local_qd) {
             Ok(accept_qt) => {
-                self.remote_qd = Some((ret, None));
+                self.remote_qd = Some((ret as u32, None));
                 self.inflight = Some(accept_qt);
                 Ok(())
             },
@@ -534,7 +534,7 @@ impl Simulation {
     }
 
     /// Runs a connect system call.
-    fn run_connect_syscall(&mut self, args: &ConnectArgs, ret: u32) -> Result<()> {
+    fn run_connect_syscall(&mut self, args: &ConnectArgs, ret: i32) -> Result<()> {
         // Extract local queue descriptor.
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
@@ -574,7 +574,7 @@ impl Simulation {
     }
 
     /// Runs a push system call.
-    fn run_push_syscall(&mut self, args: &PushArgs, ret: u32) -> Result<()> {
+    fn run_push_syscall(&mut self, args: &PushArgs, ret: i32) -> Result<()> {
         // Extract buffer length.
         let buf_len: u16 = match args.len {
             Some(len) => len.try_into()?,
@@ -613,7 +613,7 @@ impl Simulation {
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self, ret: u32) -> Result<()> {
+    fn run_pop_syscall(&mut self, ret: i32) -> Result<()> {
         // Extract remote queue descriptor.
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
@@ -637,7 +637,7 @@ impl Simulation {
     }
 
     /// Emulates wait system call.
-    fn run_wait_syscall(&mut self, args: &nettest::glue::WaitArgs, ret: u32) -> Result<()> {
+    fn run_wait_syscall(&mut self, args: &nettest::glue::WaitArgs, ret: i32) -> Result<()> {
         // Extract queue descriptor.
         let args_qd: QDesc = match args.qd {
             Some(qd) => QDesc::from(qd),
@@ -671,7 +671,7 @@ impl Simulation {
                     eprintln!("close completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
+                crate::OperationResult::Failed(e) if e.errno == -ret as i32 => {
                     eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
                 },
@@ -684,7 +684,7 @@ impl Simulation {
         }
     }
 
-    fn run_close_syscall(&mut self, args: &CloseArgs, ret: u32) -> Result<()> {
+    fn run_close_syscall(&mut self, args: &CloseArgs, ret: i32) -> Result<()> {
         // Extract queue descriptor.
         let args_qd: QDesc = args.qd.into();
 
