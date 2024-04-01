@@ -238,6 +238,28 @@ impl NetworkLibOSWrapper {
         }
     }
 
+    /// Waits in a loop until the next task is complete, passing the result to `acceptor`. This process continues until
+    /// either the acceptor returns false (in which case the method returns Ok), or the timeout has expired (in which
+    /// the method returns an `Err` indicating timeout).
+    pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
+        &mut self,
+        acceptor: Acceptor,
+        timeout: Duration
+    ) -> Result<(), Fail>
+    {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOSWrapper::Catpowder(libos) => libos.wait_next_n(acceptor, timeout),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap(libos) => libos.wait_next_n(acceptor, timeout),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip(libos) => libos.wait_next_n(acceptor, timeout),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOSWrapper::Catloop(libos) => libos.wait_next_n(acceptor, timeout),
+        }
+    }
+
+
     /// Waits for any operation in an I/O queue.
     pub fn poll(&mut self) {
         match self {

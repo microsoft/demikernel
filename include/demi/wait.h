@@ -5,6 +5,7 @@
 #define DEMI_WAIT_H_IS_INCLUDED
 
 #include <demi/types.h>
+#include <demi/cc.h>
 #include <time.h>
 
 #ifdef __cplusplus
@@ -21,7 +22,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *timeout);
+    ATTR_NONNULL(1)
+    extern int demi_wait(_Out_ demi_qresult_t *qr_out, _In_ demi_qtoken_t qt, _In_opt_ const struct timespec *timeout);
 
     /**
      * @brief Waits for the first asynchronous I/O operation in a list to complete.
@@ -34,8 +36,26 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts,
-                             const struct timespec *timeout);
+    ATTR_NONNULL(1, 2, 3)
+    extern int demi_wait_any(_Out_ demi_qresult_t *qr_out, _Out_ int *ready_offset,
+                             _In_reads_(num_qts) const demi_qtoken_t qts[], _In_ int num_qts,
+                             _In_opt_ const struct timespec *timeout);
+
+    /**
+     * @brief Waits for the next n asynchronous I/O operations to complete.
+     *
+     * @param qr_out       Store location for the results of the completed I/O operation.
+     * @param num_qrs      The size of the array poitned to by qr_out; i.e., the number of demi_qresult_t entries
+     *                     pointed to by qr_out.
+     * @param num_qrs_out  The number of valid demi_qresult_t entries returned from the method call 
+     *                     (qr_out[0..num_qrs_out-1] will be valid when the method returns successfully).
+     * @param timeout      Timeout interval in seconds and nanoseconds.
+     *
+     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
+     */
+    ATTR_NONNULL(1, 3)
+    extern int demi_wait_next_n(_Out_writes_to_(num_qrs, *ready_offset) demi_qresult_t *qr_out, _In_ int num_qrs,
+                                _Out_ int *num_qrs_out, _In_opt_ const struct timespec *timeout);
 
 #ifdef __cplusplus
 }
