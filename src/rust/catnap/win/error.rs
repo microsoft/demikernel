@@ -6,10 +6,7 @@
 //==============================================================================
 
 use windows::{
-    core::{
-        HRESULT,
-        HSTRING,
-    },
+    core::HRESULT,
     Win32::{
         Foundation::{
             RtlNtStatusToDosError,
@@ -220,8 +217,8 @@ pub fn translate_win32_error(error: WIN32_ERROR, is_wait_api: bool) -> libc::err
 
 /// Translate a win32 error stored as a WSA_ERROR into a windows crate Error type.
 fn wsa_error_to_win_error(err: WSA_ERROR) -> windows::core::Error {
-    let hresult: HRESULT = WIN32_ERROR(err.0 as u32).into();
-    windows::core::Error::new(hresult, HSTRING::new())
+    let code: HRESULT = WIN32_ERROR(err.0 as u32).into();
+    windows::core::Error::from_hresult(code)
 }
 
 /// Get the result of the most recent winsock overlapped operation, interpreting WSAGetLastError and handling
@@ -263,7 +260,8 @@ pub fn expect_last_wsa_error() -> Fail {
 /// Convert from WIN32_ERROR to Fail.
 impl From<WIN32_ERROR> for Fail {
     fn from(value: WIN32_ERROR) -> Self {
-        let error: windows::core::Error = windows::core::Error::new(value.into(), HSTRING::new());
+        let code: HRESULT = value.into();
+        let error: windows::core::Error = windows::core::Error::from_hresult(code);
         error.into()
     }
 }
