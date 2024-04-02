@@ -98,6 +98,7 @@ def run_pipeline(
             if __should_run(ci_map[libos], "pipe_push_pop", test_system):
                 status["pipe-push-pop"] = factory.system_test(test_name="push-pop").execute()
             if __should_run(ci_map[libos], "tcp_echo", test_system):
+                status["tcp_echo"] = True
                 test_config = ci_map[libos]['tcp_echo']
                 names = [p for p in test_config]
                 scenarios = build_combinations(test_config, names, {})
@@ -107,26 +108,28 @@ def run_pipeline(
                         continue
 
                     if libos == "catnap":
-                        status["tcp_echo"] = factory.system_test(
+                        status["tcp_echo"] &= factory.system_test(
                             test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'], bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=scenario['nthreads']).execute()
                     else:
-                        status["tcp_echo"] = factory.system_test(
+                        status["tcp_echo"] &= factory.system_test(
                             test_name="tcp_echo", run_mode=scenario['run_mode'], nclients=scenario['nclients'],
                             bufsize=scenario['bufsize'], nrequests=scenario['nrequests'], nthreads=1).execute()
             if __should_run(ci_map[libos], "tcp_close", test_system):
+                status["tcp_close"] = True
                 test_config = ci_map[libos]['tcp_close']
                 names = [p for p in test_config]
                 scenarios = build_combinations(test_config, names, {})
                 for scenario in scenarios:
-                    status["tcp_close"] = factory.system_test(
+                    status["tcp_close"] &= factory.system_test(
                         test_name="tcp_close", run_mode=scenario['run_mode'], who_closes=scenario['who_closes'], nclients=scenario['nclients']).execute()
             if __should_run(ci_map[libos], "tcp_wait", test_system):
+                status["tcp_wait"] = True
                 test_config = ci_map[libos]['tcp_wait']
                 names = [p for p in test_config]
                 scenarios = build_combinations(test_config, names, {})
                 for scenario in scenarios:
-                    status["tcp_wait"] = factory.system_test(test_name="tcp_wait",
-                                                             scenario=scenario['scenario'], nclients=scenario['nclients']).execute()
+                    status["tcp_wait"] &= factory.system_test(test_name="tcp_wait",
+                                                              scenario=scenario['scenario'], nclients=scenario['nclients']).execute()
             if __should_run(ci_map[libos], "tcp_ping_pong", test_system):
                 status["tcp_ping_pong"] = factory.system_test(test_name="tcp_ping_pong").execute()
             if __should_run(ci_map[libos], "tcp_push_pop", test_system):
