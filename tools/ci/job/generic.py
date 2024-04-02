@@ -25,6 +25,9 @@ class BaseJob:
                  self.client()] = clientTask.execute()
         return wait_and_report(self.name, self.log_directory(), jobs)
 
+    def name(self) -> str:
+        return self.name
+
     def branch(self) -> str:
         return self.config["branch"]
 

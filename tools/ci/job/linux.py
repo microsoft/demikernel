@@ -71,14 +71,22 @@ class CleanupJobOnLinux(BaseLinuxJob):
 
 
 class UnitTestJobOnLinux(BaseLinuxJob):
-    def __init__(self, config: dict):
-        super().__init__(config, "unit-test")
+    def __init__(self, config: dict, name: str):
+        super().__init__(config, name)
 
     def execute(self) -> bool:
-        server_cmd: str = f"test-unit-rust LIBOS={super().libos()}"
+        server_cmd: str = f"{super().name()} LIBOS={super().libos()}"
         serverTask: RunOnLinux = RunOnLinux(
             super().server(), super().repository(), server_cmd, super().is_debug(), super().is_sudo(), super().config_path())
         return super().execute(serverTask)
+
+
+class UnitTestRustJobOnLinux(UnitTestJobOnLinux):
+    def __init__(self, config: dict):
+        super().__init__(config, "test-unit-rust")
+
+    def execute(self) -> bool:
+        return super().execute()
 
 
 class EndToEndTestJobOnLinux(BaseLinuxJob):
