@@ -74,6 +74,7 @@ def run_pipeline(
         if status["checkout"] and status["compile"]:
             status["unit_tests"] = True
             status["unit_tests"] &= factory.unit_test(test_name="test-unit-rust").execute()
+            status["unit_tests"] &= factory.unit_test(test_name="test-unit-c").execute()
             if libos == "catnap" or libos == "catloop":
                 status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":

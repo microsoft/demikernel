@@ -86,3 +86,11 @@ class UnitTestRustJobOnWindows(UnitTestJobOnWindows):
 
     def execute(self) -> bool:
         return super().execute()
+
+
+class UnitTestCJobOnWindows(UnitTestJobOnWindows):
+    def __init__(self, config: dict):
+        super().__init__(config, "test-unit-c")
+
+    def execute(self) -> bool:
+        return super().execute()

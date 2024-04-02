@@ -39,11 +39,15 @@ class JobFactory:
         if self.config["platform"] == "windows":
             if test_name == "test-unit-rust":
                 return windows.UnitTestRustJobOnWindows(self.config)
+            elif test_name == "test-unit-c":
+                return windows.UnitTestCJobOnWindows(self.config)
             else:
                 raise Exception("Invalid test name")
         else:
             if test_name == "test-unit-rust":
                 return linux.UnitTestRustJobOnLinux(self.config)
+            elif test_name == "test-unit-c":
+                return linux.UnitTestCJobOnLinux(self.config)
             else:
                 raise Exception("Invalid test name")
 

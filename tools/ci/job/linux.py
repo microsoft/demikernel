@@ -89,6 +89,14 @@ class UnitTestRustJobOnLinux(UnitTestJobOnLinux):
         return super().execute()
 
 
+class UnitTestCJobOnLinux(UnitTestJobOnLinux):
+    def __init__(self, config: dict):
+        super().__init__(config, "test-unit-c")
+
+    def execute(self) -> bool:
+        return super().execute()
+
+
 class EndToEndTestJobOnLinux(BaseLinuxJob):
 
     def __init__(self, config, job_name: str):
