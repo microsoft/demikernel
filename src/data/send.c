@@ -15,6 +15,9 @@
 #include <sys/types.h>
 #include <glue.h>
 
+static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
+    size_t iovcnt);
+
 ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
@@ -86,6 +89,8 @@ ssize_t __sendto(int sockfd, const void *buf, size_t len, int flags, const struc
 
 ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 {
+    size_t i, bytes, iov_len = 0;
+
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -96,12 +101,24 @@ ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 
     TRACE("sockfd=%d, msg=%p, flags=%x", sockfd, (void *)msg, flags);
 
-    // TODO: Hook in demi_sendmsg().
-    UNUSED(msg);
-    UNUSED(flags);
-    UNIMPLEMETED("sendmsg() is not hooked in");
+    for (i = 0; i < msg->msg_iovlen; i++)
+    {
+        iov_len += msg->msg_iov[i].iov_len;
+    }
 
-    return (-1);
+    demi_qtoken_t qt = -1;
+    demi_qresult_t qr;
+    demi_sgarray_t sga = demi_sgaalloc(iov_len);
+
+    // Copy iovecs to sga
+    bytes = fill_sga(msg->msg_iov, &sga, msg->msg_iovlen);
+
+    assert(demi_push(&qt, sockfd, &sga) == 0);
+    assert(demi_wait(&qr, qt, NULL) == 0);
+    assert(qr.qr_opcode == DEMI_OPC_PUSH);
+    demi_sgafree(&sga);
+
+    return (bytes);
 }
 
 ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
@@ -145,4 +162,39 @@ ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset)
     UNIMPLEMETED("pwrite() is not hooked in");
 
     return (-1);
+}
+
+
+static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
+    size_t iovcnt)
+{
+    size_t len, sga_len, iov_len;
+    
+    size_t i_iov = 0;
+    uint8_t sga_pos = 0, iov_pos = 0;
+
+    while (sga_pos < sga->sga_segs[0].sgaseg_len)
+    {
+        assert(i_iov < iovcnt);
+        iov_len = iov[i_iov].iov_len - iov_pos;
+        sga_len = sga->sga_segs[0].sgaseg_len - sga_pos;
+
+        len = MIN(iov_len, sga_len);
+        memcpy(sga->sga_segs[0].sgaseg_buf + sga_pos, 
+                iov[i_iov].iov_base + iov_pos, len);
+        
+        sga_pos += len;
+        
+        if (len == iov_len)
+        {
+            iov_pos = 0;
+            i_iov += 1;
+        }
+        else
+        {
+            iov_pos += len;
+        }
+    }
+
+    return sga_pos;
 }
