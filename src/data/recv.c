@@ -14,6 +14,9 @@
 #include <sys/types.h>
 #include <glue.h>
 
+static size_t fill_iov(const struct iovec *iov, demi_sgarray_t *sga,
+        uint32_t iovcnt, uint32_t sgacnt);
+
 ssize_t __read(int sockfd, void *buf, size_t count)
 {
     int epfd = -1;
@@ -144,6 +147,24 @@ ssize_t __recvmsg(int sockfd, struct msghdr *msg, int flags)
 
 ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
 {
+    size_t count;
+    uint32_t num_segs;
+    int epfd = -1;
+
+    if (iovcnt < 0)
+    {
+        errno = EINVAL;
+        return (-1);
+    }
+
+    // Check if this is a reentrant call.
+    // If that is not the case, then fail to let the Linux kernel handle it.
+    if (__epoll_reent_guard)
+    {
+        errno = EBADF;
+        return (-1);
+    }
+
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -152,12 +173,49 @@ ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
         return (-1);
     }
 
-    TRACE("sockfd=%d, iov=%p, iovcnt=%d", sockfd, (void *)iov, iovcnt);
+    // Check if socket descriptor is registered on an epoll instance.
+    if ((epfd = queue_man_query_fd_pollable(sockfd)) > 0)
+    {
+        TRACE("sockfd=%d, iov=%p, iovcnt=%zu", sockfd, iov, iovcnt);
+        struct demi_event *ev = NULL;
 
-    // TODO: Hook in demi_readv().
-    UNUSED(iov);
-    UNUSED(iovcnt);
-    UNIMPLEMETED("readv() is not hooked in");
+        // Check if read operation has completed.
+        if ((ev = queue_man_get_pop_result(sockfd)) != NULL)
+        {
+            assert(ev->used == 1);
+            assert(ev->sockqd == sockfd);
+            assert(ev->qt == (demi_qtoken_t)-1);
+
+            num_segs = ev->qr.qr_value.sga.sga_numsegs;
+
+            if (ev->qr.qr_value.sga.sga_segs[0].sgaseg_len == 0)
+            {
+                TRACE("read zero bytes");
+                demi_sgafree(&ev->qr.qr_value.sga);
+                return (0);
+            }
+
+            count = fill_iov(iov, &ev->qr.qr_value.sga, iovcnt, num_segs);
+            if (count > 0)
+            {
+                demi_sgafree(&ev->qr.qr_value.sga);
+            }
+
+            // Re-issue I/O queue operation.
+            __epoll_reent_guard = 1;
+            assert(demi_pop(&ev->qt, ev->sockqd) == 0);
+            __epoll_reent_guard = 0;
+            assert(ev->qt != (demi_qtoken_t)-1);
+
+            return (count);
+        }
+
+        // The read operation has not yet completed.
+        errno = EWOULDBLOCK;
+        return (-1);
+    }
+
+    UNIMPLEMETED("read() currently works only on epoll mode");
 
     return (-1);
 }
@@ -181,4 +239,51 @@ ssize_t __pread(int sockfd, void *buf, size_t count, off_t offset)
     UNIMPLEMETED("pread() is not hooked in");
 
     return (-1);
+}
+
+static size_t fill_iov(const struct iovec *iov, demi_sgarray_t *sga,
+        uint32_t iovcnt, uint32_t sgacnt)
+{
+    ssize_t count, total;
+    size_t iov_len, sga_len;
+    uint32_t i_iov = 0, i_sga = 0;
+    uint8_t iov_off = 0, sga_off = 0;
+
+
+    total = 0;
+    while (i_iov < iovcnt && i_sga < sgacnt)
+    {
+        iov_len = iov[i_iov].iov_len - iov_off;
+        sga_len = sga->sga_segs[i_sga].sgaseg_len - sga_off;
+        count = MIN(iov_len, sga_len);
+        memcpy(iov[i_iov].iov_base + iov_off, 
+                sga->sga_segs[i_sga].sgaseg_buf + sga_off, count);
+        
+        total += count;
+    
+        if (iov_len > sga_len)
+        {
+            i_sga += 1;
+            iov_off = count;
+            sga_off = 0;
+        }
+        else if (iov_len < sga_len)
+        {
+            i_iov += 1;
+            iov_off = 0;
+            sga_off = count;
+        }
+        else if (iov_len == sga_len)
+        {
+            i_iov += 1;
+            i_sga += 1;
+            iov_off = 0;
+            sga_off = 0;
+        }
+    }
+
+    // TODO: We should support buffering
+    assert(i_iov  < iovcnt || i_sga == sgacnt);
+
+    return (total);
 }
