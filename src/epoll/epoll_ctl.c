@@ -19,6 +19,12 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
     uint32_t event_mask = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLERR | EPOLLHUP | EPOLLET | EPOLLONESHOT;
     TRACE("epfd=%d, fd=%d, event=%p", epfd, fd, (void *)event);
 
+    if (queue_man_query_fd_pollable(fd))
+    {
+        errno = EEXIST;
+        return -1;
+    }
+
     event->events &= event_mask;
 
     // TODO: sanity check operation.
@@ -54,6 +60,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
                 {
                     assert(__demi_pop(&qt, fd) == 0);
                 }
+                
                 queue_man_link_fd_epfd(fd, epfd);
                 ev->qt = qt;
             }
@@ -131,17 +138,26 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
         // Found.
         if ((ev->used) && (ev->sockqd == fd))
         {
-            assert(ev->qt == (demi_qtoken_t)-1);
-            ret = __demi_close(fd);
+            // Might now want to have this assert here. Maybe the
+            // qtoken is not -1 because a new push or pop got readded
+            // assert(ev->qt == (demi_qtoken_t)-1);
+            
+            // Might also not want to close the fd here in case
+            // the calling program still wants to use it or readd
+            // it at some point.
+            // ret = demi_close(fd);
+            
+            // Don't remove the fd
+            // queue_man_remove_fd(fd);
+            
             queue_man_unlink_fd_epfd(fd);
-            queue_man_remove_fd(fd);
             memset(ev, 0, sizeof(struct demi_event));
             ev->used = 0;
             ev->sockqd = -1;
             ev->qt = (demi_qtoken_t)-1;
 
             TRACE("epfd=%d, fd=%d, ret=%d errno=%s", epfd, fd, ret, strerror(errno));
-            return (ret);
+            return (0);
         }
     }
 
