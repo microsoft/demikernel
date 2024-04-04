@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <glue.h>
 
 static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
 {
@@ -47,11 +48,11 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
 
                 if (queue_man_is_listen_fd(fd))
                 {
-                    assert(demi_accept(&qt, fd) == 0);
+                    assert(__demi_accept(&qt, fd) == 0);
                 }
                 else
                 {
-                    assert(demi_pop(&qt, fd) == 0);
+                    assert(__demi_pop(&qt, fd) == 0);
                 }
                 queue_man_link_fd_epfd(fd, epfd);
                 ev->qt = qt;
@@ -131,7 +132,7 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
         if ((ev->used) && (ev->sockqd == fd))
         {
             assert(ev->qt == (demi_qtoken_t)-1);
-            ret = demi_close(fd);
+            ret = __demi_close(fd);
             queue_man_unlink_fd_epfd(fd);
             queue_man_remove_fd(fd);
             memset(ev, 0, sizeof(struct demi_event));
@@ -139,6 +140,7 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
             ev->sockqd = -1;
             ev->qt = (demi_qtoken_t)-1;
 
+            TRACE("epfd=%d, fd=%d, ret=%d errno=%s", epfd, fd, ret, strerror(errno));
             return (ret);
         }
     }
@@ -148,53 +150,57 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
     return (ret);
 }
 
-int __demi_epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
+int __epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
     UNUSED(epfd);
     UNUSED(op);
     UNUSED(fd);
     UNUSED(event);
 
-    // Check for reentrancy.
-    if (__epoll_reent_guard)
-    {
-        errno = EBADF;
-        return -1;
-    }
-
     TRACE("epfd=%d, op=%d, fd=%d, event=%p", epfd, op, fd, (void *)event);
 
-    // Check if this socket descriptor is managed by Demikernel.
-    // If that is not the case, then fail to let the Linux kernel handle it.
-    if (!queue_man_query_fd(fd))
+    if (epfd < EPOLL_MAX_FDS)
     {
+        TRACE("not managed by Demikernel epfd=%d", epfd);
         errno = EBADF;
         return -1;
     }
 
-    if ((epfd = queue_man_get_demikernel_epfd(epfd)) == -1)
+    int demikernel_epfd = -1;
+    if ((demikernel_epfd = queue_man_get_demikernel_epfd(epfd - EPOLL_MAX_FDS)) == -1)
     {
+        TRACE("not managed by Demikernel epfd=%d", epfd);
         errno = EBADF;
         return -1;
     }
 
     // Check for invalid epoll file descriptor.
-    if ((epfd < 0) || (epfd >= EPOLL_MAX_FDS))
+    if ((demikernel_epfd < 0) || (demikernel_epfd >= EPOLL_MAX_FDS))
     {
+        ERROR("invalid epoll file descriptor epfd=%d", demikernel_epfd);
         errno = EINVAL;
+        return -1;
+    }
+
+    // Check if this socket descriptor is managed by Demikernel.
+    // If that is not the case, then fail to let the Linux kernel handle it.
+    if (!queue_man_query_fd(fd))
+    {
+        TRACE("not managed by Demikernel fd=%d", fd);
+        errno = EBADF;
         return -1;
     }
 
     switch (op)
     {
     case EPOLL_CTL_ADD:
-        return (__do_demi_epoll_ctl_add(epfd, fd, event));
+        return (__do_demi_epoll_ctl_add(demikernel_epfd, fd, event));
         break;
     case EPOLL_CTL_MOD:
-        return (__do_demi_epoll_ctl_mod(epfd, fd, event));
+        return (__do_demi_epoll_ctl_mod(demikernel_epfd, fd, event));
         break;
     case EPOLL_CTL_DEL:
-        return (__do_demi_epoll_ctl_del(epfd, fd));
+        return (__do_demi_epoll_ctl_del(demikernel_epfd, fd));
         break;
     default:
         break;

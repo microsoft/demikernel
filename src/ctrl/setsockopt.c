@@ -20,7 +20,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns zero if successful and -1 on
  * error. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
+int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -42,6 +42,11 @@ int __demi_setsockopt(int sockfd, int level, int optname, const void *optval, so
         // Ignore.
         INFO("setting %s", "SO_REUSEADDR");
     }
+    else if (level == SOL_SOCKET && optname == SO_LINGER)
+    {
+        // Ignore.
+        INFO("setting %s", "SO_LINGER");
+    }
     else if (level == IPPROTO_TCP && optname == TCP_NODELAY)
     {
         // Ignore.
@@ -52,11 +57,13 @@ int __demi_setsockopt(int sockfd, int level, int optname, const void *optval, so
         // Ignore.
         INFO("setting %s", "TCP_KEEPIDLE");
     }
-    else if (level == IPPROTO_TCP && optname == TCP_KEEPINTVL){
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPINTVL)
+    {
         // Ignore.
         INFO("setting %s", "TCP_KEEPINTLVL");
     }
-    else if (level == IPPROTO_TCP && optname == TCP_KEEPCNT){
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPCNT)
+    {
         // Ignore.
         INFO("setting %s", "TCP_KEEPCNT");
     }

@@ -6,6 +6,7 @@
 #include "../utils.h"
 #include <demi/libos.h>
 #include <errno.h>
+#include <glue.h>
 
 /**
  * @brief Invokes demi_shutdown().
@@ -16,7 +17,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_shutdown(int sockfd, int how)
+int __shutdown(int sockfd, int how)
 {
     int ret = -1;
 

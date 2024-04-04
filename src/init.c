@@ -7,18 +7,12 @@
 #include "utils.h"
 #include <demi/libos.h>
 #include <errno.h>
+#include <glue.h>
 
-static int __demi_init_reent_guard = 0;
-
-int __demi_init()
+int __init()
 {
     int ret = -1;
     int argc = 1;
-
-    if (__demi_init_reent_guard)
-    {
-        return 0;
-    }
 
     char *const argv[] = {"shim"};
 
@@ -28,9 +22,7 @@ int __demi_init()
     queue_man_init();
     epoll_table_init();
 
-    __demi_init_reent_guard = 1;
-    ret = demi_init(argc, argv);
-    __demi_init_reent_guard = 0;
+    ret = __demi_init(argc, argv);
 
     if (ret != 0)
     {

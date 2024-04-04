@@ -9,6 +9,7 @@
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <glue.h>
 
 /**
  * @brief Invokes demi_accept().
@@ -20,7 +21,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
+int __accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -52,9 +53,7 @@ int __demi_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
             newqd = queue_man_register_fd(newqd);
 
             // Re-issue accept operation.
-            __epoll_reent_guard = 1;
-            assert(demi_accept(&ev->qt, ev->sockqd) == 0);
-            __epoll_reent_guard = 0;
+            assert(__demi_accept(&ev->qt, ev->sockqd) == 0);
 
             return (newqd);
         }
@@ -81,7 +80,7 @@ int __demi_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
+int __accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -96,5 +95,5 @@ int __demi_accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int fl
 
     TRACE("sockfd=%d, addr=%p, addrlen=%p, flags=%d", sockfd, (void *)addr, (void *)addrlen, flags);
 
-    return (__demi_accept(sockfd, addr, addrlen));
+    return (__accept(sockfd, addr, addrlen));
 }

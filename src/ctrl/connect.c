@@ -8,6 +8,7 @@
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <glue.h>
 
 /**
  * @brief Invokes demi_connect().
@@ -19,7 +20,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+int __connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.

@@ -17,7 +17,7 @@
  * @return For a successful call, the return value depends on operation.
  *         On error, -1 is returned and errno is set to indicate error.
  */
-int __demi_fcntl(int fd, int cmd, ...)
+int __fcntl(int fd, int cmd, ...)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.

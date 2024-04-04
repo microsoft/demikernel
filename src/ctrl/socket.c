@@ -5,6 +5,7 @@
 #include "../qman.h"
 #include <demi/libos.h>
 #include <errno.h>
+#include <glue.h>
 
 /**
  * @brief Invokes demi_socket().
@@ -15,7 +16,7 @@
  *
  * @return This function returns the result value of the underlying Demikernel system call.
  */
-int __demi_socket(int domain, int type, int protocol)
+int __socket(int domain, int type, int protocol)
 {
     int qd = -1;
     int ret = -1;
@@ -23,7 +24,7 @@ int __demi_socket(int domain, int type, int protocol)
     TRACE("domain=%d, type=%d, protocol=%d", domain, type, protocol);
 
     // Invoke underlying Demikernel system call.
-    if ((ret = demi_socket(&qd, domain, type, protocol)) != 0)
+    if ((ret = __demi_socket(&qd, domain, type, protocol)) != 0)
     {
         // The underlying Demikernel system call failed.
         errno = ret;

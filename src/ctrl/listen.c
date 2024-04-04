@@ -6,6 +6,7 @@
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <glue.h>
 
 /**
  * @brief Invokes demi_listen(), if the socket descriptor is managed by demikernel.
@@ -16,7 +17,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_listen(int sockfd, int backlog)
+int __listen(int sockfd, int backlog)
 {
     int ret = -1;
 
@@ -31,7 +32,7 @@ int __demi_listen(int sockfd, int backlog)
     TRACE("sockfd=%d, backlog=%d", sockfd, backlog);
 
     // Invoke underlying Demikernel system call.
-    if ((ret = demi_listen(sockfd, backlog)) != 0)
+    if ((ret = __demi_listen(sockfd, backlog)) != 0)
     {
         // The underlying Demikernel system call failed.
         errno = ret;

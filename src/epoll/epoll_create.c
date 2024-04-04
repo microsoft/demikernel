@@ -5,17 +5,12 @@
 #include "../log.h"
 #include <errno.h>
 #include <stdio.h>
+#include "../qman.h"
+#include <glue.h>
 
-int __demi_epoll_create(int size)
+int __epoll_create(int size)
 {
     int epfd = -1;
-
-    // Check for reentrancy.
-    if (__epoll_reent_guard)
-    {
-        errno = EBADF;
-        return -1;
-    }
 
     TRACE("size=%d", size);
 

@@ -12,18 +12,11 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <glue.h>
 
-ssize_t __demi_read(int sockfd, void *buf, size_t count)
+ssize_t __read(int sockfd, void *buf, size_t count)
 {
     int epfd = -1;
-
-    // Check if this is a reentrant call.
-    // If that is not the case, then fail to let the Linux kernel handle it.
-    if (__epoll_reent_guard)
-    {
-        errno = EBADF;
-        return (-1);
-    }
 
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -56,20 +49,18 @@ ssize_t __demi_read(int sockfd, void *buf, size_t count)
             if (ev->qr.qr_value.sga.sga_segs[0].sgaseg_len == 0)
             {
                 TRACE("read zero bytes");
-                demi_sgafree(&ev->qr.qr_value.sga);
+                __demi_sgafree(&ev->qr.qr_value.sga);
                 return (0);
             }
 
             if (count > 0)
             {
                 memcpy(buf, ev->qr.qr_value.sga.sga_segs[0].sgaseg_buf, count);
-                demi_sgafree(&ev->qr.qr_value.sga);
+                __demi_sgafree(&ev->qr.qr_value.sga);
             }
 
             // Re-issue I/O queue operation.
-            __epoll_reent_guard = 1;
-            assert(demi_pop(&ev->qt, ev->sockqd) == 0);
-            __epoll_reent_guard = 0;
+            assert(__demi_pop(&ev->qt, ev->sockqd) == 0);
             assert(ev->qt != (demi_qtoken_t)-1);
 
             return (count);
@@ -86,7 +77,7 @@ ssize_t __demi_read(int sockfd, void *buf, size_t count)
     return (-1);
 }
 
-ssize_t __demi_recv(int sockfd, void *buf, size_t len, int flags)
+ssize_t __recv(int sockfd, void *buf, size_t len, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -107,7 +98,7 @@ ssize_t __demi_recv(int sockfd, void *buf, size_t len, int flags)
     return (-1);
 }
 
-ssize_t __demi_recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
+ssize_t __recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -131,7 +122,7 @@ ssize_t __demi_recvfrom(int sockfd, void *buf, size_t len, int flags, struct soc
     return (-1);
 }
 
-ssize_t __demi_recvmsg(int sockfd, struct msghdr *msg, int flags)
+ssize_t __recvmsg(int sockfd, struct msghdr *msg, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -151,7 +142,7 @@ ssize_t __demi_recvmsg(int sockfd, struct msghdr *msg, int flags)
     return (-1);
 }
 
-ssize_t __demi_readv(int sockfd, const struct iovec *iov, int iovcnt)
+ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -171,7 +162,7 @@ ssize_t __demi_readv(int sockfd, const struct iovec *iov, int iovcnt)
     return (-1);
 }
 
-ssize_t __demi_pread(int sockfd, void *buf, size_t count, off_t offset)
+ssize_t __pread(int sockfd, void *buf, size_t count, off_t offset)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.

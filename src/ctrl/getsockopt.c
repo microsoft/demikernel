@@ -21,7 +21,7 @@
  * @return If the socket descriptor is managed by Demikernel, then this function returns the result value of the
  * underlying Demikernel system call. Otherwise, this function returns -1 and sets errno to EBADF.
  */
-int __demi_getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)
+int __getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)
 {
     int ret = -1;
 

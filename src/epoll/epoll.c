@@ -5,8 +5,6 @@
 #include "../log.h"
 #include <assert.h>
 
-int __epoll_reent_guard = 0;
-
 struct epoll_table
 {
     int used;

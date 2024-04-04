@@ -13,8 +13,9 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <glue.h>
 
-ssize_t __demi_send(int sockfd, const void *buf, size_t len, int flags)
+ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -31,19 +32,19 @@ ssize_t __demi_send(int sockfd, const void *buf, size_t len, int flags)
 
     demi_qtoken_t qt = -1;
     demi_qresult_t qr;
-    demi_sgarray_t sga = demi_sgaalloc(len);
+    demi_sgarray_t sga = __demi_sgaalloc(len);
     assert(sga.sga_numsegs == 1);
     len = MIN(len, sga.sga_segs[0].sgaseg_len);
     memcpy(sga.sga_segs[0].sgaseg_buf, buf, len);
-    assert(demi_push(&qt, sockfd, &sga) == 0);
-    assert(demi_wait(&qr, qt, NULL) == 0);
+    assert(__demi_push(&qt, sockfd, &sga) == 0);
+    assert(__demi_wait(&qr, qt, NULL) == 0);
     assert(qr.qr_opcode == DEMI_OPC_PUSH);
-    demi_sgafree(&sga);
+    __demi_sgafree(&sga);
 
     return (len);
 }
 
-ssize_t __demi_write(int sockfd, const void *buf, size_t count)
+ssize_t __write(int sockfd, const void *buf, size_t count)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is the not case, then fail to let the Linux kernel handle it.
@@ -55,11 +56,11 @@ ssize_t __demi_write(int sockfd, const void *buf, size_t count)
 
     TRACE("sockfd=%d, buf=%p, count=%zu", sockfd, buf, count);
 
-    return __demi_send(sockfd, buf, count, 0);
+    return __send(sockfd, buf, count, 0);
 }
 
-ssize_t __demi_sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr,
-                      socklen_t addrlen)
+ssize_t __sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr,
+                 socklen_t addrlen)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is the not case, then fail to let the Linux kernel handle it.
@@ -83,7 +84,7 @@ ssize_t __demi_sendto(int sockfd, const void *buf, size_t len, int flags, const 
     return (-1);
 }
 
-ssize_t __demi_sendmsg(int sockfd, const struct msghdr *msg, int flags)
+ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -103,7 +104,7 @@ ssize_t __demi_sendmsg(int sockfd, const struct msghdr *msg, int flags)
     return (-1);
 }
 
-ssize_t __demi_writev(int sockfd, const struct iovec *iov, int iovcnt)
+ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
@@ -125,7 +126,7 @@ ssize_t __demi_writev(int sockfd, const struct iovec *iov, int iovcnt)
     return (-1);
 }
 
-ssize_t __demi_pwrite(int sockfd, const void *buf, size_t count, off_t offset)
+ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 {
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
