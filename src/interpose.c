@@ -61,6 +61,7 @@ extern int __demi_getpeername(int sockfd, struct sockaddr *addr, socklen_t *addr
 extern int __demi_accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
 extern int __demi_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 extern int __demi_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+extern int __demi_fcntl(int fd, int cmd, ...);
 
 // Data-path hooks.
 extern ssize_t __demi_read(int sockfd, void *buf, size_t count);
@@ -90,6 +91,7 @@ static int (*libc_close)(int) = NULL;
 static int (*libc_shutdown)(int, int) = NULL;
 static int (*libc_bind)(int, const struct sockaddr *, socklen_t) = NULL;
 static int (*libc_connect)(int, const struct sockaddr *, socklen_t) = NULL;
+static int (*libc_fcntl)(int, int, ...) = NULL;
 static int (*libc_listen)(int, int) = NULL;
 static int (*libc_accept4)(int, struct sockaddr *, socklen_t *, int) = NULL;
 static int (*libc_accept)(int, struct sockaddr *, socklen_t *) = NULL;
@@ -123,6 +125,7 @@ static void init_libc(void)
     assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
     assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
     assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
+    assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
     assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
     assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
     assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
@@ -178,6 +181,14 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     INTERPOSE_CALL(int, libc_connect, __demi_connect, sockfd, addr, addrlen);
+}
+
+int fcntl(int fd, int cmd, ...)
+{
+    va_list args;
+    va_start(args, cmd);
+    INTERPOSE_CALL(int, libc_fcntl, __demi_fcntl, fd, cmd, args);
+    va_end(args);
 }
 
 int listen(int sockfd, int backlog)
