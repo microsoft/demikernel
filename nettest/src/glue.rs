@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use std::{
+use ::std::{
     fmt::Debug,
     net::SocketAddr,
     time::Duration,
@@ -34,15 +34,15 @@ pub struct SyscallEvent {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub enum DemikernelSyscall {
-    Socket(SocketArgs, u32),
-    Bind(BindArgs, u32),
-    Listen(ListenArgs, u32),
-    Accept(AcceptArgs, u32),
-    Connect(ConnectArgs, u32),
-    Push(PushArgs, u32),
-    Pop(u32),
-    Close(CloseArgs, u32),
-    Wait(WaitArgs, u32),
+    Socket(SocketArgs, i32),
+    Bind(BindArgs, i32),
+    Listen(ListenArgs, i32),
+    Accept(AcceptArgs, i32),
+    Connect(ConnectArgs, i32),
+    Push(PushArgs, i32),
+    Pop(i32),
+    Close(CloseArgs, i32),
+    Wait(WaitArgs, i32),
     Unsupported,
 }
 
@@ -214,5 +214,95 @@ pub fn parse_int(s: &str) -> Result<u32, ()> {
             eprintln!("{} cannot be represented as a u32", s);
             Err(())
         },
+    }
+}
+
+pub fn parse_ret_code(s: &str) -> Result<i32, ()> {
+    if let Ok(val) = s.parse::<i32>() {
+        Ok(val)
+    } else {
+        // Try to convert to an errno value.
+        match s {
+            "EPERM" => Ok(-libc::EPERM),
+            "ENOENT" => Ok(-libc::ENOENT),
+            "ESRCH" => Ok(-libc::ESRCH),
+            "EINTR" => Ok(-libc::EINTR),
+            "EIO" => Ok(-libc::EIO),
+            "ENXIO" => Ok(-libc::ENXIO),
+            "E2BIG" => Ok(-libc::E2BIG),
+            "ENOEXEC" => Ok(-libc::ENOEXEC),
+            "EBADF" => Ok(-libc::EBADF),
+            "ECHILD" => Ok(-libc::ECHILD),
+            "EAGAIN" => Ok(-libc::EAGAIN),
+            "ENOMEM" => Ok(-libc::ENOMEM),
+            "EACCES" => Ok(-libc::EACCES),
+            "EFAULT" => Ok(-libc::EFAULT),
+            "EBUSY" => Ok(-libc::EBUSY),
+            "EEXIST" => Ok(-libc::EEXIST),
+            "EXDEV" => Ok(-libc::EXDEV),
+            "ENODEV" => Ok(-libc::ENODEV),
+            "ENOTDIR" => Ok(-libc::ENOTDIR),
+            "EISDIR" => Ok(-libc::EISDIR),
+            "EINVAL" => Ok(-libc::EINVAL),
+            "ENFILE" => Ok(-libc::ENFILE),
+            "EMFILE" => Ok(-libc::EMFILE),
+            "ENOTTY" => Ok(-libc::ENOTTY),
+            "EFBIG" => Ok(-libc::EFBIG),
+            "ENOSPC" => Ok(-libc::ENOSPC),
+            "ESPIPE" => Ok(-libc::ESPIPE),
+            "EROFS" => Ok(-libc::EROFS),
+            "EMLINK" => Ok(-libc::EMLINK),
+            "EPIPE" => Ok(-libc::EPIPE),
+            "EDOM" => Ok(-libc::EDOM),
+            "ERANGE" => Ok(-libc::ERANGE),
+            "EDEADLK" => Ok(-libc::EDEADLK),
+            "EDEADLOCK" => Ok(-libc::EDEADLOCK),
+            "ENAMETOOLONG" => Ok(-libc::ENAMETOOLONG),
+            "ENOLCK" => Ok(-libc::ENOLCK),
+            "ENOSYS" => Ok(-libc::ENOSYS),
+            "ENOTEMPTY" => Ok(-libc::ENOTEMPTY),
+            "EILSEQ" => Ok(-libc::EILSEQ),
+            "EADDRINUSE" => Ok(-libc::EADDRINUSE),
+            "EADDRNOTAVAIL" => Ok(-libc::EADDRNOTAVAIL),
+            "EAFNOSUPPORT" => Ok(-libc::EAFNOSUPPORT),
+            "EALREADY" => Ok(-libc::EALREADY),
+            "EBADMSG" => Ok(-libc::EBADMSG),
+            "ECANCELED" => Ok(-libc::ECANCELED),
+            "ECONNABORTED" => Ok(-libc::ECONNABORTED),
+            "ECONNREFUSED" => Ok(-libc::ECONNREFUSED),
+            "ECONNRESET" => Ok(-libc::ECONNRESET),
+            "EDESTADDRREQ" => Ok(-libc::EDESTADDRREQ),
+            "EHOSTUNREACH" => Ok(-libc::EHOSTUNREACH),
+            "EIDRM" => Ok(-libc::EIDRM),
+            "EINPROGRESS" => Ok(-libc::EINPROGRESS),
+            "EISCONN" => Ok(-libc::EISCONN),
+            "ELOOP" => Ok(-libc::ELOOP),
+            "EMSGSIZE" => Ok(-libc::EMSGSIZE),
+            "ENETDOWN" => Ok(-libc::ENETDOWN),
+            "ENETRESET" => Ok(-libc::ENETRESET),
+            "ENETUNREACH" => Ok(-libc::ENETUNREACH),
+            "ENOBUFS" => Ok(-libc::ENOBUFS),
+            "ENODATA" => Ok(-libc::ENODATA),
+            "ENOLINK" => Ok(-libc::ENOLINK),
+            "ENOMSG" => Ok(-libc::ENOMSG),
+            "ENOPROTOOPT" => Ok(-libc::ENOPROTOOPT),
+            "ENOSR" => Ok(-libc::ENOSR),
+            "ENOSTR" => Ok(-libc::ENOSTR),
+            "ENOTCONN" => Ok(-libc::ENOTCONN),
+            "ENOTRECOVERABLE" => Ok(-libc::ENOTRECOVERABLE),
+            "ENOTSOCK" => Ok(-libc::ENOTSOCK),
+            "ENOTSUP" => Ok(-libc::ENOTSUP),
+            "EOPNOTSUPP" => Ok(-libc::EOPNOTSUPP),
+            "EOVERFLOW" => Ok(-libc::EOVERFLOW),
+            "EOWNERDEAD" => Ok(-libc::EOWNERDEAD),
+            "EPROTO" => Ok(-libc::EPROTO),
+            "EPROTONOSUPPORT" => Ok(-libc::EPROTONOSUPPORT),
+            "EPROTOTYPE" => Ok(-libc::EPROTOTYPE),
+            "ETIME" => Ok(-libc::ETIME),
+            "ETIMEDOUT" => Ok(-libc::ETIMEDOUT),
+            "ETXTBSY" => Ok(-libc::ETXTBSY),
+            "EWOULDBLOCK" => Ok(-libc::EWOULDBLOCK),
+            _ => panic!("Unknown error code"),
+        }
     }
 }

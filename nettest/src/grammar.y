@@ -68,47 +68,47 @@ SyscallEvent -> glue::SyscallEvent
 
 Syscall -> DemikernelSyscall
       : 'SOCKET' 'LPAREN' SocketArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Socket($3, ret)
       }
       | 'BIND' 'LPAREN' BindArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Bind($3, ret)
       }
       | 'LISTEN' 'LPAREN' ListenArgs 'RPAREN' 'EQUALS' Expression{
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Listen($3, ret)
       }
       | 'ACCEPT' 'LPAREN' AcceptArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Accept($3, ret)
       }
       | 'CONNECT' 'LPAREN' ConnectArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Connect($3, ret)
       }
       | 'SEND' 'LPAREN' WriteArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
       | 'RECV' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Pop(ret)
       }
       | 'CLOSE' 'LPAREN' CloseArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Close($3, ret)
       }
       | 'WRITE' 'LPAREN' WriteArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
       | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Pop(ret)
       }
       | 'WAIT' 'LPAREN' WaitArgs 'RPAREN' 'EQUALS' Expression {
-            let ret = glue::parse_int(&$6).unwrap();
+            let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Wait($3, ret)
       }
       | 'GETSOCKOPT' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {

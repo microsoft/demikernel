@@ -10,4 +10,4 @@
 +.1 < R. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
 
 // Fail to connect.
-+.0 wait(500, ...) = 111
++.0 wait(500, ...) = ECONNREFUSED
