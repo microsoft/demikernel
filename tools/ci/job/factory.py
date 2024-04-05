@@ -48,7 +48,7 @@ class JobFactory:
             if self.config["libos"] == "catmem":
                 return linux.PipeIntegrationTestJobOnLinux(self.config, run_mode=run_mode)
             else:
-                return linux.IntegrationTestJobOnLinux(self.config)
+                return linux.TcpIntegrationTestJobOnLinux(self.config)
 
     def system_test(self, test_name: str, niterations: int = 0, run_mode: str = "", nclients: int = 0, bufsize: int = 0, nrequests: int = 0, nthreads: int = 1, who_closes: str = "", scenario: str = "") -> BaseJob:
         if self.config["platform"] == "windows":

@@ -218,18 +218,26 @@ class UdpPushPopTest(SystemTestJobOnLinux):
         super().__init__(config)
 
 
-class IntegrationTestJobOnLinux(EndToEndTestJobOnLinux):
+class IntegrationTestJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict, name: str):
+        super().__init__(config, name)
+
+    def execute(self, server_cmd: str) -> bool:
+        serverTask: RunOnLinux = RunOnLinux(
+            super().server(), super().repository(), server_cmd, super().is_debug(), super().is_sudo(), super().config_path())
+        return super().execute(serverTask)
+
+
+class TcpIntegrationTestJobOnLinux(IntegrationTestJobOnLinux):
 
     def __init__(self, config: dict):
         config["all_pass"] = True
         super().__init__(config, "integration-test")
         self.server_args: str = f"--local-address {super().server_addr()}:12345 --remote-address {super().client_addr()}:23456"
-        self.client_args: str = f"--local-address {super().client_addr()}:23456 --remote-address {super().server_addr()}:12345"
 
     def execute(self) -> bool:
         server_cmd: str = f"test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={super().libos()} ARGS=\\\"{self.server_args}\\\""
-        client_cmd: str = f"test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={super().libos()} ARGS=\\\"{self.client_args}\\\""
-        return super().execute(server_cmd, client_cmd)
+        return super().execute(server_cmd)
 
 
 class PipeIntegrationTestJobOnLinux(BaseLinuxJob):
@@ -242,7 +250,6 @@ class PipeIntegrationTestJobOnLinux(BaseLinuxJob):
         self.run_mode: str = run_mode
 
     def execute(self) -> bool:
-        target: str = f"test-integration-rust LIBOS={super().libos()}"
         server_cmd: str = f"test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={super().libos()} ARGS=\\\"{self.server_args}\\\""
         client_cmd: str = f"test-integration-rust TEST_INTEGRATION=pipe-test LIBOS={super().libos()} ARGS=\\\"{self.client_args}\\\""
         jobs: dict[str, subprocess.Popen[str]] = {}
