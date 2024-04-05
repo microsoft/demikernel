@@ -157,14 +157,6 @@ ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
         return (-1);
     }
 
-    // Check if this is a reentrant call.
-    // If that is not the case, then fail to let the Linux kernel handle it.
-    if (__epoll_reent_guard)
-    {
-        errno = EBADF;
-        return (-1);
-    }
-
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -202,9 +194,7 @@ ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
             }
 
             // Re-issue I/O queue operation.
-            __epoll_reent_guard = 1;
             assert(demi_pop(&ev->qt, ev->sockqd) == 0);
-            __epoll_reent_guard = 0;
             assert(ev->qt != (demi_qtoken_t)-1);
 
             return (count);

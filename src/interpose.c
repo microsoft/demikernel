@@ -163,14 +163,6 @@ int fcntl(int fd, int cmd, ...)
     va_end(args);
 }
 
-int fcntl(int fd, int cmd, ...)
-{
-    va_list args;
-    va_start(args, cmd);
-    INTERPOSE_CALL(int, libc_fcntl, __demi_fcntl, fd, cmd, args);
-    va_end(args);
-}
-
 int listen(int sockfd, int backlog)
 {
     INTERPOSE_CALL(int, libc_listen, __listen, sockfd, backlog);
@@ -316,8 +308,10 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
     if (!initialized_libc)
         init_libc();
 
-    if ((!initialized) || (reentrant))
+    if ((!initialized) || (reentrant)) 
+    {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
+    }
 
     init();
 

@@ -6,6 +6,7 @@
 
 #include <demi/libos.h>
 #include <stdio.h>
+#include <time.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
