@@ -149,18 +149,16 @@ impl TaskGroup {
         (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
     }
 
-    pub fn get_offsets_for_ready_tasks(&mut self) -> Vec<InternalId> {
-        let mut result: Vec<InternalId> = vec![];
-        for i in 0..self.get_num_waker_pages() {
+    pub fn get_offsets_for_ready_tasks(&mut self, offsets: &mut Vec<InternalId>) {
+        for waker_page_index in 0..self.get_num_waker_pages() {
             // Grab notified bits.
-            let notified: u64 = self.waker_page_refs[i].take_notified();
-            // Turn into bit iter.
-            let mut offset: Vec<InternalId> = BitIter::from(notified)
-                .map(|x| Self::get_pin_slab_index(i, x).into())
-                .collect();
-            result.append(&mut offset);
+            let notified: u64 = self.waker_page_refs[waker_page_index].take_notified();
+            // Grab notified waker pages.
+            for waker_page_offset in BitIter::from(notified) {
+                let offset: InternalId = Self::get_pin_slab_index(waker_page_index, waker_page_offset).into();
+                offsets.push(offset);
+            }
         }
-        result
     }
 
     /// Translates an internal task id to an external one. Expects the task to exist.
