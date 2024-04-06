@@ -132,6 +132,13 @@ impl MemoryManager {
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
+        // We can't allocate a zero-sized buffer.
+        if size == 0 {
+            let cause: String = format!("cannot allocate a zero-sized buffer");
+            error!("sgaalloc(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
         // We can't allocate more than a single buffer.
         if size > u16::MAX as usize {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
