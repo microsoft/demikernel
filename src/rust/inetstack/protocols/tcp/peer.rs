@@ -135,9 +135,15 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     }
 
     /// Runs until a new connection is accepted.
-    pub async fn accept(&self, socket: &mut SharedTcpSocket<N>) -> Result<SharedTcpSocket<N>, Fail> {
+    pub async fn accept(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<SharedTcpSocket<N>, Fail> {
         // Wait for accept to complete.
-        Ok(socket.accept().await?)
+        match socket.accept().await {
+            Ok(socket) => {
+                self.addresses.insert(SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()), socket.clone());
+                Ok(socket)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Runs until the connect to remote is made or times out.
