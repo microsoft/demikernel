@@ -505,6 +505,30 @@ impl LibOS {
         }
     }
 
+    /// Waits in a loop until the next task is complete, passing the result to `acceptor`. This process continues until
+    /// either the acceptor returns false (in which case the method returns Ok), or the timeout has expired (in which
+    /// the method returns an `Err` indicating timeout).
+    #[allow(unreachable_patterns, unused_variables)]
+    pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
+        &mut self,
+        acceptor: Acceptor,
+        timeout: Option<Duration>
+    ) -> Result<(), Fail>
+    {
+        timer!("demikernel::wait_next_n");
+        match self {
+            #[cfg(any(
+                feature = "catnap-libos",
+                feature = "catnip-libos",
+                feature = "catpowder-libos",
+                feature = "catloop-libos"
+            ))]
+            LibOS::NetworkLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            #[cfg(feature = "catmem-libos")]
+            LibOS::MemoryLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+        }
+    }
+
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&mut self, size: usize) -> Result<demi_sgarray_t, Fail> {
         let result: Result<demi_sgarray_t, Fail> = {
@@ -545,7 +569,7 @@ impl LibOS {
         result
     }
 
-    fn poll(&mut self) {
+    pub fn poll(&mut self) {
         timer!("demikernel::poll");
         match self {
             #[cfg(any(

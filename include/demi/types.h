@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <demi/cc.h>
 
 #ifdef __linux__
 #include <netinet/in.h>

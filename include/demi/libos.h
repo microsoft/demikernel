@@ -6,6 +6,7 @@
 
 #include <demi/types.h>
 #include <stddef.h>
+#include <demi/cc.h>
 
 #ifdef __linux__
 #include <sys/socket.h>
@@ -29,7 +30,9 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_init(int argc, char *const argv[]);
+    ATTR_NONNULL(2)
+    extern int demi_init(_In_ int argc, _In_reads_(argc) _Deref_pre_z_ char *const argv[]);
+
 
     /**
      * @brief Creates a new memory I/O queue.
@@ -39,7 +42,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_create_pipe(int *memqd_out, const char *name);
+    ATTR_NONNULL(1, 2)
+    extern int demi_create_pipe(_Out_ int *memqd_out, _In_z_ const char *name);
 
     /**
      * @brief Opens an existing memory I/O queue.
@@ -49,7 +53,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_open_pipe(int *memqd_out, const char *name);
+    ATTR_NONNULL(1, 2)
+    extern int demi_open_pipe(_Out_ int *memqd_out, _In_z_ const char *name);
 
     /**
      * @brief Creates a socket I/O queue.
@@ -61,7 +66,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_socket(int *sockqd_out, int domain, int type, int protocol);
+    ATTR_NONNULL(1)
+    extern int demi_socket(_Out_ int *sockqd_out, _In_ int domain, _In_ int type, _In_ int protocol);
 
     /**
      * @brief Sets as passive a socket I/O queue.
@@ -71,7 +77,7 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_listen(int sockqd, int backlog);
+    extern int demi_listen(_In_ int sockqd, _In_ int backlog);
 
     /**
      * @brief Binds an address to a socket I/O queue.
@@ -82,7 +88,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_bind(int sockqd, const struct sockaddr *addr, socklen_t size);
+    ATTR_NONNULL(2)
+    extern int demi_bind(_In_ int sockqd, _In_reads_bytes_(size) const struct sockaddr *addr, _In_ socklen_t size);
 
     /**
      * @brief Asynchronously accepts a connection request on a socket I/O queue.
@@ -92,7 +99,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_accept(demi_qtoken_t *qt_out, int sockqd);
+    ATTR_NONNULL(1)
+    extern int demi_accept(_Out_ demi_qtoken_t *qt_out, _In_ int sockqd);
 
     /**
      * @brief Asynchronously initiates a connection on a socket I/O queue.
@@ -104,7 +112,10 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_connect(demi_qtoken_t *qt_out, int sockqd, const struct sockaddr *addr, socklen_t size);
+    ATTR_NONNULL(1, 3)
+    extern int demi_connect(_Out_ demi_qtoken_t *qt_out, _In_ int sockqd,
+                            _In_reads_bytes_(size) const struct sockaddr *addr, _In_ socklen_t size);
+
 
     /**
      * @brief Closes an I/O queue descriptor.
@@ -113,7 +124,7 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_close(int qd);
+    extern int demi_close(_In_ int qd);
 
     /**
      * @brief Asynchronously pushes a scatter-gather array to an I/O queue.
@@ -124,7 +135,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_push(demi_qtoken_t *qt_out, int qd, const demi_sgarray_t *sga);
+    ATTR_NONNULL(1, 3)
+    extern int demi_push(_Out_ demi_qtoken_t *qt_out, _In_ int qd, _In_ const demi_sgarray_t *sga);
 
     /**
      * @brief Asynchronously pushes a scatter-gather array to a socket I/O queue.
@@ -137,8 +149,9 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_pushto(demi_qtoken_t *qt_out, int sockqd, const demi_sgarray_t *sga,
-                           const struct sockaddr *dest_addr, socklen_t size);
+    ATTR_NONNULL(1, 3, 4)
+    extern int demi_pushto(_Out_ demi_qtoken_t *qt_out, _In_ int sockqd, _In_ const demi_sgarray_t *sga,
+                           _In_reads_bytes_(size) const struct sockaddr *dest_addr, _In_ socklen_t size);
 
     /**
      * @brief Asynchronously pops a scatter-gather array from an I/O queue.
@@ -148,7 +161,8 @@ extern "C"
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    extern int demi_pop(demi_qtoken_t *qt_out, int qd);
+    ATTR_NONNULL(1)
+    extern int demi_pop(_Out_ demi_qtoken_t *qt_out, _In_ int qd);
 
 #ifdef __cplusplus
 }
