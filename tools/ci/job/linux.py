@@ -3,6 +3,7 @@
 
 import subprocess
 import time
+import ci.task.linux as linux
 from ci.task.linux import BaseLinuxTask, CheckoutOnLinux, CompileOnLinux, RunOnLinux, CleanupOnLinux
 from ci.job.utils import wait_and_report
 from ci.job.generic import BaseJob
@@ -300,3 +301,21 @@ def job_test_system_rust(
     }
     job: SystemTestJobOnLinux = SystemTestJobOnLinux(config)
     return job.execute()
+
+
+class InstallJobOnLinux(BaseLinuxJob):
+
+    def __init__(self, config: dict):
+        name = "install-{}".format("debug" if config["is_debug"] else "release")
+        super().__init__(config, name)
+
+    def execute(self) -> bool:
+        cmd: str = f"LIBOS={super().libos()} INSTALL_PREFIX={super().install_prefix()} install"
+        serverTask: linux.CompileOnLinux = linux.CompileOnLinux(
+            super().server(), super().repository(), cmd, super().is_debug())
+
+        if not super().enable_nfs():
+            clientTask: linux.CompileOnLinux = linux.CompileOnLinux(
+                super().client(), super().repository(), cmd, super().is_debug())
+            return super().execute(serverTask, clientTask)
+        return super().execute(serverTask)
