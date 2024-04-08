@@ -72,7 +72,9 @@ def run_pipeline(
     # STEP 3: Run unit tests.
     if test_unit:
         if status["checkout"] and status["compile"]:
-            status["unit_tests"] = factory.unit_test().execute()
+            status["unit_tests"] = True
+            status["unit_tests"] &= factory.unit_test(test_name="test-unit-rust").execute()
+            status["unit_tests"] &= factory.unit_test(test_name="test-unit-c").execute()
             if libos == "catnap" or libos == "catloop":
                 status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":

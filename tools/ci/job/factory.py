@@ -35,11 +35,21 @@ class JobFactory:
         else:
             return linux.CleanupJobOnLinux(self.config)
 
-    def unit_test(self) -> BaseJob:
+    def unit_test(self, test_name: str) -> BaseJob:
         if self.config["platform"] == "windows":
-            return windows.UnitTestJobOnWindows(self.config)
+            if test_name == "test-unit-rust":
+                return windows.UnitTestRustJobOnWindows(self.config)
+            elif test_name == "test-unit-c":
+                return windows.UnitTestCJobOnWindows(self.config)
+            else:
+                raise Exception("Invalid test name")
         else:
-            return linux.UnitTestJobOnLinux(self.config)
+            if test_name == "test-unit-rust":
+                return linux.UnitTestRustJobOnLinux(self.config)
+            elif test_name == "test-unit-c":
+                return linux.UnitTestCJobOnLinux(self.config)
+            else:
+                raise Exception("Invalid test name")
 
     def integration_test(self, run_mode="") -> BaseJob:
         if self.config["platform"] == "windows":
