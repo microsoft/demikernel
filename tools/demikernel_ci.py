@@ -19,9 +19,8 @@ import ci.git as git
 def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
         test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
-        output_dir: str, enable_nfs: bool) -> int:
+        output_dir: str, enable_nfs: bool, install_prefix: str) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
-    step: int = 0
     status: dict[str, bool] = {}
 
     # Create folder for test logs
@@ -57,7 +56,8 @@ def run_pipeline(
         "enable_nfs": enable_nfs,
         "log_directory": log_directory,
         "is_sudo": is_sudo,
-        "platform": "linux" if libos != "catnapw" else "windows"
+        "platform": "linux" if libos != "catnapw" else "windows",
+        "install_prefix": install_prefix,
     }
 
     factory: JobFactory = JobFactory(config)
@@ -67,7 +67,10 @@ def run_pipeline(
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = factory.compile().execute()
+        status["compile"] = True
+        status["compile"] &= factory.compile().execute()
+        if config["platform"] == "linux":
+            status["compile"] &= factory.install().execute()
 
     # STEP 3: Run unit tests.
     if test_unit:
@@ -204,6 +207,8 @@ def read_args() -> argparse.Namespace:
                         help="set delay between server and host for system-level tests")
     parser.add_argument("--enable-nfs", required=False, default=False,
                         action="store_true", help="enable building on nfs directories")
+    parser.add_argument("--install-prefix", required=False, default="/tmp/demikernel",
+                        help="set install prefix for building")
 
     # Test options.
     parser.add_argument("--test-unit", action='store_true',
@@ -246,6 +251,7 @@ def main():
     delay: float = args.delay
     config_path: str = args.config_path
     enable_nfs: bool = args.enable_nfs
+    install_prefix: str = args.install_prefix
 
     # Extract test options.
     test_unit: bool = args.test_unit
@@ -265,7 +271,8 @@ def main():
 
     status: dict = run_pipeline(repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,
-                                client_addr, delay, config_path, output_dir, enable_nfs)
+                                client_addr, delay, config_path, output_dir, enable_nfs, install_prefix)
+
     if False in status.values():
         sys.exit(-1)
     else:

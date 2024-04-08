@@ -29,6 +29,12 @@ class JobFactory:
         else:
             return linux.CompileJobOnLinux(self.config)
 
+    def install(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Install is not supported on Windows")
+        else:
+            return linux.InstallJobOnLinux(self.config)
+
     def cleanup(self) -> BaseJob:
         if self.config["platform"] == "windows":
             return windows.CleanupJobOnWindows(self.config)

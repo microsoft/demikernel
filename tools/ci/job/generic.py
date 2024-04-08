@@ -66,3 +66,6 @@ class BaseJob:
 
     def client_addr(self) -> str:
         return self.config["client_addr"]
+
+    def install_prefix(self) -> str:
+        return self.config["install_prefix"]
