@@ -15,7 +15,7 @@ class BaseJob:
         self.name = name
         self.config = config
 
-    def execute(self, serverTask: BaseTask, clientTask: BaseTask = None) -> bool:
+    def execute(self, serverTask: BaseTask, clientTask: BaseTask = None, no_wait: bool = False) -> bool:
         jobs: dict[str, subprocess.Popen[str]] = {}
 
         jobs[self.name + "-server-" + self.server()] = serverTask.execute()
@@ -23,7 +23,7 @@ class BaseJob:
         if clientTask is not None:
             jobs[self.name + "-client-" +
                  self.client()] = clientTask.execute()
-        return wait_and_report(self.name, self.log_directory(), jobs)
+        return wait_and_report(self.name, self.log_directory(), jobs, no_wait)
 
     def name(self) -> str:
         return self.name

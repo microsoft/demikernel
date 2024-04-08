@@ -17,8 +17,8 @@ class BaseLinuxJob(BaseJob):
     def __init__(self, config, name):
         super().__init__(config, name)
 
-    def execute(self, serverTask: BaseLinuxTask, clientTask: BaseLinuxTask = None) -> bool:
-        return super().execute(serverTask, clientTask)
+    def execute(self, serverTask: BaseLinuxTask, clientTask: BaseLinuxTask = None, no_wait: bool = False) -> bool:
+        return super().execute(serverTask, clientTask, no_wait)
 
 
 class CheckoutJobOnLinux(BaseLinuxJob):
