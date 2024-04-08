@@ -69,3 +69,12 @@ class BaseJob:
 
     def install_prefix(self) -> str:
         return self.config["install_prefix"]
+
+    def libshim_path(self) -> str:
+        return self.config["libshim_path"]
+
+    def ld_library_path(self) -> str:
+        return self.config["ld_library_path"]
+
+    def path(self) -> str:
+        return self.config["path"]

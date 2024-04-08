@@ -96,3 +96,39 @@ class JobFactory:
                     return linux.UdpPushPopTest(self.config)
                 else:
                     raise Exception("Invalid test name")
+
+    def clone_redis(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Clone is not supported on Windows")
+        else:
+            return linux.CloneRedisJobOnLinux(self.config)
+
+    def make_redis(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Make Redis is not supported on Windows")
+        else:
+            return linux.MakeRedisJobOnLinux(self.config)
+
+    def run_redis_server(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Run Redis is not supported on Windows")
+        else:
+            return linux.RunRedisServerJobOnLinux(self.config)
+
+    def run_redis_benchmark(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Run Redis is not supported on Windows")
+        else:
+            return linux.RunRedisBenchmarkJobOnLinux(self.config)
+
+    def stop_redis_server(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Stop Redis is not supported on Windows")
+        else:
+            return linux.StopRedisServerJobOnLinux(self.config)
+
+    def cleanup_redis(self) -> BaseJob:
+        if self.config["platform"] == "windows":
+            raise Exception("Cleanup Redis is not supported on Windows")
+        else:
+            return linux.CleanupRedisJobOnLinux(self.config)

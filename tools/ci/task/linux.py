@@ -40,3 +40,40 @@ class CleanupOnLinux(BaseLinuxTask):
         sudo_cmd: str = "sudo -E" if is_sudo else ""
         cmd: str = f"cd {repository} && {sudo_cmd} make clean && git checkout {branch} && git clean -fdx ; sudo -E rm -rf /dev/shm/demikernel* ; sudo pkill -f demikernel*"
         super().__init__(host, cmd)
+
+
+class CloneOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, path: str, repository: str, branch: str):
+        cmd: str = f"cd {path} && git clone {repository} --branch {branch}"
+        super().__init__(host, cmd)
+
+
+class MakeRedisOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, path: str):
+        cmd: str = f"cd {path}/redis  && make MALLOC=libc all"
+        super().__init__(host, cmd)
+
+
+class RunredisServerOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, redis_path: str, env: str, params: str):
+        redis_cmd: str = f"{env} ./src/redis-server {params} --daemonize yes"
+        cmd: str = f"cd {redis_path} && {redis_cmd}"
+        super().__init__(host, cmd)
+
+
+class RunRedisBenchmarkOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 120):
+        cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-benchmark {params}"
+        super().__init__(host, cmd)
+
+
+class StopRedisServerOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, redis_path: str, params: str):
+        cmd: str = f"cd {redis_path} && ./src/redis-cli {params} shutdown"
+        super().__init__(host, cmd)
+
+
+class CleanupRedisOnLinux(BaseLinuxTask):
+    def __init__(self, host: str, process_name: str, redis_path: str):
+        cmd: str = f"sudo pkill -e {process_name} ; rm -rf {redis_path}"
+        super().__init__(host, cmd)
