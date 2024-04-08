@@ -173,3 +173,56 @@ pub trait MemoryRuntime {
         Ok(clone)
     }
 }
+
+//======================================================================================================================
+// Unit Tests
+//======================================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        expect_ok,
+        demi_sgarray_t,
+        runtime::memory::MemoryRuntime,
+    };
+    use ::test::{
+        black_box,
+        Bencher,
+    };
+
+    // The buffer size.
+    const BUFSIZE: usize = 1024;
+
+    pub struct DummyRuntime { }
+
+    impl MemoryRuntime for DummyRuntime {}
+
+    #[bench]
+    fn benchmark_clone_sgarray(b: &mut Bencher) {
+        let runtime: DummyRuntime = DummyRuntime { };
+
+        let sga: demi_sgarray_t = match runtime.sgaalloc(BUFSIZE) {
+            Ok(sga) => sga,
+            Err(e) => panic!("failed to allocate sgarray: {:?}", e),
+        };
+
+        b.iter(|| {
+            black_box(expect_ok!(runtime.clone_sgarray(&sga), "failed to clone sgarray"));
+        });
+    }
+
+    #[bench]
+    fn benchmark_into_buf(b: &mut Bencher) {
+        let runtime: DummyRuntime = DummyRuntime { };
+
+        let sga: demi_sgarray_t = match runtime.sgaalloc(BUFSIZE) {
+            Ok(sga) => sga,
+            Err(e) => panic!("failed to allocate sgarray: {:?}", e),
+        };
+
+        b.iter(|| {
+            black_box(expect_ok!(runtime.into_buf(&sga), "failed to convert sgarray"));
+        });
+    }
+
+}
