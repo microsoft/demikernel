@@ -101,6 +101,7 @@ def extract_performance(job_name, file):
             columns = line.split(";")
             # Workaround for LibOses which are miss behaving.
             if len(columns) == 6:
+                scope = columns[1]
                 syscall = columns[2]
                 total_time = columns[3]
                 average_cycles = columns[4]
@@ -115,6 +116,7 @@ def extract_performance(job_name, file):
                 entry["CommitHash"] = commit_hash
                 entry["LibOS"] = libos
                 entry["JobName"] = job_name
+                entry["Scope"] = scope
                 entry["Syscall"] = syscall
                 entry["TotalTime"] = float(total_time)
                 entry["AverageCyclesPerSyscall"] = float(average_cycles)
