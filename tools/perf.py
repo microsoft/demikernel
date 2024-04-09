@@ -77,9 +77,10 @@ def __build_report(table_name: str, connection_str: str, key: str, branch_name: 
     base_date = datetime.datetime.now() - datetime.timedelta(days=ndays)
     # print(f"Querying Azure Table for performance statistics since {base_date}...")
     datetime_filter: str = f"(Timestamp gt datetime'{base_date.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}')"
+    scope_filter: str = f"(Scope eq 'NetworkLibOS')"
     libos_filter: str = f"(LibOS eq 'catnap' or LibOS eq 'catpowder' or LibOS eq 'catnip')"
     syscall_filter: str = f"(Syscall eq 'push' or Syscall eq 'pop')"
-    query_filter: str = f"{datetime_filter} and {libos_filter} and {syscall_filter}"
+    query_filter: str = f"{datetime_filter} and {scope_filter} and {libos_filter} and {syscall_filter}"
     select: List[str] = ["LibOS", "JobName", "CommitHash", "Syscall", "AverageCyclesPerSyscall"]
     data = table_client.query_entities(query_filter=query_filter, select=select)
 
