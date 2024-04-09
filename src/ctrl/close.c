@@ -30,7 +30,12 @@ int __close(int fd)
     TRACE("fd=%d", fd);
 
     ret = __demi_close(fd);
-    queue_man_unlink_fd_epfd(fd);
+
+    // If the file descriptor is pollable, then unlink it from epoll.
+    if (queue_man_query_fd_pollable(fd))
+    {
+        queue_man_unlink_fd_epfd(fd);
+    }
     queue_man_remove_fd(fd);
 
     return (ret);
