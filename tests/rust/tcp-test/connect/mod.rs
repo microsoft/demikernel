@@ -87,9 +87,7 @@ fn connect_unbound_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> 
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
-            connect_finished = true
-        },
+        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -175,9 +173,7 @@ fn connect_bound_socket(libos: &mut LibOS, local: &SocketAddr, remote: &SocketAd
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
-            connect_finished = true
-        },
+        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
@@ -242,9 +238,7 @@ fn connect_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<(
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
         // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
-            connect_finished = true
-        },
+        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
