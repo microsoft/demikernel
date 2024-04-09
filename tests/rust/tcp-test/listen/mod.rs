@@ -177,14 +177,16 @@ fn listen_connecting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
     // Poll once to ensure that the connect() co-routine runs.
     match libos.wait(qt, Some(Duration::from_micros(0))) {
         Err(e) if e.errno == libc::ETIMEDOUT => {},
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECONNREFUSED as i64 => {
-            connect_finished = true
-        },
+        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
         // If completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
         },
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
+        Ok(qr) => anyhow::bail!(
+            "wait() should not succeed, returned: qr_opcode={:?} qr_ret={:?}",
+            qr.qr_opcode,
+            qr.qr_ret
+        ),
         Err(_) => anyhow::bail!("wait() should timeout"),
     }
 

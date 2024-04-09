@@ -88,7 +88,9 @@ use std::pin::Pin;
 // Constants
 //======================================================================================================================
 
-const TIMER_RESOLUTION: usize = 64;
+// TODO: Make this more accurate using rdtsc.
+// FIXME: https://github.com/microsoft/demikernel/issues/1226
+const TIMER_RESOLUTION: usize = 1024;
 
 //======================================================================================================================
 // Structures
