@@ -217,7 +217,7 @@ impl ConcurrentRingBuffer {
         let first_len: usize = if pop_offset + pop_len + HEADER_SIZE > self.capacity() {
             self.capacity() - first_offset
         } else {
-            buf_len
+            pop_len
         };
         let buf_ptr: *mut u8 = buf.as_mut_ptr();
         let ring_ptr: *const u8 = unsafe { self.buffer.get().as_ptr() };
@@ -227,22 +227,15 @@ impl ConcurrentRingBuffer {
             copy(ring_ptr.add(first_offset), buf_ptr, first_len);
         }
         // If there is remaining data in the buffer, wrap around.
-        if buf_len > first_len {
+        if pop_len > first_len {
             // Copy the data into the ring buffer.
-            debug_assert!((first_len - first_len) <= pop_len);
             unsafe {
-                copy(ring_ptr, buf_ptr.add(first_len), buf_len - first_len);
+                copy(ring_ptr, buf_ptr.add(first_len), pop_len - first_len);
             }
         }
 
         // Move to next buffer.
         self.release_space(pop_offset, pop_len);
-        trace!(
-            "try_push() len={:?} push_offset={:?} pop_offset={:?}",
-            buf_len,
-            peek(self.push_offset),
-            peek(self.pop_offset)
-        );
         Ok(pop_len)
     }
 
