@@ -132,7 +132,7 @@ impl ConcurrentRingBuffer {
     pub fn try_push(&self, buf: &[u8]) -> Result<usize, Fail> {
         timer!("collections::concurrent_ring::try_push");
         let len: usize = buf.len();
-        if len == 0 {
+        if (len == 0) || (len >= (1 << (8 * HEADER_SIZE))) {
             return Err(Fail::new(libc::EINVAL, "Buffer must be non-zero length"));
         }
         // reserve_space will allocate space for the header.
