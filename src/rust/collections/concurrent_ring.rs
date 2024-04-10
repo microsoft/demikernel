@@ -309,10 +309,7 @@ impl ConcurrentRingBuffer {
     #[allow(unused)]
     pub fn is_full(&self) -> bool {
         timer!("collections::concurrent_ring::is_full");
-        let push_offset = peek(self.push_offset);
-        let pop_offset = peek(self.pop_offset);
-
-        self.available_space(push_offset, pop_offset) == 0
+        self.remaining_capacity() == HEADER_SIZE
     }
 
     /// Peeks the target ring buffer and checks if it is empty.
