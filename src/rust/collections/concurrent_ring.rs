@@ -306,19 +306,17 @@ impl ConcurrentRingBuffer {
         check_and_set(self.pop_offset, current_offset, new_offset).unwrap();
     }
 
-    #[allow(unused)]
-    pub fn is_full(&self) -> bool {
-        timer!("collections::concurrent_ring::is_full");
+    /// Peeks the target ring buffer and checks if it is full.
+    #[cfg(test)]
+    fn is_full(&self) -> bool {
         self.remaining_capacity() == HEADER_SIZE
     }
 
     /// Peeks the target ring buffer and checks if it is empty.
-    #[allow(unused)]
-    pub fn is_empty(&self) -> bool {
-        timer!("collections::concurrent_ring::is_empty");
-        let push_offset = peek(self.push_offset);
-        let pop_offset = peek(self.pop_offset);
-
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        let push_offset: usize = peek(self.push_offset);
+        let pop_offset: usize = peek(self.pop_offset);
         pop_offset == push_offset
     }
 
