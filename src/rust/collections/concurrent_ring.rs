@@ -133,7 +133,9 @@ impl ConcurrentRingBuffer {
         timer!("collections::concurrent_ring::try_push");
         let len: usize = buf.len();
         if (len == 0) || (len >= (1 << (8 * HEADER_SIZE))) {
-            return Err(Fail::new(libc::EINVAL, "Buffer must be non-zero length"));
+            let cause: String = format!("invalid buffer length (len={})", len);
+            error!("try_push(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
         // reserve_space will allocate space for the header.
         if let Some(push_offset) = self.reserve_space(len) {
@@ -162,16 +164,12 @@ impl ConcurrentRingBuffer {
             // 0. The header describes just the length of the payload.
             let old: usize = self.write_header(push_offset, len);
             debug_assert_eq!(old, 0);
-            trace!(
-                "try_push() len={:?} push_offset={:?} pop_offset={:?}",
-                len,
-                peek(self.push_offset),
-                peek(self.pop_offset)
-            );
 
             Ok(len)
         } else {
-            Err(Fail::new(libc::EAGAIN, "No space in the ring buffer"))
+            let cause: String = format!("no space in the ring buffer (len={})", len);
+            error!("try_push(): {}", &cause);
+            Err(Fail::new(libc::EAGAIN, &cause))
         }
     }
 
