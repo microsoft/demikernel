@@ -192,8 +192,8 @@ impl ConcurrentRingBuffer {
     /// does not block.
     pub fn try_pop(&self, buf: &mut [u8]) -> Result<usize, Fail> {
         timer!("collections::concurrent_ring::try_pop");
-        let len: usize = buf.len();
-        if len == 0 {
+        let buf_len: usize = buf.len();
+        if buf_len == 0 {
             return Err(Fail::new(libc::EINVAL, "Buffer must be non-zero length"));
         }
 
@@ -202,7 +202,7 @@ impl ConcurrentRingBuffer {
         // This represents the total length of the incoming message.
         let pop_len: usize = match self.write_header(pop_offset, 0) {
             0 => return Err(Fail::new(libc::EAGAIN, "No messages in the ring buffer")),
-            bytes if bytes <= len => bytes,
+            bytes if bytes <= buf_len => bytes,
             bytes => {
                 // Buffer is not big enough so put the message back in the queue.
                 // We know that the pop_offset did not move because it was not pointing at a valid message.
@@ -217,30 +217,25 @@ impl ConcurrentRingBuffer {
         let first_len: usize = if pop_offset + pop_len + HEADER_SIZE > self.capacity() {
             self.capacity() - first_offset
         } else {
-            len
+            pop_len
         };
         let buf_ptr: *mut u8 = buf.as_mut_ptr();
         let ring_ptr: *const u8 = unsafe { self.buffer.get().as_ptr() };
         // Copy the data into the ring buffer.
+        debug_assert!(first_len <= pop_len);
         unsafe {
             copy(ring_ptr.add(first_offset), buf_ptr, first_len);
         }
         // If there is remaining data in the buffer, wrap around.
-        if len > first_len {
+        if pop_len > first_len {
             // Copy the data into the ring buffer.
             unsafe {
-                copy(ring_ptr, buf_ptr.add(first_len), len - first_len);
+                copy(ring_ptr, buf_ptr.add(first_len), pop_len - first_len);
             }
         }
 
         // Move to next buffer.
         self.release_space(pop_offset, pop_len);
-        trace!(
-            "try_push() len={:?} push_offset={:?} pop_offset={:?}",
-            len,
-            peek(self.push_offset),
-            peek(self.pop_offset)
-        );
         Ok(pop_len)
     }
 
@@ -568,6 +563,39 @@ mod test {
         let mut array: [u8; SIZE] = [0; SIZE];
         do_from_raw(array.as_mut_ptr() as *mut u8, SIZE)?;
         Ok(())
+    }
+
+    #[test]
+    fn try_pop_irregular() -> Result<()> {
+        let ring: ConcurrentRingBuffer = do_new()?;
+
+        // Push four bytes.
+        let four_bytes: [u8; 4] = [0xff; 4];
+        do_sucess_push_bytes(&ring, &four_bytes)?;
+
+        // Attempt to pop eight bytes, but get four.
+        let mut eight_bytes: [u8; 8] = [0; 8];
+        do_success_pop_bytes(&ring, &mut eight_bytes, four_bytes.len())?;
+
+        Ok(())
+    }
+
+    fn do_sucess_push_bytes(ring: &ConcurrentRingBuffer, buf: &[u8]) -> Result<()> {
+        if let Ok(len) = ring.try_push(buf) {
+            crate::ensure_eq!(len, buf.len());
+            Ok(())
+        } else {
+            anyhow::bail!("Should be able to push {} bytes", buf.len())
+        }
+    }
+
+    fn do_success_pop_bytes(ring: &ConcurrentRingBuffer, buf: &mut [u8], expected_len: usize) -> Result<()> {
+        if let Ok(len) = ring.try_pop(buf) {
+            crate::ensure_eq!(len, expected_len);
+            Ok(())
+        } else {
+            anyhow::bail!("Should be able to pop")
+        }
     }
 
     /// Tets if we succeed to sequentially enqueue and dequeue elements to/from a ring buffer.
