@@ -85,6 +85,15 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         Err(e) => panic!("{:?}", e),
     };
 
+    // Check if demikernel has already been initialized and return
+    match unsafe { DEMIKERNEL.try_borrow() } {
+        Ok(libos) => match *libos {
+            Some(_) => return libc::EEXIST,
+            None => (),
+        },
+        Err(e) => panic!("{:?}", e),
+    }
+
     // TODO: Pass arguments to the underlying libOS.
     let libos: LibOS = match LibOS::new(libos_name) {
         Ok(libos) => libos,

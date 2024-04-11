@@ -48,6 +48,7 @@ On error, one of the following positive error codes is returned:
 
 - `EINVAL` - The `argc` argument is less than or equal to zero.
 - `EINVAL` - The `argv` argument is `NULL`.
+- `EEXIST` - The LibOS has already been initialized.
 
 ## Conforming To
 
