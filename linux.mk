@@ -92,7 +92,7 @@ doc:
 install:
 	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
 	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
-	cp -f  $(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
+	cp -f  $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
 	cp -f $(CURDIR)/scripts/config/default.yaml $(INSTALL_PREFIX)/config.yaml
 
 #=======================================================================================================================
@@ -100,7 +100,7 @@ install:
 #=======================================================================================================================
 
 # Builds all libraries.
-all-libs: all-libs-demikernel
+all-libs: all-shim all-libs-demikernel
 
 all-libs-demikernel:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
@@ -109,6 +109,9 @@ all-libs-demikernel:
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
 
+all-shim: all-libs-demikernel
+	$(MAKE) -C shim all
+
 clean-libs: clean-libs-demikernel
 
 clean-libs-demikernel:
@@ -116,6 +119,9 @@ clean-libs-demikernel:
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
+
+clean-shim:
+	$(MAKE) -C shim clean
 
 #=======================================================================================================================
 # Tests

@@ -2,40 +2,22 @@
 # Licensed under the MIT license.
 
 #=======================================================================================================================
-# Default Paths
-#=======================================================================================================================
-
-export PREFIX ?= $(HOME)
-export DEMIKERNEL_HOME ?= $(HOME)
-export INSTALL_PREFIX ?= $(DEMIKERNEL_HOME)
-
-#=======================================================================================================================
 # Project Directories
 #=======================================================================================================================
 
-export BINDIR ?= $(CURDIR)/bin
-export LIBDIR ?= $(CURDIR)/lib
-export INCDIR ?= $(CURDIR)/include
-export SRCDIR = $(CURDIR)/src
+export INCDIR := $(CURDIR)/include
+export SRCDIR := $(CURDIR)/src
 
 #=======================================================================================================================
 # Toolchain Configuration
 #=======================================================================================================================
 
-# Compiler
-export CC := gcc
-
 # Compiler Flags
-export CFLAGS := -std=c99 -D _POSIX_C_SOURCE=199309L
-export CFLAGS += -Wall -Wextra -Werror
-export CFLAGS += -I $(INCDIR) -I $(DEMIKERNEL_HOME)/include
+export CFLAGS += -I $(INCDIR)
 
 #=======================================================================================================================
 # Libraries
 #=======================================================================================================================
-
-# Demikernel Library
-export DEMIKERNEL_LIB := $(DEMIKERNEL_HOME)/lib/libdemikernel.so
 
 # SHIM Library for Demikernel
 export SHIM_LIB := libshim.so
