@@ -25,7 +25,8 @@ endif
 #=======================================================================================================================
 
 export BINDIR ?= $(CURDIR)/bin
-export INCDIR ?= $(CURDIR)/include
+export INCDIR := $(CURDIR)/include
+export LIBDIR ?= $(CURDIR)/lib
 export SRCDIR = $(CURDIR)/src
 export BUILD_DIR := $(CURDIR)/target/release
 ifeq ($(BUILD),dev)
@@ -51,8 +52,8 @@ endif
 # Libraries
 #=======================================================================================================================
 
-export DEMIKERNEL_LIB := $(BUILD_DIR)/libdemikernel.so
-export LIBS := $(DEMIKERNEL_LIB)
+export DEMIKERNEL_LIB := libdemikernel.so
+export LIBS := $(BUILD_DIR)/$(DEMIKERNEL_LIB)
 
 #=======================================================================================================================
 # Build Parameters
@@ -80,6 +81,7 @@ CARGO_FEATURES += $(FEATURES)
 all: init | all-libs all-tests all-examples
 
 init:
+	mkdir -p $(LIBDIR)
 	git config --local core.hooksPath .githooks
 
 # Builds documentation.
@@ -105,10 +107,12 @@ all-libs-demikernel:
 	@echo "PKG_CONFIG_PATH: $(PKG_CONFIG_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
+	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
 
 clean-libs: clean-libs-demikernel
 
 clean-libs-demikernel:
+	rm -f $(LIBDIR)/$(DEMIKERNEL_LIB)
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
