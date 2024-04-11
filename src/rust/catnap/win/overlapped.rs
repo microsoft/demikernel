@@ -534,7 +534,7 @@ mod tests {
         .fuse();
 
         let server_task: QToken = runtime.insert_io_coroutine("server", Box::pin(server)).unwrap();
-        ensure!(runtime.run_any(&[server_task]).is_none());
+        ensure!(runtime.run_any(&[server_task], Duration::ZERO).is_none());
         post_completion(&iocp, overlapped.as_mut().marshal(), COMPLETION_KEY)?;
 
         iocp.process_events()?;
@@ -549,7 +549,7 @@ mod tests {
             "completion key not updated"
         );
 
-        ensure!(runtime.run_any(&[server_task]).is_some());
+        ensure!(runtime.run_any(&[server_task], Duration::ZERO).is_some());
 
         Ok(())
     }
@@ -648,7 +648,7 @@ mod tests {
         let mut wait_for_state = |state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
                 iocp.get_mut().process_events()?;
-                if let Some(result) = runtime.run_any(&[server_task]) {
+                if let Some(result) = runtime.run_any(&[server_task], Duration::ZERO) {
                     return match result {
                         (_, _, OperationResult::Failed(e)) => Err(e),
                         _ => Err(Fail::new(libc::EFAULT, "server completed early unexpectedly")),
@@ -758,14 +758,17 @@ mod tests {
 
         let iocp_ref: &mut IoCompletionPort<()> = unsafe { &mut *iocp.get() };
         iocp_ref.process_events()?;
-        ensure!(runtime.run_any(&[server_task]).is_none(), "server should not be done");
+        ensure!(
+            runtime.run_any(&[server_task], Duration::ZERO).is_none(),
+            "server should not be done"
+        );
 
         // Poll the runtime again, which
         let result: OperationResult = loop {
             // Move time forward, which should time out the operation.
             runtime.advance_clock(Instant::now());
             iocp.get_mut().process_events()?;
-            if let Some((i, _, result)) = runtime.run_any(&[server_task]) {
+            if let Some((i, _, result)) = runtime.run_any(&[server_task], Duration::ZERO) {
                 ensure_eq!(i, 0);
                 break result;
             }
