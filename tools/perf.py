@@ -148,13 +148,16 @@ def __process_data(data, job_types, syscalls, libos_types, root_commit, head_com
                                 if not (git.check_if_merge_commit(hash) or head_commit == hash):
                                     continue
 
-                                processed[(job_type, libos_type, hash, syscall)] = True
-                                cooked_data[job_type][syscall][libos_type]["diff"].append(
-                                    git.compute_commit_distance(root_commit, hash))
-                                cooked_data[job_type][syscall][libos_type]["cycles"].append(
-                                    row["AverageCyclesPerSyscall"])
-                                cooked_data[job_type][syscall][libos_type]["commit"].append(
-                                    git.get_short_commit_hash(hash))
+                                try:
+                                    processed[(job_type, libos_type, hash, syscall)] = True
+                                    cooked_data[job_type][syscall][libos_type]["diff"].append(
+                                        git.compute_commit_distance(root_commit, hash))
+                                    cooked_data[job_type][syscall][libos_type]["cycles"].append(
+                                        row["AverageCyclesPerSyscall"])
+                                    cooked_data[job_type][syscall][libos_type]["commit"].append(
+                                        git.get_short_commit_hash(hash))
+                                except:
+                                    print(f"Error processing commit {hash}")
     return cooked_data
 
 
