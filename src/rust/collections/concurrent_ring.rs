@@ -132,8 +132,10 @@ impl ConcurrentRingBuffer {
     pub fn try_push(&self, buf: &[u8]) -> Result<usize, Fail> {
         timer!("collections::concurrent_ring::try_push");
         let len: usize = buf.len();
-        if len == 0 {
-            return Err(Fail::new(libc::EINVAL, "Buffer must be non-zero length"));
+        if (len == 0) || (len >= (1 << (8 * HEADER_SIZE))) {
+            let cause: String = format!("invalid buffer length (len={})", len);
+            error!("try_push(): {}", &cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
         // reserve_space will allocate space for the header.
         if let Some(push_offset) = self.reserve_space(len) {
@@ -162,16 +164,12 @@ impl ConcurrentRingBuffer {
             // 0. The header describes just the length of the payload.
             let old: usize = self.write_header(push_offset, len);
             debug_assert_eq!(old, 0);
-            trace!(
-                "try_push() len={:?} push_offset={:?} pop_offset={:?}",
-                len,
-                peek(self.push_offset),
-                peek(self.pop_offset)
-            );
 
             Ok(len)
         } else {
-            Err(Fail::new(libc::EAGAIN, "No space in the ring buffer"))
+            let cause: String = format!("no space in the ring buffer (len={})", len);
+            error!("try_push(): {}", &cause);
+            Err(Fail::new(libc::EAGAIN, &cause))
         }
     }
 
@@ -306,22 +304,17 @@ impl ConcurrentRingBuffer {
         check_and_set(self.pop_offset, current_offset, new_offset).unwrap();
     }
 
-    #[allow(unused)]
-    pub fn is_full(&self) -> bool {
-        timer!("collections::concurrent_ring::is_full");
-        let push_offset = peek(self.push_offset);
-        let pop_offset = peek(self.pop_offset);
-
-        self.available_space(push_offset, pop_offset) == 0
+    /// Peeks the target ring buffer and checks if it is full.
+    #[cfg(test)]
+    fn is_full(&self) -> bool {
+        self.remaining_capacity() == HEADER_SIZE
     }
 
     /// Peeks the target ring buffer and checks if it is empty.
-    #[allow(unused)]
-    pub fn is_empty(&self) -> bool {
-        timer!("collections::concurrent_ring::is_empty");
-        let push_offset = peek(self.push_offset);
-        let pop_offset = peek(self.pop_offset);
-
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        let push_offset: usize = peek(self.push_offset);
+        let pop_offset: usize = peek(self.pop_offset);
         pop_offset == push_offset
     }
 
@@ -459,6 +452,7 @@ mod test {
     use super::{
         ConcurrentRingBuffer,
         Ring,
+        HEADER_SIZE,
     };
     use ::anyhow::Result;
     use ::core::mem;
@@ -504,6 +498,58 @@ mod test {
         crate::ensure_eq!(ring.is_full(), false);
 
         Ok(ring)
+    }
+
+    /// Pushes data to a ring buffer until it is full.
+    fn full_ring_buffer() -> Result<ConcurrentRingBuffer> {
+        let mut npushes: usize = 0;
+        let byte: [u8; 1] = [0xff];
+        let ring: ConcurrentRingBuffer = do_new()?;
+        while ring.remaining_capacity() > HEADER_SIZE {
+            do_success_push_bytes(&ring, &byte)?;
+            npushes += 1;
+        }
+
+        // Check if we got the expected number of pushes.
+        crate::ensure_eq!(npushes, ring.capacity() / (2 * HEADER_SIZE) - 1);
+
+        // Check if ring is full.
+        crate::ensure_eq!(ring.is_full(), true);
+
+        // Fail to push a byte.
+        if ring.try_push(&byte).is_ok() {
+            anyhow::bail!("Should not be able to push");
+        }
+
+        Ok(ring)
+    }
+
+    /// Empty ring buffer.
+    fn empty_ring_buffer(ring: &ConcurrentRingBuffer) -> Result<()> {
+        let mut npops: usize = 0;
+        while !ring.is_empty() {
+            let mut buf: [u8; 1] = [0; 1];
+            if let Ok(len) = ring.try_pop(&mut buf) {
+                crate::ensure_eq!(len, 1);
+                npops += 1;
+            } else {
+                anyhow::bail!("Should be able to pop");
+            }
+        }
+
+        // Check if we got the expected number of pops.
+        crate::ensure_eq!(npops, ring.capacity() / (2 * HEADER_SIZE) - 1);
+
+        // Check if ring is empty.
+        crate::ensure_eq!(ring.is_empty(), true);
+
+        // Fail to pop a byte.
+        let mut buf: [u8; 1] = [0; 1];
+        if ring.try_pop(&mut buf).is_ok() {
+            anyhow::bail!("Should not be able to pop");
+        }
+
+        Ok(())
     }
 
     /// Sequentially enqueues and dequeues elements to/from a ring buffer.
@@ -566,12 +612,99 @@ mod test {
     }
 
     #[test]
+    fn try_push_invalid() -> Result<()> {
+        let ring: ConcurrentRingBuffer = do_new()?;
+
+        // Fail to push zero bytes.
+        let zero_bytes: [u8; 0] = [];
+        do_fail_push_bytes(&ring, &zero_bytes)?;
+
+        // Fail to push beyond maximum number of bytes.
+        const MAX_BYTES: usize = (1 << (HEADER_SIZE * 8)) - 1;
+        let max_bytes: [u8; MAX_BYTES] = [0xff; MAX_BYTES];
+        do_fail_push_bytes(&ring, &max_bytes)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_pop_invalid() -> Result<()> {
+        let ring: ConcurrentRingBuffer = do_new()?;
+
+        // Fail to pop zero bytes.
+        let mut zero_bytes: [u8; 0] = [];
+        do_fail_pop_bytes(&ring, &mut zero_bytes)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_push_until_full() -> Result<()> {
+        full_ring_buffer()?;
+        Ok(())
+    }
+
+    #[test]
+    fn try_push_until_wrap_around() -> Result<()> {
+        let ring: ConcurrentRingBuffer = full_ring_buffer()?;
+
+        // Pop a single byte.
+        const BUF_LEN: usize = 1;
+        let mut buf: [u8; BUF_LEN] = [0; BUF_LEN];
+        do_success_pop_bytes(&ring, &mut buf, BUF_LEN)?;
+
+        // Fail to push eight bytes.
+        let eight_bytes: [u8; 8] = [0xff; 8];
+        do_fail_push_bytes(&ring, &eight_bytes)?;
+
+        // Succeed to push two bytes.
+        let mut two_bytes: [u8; 2] = [0xff; 2];
+        do_success_push_bytes(&ring, &two_bytes)?;
+
+        // Check if ring is full.
+        crate::ensure_eq!(ring.is_full(), true);
+
+        // Fail to push two bytes.
+        do_fail_push_bytes(&ring, &mut two_bytes)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_pop_until_empty() -> Result<()> {
+        let ring: ConcurrentRingBuffer = full_ring_buffer()?;
+        empty_ring_buffer(&ring)?;
+        Ok(())
+    }
+
+    #[test]
+    fn try_pop_until_wrap_around() -> Result<()> {
+        let ring: ConcurrentRingBuffer = full_ring_buffer()?;
+
+        empty_ring_buffer(&ring)?;
+
+        // Succeed to push four bytes.
+        let four_bytes: [u8; 4] = [0xff; 4];
+        do_success_push_bytes(&ring, &four_bytes)?;
+
+        // Pop eight bytes.
+        let mut eight_bytes: [u8; 8] = [0; 8];
+        do_success_pop_bytes(&ring, &mut eight_bytes, four_bytes.len())?;
+
+        // Fail to pop a byte.
+        let mut buf: [u8; 1] = [0; 1];
+        do_fail_pop_bytes(&ring, &mut buf)?;
+
+        Ok(())
+    }
+
+    #[test]
     fn try_pop_irregular() -> Result<()> {
         let ring: ConcurrentRingBuffer = do_new()?;
 
         // Push four bytes.
         let four_bytes: [u8; 4] = [0xff; 4];
-        do_sucess_push_bytes(&ring, &four_bytes)?;
+        do_success_push_bytes(&ring, &four_bytes)?;
 
         // Attempt to pop eight bytes, but get four.
         let mut eight_bytes: [u8; 8] = [0; 8];
@@ -580,12 +713,20 @@ mod test {
         Ok(())
     }
 
-    fn do_sucess_push_bytes(ring: &ConcurrentRingBuffer, buf: &[u8]) -> Result<()> {
+    fn do_success_push_bytes(ring: &ConcurrentRingBuffer, buf: &[u8]) -> Result<()> {
         if let Ok(len) = ring.try_push(buf) {
             crate::ensure_eq!(len, buf.len());
             Ok(())
         } else {
             anyhow::bail!("Should be able to push {} bytes", buf.len())
+        }
+    }
+
+    fn do_fail_push_bytes(ring: &ConcurrentRingBuffer, buf: &[u8]) -> Result<()> {
+        if ring.try_push(buf).is_ok() {
+            anyhow::bail!("Should not be able to push {} bytes", buf.len())
+        } else {
+            Ok(())
         }
     }
 
@@ -595,6 +736,14 @@ mod test {
             Ok(())
         } else {
             anyhow::bail!("Should be able to pop")
+        }
+    }
+
+    fn do_fail_pop_bytes(ring: &ConcurrentRingBuffer, buf: &mut [u8]) -> Result<()> {
+        if ring.try_pop(buf).is_ok() {
+            anyhow::bail!("Should not be able to pop")
+        } else {
+            Ok(())
         }
     }
 
