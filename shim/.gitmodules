@@ -1,4 +1,0 @@
-[submodule "contrib/demikernel"]
-	path = contrib/demikernel
-	url = https://github.com/demikernel/demikernel
-	branch = dev
