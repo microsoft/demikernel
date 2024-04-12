@@ -77,7 +77,7 @@ def get_root_commit(branch_name: str) -> str:
         raise ValueError("Expected non-empty branch name")
 
     # Spawn a bash command to get the root commit of a branch.
-    git_cmd: str = f"git rev-list --max-parents=0 {branch_name}"
+    git_cmd: str = f"git rev-list --date-order --max-parents=0 {branch_name} | tail -n 1"
     bash_cmd: str = f"bash -l -c \'{git_cmd}\'"
     process: subprocess.Popen = subprocess.Popen(
         bash_cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
