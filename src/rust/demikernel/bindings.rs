@@ -47,7 +47,7 @@ use ::std::{
     ffi::CStr,
     mem::{
         self,
-        MaybeUninit
+        MaybeUninit,
     },
     net::SocketAddr,
     ptr,
@@ -67,8 +67,10 @@ use ::std::net::{
 // DEMIKERNEL
 //======================================================================================================================
 
+thread_local! {
 /// Demikernel state.
-static mut DEMIKERNEL: RefCell<Option<LibOS>> = RefCell::new(None);
+    static DEMIKERNEL: RefCell<Option<LibOS>> = RefCell::new(None);
+}
 
 //======================================================================================================================
 // init
@@ -86,24 +88,27 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     };
 
     // Check if demikernel has already been initialized and return
-    match unsafe { DEMIKERNEL.try_borrow() } {
-        Ok(libos) => match *libos {
-            Some(_) => return libc::EEXIST,
-            None => (),
-        },
-        Err(e) => panic!("{:?}", e),
+    let ret: i32 = DEMIKERNEL.with(|demikernel| match *demikernel.borrow() {
+        Some(_) => libc::EEXIST,
+        None => 0,
+    });
+    if ret != 0 {
+        error!("demi_init(): Demikernel is already initialized");
+        return ret;
     }
 
     // TODO: Pass arguments to the underlying libOS.
-    let libos: LibOS = match LibOS::new(libos_name) {
-        Ok(libos) => libos,
+    match LibOS::new(libos_name) {
+        Ok(libos) => {
+            DEMIKERNEL.with(move |demikernel| {
+                *demikernel.borrow_mut() = Some(libos);
+            });
+        },
         Err(e) => {
             trace!("demi_init() failed: {:?}", e);
             return -e.errno;
         },
     };
-
-    unsafe { DEMIKERNEL = RefCell::new(Some(libos)) };
 
     0
 }
@@ -645,12 +650,7 @@ pub extern "C" fn demi_wait_next_n(
     qr_written: *mut c_int,
     timeout: *const libc::timespec,
 ) -> c_int {
-    trace!(
-        "demi_wait_next_n() {:?} {:?} {:?}",
-        qr_out,
-        qr_out_size,
-        timeout
-    );
+    trace!("demi_wait_next_n() {:?} {:?} {:?}", qr_out, qr_out_size, timeout);
 
     // Check for invalid storage location for queue result.
     if qr_out.is_null() {
@@ -676,7 +676,8 @@ pub extern "C" fn demi_wait_next_n(
         Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
     };
 
-    let out_slice: &mut [MaybeUninit<demi_qresult_t>] = unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
+    let out_slice: &mut [MaybeUninit<demi_qresult_t>] =
+        unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
     let mut result_idx: c_int = 0;
     let wait_callback = |result: demi_qresult_t| -> bool {
         out_slice[result_idx as usize] = MaybeUninit::new(result);
@@ -819,13 +820,13 @@ pub extern "C" fn demi_getsockopt(
 
 /// Issues a system call.
 fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
-    match unsafe { DEMIKERNEL.try_borrow_mut() } {
+    DEMIKERNEL.with(|demikernel| match demikernel.try_borrow_mut() {
         Ok(mut libos) => match libos.as_mut() {
             Some(libos) => Ok(f(libos)),
             None => Err(Fail::new(libc::ENOSYS, "Demikernel is not initialized")),
         },
         Err(_) => Err(Fail::new(libc::EBUSY, "Demikernel is busy")),
-    }
+    })
 }
 
 /// Converts a [sockaddr] into a [SocketAddr].
