@@ -47,7 +47,7 @@ use ::std::{
     ffi::CStr,
     mem::{
         self,
-        MaybeUninit
+        MaybeUninit,
     },
     net::SocketAddr,
     ptr,
@@ -650,12 +650,7 @@ pub extern "C" fn demi_wait_next_n(
     qr_written: *mut c_int,
     timeout: *const libc::timespec,
 ) -> c_int {
-    trace!(
-        "demi_wait_next_n() {:?} {:?} {:?}",
-        qr_out,
-        qr_out_size,
-        timeout
-    );
+    trace!("demi_wait_next_n() {:?} {:?} {:?}", qr_out, qr_out_size, timeout);
 
     // Check for invalid storage location for queue result.
     if qr_out.is_null() {
@@ -681,7 +676,8 @@ pub extern "C" fn demi_wait_next_n(
         Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
     };
 
-    let out_slice: &mut [MaybeUninit<demi_qresult_t>] = unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
+    let out_slice: &mut [MaybeUninit<demi_qresult_t>] =
+        unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
     let mut result_idx: c_int = 0;
     let wait_callback = |result: demi_qresult_t| -> bool {
         out_slice[result_idx as usize] = MaybeUninit::new(result);
