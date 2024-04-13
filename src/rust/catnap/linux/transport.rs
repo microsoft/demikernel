@@ -294,11 +294,16 @@ impl NetworkTransport for SharedCatnapTransport {
                     error!("new(): {}", cause);
                     return Err(Fail::new(get_libc_err(e), &cause));
                 }
-                if let Err(e) = socket.set_nonblocking(true) {
-                    let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
-                    socket.shutdown(Shutdown::Both)?;
-                    error!("new(): {}", cause);
-                    return Err(Fail::new(get_libc_err(e), &cause));
+
+                let socket_fd = socket.as_raw_fd();
+                let flags = unsafe { libc::fcntl(socket_fd, libc::F_GETFL) };
+                if flags & libc::O_NONBLOCK != 0 {
+                    if let Err(e) = socket.set_nonblocking(true) {
+                        let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
+                        socket.shutdown(Shutdown::Both)?;
+                        error!("new(): {}", cause);
+                        return Err(Fail::new(get_libc_err(e), &cause));
+                    }
                 }
 
                 // Set TCP socket options
