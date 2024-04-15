@@ -297,7 +297,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
                 let socket_fd = socket.as_raw_fd();
                 let flags = unsafe { libc::fcntl(socket_fd, libc::F_GETFL) };
-                if flags & libc::O_NONBLOCK != 0 {
+                if flags & libc::O_NONBLOCK == 0 {
                     if let Err(e) = socket.set_nonblocking(true) {
                         let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
                         socket.shutdown(Shutdown::Both)?;
