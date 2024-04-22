@@ -38,7 +38,7 @@ $GitPath = Join-Path $Env:ProgramFiles "\Git\cmd"
 $Env:Path += $GitPath + ';'
 
 # Add rust toolchain to your path.
-$RustPath = Join-Path $Env:HOME "\.cargo\bin"
+$RustPath = Join-Path $Env:UserProfile "\.cargo\bin"
 $Env:Path += $RustPath + ';'
 ```
 
