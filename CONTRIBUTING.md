@@ -10,13 +10,13 @@ Special Branches
 
 There are three special branches in this project:
 
-- `master`: which you get all extensively-tested features
+- `main`: which you get all extensively-tested features
 - `unstable`: which includes beta features
 - `dev`: where all changes are introduced first
 
 From a practical point of view, you should use these branches as follows:
 
-- Rely on `master` whenever you want to use this project in a stable environment.
+- Rely on `main` whenever you want to use this project in a stable environment.
 
 - Get `unstable` whenever you want to use this project in an experimental environment.
 
