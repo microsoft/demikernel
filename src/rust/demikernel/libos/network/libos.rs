@@ -631,7 +631,8 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 impl<T: NetworkTransport> Drop for NetworkLibOS<T> {
     // Releases all sockets allocated by Catnap.
     fn drop(&mut self) {
-        for boxed_queue in self.runtime.get_mut_qtable().drain() {
+        let mut qtable_guard = self.runtime.get_mut_qtable().write().unwrap();
+        for boxed_queue in qtable_guard.drain() {
             match downcast_queue::<SharedNetworkQueue<T>>(boxed_queue) {
                 Ok(mut queue) => {
                     if let Err(e) = queue.hard_close() {

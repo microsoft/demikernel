@@ -81,6 +81,7 @@ use ::std::{
         Instant,
         SystemTime,
     },
+    sync::RwLock,
 };
 use std::pin::Pin;
 
@@ -100,7 +101,7 @@ const TIMER_FINER_RESOLUTION: usize = 16;
 /// Demikernel Runtime
 pub struct DemiRuntime {
     /// Shared IoQueueTable.
-    qtable: IoQueueTable,
+    qtable: RwLock<IoQueueTable>,
     /// Shared coroutine scheduler.
     scheduler: SharedScheduler,
     /// Shared ephemeral port allocator.
@@ -141,7 +142,7 @@ impl SharedDemiRuntime {
     pub fn new(now: Instant) -> Self {
         timer::global_set_time(now);
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            qtable: IoQueueTable::default(),
+            qtable: RwLock::new(IoQueueTable::default()),
             scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
@@ -396,37 +397,41 @@ impl SharedDemiRuntime {
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
     pub fn alloc_queue<T: IoQueue>(&mut self, queue: T) -> QDesc {
-        let qd: QDesc = self.qtable.alloc::<T>(queue);
+        let mut qtable_guard = self.qtable.write().unwrap();
+        let qd: QDesc = qtable_guard.alloc::<T>(queue);
         trace!("Allocating new queue: qd={:?}", qd);
         qd
     }
 
     /// Returns a reference to the I/O queue table.
-    pub fn get_qtable(&self) -> &IoQueueTable {
+    pub fn get_qtable(&self) -> &RwLock<IoQueueTable> {
         &self.qtable
     }
 
     /// Returns a mutable reference to the I/O queue table.
-    pub fn get_mut_qtable(&mut self) -> &mut IoQueueTable {
+    pub fn get_mut_qtable(&mut self) -> &mut RwLock<IoQueueTable> {
         &mut self.qtable
     }
 
     /// Frees the queue associated with [qd] and returns the freed queue.
     pub fn free_queue<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
         trace!("Freeing queue: qd={:?}", qd);
-        self.qtable.free(qd)
+        let mut qtable_guard = self.qtable.write().unwrap();
+        qtable_guard.free(qd)
     }
 
     /// Gets a reference to a shared queue. It is very important that this function bump the reference count (using
     /// clone) so that we can track how many references to this shared queue that we have handed out.
     /// TODO: This should only return SharedObject types but for now we will also allow other cloneable queue types.
     pub fn get_shared_queue<T: IoQueue + Clone>(&self, qd: &QDesc) -> Result<T, Fail> {
-        Ok(self.qtable.get::<T>(qd)?.clone())
+        let qtable_guard = self.qtable.read().unwrap();
+        Ok(qtable_guard.get::<T>(qd)?.clone())
     }
 
     /// Returns the type for the queue that matches [qd].
     pub fn get_queue_type(&self, qd: &QDesc) -> Result<QType, Fail> {
-        self.qtable.get_type(qd)
+        let qtable_guard = self.qtable.read().unwrap();
+        qtable_guard.get_type(qd)
     }
 
     /// Allocates a port from the shared ephemeral port allocator.
@@ -592,7 +597,7 @@ impl Default for SharedDemiRuntime {
     fn default() -> Self {
         timer::global_set_time(Instant::now());
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            qtable: IoQueueTable::default(),
+            qtable: RwLock::new(IoQueueTable::default()),
             scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
