@@ -92,7 +92,7 @@ doc:
 install:
 	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
 	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
-	cp -f  $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(INSTALL_PREFIX)/lib/
+	cp -rf  $(LIBDIR)/* $(INSTALL_PREFIX)/lib/
 	cp -f $(CURDIR)/scripts/config/default.yaml $(INSTALL_PREFIX)/config.yaml
 
 #=======================================================================================================================
