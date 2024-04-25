@@ -123,9 +123,57 @@ jobs:
           **/*.stdout.txt
           **/*.stderr.txt
 
+  redis-pipeline:
+    name: Redis Pipeline
+    needs: release-pipeline
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup SSH
+      shell: bash
+      run: |
+        mkdir -p $HOME/.ssh/
+        echo "${{ secrets.SSHKEY }}" > "$HOME/.ssh/id_rsa"
+        chmod 400 $HOME/.ssh/id_rsa
+        echo "Host *" > $HOME/.ssh/config
+        echo -e "\tStrictHostKeyChecking no" >> $HOME/.ssh/config
+        echo -e "\tIdentityFile $HOME/.ssh/id_rsa" >> $HOME/.ssh/config
+        echo -e "\tIdentitiesOnly yes" >> $HOME/.ssh/config
+        echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
+        echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
+        echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Run
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          branch_name="${{ github.head_ref }}"
+        else
+          branch_name="${{ github.ref_name }}"
+        fi
+        pip install --pre azure-data-tables
+        python3 tools/demikernel_ci.py \
+          --server $SERVER \
+          --client $CLIENT \
+          --repository demikernel \
+          --branch origin/$branch_name \
+          --libos $LIBOS \
+          --test-redis --delay 10 \
+          --server-addr $SERVER_ADDR \
+          --client-addr $CLIENT_ADDR
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: redis-pipeline-logs
+        path: |
+          **/*.stdout.txt
+          **/*.stderr.txt
+
   report-performance:
     name: Report Performance
-    needs: release-pipeline
+    needs: redis-pipeline
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:

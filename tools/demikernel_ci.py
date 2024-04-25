@@ -17,24 +17,12 @@ import ci.git as git
 
 # Runs the CI pipeline.
 def run_pipeline(
+        log_directory: str,
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
         test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
-        output_dir: str, enable_nfs: bool) -> int:
+        output_dir: str, enable_nfs: bool, install_prefix: str) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
-    step: int = 0
     status: dict[str, bool] = {}
-
-    # Create folder for test logs
-    log_directory: str = "{}/{}".format(output_dir, "{}-{}-{}".format(libos, branch,
-                                                                      "debug" if is_debug else "release").replace("/", "_"))
-
-    if isdir(log_directory):
-        # Keep the last run
-        old_dir: str = log_directory + ".old"
-        if isdir(old_dir):
-            rmtree(old_dir)
-        move(log_directory, old_dir)
-    mkdir(log_directory)
 
     config: dict = {
         "server": server,
@@ -57,7 +45,8 @@ def run_pipeline(
         "enable_nfs": enable_nfs,
         "log_directory": log_directory,
         "is_sudo": is_sudo,
-        "platform": "linux" if libos != "catnapw" else "windows"
+        "platform": "linux" if libos != "catnapw" else "windows",
+        "install_prefix": install_prefix,
     }
 
     factory: JobFactory = JobFactory(config)
@@ -67,7 +56,10 @@ def run_pipeline(
 
     # STEP 2: Compile debug.
     if status["checkout"]:
-        status["compile"] = factory.compile().execute()
+        status["compile"] = True
+        status["compile"] &= factory.compile().execute()
+        if config["platform"] == "linux":
+            status["compile"] &= factory.install().execute()
 
     # STEP 3: Run unit tests.
     if test_unit:
@@ -147,6 +139,44 @@ def run_pipeline(
     return status
 
 
+# Runs the CI pipeline.
+def run_redis_pipeline(log_directory: str, branch: str, libos: str, server: str,
+                       client: str, server_addr: str, client_addr: str, delay: float, output_dir: str,
+                       libshim_path: str, ld_library_path: str, config_path: str) -> int:
+    status: dict[str, bool] = {}
+
+    config: dict = {
+        "server": server,
+        "server_name": server,
+        "client": client,
+        "libos": libos if libos != "catnapw" else "catnap",
+        "path": "\$HOME",
+        "client_name": client,
+        "repository": "https://github.com/redis/redis.git",
+        "branch": "7.0",
+        "server_addr": server_addr,
+        "client_addr": client_addr,
+        "delay": delay,
+        "output_dir": output_dir,
+        "log_directory": log_directory,
+        "platform": "linux" if libos != "catnapw" else "windows",
+        "libshim_path": libshim_path,
+        "ld_library_path": ld_library_path,
+        "config_path": config_path,
+    }
+
+    factory: JobFactory = JobFactory(config)
+
+    status["clone-redis"] = factory.clone_redis().execute()
+    status["make-redis"] = factory.make_redis().execute()
+    status["run-redis"] = factory.run_redis_server().execute()
+    status["run-redis-benchmark"] = factory.run_redis_benchmark().execute()
+    status["stop-redis"] = factory.stop_redis_server().execute()
+    status["cleanup-redis"] = factory.cleanup_redis().execute()
+
+    return status
+
+
 # Recursively builds all combinations
 def build_combinations(scenario: dict, names: list, params: dict) -> list:
     if len(names) == 0:
@@ -204,12 +234,15 @@ def read_args() -> argparse.Namespace:
                         help="set delay between server and host for system-level tests")
     parser.add_argument("--enable-nfs", required=False, default=False,
                         action="store_true", help="enable building on nfs directories")
+    parser.add_argument("--install-prefix", required=False, default="/tmp/demikernel",
+                        help="set install prefix for building")
 
     # Test options.
     parser.add_argument("--test-unit", action='store_true',
                         required=False, help="run unit tests")
     parser.add_argument("--test-system", type=str,
                         required=False, help="run system tests")
+    parser.add_argument("--test-redis", action='store_true', required=False, help="run redis tests")
     parser.add_argument("--server-addr", required="--test-system" in sys.argv,
                         help="sets server address in tests")
     parser.add_argument("--client-addr", required="--test-system" in sys.argv,
@@ -246,10 +279,12 @@ def main():
     delay: float = args.delay
     config_path: str = args.config_path
     enable_nfs: bool = args.enable_nfs
+    install_prefix: str = args.install_prefix
 
     # Extract test options.
     test_unit: bool = args.test_unit
     test_system: str = args.test_system
+    test_redis: bool = args.test_redis
     server_addr: str = args.server_addr
     client_addr: str = args.client_addr
 
@@ -263,9 +298,27 @@ def main():
     set_table_name(args.table_name)
     set_libos(libos)
 
-    status: dict = run_pipeline(repository, branch, libos, is_debug, server,
+    # Create folder for test logs
+    log_directory: str = "{}/{}".format(output_dir, "{}-{}".format(libos, branch).replace("/", "_"))
+    if isdir(log_directory):
+        # Keep the last run
+        old_dir: str = log_directory + ".old"
+        if isdir(old_dir):
+            rmtree(old_dir)
+        move(log_directory, old_dir)
+    mkdir(log_directory)
+
+    status: dict = run_pipeline(log_directory, repository, branch, libos, is_debug, server,
                                 client, test_unit, test_system, server_addr,
-                                client_addr, delay, config_path, output_dir, enable_nfs)
+                                client_addr, delay, config_path, output_dir, enable_nfs, install_prefix)
+
+    if test_redis:
+        libshim_path: str = f"{install_prefix}/lib/libshim.so"
+        ld_library_path: str = f"{install_prefix}/lib"
+        status |= run_redis_pipeline(log_directory, branch, libos, server,
+                                     client, server_addr,
+                                     client_addr, delay, output_dir, libshim_path, ld_library_path, config_path)
+
     if False in status.values():
         sys.exit(-1)
     else:

@@ -126,21 +126,22 @@ def extract_performance(job_name, file):
                 table_client.create_entity(entry)
 
 
-def wait_jobs(log_directory: str, jobs: dict):
+def wait_jobs(log_directory: str, jobs: dict, no_wait: bool = False):
     @timing
     def wait_jobs2(log_directory: str, jobs: dict) -> List:
         status: list[int] = []
 
-        for job_name, j in jobs.items():
-            stdout, stderr = j.communicate()
-            status.append((j.pid, j.returncode))
-            with open(log_directory + "/" + job_name + ".stdout.txt", "w") as file:
-                file.write("{}".format(stdout))
-            with open(log_directory + "/" + job_name + ".stdout.txt", "r") as file:
-                extract_performance(job_name, file)
+        if not no_wait:
+            for job_name, j in jobs.items():
+                stdout, stderr = j.communicate()
+                status.append((j.pid, j.returncode))
+                with open(log_directory + "/" + job_name + ".stdout.txt", "w") as file:
+                    file.write("{}".format(stdout))
+                with open(log_directory + "/" + job_name + ".stdout.txt", "r") as file:
+                    extract_performance(job_name, file)
 
-            with open(log_directory + "/" + job_name + ".stderr.txt", "w") as file:
-                file.write("{}".format(stderr))
+                with open(log_directory + "/" + job_name + ".stderr.txt", "w") as file:
+                    file.write("{}".format(stderr))
 
         # Cleanup list of jobs.
         jobs.clear()
@@ -149,8 +150,12 @@ def wait_jobs(log_directory: str, jobs: dict):
     return wait_jobs2(log_directory, jobs)
 
 
-def wait_and_report(name: str, log_directory: str, jobs: dict, all_pass=True):
-    ret = wait_jobs(log_directory, jobs)
+def wait_and_report(name: str, log_directory: str, jobs: dict, all_pass=True, no_wait: bool = False):
+    if no_wait:
+        print("[NO WAIT] in {:9.2f} ms {}".format(0, name))
+        return True
+
+    ret = wait_jobs(log_directory, jobs, no_wait)
     passed: bool = False
     status: List = ret[0]
     duration: float = ret[1]

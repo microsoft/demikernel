@@ -3,6 +3,7 @@
 
 import subprocess
 import time
+import ci.task.linux as linux
 from ci.task.linux import BaseLinuxTask, CheckoutOnLinux, CompileOnLinux, RunOnLinux, CleanupOnLinux
 from ci.job.utils import wait_and_report
 from ci.job.generic import BaseJob
@@ -16,8 +17,8 @@ class BaseLinuxJob(BaseJob):
     def __init__(self, config, name):
         super().__init__(config, name)
 
-    def execute(self, serverTask: BaseLinuxTask, clientTask: BaseLinuxTask = None) -> bool:
-        return super().execute(serverTask, clientTask)
+    def execute(self, serverTask: BaseLinuxTask, clientTask: BaseLinuxTask = None, no_wait: bool = False) -> bool:
+        return super().execute(serverTask, clientTask, no_wait)
 
 
 class CheckoutJobOnLinux(BaseLinuxJob):
@@ -300,3 +301,95 @@ def job_test_system_rust(
     }
     job: SystemTestJobOnLinux = SystemTestJobOnLinux(config)
     return job.execute()
+
+
+class InstallJobOnLinux(BaseLinuxJob):
+
+    def __init__(self, config: dict):
+        name = "install-{}".format("debug" if config["is_debug"] else "release")
+        super().__init__(config, name)
+
+    def execute(self) -> bool:
+        cmd: str = f"LIBOS={super().libos()} INSTALL_PREFIX={super().install_prefix()} install"
+        serverTask: linux.CompileOnLinux = linux.CompileOnLinux(
+            super().server(), super().repository(), cmd, super().is_debug())
+
+        if not super().enable_nfs():
+            clientTask: linux.CompileOnLinux = linux.CompileOnLinux(
+                super().client(), super().repository(), cmd, super().is_debug())
+            return super().execute(serverTask, clientTask)
+        return super().execute(serverTask)
+
+
+class CloneRedisJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "clone-redis")
+
+    def execute(self) -> bool:
+        serverTask: linux.CloneOnLinux = linux.CloneOnLinux(
+            super().server(), super().path(), super().repository(), super().branch())
+        clientTask: linux.CloneOnLinux = linux.CloneOnLinux(
+            super().client(), super().path(), super().repository(), super().branch())
+        return super().execute(serverTask, clientTask)
+
+
+class MakeRedisJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "make-redis")
+
+    def execute(self) -> bool:
+        serverTask: linux.MakeRedisOnLinux = linux.MakeRedisOnLinux(super().server(), super().path())
+        clientTask: linux.MakeRedisOnLinux = linux.MakeRedisOnLinux(super().client(), super().path())
+        return super().execute(serverTask, clientTask)
+
+
+class RunRedisServerJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "run-redis-server")
+
+    def execute(self) -> bool:
+        serverTask: linux.RunredisServerOnLinux = linux.RunredisServerOnLinux(
+            host=super().server(), redis_path=f"{super().path()}/redis",
+            env=f"CONFIG_PATH={super().config_path()} LD_LIBRARY_PATH={super().ld_library_path()} LD_PRELOAD={super().libshim_path()} LIBOS={super().libos()}",
+            params=f"--bind {super().server_addr()} --protected-mode no --save \\\"\\\" ")
+
+        passed: bool = super().execute(serverTask, no_wait=True)
+
+        # Give some time to Redis server to start.
+        time.sleep(super().delay())
+
+        return passed
+
+
+class RunRedisBenchmarkJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "run-redis-benchmark")
+
+    def execute(self) -> bool:
+        clientTask: linux.RunRedisBenchmarkOnLinux = linux.RunRedisBenchmarkOnLinux(
+            super().client(), f"{super().path()}/redis",
+            f"-h {super().server_addr()} -d 64 -t set,get -c 1 -n 100")
+        return super().execute(clientTask)
+
+
+class StopRedisServerJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "stop-redis-server")
+
+    def execute(self) -> bool:
+        clientTask: linux.StopRedisServerOnLinux = linux.StopRedisServerOnLinux(
+            super().client(), f"{super().path()}/redis",
+            f"-h {super().server_addr()}")
+        return super().execute(clientTask)
+
+
+class CleanupRedisJobOnLinux(BaseLinuxJob):
+    def __init__(self, config: dict):
+        super().__init__(config, "cleanup-redis")
+
+    def execute(self) -> bool:
+        serverTask: linux.CleanupRedisOnLinux = linux.CleanupRedisOnLinux(
+            super().server(), "redis-server", f"{super().path()}/redis")
+        clientTask: linux.CleanupRedisOnLinux = linux.CleanupRedisOnLinux(
+            super().client(), "redis-benchmark", f"{super().path()}/redis")
+        return super().execute(serverTask, clientTask)
