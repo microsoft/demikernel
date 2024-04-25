@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
-use super::{
-    datagram::UdpHeader,
-    socket::SharedUdpSocket,
-};
 use crate::{
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
+        udp::{
+            datagram::UdpHeader,
+            socket::SharedUdpSocket,
+        },
     },
     runtime::{
         fail::Fail,
@@ -24,7 +24,9 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
+    timer,
 };
+
 use ::std::{
     collections::HashMap,
     net::{
@@ -37,8 +39,6 @@ use ::std::{
         DerefMut,
     },
 };
-
-use crate::timer;
 
 //======================================================================================================================
 // Structures
