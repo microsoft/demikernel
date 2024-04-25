@@ -311,7 +311,7 @@ impl Drop for SharedMemory {
 
 #[cfg(test)]
 mod tests {
-    use super::SharedMemory;
+    use crate::pal::linux::shm::SharedMemory;
     use ::anyhow::Result;
 
     const SHM_SIZE: usize = 4096;
