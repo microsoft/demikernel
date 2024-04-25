@@ -36,3 +36,7 @@ pub const DEFAULT_MSS: usize = 1450;
 ///
 /// TODO: This Should be Generic
 pub const RECEIVE_BATCH_SIZE: usize = 4;
+
+/// Maximum local and remote window scaling factor.
+/// See: RFC 1323, Section 2.3.
+pub const MAX_WINDOW_SCALE: usize = 14;
