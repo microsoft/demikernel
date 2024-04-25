@@ -109,7 +109,7 @@ impl std::cmp::PartialOrd for SeqNumber {
 // Unit tests for SeqNumber type.
 #[cfg(test)]
 mod tests {
-    use super::SeqNumber;
+    use crate::inetstack::protocols::tcp::SeqNumber;
     use ::anyhow::Result;
 
     // Test basic comparisons between sequence numbers of various values.
