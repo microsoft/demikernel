@@ -148,7 +148,7 @@ impl<T> Drop for RawArray<T> {
 
 #[cfg(test)]
 mod test {
-    use super::RawArray;
+    use crate::collections::raw_array::RawArray;
     use ::anyhow::Result;
 
     const ARRAY_LENGTH: usize = 4;

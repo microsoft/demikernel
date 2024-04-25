@@ -319,6 +319,14 @@ fn slot_sizes() -> impl Iterator<Item = usize> {
 
 #[cfg(test)]
 mod tests {
+    use crate::collections::{
+        pin_slab,
+        pin_slab::{
+            calculate_key,
+            PinSlab,
+            FIRST_SLOT_SIZE,
+        },
+    };
     use ::anyhow::Result;
     use ::std::{
         mem,
@@ -329,13 +337,13 @@ mod tests {
     fn slot_sizes() -> Result<()> {
         crate::ensure_eq!(
             vec![
-                super::FIRST_SLOT_SIZE,
-                super::FIRST_SLOT_SIZE,
-                super::FIRST_SLOT_SIZE << 1,
-                super::FIRST_SLOT_SIZE << 2,
-                super::FIRST_SLOT_SIZE << 3
+                FIRST_SLOT_SIZE,
+                FIRST_SLOT_SIZE,
+                FIRST_SLOT_SIZE << 1,
+                FIRST_SLOT_SIZE << 2,
+                FIRST_SLOT_SIZE << 3
             ],
-            super::slot_sizes().take(5).collect::<Vec<_>>()
+            pin_slab::slot_sizes().take(5).collect::<Vec<_>>()
         );
 
         Ok(())
@@ -344,7 +352,7 @@ mod tests {
     #[test]
     fn calculate_key_invalid() -> Result<()> {
         let invalid_key: usize = 1usize << (mem::size_of::<usize>() * 8 - 1);
-        super::calculate_key(invalid_key);
+        calculate_key(invalid_key);
 
         Ok(())
     }
@@ -353,14 +361,14 @@ mod tests {
     fn calculate_key_valid() -> Result<()> {
         // NB: range of the first slot.
         let expected_key: (usize, usize, usize) = (0, 0, 16);
-        let returned_key: (usize, usize, usize) = match super::calculate_key(0) {
+        let returned_key: (usize, usize, usize) = match calculate_key(0) {
             Some(key) => key,
             None => anyhow::bail!("calculate_key() failed"),
         };
         crate::ensure_eq!(returned_key, expected_key);
 
         let expected_key: (usize, usize, usize) = (0, 15, 16);
-        let returned_key: (usize, usize, usize) = match super::calculate_key(15) {
+        let returned_key: (usize, usize, usize) = match calculate_key(15) {
             Some(key) => key,
             None => anyhow::bail!("calculate_key() failed"),
         };
@@ -369,14 +377,14 @@ mod tests {
         for i in 4..=62 {
             let end_range: usize = 1usize << i;
             let expected_key: (usize, usize, usize) = (i - 3, 0, end_range);
-            let returned_key: (usize, usize, usize) = match super::calculate_key(end_range) {
+            let returned_key: (usize, usize, usize) = match calculate_key(end_range) {
                 Some(key) => key,
                 None => anyhow::bail!("calculate_key() failed"),
             };
             crate::ensure_eq!(returned_key, expected_key);
 
             let expected_key: (usize, usize, usize) = (i - 3, end_range - 1, end_range);
-            let returned_key: (usize, usize, usize) = match super::calculate_key((1usize << (i + 1)) - 1) {
+            let returned_key: (usize, usize, usize) = match calculate_key((1usize << (i + 1)) - 1) {
                 Some(key) => key,
                 None => anyhow::bail!("calculate_key() failed"),
             };
@@ -388,7 +396,7 @@ mod tests {
 
     #[test]
     fn insert_get_remove_many() -> Result<()> {
-        let mut slab: super::PinSlab<Box<u128>> = super::PinSlab::new();
+        let mut slab: PinSlab<Box<u128>> = PinSlab::new();
         let mut keys: Vec<(u128, usize)> = Vec::new();
 
         for i in 0..1024 {
@@ -420,7 +428,7 @@ mod tests {
 
     #[test]
     fn remove_unpin() -> Result<()> {
-        let mut slab: super::PinSlab<i32> = super::PinSlab::new();
+        let mut slab: PinSlab<i32> = PinSlab::new();
         let key: usize = match slab.insert(1) {
             Some(key) => key,
             None => anyhow::bail!("insert() failed"),

@@ -531,7 +531,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::{
+    use crate::collections::ring::{
         Ring,
         RingBuffer,
         RingConsumer,
