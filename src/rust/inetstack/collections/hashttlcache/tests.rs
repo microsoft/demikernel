@@ -1,12 +1,20 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::HashTtlCache;
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
+use crate::inetstack::collections::hashttlcache::HashTtlCache;
 use ::anyhow::Result;
 use std::time::{
     Duration,
     Instant,
 };
+
+//======================================================================================================================
+// Tests
+//======================================================================================================================
 
 /// Tests that objects with an explicit TTL get evicted at the right time.
 #[test]
