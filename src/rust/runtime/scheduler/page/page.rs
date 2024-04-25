@@ -122,7 +122,7 @@ impl Default for WakerPage {
 
 #[cfg(test)]
 mod tests {
-    use super::{
+    use crate::runtime::scheduler::page::page::{
         WakerPage,
         WAKER_BIT_LENGTH,
         WAKER_PAGE_SIZE,
