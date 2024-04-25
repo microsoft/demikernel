@@ -1,20 +1,22 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    cache::ArpCache,
-    packet::{
-        ArpHeader,
-        ArpMessage,
-        ArpOperation,
-    },
-};
 use crate::{
     collections::async_queue::AsyncQueue,
     expect_ok,
-    inetstack::protocols::ethernet2::{
-        EtherType2,
-        Ethernet2Header,
+    inetstack::protocols::{
+        arp::{
+            cache::ArpCache,
+            packet::{
+                ArpHeader,
+                ArpMessage,
+                ArpOperation,
+            },
+        },
+        ethernet2::{
+            EtherType2,
+            Ethernet2Header,
+        },
     },
     runtime::{
         conditional_yield_with_timeout,
