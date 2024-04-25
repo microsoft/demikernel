@@ -180,13 +180,24 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             }
         }
 
-        let (local_window_scale, remote_window_scale) = match remote_window_scale {
-            Some(w) => (self.tcp_config.get_window_scale() as u32, w),
+        let (local_window_scale, remote_window_scale): (u32, u8) = match remote_window_scale {
+            Some(remote_window_scale) => {
+                let local: u32 = if self.tcp_config.get_window_scale() > 14 {
+                    warn!("local windows scale larger than 14 is incorrect, so setting to 14. See RFC 1323.");
+                    14
+                } else {
+                    self.tcp_config.get_window_scale() as u32
+                };
+                let remote: u8 = if remote_window_scale > 14 {
+                    warn!("remote windows scale larger than 14 is incorrect, so setting to 14. See RFC 1323.");
+                    14
+                } else {
+                    remote_window_scale
+                };
+                (local, remote)
+            },
             None => (0, 0),
         };
-
-        // TODO(RFC1323): Clamp the scale to 14 instead of panicking.
-        assert!(local_window_scale <= 14 && remote_window_scale <= 14);
 
         let rx_window_size: u32 = expect_ok!(
             expect_some!(
