@@ -5,8 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use super::operation::RingControlOperation;
-use crate::runtime::fail::Fail;
+use crate::runtime::{
+    fail::Fail,
+    network::ring::operation::RingControlOperation,
+};
 
 /// Encodes the state of a ring.
 #[derive(Copy, Clone, Debug, PartialEq)]

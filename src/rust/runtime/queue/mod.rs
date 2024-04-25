@@ -256,12 +256,12 @@ impl Default for IoQueueTable {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        IoQueue,
-        IoQueueTable,
-    };
     use crate::{
         expect_ok,
+        runtime::{
+            IoQueue,
+            IoQueueTable,
+        },
         QDesc,
         QType,
     };
