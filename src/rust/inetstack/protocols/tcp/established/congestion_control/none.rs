@@ -1,18 +1,28 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    CongestionControl,
-    FastRetransmitRecovery,
-    LimitedTransmit,
-    Options,
-    SlowStartCongestionAvoidance,
-};
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
     collections::async_value::SharedAsyncValue,
-    inetstack::protocols::tcp::SeqNumber,
+    inetstack::protocols::tcp::{
+        established::congestion_control::{
+            CongestionControl,
+            FastRetransmitRecovery,
+            LimitedTransmit,
+            Options,
+            SlowStartCongestionAvoidance,
+        },
+        SeqNumber,
+    },
 };
 use ::std::fmt::Debug;
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 // Implementation of congestion control which does nothing.
 #[derive(Debug)]
@@ -21,6 +31,10 @@ pub struct None {
     fast_retransmit_flag: SharedAsyncValue<bool>,
     limited_retransmit_cwnd_increase: SharedAsyncValue<u32>,
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
 
 impl CongestionControl for None {
     fn new(_mss: usize, _seq_no: SeqNumber, _options: Option<Options>) -> Box<dyn CongestionControl> {

@@ -1161,7 +1161,7 @@ impl TryFrom<&[u8]> for DemiBuffer {
 // Note that due to DPDK being a configurable option, all of these unit tests are only for heap-allocated `DemiBuffer`s.
 #[cfg(test)]
 mod tests {
-    use super::DemiBuffer;
+    use crate::runtime::memory::demibuffer::DemiBuffer;
     use ::anyhow::Result;
     use std::ptr::NonNull;
 

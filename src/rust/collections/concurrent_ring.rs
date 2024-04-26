@@ -449,7 +449,7 @@ impl Drop for ConcurrentRingBuffer {
 
 #[cfg(test)]
 mod test {
-    use super::{
+    use crate::collections::concurrent_ring::{
         ConcurrentRingBuffer,
         Ring,
         HEADER_SIZE,

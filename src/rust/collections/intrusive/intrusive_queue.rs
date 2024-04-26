@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use ::std::{
     marker::PhantomData,
     mem,
@@ -8,6 +12,10 @@ use ::std::{
     ptr::NonNull,
     rc::Rc,
 };
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 // An intrusive singly-linked list (FIFO queue) with owned elements.
 #[derive(Debug)]
@@ -21,6 +29,22 @@ pub struct IntrusiveQueue<T: IntrusivelyQueueable> {
     // Hint to compiler that this struct "owns" an Rc<T> (for safety determinations).
     phantom: PhantomData<Rc<T>>,
 }
+
+//======================================================================================================================
+// Traits
+//======================================================================================================================
+
+pub trait IntrusivelyQueueable {
+    // Returns the next element in the queue.
+    fn get_queue_next(&self) -> Option<NonNull<Self>>;
+
+    // Sets the next element in the queue.
+    fn set_queue_next(&self, element: Option<NonNull<Self>>);
+}
+
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
 
 impl<T: IntrusivelyQueueable> IntrusiveQueue<T> {
     // Create an empty IntrusiveQueue.
@@ -107,6 +131,10 @@ impl<T: IntrusivelyQueueable> IntrusiveQueue<T> {
     }
 }
 
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
 // Drop.
 // We need an explicit drop implementation because we hold a Rc reference for each element on the list, and since we
 // store the Rcs as raw pointers they won't drop automatically.
@@ -117,18 +145,14 @@ impl<T: IntrusivelyQueueable> Drop for IntrusiveQueue<T> {
     }
 }
 
-pub trait IntrusivelyQueueable {
-    // Returns the next element in the queue.
-    fn get_queue_next(&self) -> Option<NonNull<Self>>;
-
-    // Sets the next element in the queue.
-    fn set_queue_next(&self, element: Option<NonNull<Self>>);
-}
+//======================================================================================================================
+// Tests
+//======================================================================================================================
 
 // Unit tests for IntrusiveQueue type and IntrusivelyQueueable trait.
 #[cfg(test)]
 mod tests {
-    use super::{
+    use crate::collections::intrusive::intrusive_queue::{
         IntrusiveQueue,
         IntrusivelyQueueable,
     };

@@ -5,8 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use super::RawSocketAddr;
 use crate::{
+    catpowder::runtime::RawSocketAddr,
     pal::data_structures::{
         SockAddr,
         SockAddrIn,

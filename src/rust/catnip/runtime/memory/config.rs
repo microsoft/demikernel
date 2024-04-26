@@ -5,7 +5,7 @@
 // Imports
 //==============================================================================
 
-use super::consts::{
+use crate::catnip::runtime::memory::consts::{
     DEFAULT_BODY_POOL_SIZE,
     DEFAULT_CACHE_SIZE,
     DEFAULT_HEADER_POOL_SIZE,

@@ -15,7 +15,7 @@ mod test {
     // Imports
     //==========================================================================
 
-    use super::common::{
+    use crate::common::{
         arp,
         libos::*,
         ALICE_IP,

@@ -112,7 +112,7 @@ impl Default for EphemeralPorts {
 
 #[cfg(test)]
 mod test {
-    use super::{
+    use crate::runtime::network::ephemeral::{
         EphemeralPorts,
         FIRST_PRIVATE_PORT,
         LAST_PRIVATE_PORT,

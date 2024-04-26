@@ -1,17 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    congestion_control::{
-        self,
-        CongestionControlConstructor,
-    },
-    rto::RtoCalculator,
-    sender::{
-        Sender,
-        UnackedSegment,
-    },
-};
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
     collections::{
         async_queue::{
@@ -30,6 +23,17 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         tcp::{
+            established::{
+                congestion_control::{
+                    self,
+                    CongestionControlConstructor,
+                },
+                rto::RtoCalculator,
+                sender::{
+                    Sender,
+                    UnackedSegment,
+                },
+            },
             segment::{
                 TcpHeader,
                 TcpSegment,
@@ -63,6 +67,10 @@ use ::std::{
     },
 };
 
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
 // TODO: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
 // just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
 // with the window scale option allows for window sizes of up to 1 GB.  This value appears to exist more because of the
@@ -73,6 +81,10 @@ const RECV_QUEUE_SZ: usize = 2048;
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
 const MAX_OUT_OF_ORDER: usize = 16;
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 // TCP Connection State.
 // Note: This ControlBlock structure is only used after we've reached the ESTABLISHED state, so states LISTEN,
@@ -88,6 +100,10 @@ enum State {
     LastAck,
     Closed,
 }
+
+//======================================================================================================================
+// Receiver
+//======================================================================================================================
 
 // TODO: Consider incorporating this directly into ControlBlock.
 struct Receiver {
@@ -148,6 +164,10 @@ impl Receiver {
         self.receive_next = self.receive_next + SeqNumber::from(buf_len as u32);
     }
 }
+
+//======================================================================================================================
+// Control Block
+//======================================================================================================================
 
 /// Transmission control block for representing our TCP connection.
 // TODO: Make all public fields in this structure private.

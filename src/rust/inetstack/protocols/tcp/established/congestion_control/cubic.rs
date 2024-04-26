@@ -9,16 +9,22 @@
 // TODO: Review if we really care to support this.
 // TODO: Review if fast retransmit should be mixed in with congestion control or not.
 
-use super::{
-    CongestionControl,
-    FastRetransmitRecovery,
-    LimitedTransmit,
-    Options,
-    SlowStartCongestionAvoidance,
-};
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
     collections::async_value::SharedAsyncValue,
-    inetstack::protocols::tcp::SeqNumber,
+    inetstack::protocols::tcp::{
+        established::congestion_control::{
+            CongestionControl,
+            FastRetransmitRecovery,
+            LimitedTransmit,
+            Options,
+            SlowStartCongestionAvoidance,
+        },
+        SeqNumber,
+    },
 };
 use ::std::{
     cell::Cell,
@@ -32,6 +38,10 @@ use ::std::{
         Instant,
     },
 };
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 #[derive(Debug)]
 pub struct Cubic {
@@ -57,6 +67,10 @@ pub struct Cubic {
 
     pub limited_transmit_cwnd_increase: SharedAsyncValue<u32>, // The amount by which cwnd should be increased due to the limited transit algorithm.
 }
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 impl CongestionControl for Cubic {
     fn new(mss: usize, seq_no: SeqNumber, options: Option<Options>) -> Box<dyn CongestionControl> {
@@ -95,6 +109,10 @@ impl CongestionControl for Cubic {
         })
     }
 }
+
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
 
 impl Cubic {
     const BETA_CUBIC: f32 = 0.7;
@@ -269,6 +287,10 @@ impl Cubic {
         self.in_fast_recovery.set(false);
     }
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
 
 impl SlowStartCongestionAvoidance for Cubic {
     fn get_cwnd(&self) -> SharedAsyncValue<u32> {

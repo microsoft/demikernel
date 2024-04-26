@@ -76,8 +76,10 @@ impl<T: Ring> DerefMut for SharedRingBuffer<T> {
 
 #[cfg(test)]
 mod test {
-    use super::SharedRingBuffer;
-    use crate::collections::ring::RingBuffer;
+    use crate::collections::{
+        ring::RingBuffer,
+        shared_ring::SharedRingBuffer,
+    };
     use ::anyhow::Result;
     use ::std::{
         sync::Barrier,

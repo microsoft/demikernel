@@ -56,10 +56,14 @@ pub struct demi_qresult_t {
     pub qr_value: demi_qr_value_t,
 }
 
+//======================================================================================================================
+// Unit Tests
+//======================================================================================================================
+
 #[cfg(test)]
 mod test {
 
-    use super::*;
+    use crate::runtime::types::ops::*;
     use ::std::mem;
 
     /// Tests if `demi_accept_result_t` has the expected size.

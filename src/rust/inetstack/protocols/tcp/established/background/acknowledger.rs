@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::SharedControlBlock;
 use crate::{
     collections::async_value::SharedAsyncValue,
+    inetstack::protocols::tcp::established::background::SharedControlBlock,
     runtime::{
         fail::Fail,
         network::NetworkRuntime,

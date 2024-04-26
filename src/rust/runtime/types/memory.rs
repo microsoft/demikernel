@@ -44,10 +44,14 @@ pub struct demi_sgarray_t {
     pub sga_addr: SockAddr,
 }
 
+//======================================================================================================================
+// Unit Tests
+//======================================================================================================================
+
 #[cfg(test)]
 mod test {
 
-    use super::*;
+    use crate::runtime::types::memory::*;
     use std::mem;
 
     /// Tests if the `demi_sgaseg_t` structure has the expected size.

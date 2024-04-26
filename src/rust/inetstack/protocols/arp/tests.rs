@@ -5,14 +5,14 @@
 // Imports
 //======================================================================================================================
 
-use super::packet::{
-    ArpHeader,
-    ArpOperation,
-};
 use crate::{
     inetstack::{
         protocols::{
-            arp::packet::ArpMessage,
+            arp::packet::{
+                ArpHeader,
+                ArpMessage,
+                ArpOperation,
+            },
             ethernet2::{
                 EtherType2,
                 Ethernet2Header,
