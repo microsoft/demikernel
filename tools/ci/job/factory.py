@@ -68,7 +68,22 @@ class JobFactory:
 
     def system_test(self, test_name: str, niterations: int = 0, run_mode: str = "", nclients: int = 0, bufsize: int = 0, nrequests: int = 0, nthreads: int = 1, who_closes: str = "", scenario: str = "") -> BaseJob:
         if self.config["platform"] == "windows":
-            raise Exception("System tests are not supported on Windows")
+            if test_name == "tcp_echo":
+                return windows.TcpEchoTest(self.config, run_mode, nclients, bufsize, nrequests, nthreads)
+            elif test_name == "tcp_close":
+                return windows.TcpCloseTest(self.config, run_mode=run_mode, who_closes=who_closes, nclients=nclients)
+            elif test_name == "tcp_wait":
+                return windows.TcpWaitTest(self.config, scenario=scenario, nclients=nclients)
+            elif test_name == "tcp_ping_pong":
+                return windows.TcpPingPongTest(self.config)
+            elif test_name == "tcp_push_pop":
+                return windows.TcpPushPopTest(self.config)
+            elif test_name == "udp_ping_pong":
+                return windows.UdpPingPongTest(self.config)
+            elif test_name == "udp_push_pop":
+                return windows.UdpPushPopTest(self.config)
+            else:
+                raise Exception("Invalid test name")
         else:
             if self.config["libos"] == "catmem":
                 if test_name == "open-close":
