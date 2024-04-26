@@ -947,7 +947,7 @@ mod test {
                 Ok(_) => {
                     // Close socket if not error because this test cannot continue.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
-                    anyhow::bail!("push2() to bad socket should fail.")
+                    anyhow::bail!("push() to bad socket should fail.")
                 },
                 Err(_) => (),
             };
@@ -965,7 +965,7 @@ mod test {
                 // Close socket if not error because this test cannot continue.
                 // FIXME: https://github.com/demikernel/demikernel/issues/633
                 {
-                    anyhow::bail!("push2() zero-length slice should fail.")
+                    anyhow::bail!("push() zero-length slice should fail.")
                 },
                 Err(_) => (),
             };
@@ -1186,7 +1186,7 @@ mod test {
         }
     }
 
-    /// Safe call to `push2()`
+    /// Safe call to `push()`
     fn safe_push(libos: &mut DummyLibOS, sockqd: QDesc, bytes: demi_sgarray_t) -> Result<QToken> {
         match libos.push(sockqd, &bytes) {
             Ok(qt) => Ok(qt),
