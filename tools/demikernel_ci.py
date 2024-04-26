@@ -71,7 +71,7 @@ def run_pipeline(
     # STEP 4: Run integration tests.
     if test_integration:
         if status["checkout"] and status["compile"]:
-            if libos == "catnap" or libos == "catloop":
+            if libos == "catnap" or libos == "catnapw" or libos == "catloop":
                 status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":
                 status["integration_tests"] = factory.integration_test("standalone").execute()
