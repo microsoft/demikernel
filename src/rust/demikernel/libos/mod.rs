@@ -119,6 +119,7 @@ impl LibOS {
             LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap(SharedNetworkLibOS::<
                 SharedCatnapTransport,
             >::new(
+                config.local_ipv4_addr(),
                 runtime.clone(),
                 SharedCatnapTransport::new(&config, &mut runtime),
             ))),
@@ -133,7 +134,9 @@ impl LibOS {
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
                     SharedInetStack<LinuxRuntime>,
                 >::new(
-                    runtime.clone(), inetstack
+                    config.local_ipv4_addr(),
+                    runtime.clone(),
+                    inetstack,
                 )))
             },
             #[cfg(feature = "catnip-libos")]
@@ -146,7 +149,9 @@ impl LibOS {
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
                     SharedInetStack<SharedDPDKRuntime>,
                 >::new(
-                    runtime.clone(), inetstack
+                    config.local_ipv4_addr(),
+                    runtime.clone(),
+                    inetstack,
                 )))
             },
             #[cfg(feature = "catmem-libos")]
@@ -157,6 +162,7 @@ impl LibOS {
             LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop(SharedNetworkLibOS::<
                 SharedCatloopTransport,
             >::new(
+                config.local_ipv4_addr(),
                 runtime.clone(),
                 SharedCatloopTransport::new(&config, runtime.clone()),
             ))),
@@ -512,9 +518,8 @@ impl LibOS {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         acceptor: Acceptor,
-        timeout: Option<Duration>
-    ) -> Result<(), Fail>
-    {
+        timeout: Option<Duration>,
+    ) -> Result<(), Fail> {
         timer!("demikernel::wait_next_n");
         match self {
             #[cfg(any(

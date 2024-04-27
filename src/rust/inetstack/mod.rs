@@ -98,6 +98,9 @@ pub struct InetStack<N: NetworkRuntime> {
     runtime: SharedDemiRuntime,
     network: N,
     local_link_addr: MacAddress,
+    // Keeping this here for now in case we want to use it.
+    #[allow(unused)]
+    local_ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
@@ -141,7 +144,8 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             ipv4,
             runtime: runtime.clone(),
             network,
-            local_link_addr: local_link_addr,
+            local_link_addr,
+            local_ipv4_addr,
         }));
         runtime.insert_background_coroutine("inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
         Ok(me)

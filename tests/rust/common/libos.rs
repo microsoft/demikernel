@@ -86,7 +86,7 @@ impl DummyLibOS {
         logging::initialize();
         let transport = SharedInetStack::new_test(runtime.clone(), network, link_addr, ipv4_addr)?;
         Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedDummyRuntime>>::new(
-            runtime, transport,
+            ipv4_addr, runtime, transport,
         )))
     }
 
