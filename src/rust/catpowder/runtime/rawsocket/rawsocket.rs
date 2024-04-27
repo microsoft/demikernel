@@ -24,7 +24,6 @@ use ::std::{
 //======================================================================================================================
 
 /// Raw socket.
-#[derive(Clone)]
 pub struct RawSocket(libc::c_int);
 
 //======================================================================================================================
@@ -44,7 +43,7 @@ impl RawSocket {
         if sockfd == -1 {
             return Err(Fail::new(libc::EAGAIN, "failed to create raw socket"));
         }
-
+        trace!("Creating raw socket with fd={:?}", sockfd);
         Ok(RawSocket(sockfd))
     }
 
@@ -106,5 +105,21 @@ impl RawSocket {
         }
 
         Ok((nbytes as usize, rawaddr))
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+/// Closes the raw socket.
+impl Drop for RawSocket {
+    fn drop(&mut self) {
+        if unsafe { libc::close(self.0) } < 0 {
+            let errno: libc::c_int = unsafe { *libc::__errno_location() };
+            warn!("could not close raw socket (fd={:?}): {:?}", self.0, errno);
+        } else {
+            trace!("Closing raw socket fd={:?}", self.0)
+        }
     }
 }

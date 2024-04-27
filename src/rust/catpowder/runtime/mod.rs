@@ -26,6 +26,7 @@ use crate::{
             types::MacAddress,
         },
         Runtime,
+        SharedObject,
     },
 };
 use ::std::{
@@ -49,7 +50,7 @@ pub struct LinuxRuntime {
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
     ifindex: i32,
-    socket: RawSocket,
+    socket: SharedObject<RawSocket>,
 }
 
 //==============================================================================
@@ -85,7 +86,7 @@ impl LinuxRuntime {
             link_addr: config.local_link_addr(),
             ipv4_addr: config.local_ipv4_addr(),
             ifindex,
-            socket,
+            socket: SharedObject::<RawSocket>::new(socket),
         }
     }
 
