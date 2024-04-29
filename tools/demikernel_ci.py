@@ -81,7 +81,7 @@ def run_pipeline(
                 status["integration_tests"] = factory.integration_test("pop-wait-async").execute()
 
     # STEP 5: Run system tests.
-    if test_system and config["platform"] == "linux":
+    if test_system and config["platform"]:
         if status["checkout"] and status["compile"]:
             ci_map = read_yaml(libos)
             # Run pipe-open test.
