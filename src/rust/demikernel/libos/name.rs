@@ -49,7 +49,7 @@ impl From<String> for LibOSName {
             "catnip" => LibOSName::Catnip,
             "catmem" => LibOSName::Catmem,
             "catloop" => LibOSName::Catloop,
-            _ => panic!("unkown libos"),
+            _ => panic!("unknown libos"),
         }
     }
 }
