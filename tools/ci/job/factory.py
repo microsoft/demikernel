@@ -59,7 +59,7 @@ class JobFactory:
 
     def integration_test(self, run_mode="") -> BaseJob:
         if self.config["platform"] == "windows":
-            raise Exception("Integration tests are not supported on Windows")
+            return windows.TcpIntegrationTestJobOnWindows(self.config)
         else:
             if self.config["libos"] == "catmem":
                 return linux.PipeIntegrationTestJobOnLinux(self.config, run_mode=run_mode)

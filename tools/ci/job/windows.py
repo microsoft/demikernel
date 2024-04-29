@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import subprocess
+import time
 from ci.task.windows import BaseWindowsTask, CheckoutOnWindows, CompileOnWindows, RunOnWindows, CleanupOnWindows
 from ci.job.utils import wait_and_report
 from ci.job.generic import BaseJob
@@ -94,3 +96,25 @@ class UnitTestCJobOnWindows(UnitTestJobOnWindows):
 
     def execute(self) -> bool:
         return super().execute()
+
+
+class IntegrationTestJobOnWindows(BaseWindowsJob):
+    def __init__(self, config: dict, name: str):
+        super().__init__(config, name)
+
+    def execute(self, server_cmd: str) -> bool:
+        serverTask: RunOnWindows = RunOnWindows(
+            super().server(), super().repository(), server_cmd, super().is_debug(), super().is_sudo(), super().config_path())
+        return super().execute(serverTask)
+
+
+class TcpIntegrationTestJobOnWindows(IntegrationTestJobOnWindows):
+
+    def __init__(self, config: dict):
+        config["all_pass"] = True
+        super().__init__(config, "integration-test")
+        self.server_args: str = f"--local-address {super().server_addr()}:12345 --remote-address {super().client_addr()}:23456"
+
+    def execute(self) -> bool:
+        server_cmd: str = f"test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={super().libos()} ARGS=\'{self.server_args}\'"
+        return super().execute(server_cmd)

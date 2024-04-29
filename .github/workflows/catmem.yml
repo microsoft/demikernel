@@ -61,7 +61,8 @@ jobs:
           --branch origin/$branch_name \
           --libos $LIBOS \
           --debug \
-          --test-unit --test-system all --delay 2 --enable-nfs \
+          --test-unit --test-integration --test-system all \
+          --delay 2 --enable-nfs \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
@@ -109,7 +110,8 @@ jobs:
           --repository demikernel \
           --branch origin/$branch_name \
           --libos $LIBOS \
-          --test-unit --test-system all --delay 2 --enable-nfs \
+          --test-unit --test-integration --test-system all \
+          --delay 2 --enable-nfs \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
           --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \

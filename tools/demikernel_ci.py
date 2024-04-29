@@ -17,9 +17,9 @@ import ci.git as git
 
 # Runs the CI pipeline.
 def run_pipeline(
-        log_directory: str,
-        repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
-        test_unit: bool, test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
+        log_directory: str, repository: str, branch: str, libos: str, is_debug:
+        bool, server: str, client: str, test_unit: bool, test_integration: bool,
+        test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool, install_prefix: str) -> int:
     is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
     status: dict[str, bool] = {}
@@ -67,7 +67,11 @@ def run_pipeline(
             status["unit_tests"] = True
             status["unit_tests"] &= factory.unit_test(test_name="test-unit-rust").execute()
             status["unit_tests"] &= factory.unit_test(test_name="test-unit-c").execute()
-            if libos == "catnap" or libos == "catloop":
+
+    # STEP 4: Run integration tests.
+    if test_integration:
+        if status["checkout"] and status["compile"]:
+            if libos == "catnap" or libos == "catnapw" or libos == "catloop":
                 status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":
                 status["integration_tests"] = factory.integration_test("standalone").execute()
@@ -76,7 +80,7 @@ def run_pipeline(
                 status["integration_tests"] = factory.integration_test("push-wait-async").execute()
                 status["integration_tests"] = factory.integration_test("pop-wait-async").execute()
 
-    # STEP 4: Run system tests.
+    # STEP 5: Run system tests.
     if test_system and config["platform"] == "linux":
         if status["checkout"] and status["compile"]:
             ci_map = read_yaml(libos)
@@ -240,6 +244,8 @@ def read_args() -> argparse.Namespace:
     # Test options.
     parser.add_argument("--test-unit", action='store_true',
                         required=False, help="run unit tests")
+    parser.add_argument("--test-integration", action='store_true',
+                        required=False, help="run integration tests")
     parser.add_argument("--test-system", type=str,
                         required=False, help="run system tests")
     parser.add_argument("--test-redis", action='store_true', required=False, help="run redis tests")
@@ -283,6 +289,7 @@ def main():
 
     # Extract test options.
     test_unit: bool = args.test_unit
+    test_integration: bool = args.test_integration
     test_system: str = args.test_system
     test_redis: bool = args.test_redis
     server_addr: str = args.server_addr
@@ -309,7 +316,7 @@ def main():
     mkdir(log_directory)
 
     status: dict = run_pipeline(log_directory, repository, branch, libos, is_debug, server,
-                                client, test_unit, test_system, server_addr,
+                                client, test_unit, test_integration, test_system, server_addr,
                                 client_addr, delay, config_path, output_dir, enable_nfs, install_prefix)
 
     if test_redis:
