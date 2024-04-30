@@ -62,6 +62,8 @@ jobs:
           --branch origin/$branch_name \
           --libos $LIBOS \
           --debug \
+          --test-unit \
+          --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
@@ -110,6 +112,8 @@ jobs:
           --config-path 'c:\config.yaml' \
           --branch origin/$branch_name \
           --libos $LIBOS \
+          --test-unit \
+          --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
           --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
