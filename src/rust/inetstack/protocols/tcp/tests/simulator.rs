@@ -79,7 +79,11 @@ use std::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    path::PathBuf,
+    path::{
+        self,
+        Path,
+        PathBuf,
+    },
     time::{
         Duration,
         Instant,
@@ -143,25 +147,30 @@ fn test_simulation() -> Result<()> {
 // Collect all files under 'test_path'.
 fn collect_tests(test_path: &str) -> Result<Vec<String>> {
     let mut files: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(test_path)? {
-        let entry: DirEntry = entry?;
-        // Skip directories.
-        if entry.file_type()?.is_dir() {
-            continue;
+    let path: &Path = path::Path::new(test_path);
+    if path.is_dir() {
+        for entry in std::fs::read_dir(test_path)? {
+            let entry: DirEntry = entry?;
+            // Skip directories.
+            if entry.file_type()?.is_dir() {
+                continue;
+            }
+
+            // Skip unsupported files.
+            if !entry.file_name().to_str().unwrap().ends_with(".pkt") {
+                continue;
+            }
+
+            let path: PathBuf = entry.path();
+            let path: String = path.to_str().unwrap().to_string();
+            files.push(path);
         }
 
-        // Skip unsupported files.
-        if !entry.file_name().to_str().unwrap().ends_with(".pkt") {
-            continue;
-        }
-
-        let path: PathBuf = entry.path();
-        let path: String = path.to_str().unwrap().to_string();
-        files.push(path);
+        files.sort();
+    } else {
+        let filename: String = path.to_str().unwrap().to_string();
+        files.push(filename);
     }
-
-    files.sort();
-
     Ok(files)
 }
 
