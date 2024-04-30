@@ -1,7 +1,7 @@
 // Test for blocking push.
 
 // Accept a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.0 bind(500, ..., ...) = 0
 +.0 listen(500, 1) = 0
 +.2 accept(500, ..., ...) = 0
@@ -20,7 +20,9 @@
 +.1 write(501, ..., 1000) = 1000
 
 // Send data packet.
-+.0 > P. seq 1(1000) ack 1 win 65535 <nop>
++0 > P. seq 1(1000) ack 1 win 65535 <nop>
+// Send data packet.
++4 > P. seq 1(1000) ack 1 win 65535 <nop>
 // Receive ACK on data packet.
 +.1 < . seq 1(0) ack 1001 win 65535 <nop>
 

@@ -1,7 +1,7 @@
-// Test for blocking connect.
+// Test for blocking close.
 
 // Establish a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.2 connect(500, ..., ...) = 0
 
 // Send SYN packet.
@@ -13,3 +13,8 @@
 
 // Succeed to establish connection.
 +.0 wait(500, ...) = 0
+
+// Succeed to disconnect.
++.1 close(500) = 0
++.0 > F. seq 1(0) ack 1 win 65535 <nop>
++.1 < . seq 1(0) ack 2 win 65535 <nop>

@@ -1,15 +1,15 @@
-// Test for early ACK packet on accept.
+// Test for early PSH packet on accept.
 
 // Attempt to accept a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.0 bind(500, ..., ...) = 0
 +.0 listen(500, 1) = 0
 +.2 accept(500, ..., ...) = 0
 
-// Receive ACK packet.
-+.2 < . seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
+// Receive PSH packet.
++.2 < P seq 0(0) win 65535 <mss 1450,wscale 0>
 // Send a RST packet.
-+.0 > R. seq 1(0) ack 2 <nop>
++.0 > R. seq 0(0) ack 28 <nop>
 
 // Receive SYN packet.
 +.2 < S seq 0(0) win 65535 <mss 1450,wscale 0>

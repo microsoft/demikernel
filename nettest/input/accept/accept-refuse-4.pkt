@@ -1,10 +1,15 @@
-// Test for blocking accept.
+// Test for early PHS-ACK packet on accept.
 
-// Accept a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+// Attempt to accept a connection.
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.0 bind(500, ..., ...) = 0
 +.0 listen(500, 1) = 0
 +.2 accept(500, ..., ...) = 0
+
+// Receive PSH-ACK packet.
++.2 < P. seq 0(0) win 65535 <mss 1450,wscale 0>
+// Send a RST packet.
++.0 > R. seq 0(0) ack 1 <nop>
 
 // Receive SYN packet.
 +.2 < S seq 0(0) win 65535 <mss 1450,wscale 0>

@@ -1,7 +1,7 @@
 // Test for early SYN-ACK packet on accept.
 
 // Attempt to accept a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.0 bind(500, ..., ...) = 0
 +.0 listen(500, 1) = 0
 +.2 accept(500, ..., ...) = 0
