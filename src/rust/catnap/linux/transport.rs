@@ -280,6 +280,12 @@ impl NetworkTransport for SharedCatnapTransport {
             Type::STREAM => Protocol::TCP,
             Type::DGRAM => Protocol::UDP,
             _ => {
+                let cause: String = format!("socket type not supported: {:?}", typ);
+                error!("socket(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            },
+        };
+
         // Attempts to shutdown a socket. If we fail, log a warn message and do not overwrite the original error.
         let attempt_shutdown = |socket: Socket| {
             if let Err(e) = socket.shutdown(Shutdown::Both) {
