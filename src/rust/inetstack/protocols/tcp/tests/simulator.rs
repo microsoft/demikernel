@@ -148,26 +148,33 @@ fn test_simulation() -> Result<()> {
 fn collect_tests(test_path: &str) -> Result<Vec<String>> {
     let mut files: Vec<String> = Vec::new();
     let path: &Path = path::Path::new(test_path);
+    // Check if path is a directory.
     if path.is_dir() {
-        for entry in std::fs::read_dir(test_path)? {
-            let entry: DirEntry = entry?;
-            // Skip directories.
-            if entry.file_type()?.is_dir() {
-                continue;
+        // It is, so recursively collect all files under it.
+        let mut directories: Vec<String> = Vec::new();
+        directories.push(test_path.to_string());
+        // Recurse through all directories.
+        while directories.len() > 0 {
+            let directory: String = directories.pop().unwrap();
+            for entry in std::fs::read_dir(&directory)? {
+                let entry: DirEntry = entry?;
+                let path: PathBuf = entry.path();
+                // Check if path is a directory.
+                if path.is_dir() {
+                    // It is, so add it to the list of directories to be processed.
+                    directories.push(path.to_str().unwrap().to_string());
+                } else {
+                    // It is not a directory, so just add the file to the list of files.
+                    let filename: String = path.to_str().unwrap().to_string();
+                    if filename.ends_with(".pkt") {
+                        files.push(filename);
+                    }
+                }
             }
-
-            // Skip unsupported files.
-            if !entry.file_name().to_str().unwrap().ends_with(".pkt") {
-                continue;
-            }
-
-            let path: PathBuf = entry.path();
-            let path: String = path.to_str().unwrap().to_string();
-            files.push(path);
         }
-
         files.sort();
     } else {
+        // It is not a directory, so just add the file.
         let filename: String = path.to_str().unwrap().to_string();
         files.push(filename);
     }
