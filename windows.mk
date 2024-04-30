@@ -45,8 +45,8 @@ BUILD_DIR = $(MAKEDIR)\target\release
 BUILD_DIR = $(MAKEDIR)\target\debug
 !endif
 
-!ifndef INPUT_DIR
-INPUT_DIR = $(MAKEDIR)\nettest\input
+!ifndef INPUT
+INPUT = $(MAKEDIR)\nettest\input
 !endif
 
 #=======================================================================================================================
@@ -260,7 +260,7 @@ test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
 
 # Rust unit tests for the library.
 test-unit-rust-lib: all-tests-rust
-	set INPUT_DIR=$(INPUT_DIR)
+	set INPUT=$(INPUT)
 	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Rust unit tests for UDP.

@@ -107,10 +107,10 @@ fn test_simulation() -> Result<()> {
     let remote_ephemeral_port: u16 = 49152;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
 
-    let input_path: String = match env::var("INPUT_DIR") {
+    let input_path: String = match env::var("INPUT") {
         Ok(config_path) => config_path,
         Err(e) => {
-            let cause: String = format!("missing INPUT_DIR environment variable (err={:?})", e);
+            let cause: String = format!("missing INPUT environment variable (err={:?})", e);
             eprintln!("test_simulation(): {:?}", cause);
             anyhow::bail!(cause);
         },
