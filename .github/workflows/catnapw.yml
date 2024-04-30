@@ -62,7 +62,7 @@ jobs:
           --branch origin/$branch_name \
           --libos $LIBOS \
           --debug \
-          --test-unit \
+          --test-unit --test-integration \
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
@@ -112,7 +112,7 @@ jobs:
           --config-path 'c:\config.yaml' \
           --branch origin/$branch_name \
           --libos $LIBOS \
-          --test-unit \
+          --test-unit --test-integration \
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
