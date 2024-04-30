@@ -1,7 +1,7 @@
 // Tests for local close.
 
 // Establish a connection.
- .0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.2 connect(500, ..., ...) = 0
 
 // Send SYN segment.
