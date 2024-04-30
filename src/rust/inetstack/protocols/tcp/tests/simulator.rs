@@ -111,7 +111,7 @@ fn test_simulation() -> Result<()> {
         Ok(config_path) => config_path,
         Err(e) => {
             let cause: String = format!("missing INPUT environment variable (err={:?})", e);
-            eprintln!("test_simulation(): {:?}", cause);
+            warn!("test_simulation(): {:?}", cause);
             anyhow::bail!(cause);
         },
     };
@@ -120,12 +120,12 @@ fn test_simulation() -> Result<()> {
 
     if tests.is_empty() {
         let cause: String = format!("no tests found under {:?}", input_path);
-        eprintln!("test_simulation(): {:?}", cause);
+        warn!("test_simulation(): {:?}", cause);
         return Ok(());
     }
 
     for test in &tests {
-        println!("Running test: {:?}", test);
+        eprintln!("running test case: {:?}", test);
 
         let mut simulation: Simulation = Simulation::new(
             test,
@@ -243,8 +243,8 @@ impl Simulation {
         );
         let local: SharedEngine = SharedEngine::new(test_rig, now)?;
 
-        println!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
-        println!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
+        info!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
+        info!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
 
         let steps: Vec<String> = Self::read_input_file(&filename)?;
         Ok(Simulation {
@@ -315,11 +315,10 @@ impl Simulation {
 
     /// Runs the simulation.
     pub fn run(&mut self, verbose: bool) -> Result<()> {
-        println!("+++++++++++++++++");
         // Process all lines of the source file.
         for step in &self.steps.clone() {
             if verbose {
-                println!("Line: {:?}", step);
+                info!("Line: {:?}", step);
             }
 
             if let Some(event) = nettest::run_parser(&step, verbose)? {
@@ -331,7 +330,7 @@ impl Simulation {
         let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
         if !frames.is_empty() {
             for frame in &frames {
-                eprintln!("run(): {:?}", frame);
+                info!("run(): {:?}", frame);
             }
             anyhow::bail!("run(): unexpected outgoing frames");
         }
@@ -343,7 +342,6 @@ impl Simulation {
     fn run_event(&mut self, event: &Event) -> Result<()> {
         self.now += event.time;
         self.engine.advance_clock(self.now);
-        println!("=================");
 
         match &event.action {
             nettest::glue::Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
@@ -356,7 +354,7 @@ impl Simulation {
     /// Runs a system call.
     #[allow(unused_variables)]
     fn run_syscall(&mut self, syscall: &SyscallEvent) -> Result<()> {
-        println!("{:?}: {:?}", self.now, syscall);
+        info!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
             // Issue demi_socket().
             nettest::glue::DemikernelSyscall::Socket(args, ret) => self.run_socket_syscall(args, ret.clone())?,
@@ -369,7 +367,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
-                eprintln!("Unsupported syscall");
+                error!("Unsupported syscall");
             },
         }
 
@@ -378,7 +376,7 @@ impl Simulation {
 
     /// Runs a packet.
     fn run_packet(&mut self, packet: &PacketEvent) -> Result<()> {
-        println!("{:?}: {:?}", self.now, packet);
+        info!("{:?}: {:?}", self.now, packet);
         match packet {
             nettest::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_packet(tcp_packet)?,
@@ -394,21 +392,21 @@ impl Simulation {
         // Check for unsupported socket domain.
         if args.domain != nettest::glue::SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
-            eprintln!("run_socket_syscall(): {:?}", cause);
+            info!("run_socket_syscall(): {:?}", cause);
             anyhow::bail!(cause);
         }
 
         // Check for unsupported socket type.
         if args.typ != nettest::glue::SocketType::SOCK_STREAM {
             let cause: String = format!("unsupported socket type (type={:?})", args.typ);
-            eprintln!("run_socket_syscall(): {:?}", cause);
+            info!("run_socket_syscall(): {:?}", cause);
             anyhow::bail!(cause);
         }
 
         // Check for unsupported socket protocol.
         if args.protocol != nettest::glue::SocketProtocol::IPPROTO_TCP {
             let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
-            eprintln!("run_socket_syscall(): {:?}", cause);
+            info!("run_socket_syscall(): {:?}", cause);
             anyhow::bail!(cause);
         }
 
@@ -421,7 +419,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for socket syscall");
-                eprintln!("run_socket_syscall(): ret={:?}", ret);
+                info!("run_socket_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -439,7 +437,7 @@ impl Simulation {
             // Custom bind address is not supported.
             Some(addr) => {
                 let cause: String = format!("unsupported bind address (addr={:?})", addr);
-                eprintln!("run_bind_syscall(): {:?}", cause);
+                info!("run_bind_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -450,13 +448,13 @@ impl Simulation {
                 Some((fd, qd)) if fd == local_fd => qd,
                 _ => {
                     let cause: String = format!("local queue descriptor mismatch");
-                    eprintln!("run_bind_syscall(): {:?}", cause);
+                    info!("run_bind_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
                 },
             },
             None => {
                 let cause: String = format!("local queue descriptor musth have been previously assigned");
-                eprintln!("run_bind_syscall(): {:?}", cause);
+                info!("run_bind_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -467,7 +465,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for bind syscall");
-                eprintln!("run_bind_syscall(): ret={:?}", ret);
+                info!("run_bind_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -480,7 +478,7 @@ impl Simulation {
             Some(backlog) => backlog,
             None => {
                 let cause: String = format!("backlog length must be informed");
-                eprintln!("run_listen_syscall(): {:?}", cause);
+                info!("run_listen_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -491,13 +489,13 @@ impl Simulation {
                 Some((fd, qd)) if fd == local_fd => qd,
                 _ => {
                     let cause: String = format!("local queue descriptor mismatch");
-                    eprintln!("run_listen_syscall(): {:?}", cause);
+                    info!("run_listen_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
                 },
             },
             None => {
                 let cause: String = format!("local queue descriptor musth have been previously assigned");
-                eprintln!("run_listen_syscall(): {:?}", cause);
+                info!("run_listen_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -508,7 +506,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for listen syscall");
-                eprintln!("run_listen_syscall(): ret={:?}", ret);
+                info!("run_listen_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -522,13 +520,13 @@ impl Simulation {
                 Some((fd, qd)) if fd == local_fd => qd,
                 _ => {
                     let cause: String = format!("local queue descriptor mismatch");
-                    eprintln!("run_accept_syscall(): {:?}", cause);
+                    info!("run_accept_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
                 },
             },
             None => {
                 let cause: String = format!("local queue descriptor musth have been previously assigned");
-                eprintln!("run_accept_syscall(): {:?}", cause);
+                info!("run_accept_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -543,7 +541,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for accept syscall");
-                eprintln!("run_accept_syscall(): ret={:?}", ret);
+                info!("run_accept_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -556,7 +554,7 @@ impl Simulation {
             Some((_, qd)) => qd,
             None => {
                 let cause: String = format!("local queue descriptor musth have been previously assigned");
-                eprintln!("run_connect_syscall(): {:?}", cause);
+                info!("run_connect_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -570,7 +568,7 @@ impl Simulation {
             Some(addr) => {
                 // Unsupported remote address.
                 let cause: String = format!("unsupported remote address (addr={:?})", addr);
-                eprintln!("run_connect_syscall(): {:?}", cause);
+                info!("run_connect_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -583,7 +581,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for connect syscall");
-                eprintln!("run_accept_syscall(): ret={:?}", ret);
+                info!("run_accept_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -596,7 +594,7 @@ impl Simulation {
             Some(len) => len.try_into()?,
             None => {
                 let cause: String = format!("buffer length must be informed");
-                eprintln!("run_push_syscall(): {:?}", cause);
+                info!("run_push_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -622,7 +620,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for push syscall");
-                eprintln!("run_push_syscall(): ret={:?}", ret);
+                info!("run_push_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -646,7 +644,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for pop syscall");
-                eprintln!("run_pop_syscall(): ret={:?}", ret);
+                info!("run_pop_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
@@ -659,7 +657,7 @@ impl Simulation {
             Some(qd) => QDesc::from(qd),
             None => {
                 let cause: String = format!("queue descriptor must be informed");
-                eprintln!("run_wait_syscall(): {:?}", cause);
+                info!("run_wait_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         };
@@ -667,28 +665,28 @@ impl Simulation {
         match self.operation_has_completed() {
             Ok((qd, qr)) if args_qd == qd => match qr {
                 crate::OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
-                    eprintln!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
+                    info!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
                     self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
                     Ok(())
                 },
                 crate::OperationResult::Connect => {
-                    eprintln!("connection established as expected (qd={:?})", qd);
+                    info!("connection established as expected (qd={:?})", qd);
                     Ok(())
                 },
                 crate::OperationResult::Pop(_sockaddr, _data) => {
-                    eprintln!("pop completed as expected (qd={:?})", qd);
+                    info!("pop completed as expected (qd={:?})", qd);
                     Ok(())
                 },
                 crate::OperationResult::Push => {
-                    eprintln!("push completed as expected (qd={:?})", qd);
+                    info!("push completed as expected (qd={:?})", qd);
                     Ok(())
                 },
                 crate::OperationResult::Close => {
-                    eprintln!("close completed as expected (qd={:?})", qd);
+                    info!("close completed as expected (qd={:?})", qd);
                     Ok(())
                 },
                 crate::OperationResult::Failed(e) if e.errno == -ret as i32 => {
-                    eprintln!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
+                    info!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
                 },
                 crate::OperationResult::Failed(e) => {
@@ -712,7 +710,7 @@ impl Simulation {
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
                 let cause: String = format!("unexpected return for close syscall");
-                eprintln!("run_close_syscall(): ret={:?}", ret);
+                error!("run_close_syscall(): ret={:?}", ret);
                 anyhow::bail!(cause);
             },
         }
