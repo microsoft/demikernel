@@ -13,6 +13,7 @@ use crate::{
             MemoryRuntime,
         },
         network::{
+            socket::option::SocketOption,
             transport::NetworkTransport,
             unwrap_socketaddr,
         },
@@ -78,6 +79,21 @@ impl NetworkTransport for SharedCatloopTransport {
     fn socket(&mut self, _: Domain, _: Type) -> Result<Self::SocketDescriptor, Fail> {
         // Create fake socket.
         Ok(SharedMemorySocket::new())
+    }
+
+    /// Set an SO_* option on the socket.
+    fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
+        sd.set_socket_option(option)
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
+    /// [option].
+    fn get_socket_option(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail> {
+        sd.get_socket_option(option)
     }
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a

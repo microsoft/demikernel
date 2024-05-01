@@ -18,7 +18,10 @@ use crate::{
         limits,
         memory::DemiBuffer,
         network::{
-            socket::SocketId,
+            socket::{
+                option::SocketOption,
+                SocketId,
+            },
             transport::NetworkTransport,
             unwrap_socketaddr,
         },
@@ -101,8 +104,8 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         }))
     }
 
-    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedNetworkQueue that
-    /// wraps the underlying POSIX socket.
+    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedNetworkQueue
+    /// that wraps the underlying POSIX socket.
     pub fn socket(&mut self, domain: Domain, typ: Type, _protocol: Protocol) -> Result<QDesc, Fail> {
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
@@ -122,6 +125,22 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         let queue: SharedNetworkQueue<T> = SharedNetworkQueue::new(domain, typ, &mut self.transport)?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
+    }
+
+    /// Sets a socket option on the socket.
+    pub fn set_socket_option(&mut self, qd: QDesc, option: SocketOption) -> Result<(), Fail> {
+        trace!("set_socket_option() qd={:?}, option={:?}", qd, option);
+
+        // Issue operation.
+        self.get_shared_queue(&qd)?.set_socket_option(option)
+    }
+
+    /// Sets a SO_* option on the socket referenced by [sockqd].
+    pub fn get_socket_option(&mut self, qd: QDesc, option: SocketOption) -> Result<SocketOption, Fail> {
+        trace!("get_socket_option() qd={:?}, option={:?}", qd, option);
+
+        // Issue operation.
+        self.get_shared_queue(&qd)?.get_socket_option(option)
     }
 
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a

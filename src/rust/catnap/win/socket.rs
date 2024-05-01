@@ -198,7 +198,7 @@ impl Socket {
     }
 
     /// Set linger socket options.
-    fn set_linger(&self, linger_time: Option<Duration>) -> Result<(), Fail> {
+    pub fn set_linger(&self, linger_time: Option<Duration>) -> Result<(), Fail> {
         let l: LINGER = LINGER {
             l_onoff: if linger_time.is_some() { 1 } else { 0 },
             l_linger: linger_time.unwrap_or(Duration::ZERO).as_secs() as u16,
@@ -206,6 +206,15 @@ impl Socket {
 
         unsafe { WinsockRuntime::do_setsockopt(self.s, SOL_SOCKET, SO_LINGER, Some(&l)) }?;
         Ok(())
+    }
+
+    /// Get linger socket option.
+    pub fn get_linger(&self) -> Result<Option<Duration>, Fail> {
+        let l: LINGER = unsafe { WinsockRuntime::do_getsockopt(self.s, SOL_SOCKET, SO_LINGER) }?;
+        match l.l_onoff {
+            0 => Ok(None),
+            _ => Ok(Some(Duration::from_secs(l.l_linger.into()))),
+        }
     }
 
     /// Set TCP keepalive socket options.

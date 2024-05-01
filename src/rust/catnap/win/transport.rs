@@ -50,7 +50,10 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::transport::NetworkTransport,
+        network::{
+            socket::option::SocketOption,
+            transport::NetworkTransport,
+        },
         poll_yield,
         DemiRuntime,
         SharedDemiRuntime,
@@ -167,6 +170,27 @@ impl NetworkTransport for SharedCatnapTransport {
             .winsock
             .socket(domain.into(), typ.into(), protocol.0, &me.config, &me.iocp)?;
         Ok(s)
+    }
+
+    /// Set an SO_* option on the socket.
+    fn set_socket_option(&mut self, socket: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
+        trace!("Set socket option to {:?}", option);
+        match option {
+            SocketOption::SO_LINGER(linger) => socket.set_linger(linger),
+        }
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value returned is either
+    /// an error or must match [option] with a value.
+    fn get_socket_option(
+        &mut self,
+        socket: &mut Self::SocketDescriptor,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail> {
+        trace!("Get socket option: {:?}", option);
+        match option {
+            SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(socket.get_linger()?)),
+        }
     }
 
     /// Synchronously shut down the specified socket.

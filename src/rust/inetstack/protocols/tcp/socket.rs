@@ -27,7 +27,13 @@ use crate::{
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
-            socket::SocketId,
+            socket::{
+                option::{
+                    SocketOption,
+                    TcpSocketOptions,
+                },
+                SocketId,
+            },
             NetworkRuntime,
         },
         QDesc,
@@ -71,6 +77,7 @@ pub struct TcpSocket<N: NetworkRuntime> {
     network: N,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
+    tcp_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
@@ -98,6 +105,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             network,
             local_link_addr,
             tcp_config,
+            tcp_options: TcpSocketOptions::default(),
             arp,
             dead_socket_tx,
         }))
@@ -120,9 +128,26 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             network,
             local_link_addr,
             tcp_config,
+            tcp_options: TcpSocketOptions::default(),
             arp,
             dead_socket_tx,
         }))
+    }
+
+    /// Set an SO_* option on the socket.
+    pub fn set_socket_option(&mut self, option: SocketOption) -> Result<(), Fail> {
+        match option {
+            SocketOption::SO_LINGER(linger) => self.tcp_options.set_linger(linger),
+        }
+        Ok(())
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
+    /// [option].
+    pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
+        match option {
+            SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(self.tcp_options.get_linger())),
+        }
     }
 
     /// Binds the target queue to `local` address.

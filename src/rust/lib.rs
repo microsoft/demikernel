@@ -54,9 +54,12 @@ pub use self::demikernel::libos::{
     LibOS,
 };
 pub use crate::runtime::{
-    network::types::{
-        MacAddress,
-        Port16,
+    network::{
+        socket::option::SocketOption,
+        types::{
+            MacAddress,
+            Port16,
+        },
     },
     types::{
         demi_sgarray_t,

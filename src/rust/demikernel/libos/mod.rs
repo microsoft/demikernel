@@ -42,6 +42,7 @@ use crate::{
         fail::Fail,
         limits,
         logging,
+        network::socket::option::SocketOption,
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -244,6 +245,56 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
                 #[cfg(feature = "catmem-libos")]
                 LibOS::MemoryLibOS(_) => Err(Fail::new(libc::ENOTSUP, "socket() is not supported on memory liboses")),
+            }
+        };
+
+        self.poll();
+
+        result
+    }
+
+    /// Sets an SO_* option on the socket referenced by [sockqd].
+    pub fn set_socket_option(&mut self, sockqd: QDesc, option: SocketOption) -> Result<(), Fail> {
+        let result: Result<(), Fail> = {
+            match self {
+                #[cfg(any(
+                    feature = "catnap-libos",
+                    feature = "catnip-libos",
+                    feature = "catpowder-libos",
+                    feature = "catloop-libos"
+                ))]
+                LibOS::NetworkLibOS(libos) => libos.set_socket_option(sockqd, option),
+                #[cfg(feature = "catmem-libos")]
+                LibOS::MemoryLibOS(_) => {
+                    let cause: String = format!("Socket options are not supported on memory liboses");
+                    error!("get_socket_option(): {}", cause);
+                    Err(Fail::new(libc::ENOTSUP, &cause))
+                },
+            }
+        };
+
+        self.poll();
+
+        result
+    }
+
+    /// Gets a SO_* option on the socket referenced by [sockqd].
+    pub fn get_socket_option(&mut self, sockqd: QDesc, option: SocketOption) -> Result<SocketOption, Fail> {
+        let result: Result<SocketOption, Fail> = {
+            match self {
+                #[cfg(any(
+                    feature = "catnap-libos",
+                    feature = "catnip-libos",
+                    feature = "catpowder-libos",
+                    feature = "catloop-libos"
+                ))]
+                LibOS::NetworkLibOS(libos) => libos.get_socket_option(sockqd, option),
+                #[cfg(feature = "catmem-libos")]
+                LibOS::MemoryLibOS(_) => {
+                    let cause: String = format!("Socket options are not supported on memory liboses");
+                    error!("get_socket_option(): {}", cause);
+                    Err(Fail::new(libc::ENOTSUP, &cause))
+                },
             }
         };
 

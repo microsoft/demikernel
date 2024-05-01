@@ -13,7 +13,13 @@ use crate::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
-        network::unwrap_socketaddr,
+        network::{
+            socket::option::{
+                SocketOption,
+                TcpSocketOptions,
+            },
+            unwrap_socketaddr,
+        },
         queue::QDesc,
         OperationResult,
         SharedObject,
@@ -68,6 +74,8 @@ pub struct MemorySocket {
     pending_request_ids: HashSet<RequestId>,
     /// Random number generator for request ids.
     rng: SmallRng,
+    /// SO_LINGER option, which dictates how long to wait for the connection to close.
+    options: TcpSocketOptions,
 }
 
 pub struct SharedMemorySocket(SharedObject<MemorySocket>);
@@ -93,6 +101,7 @@ impl SharedMemorySocket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
+            options: TcpSocketOptions::default(),
         }))
     }
 
@@ -108,7 +117,24 @@ impl SharedMemorySocket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
+            options: TcpSocketOptions::default(),
         }))
+    }
+
+    /// Set an SO_* option on the socket.
+    pub fn set_socket_option(&mut self, option: SocketOption) -> Result<(), Fail> {
+        match option {
+            SocketOption::SO_LINGER(linger) => self.options.set_linger(linger),
+        }
+        Ok(())
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
+    /// [option].
+    pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
+        match option {
+            SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(self.options.get_linger())),
+        }
     }
 
     /// Binds the target socket to `local` address.
@@ -230,11 +256,23 @@ impl SharedMemorySocket {
     /// Closes `socket`.
     pub async fn close(&mut self, catmem: SharedCatmemLibOS) -> Result<(), Fail> {
         if let Some(qd) = self.catmem_qd {
-            match catmem.close_coroutine(qd).await {
+            let result = if let Some(linger) = self.options.get_linger() {
+                match conditional_yield_with_timeout(catmem.close_coroutine(qd), linger).await {
+                    Err(e) if e.errno == libc::ETIMEDOUT => {
+                        // This case is actually ok because we have waited out the linger time out.
+                        return Ok(());
+                    },
+                    Err(e) => return Err(e),
+                    Ok(result) => result,
+                }
+            } else {
+                catmem.close_coroutine(qd).await
+            };
+            match result {
                 (_, OperationResult::Close) => (),
                 (_, OperationResult::Failed(e)) => return Err(e),
                 _ => panic!("Should not return anything other than close or fail"),
-            }
+            };
         };
         Ok(())
     }

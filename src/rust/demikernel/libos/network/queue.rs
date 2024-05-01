@@ -12,6 +12,7 @@ use crate::runtime::{
     network::{
         socket::{
             operation::SocketOp,
+            option::SocketOption,
             state::SocketStateMachine,
         },
         transport::NetworkTransport,
@@ -91,6 +92,16 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             remote: None,
             transport: transport.clone(),
         })))
+    }
+
+    /// Sets a socket option on the socket.
+    pub fn set_socket_option(&mut self, option: SocketOption) -> Result<(), Fail> {
+        self.transport.clone().set_socket_option(&mut self.socket, option)
+    }
+
+    /// Sets a SO_* option on the socket referenced by [sockqd].
+    pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
+        self.transport.clone().get_socket_option(&mut self.socket, option)
     }
 
     /// Binds the target queue to `local` address.

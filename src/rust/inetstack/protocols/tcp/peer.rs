@@ -21,7 +21,10 @@ use crate::{
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
-            socket::SocketId,
+            socket::{
+                option::SocketOption,
+                SocketId,
+            },
             types::MacAddress,
             NetworkRuntime,
         },
@@ -111,6 +114,20 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         ))
+    }
+
+    /// Sets an option on a TCP socket.
+    pub fn set_socket_option(&mut self, socket: &mut SharedTcpSocket<N>, option: SocketOption) -> Result<(), Fail> {
+        socket.set_socket_option(option)
+    }
+
+    /// Sets an option on a TCP socket.
+    pub fn get_socket_option(
+        &mut self,
+        socket: &mut SharedTcpSocket<N>,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail> {
+        socket.get_socket_option(option)
     }
 
     /// Binds a socket to a local address supplied by [local].
