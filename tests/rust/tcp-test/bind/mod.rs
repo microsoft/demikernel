@@ -141,8 +141,19 @@ fn bind_same_address_to_two_sockets(libos: &mut LibOS, local: &IpAddr) -> Result
 
 /// Attempts to bind to all private ports.
 fn bind_to_private_ports(libos: &mut LibOS, local: &IpAddr) -> Result<()> {
+    let mut forbidden_ports: Vec<u16> = Vec::new();
+    for port in 49664..=49671 {
+        forbidden_ports.push(port);
+    }
+    forbidden_ports.push(49687);
+    forbidden_ports.push(62559);
+    forbidden_ports.push(63503);
+
     // Traverse all ports in the private range.
     for port in 49152..65535 {
+        if forbidden_ports.contains(&port) {
+            continue;
+        }
         // Create a TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
