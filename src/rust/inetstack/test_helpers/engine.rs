@@ -64,7 +64,9 @@ impl SharedEngine {
         )?;
 
         Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedTestRuntime>>::new(
-            runtime, transport,
+            test_rig.get_ip_addr(),
+            runtime,
+            transport,
         )))
     }
 

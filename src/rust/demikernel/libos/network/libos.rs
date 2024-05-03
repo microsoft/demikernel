@@ -76,6 +76,7 @@ use crate::pal::linux::socketaddrv4_to_sockaddr;
 /// Catnap libOS. All state is kept in the [runtime] and [qtable].
 /// TODO: Move [qtable] into [runtime] so all state is contained in the PosixRuntime.
 pub struct NetworkLibOS<T: NetworkTransport> {
+    local_ipv4_addr: Ipv4Addr,
     /// Underlying runtime.
     runtime: SharedDemiRuntime,
     /// Underlying network transport.
@@ -92,8 +93,9 @@ pub struct SharedNetworkLibOS<T: NetworkTransport>(SharedObject<NetworkLibOS<T>>
 /// Associate Functions for Catnap LibOS
 impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Instantiates a Catnap LibOS.
-    pub fn new(runtime: SharedDemiRuntime, transport: T) -> Self {
+    pub fn new(local_ipv4_addr: Ipv4Addr, runtime: SharedDemiRuntime, transport: T) -> Self {
         Self(SharedObject::new(NetworkLibOS::<T> {
+            local_ipv4_addr,
             runtime: runtime.clone(),
             transport,
         }))
@@ -127,13 +129,24 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
+        // We only support IPv4 addresses right now.
         let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
-        // Check if we are binding to the wildcard address. We only support this for UDP sockets right now.
+
+        // Check address that we are using to bind. We only support the wildcard address for UDP sockets right now.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        if localv4.ip() == &Ipv4Addr::UNSPECIFIED && self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
-            let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
-            error!("bind(): {}", cause);
-            return Err(Fail::new(libc::ENOTSUP, &cause));
+        match *localv4.ip() {
+            Ipv4Addr::UNSPECIFIED if self.get_shared_queue(&qd)?.get_qtype() == QType::UdpSocket => (),
+            Ipv4Addr::UNSPECIFIED => {
+                let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
+                error!("bind(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
+            },
+            addr if addr != self.local_ipv4_addr => {
+                let cause: String = format!("cannot bind to non-local address: {:?}", addr);
+                error!("bind(): {}", &cause);
+                return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
+            },
+            _ => (),
         }
 
         // Check if this is an ephemeral port.
@@ -508,11 +521,11 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         mut acceptor: Acceptor,
-        timeout: Duration
-    ) -> Result<(), Fail>
-    {
-        self.runtime.clone().wait_next_n(
-            |qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
+        timeout: Duration,
+    ) -> Result<(), Fail> {
+        self.runtime
+            .clone()
+            .wait_next_n(|qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
     }
 
     pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {

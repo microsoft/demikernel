@@ -139,9 +139,12 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         // Wait for accept to complete.
         match socket.accept().await {
             Ok(socket) => {
-                self.addresses.insert(SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()), socket.clone());
+                self.addresses.insert(
+                    SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()),
+                    socket.clone(),
+                );
                 Ok(socket)
-            }
+            },
             Err(e) => Err(e),
         }
     }
