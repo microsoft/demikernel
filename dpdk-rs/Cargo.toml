@@ -16,7 +16,7 @@ cfg-if = "1.0.0"
 [build-dependencies]
 anyhow = "1.0.82"
 bindgen = "0.69.4"
-cc = "1.0.94"
+cc = "1.0.96"
 
 [features]
 mlx4 = []
