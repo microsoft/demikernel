@@ -3,6 +3,7 @@
  * Licensed under the MIT license.
  */
 
+#include <rte_config.h>
 #include <rte_build_config.h>
 #include <rte_ethdev.h>
 #include <rte_common.h>
