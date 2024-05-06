@@ -21,40 +21,46 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <fcntl.h>
 
-#define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)                                                                    \
-    {                                                                                                                  \
-        bool reentrant = is_reentrant_demi_call();                                                                     \
-                                                                                                                       \
-        if (!initialized_libc)                                                                                         \
-            init_libc();                                                                                               \
-                                                                                                                       \
-        if ((!initialized) || (reentrant))                                                                             \
-            return (fn_libc(__VA_ARGS__));                                                                             \
-                                                                                                                       \
-        init();                                                                                                        \
-                                                                                                                       \
-        int last_errno = errno;                                                                                        \
-        errno = 0;                                                                                                     \
-                                                                                                                       \
-        type ret = fn_demi(__VA_ARGS__);                                                                               \
-                                                                                                                       \
-        if (ret == -1)                                                                                                 \
-        {                                                                                                              \
-            if (errno == EBADF)                                                                                        \
-            {                                                                                                          \
-                errno = last_errno;                                                                                    \
-                return fn_libc(__VA_ARGS__);                                                                           \
-            }                                                                                                          \
-            else                                                                                                       \
-            {                                                                                                          \
-                return ret;                                                                                            \
-            }                                                                                                          \
-        }                                                                                                              \
-                                                                                                                       \
-        errno = last_errno;                                                                                            \
-                                                                                                                       \
-        return ret;                                                                                                    \
+#define INTERPOSE_CALL2(type, fn_libc, fn_demi, ...) \
+    {                                                \
+        init();                                      \
+                                                     \
+        int last_errno = errno;                      \
+        errno = 0;                                   \
+                                                     \
+        type ret = fn_demi(__VA_ARGS__);             \
+                                                     \
+        if (ret == -1)                               \
+        {                                            \
+            if (errno == EBADF)                      \
+            {                                        \
+                errno = last_errno;                  \
+                return fn_libc(__VA_ARGS__);         \
+            }                                        \
+            else                                     \
+            {                                        \
+                return ret;                          \
+            }                                        \
+        }                                            \
+                                                     \
+        errno = last_errno;                          \
+                                                     \
+        return ret;                                  \
+    }
+
+#define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)           \
+    {                                                         \
+        bool reentrant = is_reentrant_demi_call();            \
+                                                              \
+        if (!initialized_libc)                                \
+            init_libc();                                      \
+                                                              \
+        if ((!initialized) || (reentrant))                    \
+            return (fn_libc(__VA_ARGS__));                    \
+                                                              \
+        INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__); \
     }
 
 // System calls that we interpose.
@@ -155,12 +161,111 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     INTERPOSE_CALL(int, libc_connect, __connect, sockfd, addr, addrlen);
 }
 
+static int vfcntl(int sockfd, int cmd, va_list val)
+{
+    int ret = -1;
+    bool reentrant = is_reentrant_demi_call();
+
+    if (!initialized_libc)
+        init_libc();
+
+    // Variadic functions cannot be easily interposed.
+    // We need to parse the command and call the underlying function accordingly.
+    switch (cmd)
+    {
+    // The following commands take no argument.
+    case F_GETFD:
+    case F_GETFL:
+    case F_GETOWN:
+    case F_GETSIG:
+    case F_GETLEASE:
+    case F_GETPIPE_SZ:
+#ifdef F_GET_SEALS
+    case F_GET_SEALS:
+#endif
+    {
+        if ((!initialized) || (reentrant))
+        {
+            return (libc_fcntl(sockfd, cmd));
+        }
+
+        INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd);
+    }
+    break;
+
+    // The following commands take an integer as an argument.
+    case F_DUPFD:
+    case F_DUPFD_CLOEXEC:
+    case F_SETFD:
+    case F_SETFL:
+    case F_SETOWN:
+    case F_SETSIG:
+    case F_SETLEASE:
+    case F_NOTIFY:
+    case F_SETPIPE_SZ:
+#ifdef F_ADD_SEALS
+    case F_ADD_SEALS:
+#endif
+    {
+        int arg_i = va_arg(val, int);
+
+        if ((!initialized) || (reentrant))
+        {
+            return (libc_fcntl(sockfd, cmd, arg_i));
+        }
+
+        INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_i);
+    }
+    break;
+
+    // The following commands take a pointer as an argument.
+    case F_SETLK:
+    case F_SETLKW:
+    case F_GETLK:
+    case F_OFD_SETLK:
+    case F_OFD_SETLKW:
+    case F_OFD_GETLK:
+    case F_GETOWN_EX:
+    case F_SETOWN_EX:
+#ifdef F_GET_RW_HINT
+    case F_GET_RW_HINT:
+    case F_SET_RW_HINT:
+#endif
+#ifdef F_GET_FILE_RW_HINT
+    case F_GET_FILE_RW_HINT:
+    case F_SET_FILE_RW_HINT:
+#endif
+    {
+        void *arg_p = va_arg(val, void *);
+
+        if ((!initialized) || (reentrant))
+        {
+            return (libc_fcntl(sockfd, cmd, arg_p));
+        }
+
+        INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_p);
+    }
+    break;
+
+    // Unsupported.
+    default:
+        ERROR("unsupported cmd (%u)\n", cmd);
+        errno = EINVAL;
+        ret = -1;
+        break;
+    }
+
+    return ret;
+}
+
 int fcntl(int fd, int cmd, ...)
 {
-    va_list args;
-    va_start(args, cmd);
-    INTERPOSE_CALL(int, libc_fcntl, __fcntl, fd, cmd, args);
-    va_end(args);
+    va_list val;
+    va_start(val, cmd);
+    int ret = vfcntl(fd, cmd, val);
+    va_end(val);
+
+    return ret;
 }
 
 int listen(int sockfd, int backlog)
@@ -308,7 +413,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
     if (!initialized_libc)
         init_libc();
 
-    if ((!initialized) || (reentrant)) 
+    if ((!initialized) || (reentrant))
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
