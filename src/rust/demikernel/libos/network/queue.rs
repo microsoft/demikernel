@@ -75,6 +75,7 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
         // This was previously checked in the LibOS layer.
         debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
 
+        trace!("HERE2");
         let qtype: QType = match typ {
             Type::STREAM => QType::TcpSocket,
             Type::DGRAM => QType::UdpSocket,
@@ -82,6 +83,7 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             _ => unreachable!("Invalid socket type (typ={:?})", typ),
         };
 
+        trace!("HERE3");
         let socket: T::SocketDescriptor = transport.socket(domain, typ)?;
         Ok(Self(SharedObject::new(NetworkQueue::<T> {
             qtype,

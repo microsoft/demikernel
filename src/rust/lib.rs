@@ -70,10 +70,10 @@ pub use crate::runtime::{
 
 pub mod demikernel;
 
-use mimalloc::MiMalloc;
+// use mimalloc::MiMalloc;
 
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+// #[global_allocator]
+// static GLOBAL: MiMalloc = MiMalloc;
 
 //======================================================================================================================
 // Macros

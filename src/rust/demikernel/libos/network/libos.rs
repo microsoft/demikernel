@@ -117,6 +117,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         }
 
         // Create underlying queue.
+        trace!("HERE1");
         let queue: SharedNetworkQueue<T> = SharedNetworkQueue::new(domain, typ, &mut self.transport)?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)

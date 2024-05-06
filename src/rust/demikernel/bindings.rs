@@ -53,6 +53,7 @@ use ::std::{
     ptr,
     slice,
     time::Duration,
+    sync::Mutex,
 };
 
 #[cfg(test)]
@@ -67,10 +68,8 @@ use ::std::net::{
 // DEMIKERNEL
 //======================================================================================================================
 
-thread_local! {
-/// Demikernel state.
-    static DEMIKERNEL: RefCell<Option<LibOS>> = RefCell::new(None);
-}
+static INIT_LOCK: Mutex<bool> = Mutex::new(false);
+static mut DEMIKERNEL: RefCell<Option<LibOS>> = RefCell::new(None);
 
 //======================================================================================================================
 // init
@@ -82,33 +81,52 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
     logging::initialize();
     trace!("demi_init()");
 
+    let mut initialized_guard = INIT_LOCK.lock().unwrap();
+
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => panic!("{:?}", e),
     };
 
     // Check if demikernel has already been initialized and return
-    let ret: i32 = DEMIKERNEL.with(|demikernel| match *demikernel.borrow() {
-        Some(_) => libc::EEXIST,
-        None => 0,
-    });
-    if ret != 0 {
-        error!("demi_init(): Demikernel is already initialized");
-        return ret;
+    match unsafe { DEMIKERNEL.try_borrow() } {
+        Ok(libos) => match *libos {
+            Some(_) => return libc::EEXIST,
+            None => (),
+        },
+        Err(e) => panic!("{:?}", e),
     }
+    // let ret: i32 = DEMIKERNEL.with(|demikernel| match *demikernel.borrow() {
+    //     Some(_) => libc::EEXIST,
+    //     None => 0,
+    // });
+    // if ret != 0 {
+    //     error!("demi_init(): Demikernel is already initialized");
+    //     return ret;
+    // }
 
     // TODO: Pass arguments to the underlying libOS.
-    match LibOS::new(libos_name) {
-        Ok(libos) => {
-            DEMIKERNEL.with(move |demikernel| {
-                *demikernel.borrow_mut() = Some(libos);
-            });
-        },
+    let libos: LibOS = match LibOS::new(libos_name) {
+        Ok(libos) => libos,
         Err(e) => {
             trace!("demi_init() failed: {:?}", e);
             return -e.errno;
         },
     };
+
+    unsafe { DEMIKERNEL = RefCell::new(Some(libos)) };
+    // match LibOS::new(libos_name) {
+    //     Ok(libos) => {
+    //         DEMIKERNEL.with(move |demikernel| {
+    //             *demikernel.borrow_mut() = Some(libos);
+    //         });
+    //     },
+    //     Err(e) => {
+    //         trace!("demi_init() failed: {:?}", e);
+    //         return -e.errno;
+    //     },
+    // };
+    *initialized_guard = true;
 
     0
 }
@@ -820,13 +838,14 @@ pub extern "C" fn demi_getsockopt(
 
 /// Issues a system call.
 fn do_syscall<T>(f: impl FnOnce(&mut LibOS) -> T) -> Result<T, Fail> {
-    DEMIKERNEL.with(|demikernel| match demikernel.try_borrow_mut() {
+    // DEMIKERNEL.with(|demikernel| match demikernel.try_borrow_mut() {
+    match unsafe { DEMIKERNEL.try_borrow_mut() } {
         Ok(mut libos) => match libos.as_mut() {
             Some(libos) => Ok(f(libos)),
             None => Err(Fail::new(libc::ENOSYS, "Demikernel is not initialized")),
         },
         Err(_) => Err(Fail::new(libc::EBUSY, "Demikernel is busy")),
-    })
+    }
 }
 
 /// Converts a [sockaddr] into a [SocketAddr].

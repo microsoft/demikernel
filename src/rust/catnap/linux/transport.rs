@@ -35,6 +35,11 @@ use crate::{
     },
 };
 use ::futures::FutureExt;
+use libc::{
+    F_GETFL,
+    F_SETFL, 
+    O_NONBLOCK,
+};
 use ::slab::Slab;
 use ::socket2::{
     Domain,
@@ -275,6 +280,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Creates a new socket on the underlying network transport. We only support IPv4 and UDP and TCP sockets for now.
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
+        trace!("HERE4");
         // Select protocol.
         let protocol: Protocol = match typ {
             Type::STREAM => Protocol::TCP,
@@ -284,11 +290,13 @@ impl NetworkTransport for SharedCatnapTransport {
             },
         };
 
+        trace!("HERE5");
         // Create socket.
         let socket: Socket = match socket2::Socket::new(domain, typ, Some(protocol)) {
             Ok(socket) => {
                 // Set socket options.
                 if let Err(e) = socket.set_reuse_address(true) {
+                    trace!("Failed to reuse address option");
                     let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
                     socket.shutdown(Shutdown::Both)?;
                     error!("new(): {}", cause);
@@ -296,19 +304,21 @@ impl NetworkTransport for SharedCatnapTransport {
                 }
 
                 let socket_fd = socket.as_raw_fd();
-                let flags = unsafe { libc::fcntl(socket_fd, libc::F_GETFL) };
-                if flags & libc::O_NONBLOCK == 0 {
-                    if let Err(e) = socket.set_nonblocking(true) {
-                        let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
-                        socket.shutdown(Shutdown::Both)?;
-                        error!("new(): {}", cause);
-                        return Err(Fail::new(get_libc_err(e), &cause));
-                    }
+                let flags = unsafe { libc::fcntl(socket_fd, F_GETFL) };
+                let res = unsafe { libc::fcntl(socket_fd, F_SETFL, flags) };
+                if res != 0 {
+                    trace!("Failed to set nonblocking");
+                    let cause: String = format!("cannot set NONBLOCKING option");
+                    socket.shutdown(Shutdown::Both)?;
+                    error!("new(): {}", cause);
+                    let e: io::Error = io::Error::last_os_error();
+                    return Err(Fail::new(get_libc_err(e), &cause));
                 }
 
                 // Set TCP socket options
                 if typ == Type::STREAM {
                     if let Err(e) = socket.set_nodelay(true) {
+                        trace!("cannot set TCP_NODELAY option");
                         let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
                         socket.shutdown(Shutdown::Both)?;
                         error!("new(): {}", cause);

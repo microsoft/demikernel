@@ -81,9 +81,14 @@ use ::std::{
         Instant,
         SystemTime,
     },
-    sync::RwLock,
+    sync::{
+        RwLock,
+        Arc,
+    },
 };
 use std::pin::Pin;
+
+use self::scheduler::Task;
 
 //======================================================================================================================
 // Constants
@@ -101,17 +106,17 @@ const TIMER_FINER_RESOLUTION: usize = 16;
 /// Demikernel Runtime
 pub struct DemiRuntime {
     /// Shared IoQueueTable.
-    qtable: RwLock<IoQueueTable>,
+    qtable: Arc<RwLock<IoQueueTable>>,
     /// Shared coroutine scheduler.
-    scheduler: SharedScheduler,
+    scheduler: Arc<RwLock<SharedScheduler>>,
     /// Shared ephemeral port allocator.
-    ephemeral_ports: EphemeralPorts,
+    ephemeral_ports: Arc<RwLock<EphemeralPorts>>,
     /// Shared table for mapping from underlying transport identifiers to queue descriptors.
-    network_table: NetworkQueueTable,
+    network_table: Arc<RwLock<NetworkQueueTable>>,
     /// Number of iterations that we have polled since advancing the clock.
-    ts_iters: usize,
+    ts_iters: Arc<RwLock<usize>>,
     /// Tasks that have been completed and removed from the
-    completed_tasks: HashMap<QToken, (QDesc, OperationResult)>,
+    completed_tasks: Arc<RwLock<HashMap<QToken, (QDesc, OperationResult)>>>,
 }
 
 #[derive(Clone)]
@@ -142,12 +147,12 @@ impl SharedDemiRuntime {
     pub fn new(now: Instant) -> Self {
         timer::global_set_time(now);
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            qtable: RwLock::new(IoQueueTable::default()),
-            scheduler: SharedScheduler::default(),
-            ephemeral_ports: EphemeralPorts::default(),
-            network_table: NetworkQueueTable::default(),
-            ts_iters: 0,
-            completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
+            qtable: Arc::new(RwLock::new(IoQueueTable::default())),
+            scheduler: Arc::new(RwLock::new(SharedScheduler::default())),
+            ephemeral_ports: Arc::new(RwLock::new(EphemeralPorts::default())),
+            network_table: Arc::new(RwLock::new(NetworkQueueTable::default())),
+            ts_iters: Arc::new(RwLock::new(0)),
+            completed_tasks: Arc::new(RwLock::new(HashMap::<QToken, (QDesc, OperationResult)>::new())),
         }))
     }
 
@@ -182,7 +187,9 @@ impl SharedDemiRuntime {
         #[cfg(feature = "profiler")]
         let coroutine = coroutine_timer!(task_name, coroutine);
         let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, coroutine);
-        match self.scheduler.insert_task(task) {
+
+        let mut scheduler_guard = self.scheduler.write().unwrap();
+        match scheduler_guard.insert_task(task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -204,10 +211,21 @@ impl SharedDemiRuntime {
     }
 
     pub fn timedwait(&mut self, qt: QToken, abstime: Option<SystemTime>) -> Result<(QDesc, OperationResult), Fail> {
-        if let Some((qd, result)) = self.completed_tasks.remove(&qt) {
-            return Ok((qd, result));
+        let guard_res: Option<(QDesc, OperationResult)>;
+        {
+            let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+            guard_res = comp_tasks_guard.remove(&qt)
         }
-        if !self.scheduler.is_valid_task(&TaskId::from(qt)) {
+        if !guard_res.is_none() {
+            
+            return Ok(guard_res.unwrap());
+        }
+        let is_valid: bool;
+        {
+            let scheduler_guard = self.scheduler.read().unwrap();
+            is_valid = scheduler_guard.is_valid_task(&TaskId::from(qt));
+        }
+        if !is_valid {
             let cause: String = format!("{:?} is not a valid queue token", qt);
             warn!("wait_any: {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
@@ -217,7 +235,14 @@ impl SharedDemiRuntime {
         self.advance_clock_to_now();
 
         loop {
-            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+            let guard_res: Option<Box<dyn Task>>;
+            {
+                let mut scheduler_guard = self.scheduler.write().unwrap();
+                guard_res = scheduler_guard.get_next_completed_task(TIMER_RESOLUTION);
+            }
+
+            if !guard_res.is_none() {
+                let boxed_task = guard_res.unwrap();
                 // Perform bookkeeping for the completed and removed task.
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
@@ -232,9 +257,13 @@ impl SharedDemiRuntime {
                     }
 
                     // If not a queue token that we are waiting on, then insert into our list of completed tasks.
-                    self.completed_tasks.insert(qt, (qd, result));
+                    {
+                        let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+                        comp_tasks_guard.insert(qt, (qd, result));
+                    }
                 }
             }
+
             // Check the timeout.
             if let Some(abstime) = abstime {
                 if SystemTime::now() >= abstime {
@@ -260,11 +289,13 @@ impl SharedDemiRuntime {
             }
 
             // 2. Make sure these queue tokens all point to valid tasks.
-            if !self.scheduler.is_valid_task(&TaskId::from(*qt)) {
+            let scheduler_guard = self.scheduler.read().unwrap();
+            if !scheduler_guard.is_valid_task(&TaskId::from(*qt)) {
                 let cause: String = format!("{:?} is not a valid queue token", qt);
                 warn!("wait_any: {}", cause);
                 return Err(Fail::new(libc::EINVAL, &cause));
             }
+            drop(scheduler_guard);
         }
 
         // 3. None of the tasks have already completed, so start a timer and move the clock.
@@ -293,7 +324,8 @@ impl SharedDemiRuntime {
     }
 
     pub fn get_completed_task(&mut self, qt: &QToken) -> Option<(QDesc, OperationResult)> {
-        self.completed_tasks.remove(qt)
+        let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+        comp_tasks_guard.remove(qt)
     }
 
     /// Waits until the next task is complete, passing the result to `acceptor`. The acceptor may return true to
@@ -305,9 +337,12 @@ impl SharedDemiRuntime {
         timeout: Duration,
     ) -> Result<(), Fail> {
         // 1. Check if any tasks are completed.
-        for (qt, (qd, result)) in self.completed_tasks.extract_if(|_, _| true) {
-            if acceptor(qt, qd, result) == false {
-                return Ok(());
+        {
+            let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+            for (qt, (qd, result)) in comp_tasks_guard.extract_if(|_, _| true) {
+                if acceptor(qt, qd, result) == false {
+                    return Ok(());
+                }
             }
         }
 
@@ -350,7 +385,8 @@ impl SharedDemiRuntime {
             }
 
             // If not a queue token that we are waiting on, then insert into our list of completed tasks.
-            self.completed_tasks.insert(qt, (qd, result));
+            let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+            comp_tasks_guard.insert(qt, (qd, result));
         }
 
         None
@@ -363,7 +399,8 @@ impl SharedDemiRuntime {
             timeout if timeout.as_secs() > 0 => TIMER_RESOLUTION,
             _ => TIMER_FINER_RESOLUTION,
         };
-        if let Some(boxed_task) = self.scheduler.get_next_completed_task(iterations) {
+        let mut scheduler_guard = self.scheduler.write().unwrap();
+        if let Some(boxed_task) = scheduler_guard.get_next_completed_task(iterations) {
             // Perform bookkeeping for the completed and removed task.
             trace!("Removing coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
@@ -382,15 +419,24 @@ impl SharedDemiRuntime {
 
     /// Performs a single pool on the underlying scheduler.
     pub fn poll(&mut self) {
+        let tasks: Vec<Box<dyn Task>>;
+        {
+            let mut scheduler_guard = self.scheduler.write().unwrap();
+            tasks = scheduler_guard.poll_all();
+        }
+        
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
-        for boxed_task in self.scheduler.poll_all() {
+        for boxed_task in tasks {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
             if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
                 let (qd, result): (QDesc, OperationResult) =
                     expect_some!(operation_task.get_result(), "coroutine not finished");
-                self.completed_tasks.insert(qt, (qd, result));
+                {
+                    let mut comp_tasks_guard = self.completed_tasks.write().unwrap();
+                    comp_tasks_guard.insert(qt, (qd, result));
+                }
             }
         }
     }
@@ -409,7 +455,7 @@ impl SharedDemiRuntime {
     }
 
     /// Returns a mutable reference to the I/O queue table.
-    pub fn get_mut_qtable(&mut self) -> &mut RwLock<IoQueueTable> {
+    pub fn get_mut_qtable(&mut self) -> &mut Arc<RwLock<IoQueueTable>> {
         &mut self.qtable
     }
 
@@ -436,7 +482,8 @@ impl SharedDemiRuntime {
 
     /// Allocates a port from the shared ephemeral port allocator.
     pub fn alloc_ephemeral_port(&mut self) -> Result<u16, Fail> {
-        match self.ephemeral_ports.alloc() {
+        let mut ephe_ports_guard = self.ephemeral_ports.write().unwrap();
+        match ephe_ports_guard.alloc() {
             Ok(port) => {
                 trace!("Allocating ephemeral port: {:?}", port);
                 Ok(port)
@@ -450,7 +497,8 @@ impl SharedDemiRuntime {
 
     /// Reserves a specific port if it is free.
     pub fn reserve_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        match self.ephemeral_ports.reserve(port) {
+        let mut ephe_ports_guard = self.ephemeral_ports.write().unwrap();
+        match ephe_ports_guard.reserve(port) {
             Ok(()) => {
                 trace!("Reserving ephemeral port: {:?}", port);
                 Ok(())
@@ -464,7 +512,8 @@ impl SharedDemiRuntime {
 
     /// Frees an ephemeral port.
     pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        match self.ephemeral_ports.free(port) {
+        let mut ephe_ports_guard = self.ephemeral_ports.write().unwrap();
+        match ephe_ports_guard.free(port) {
             Ok(()) => {
                 trace!("Freeing ephemeral port: {:?}", port);
                 Ok(())
@@ -488,10 +537,13 @@ impl SharedDemiRuntime {
 
     /// Moves time forward to the current real time.
     fn advance_clock_to_now(&mut self) {
-        if self.ts_iters == 0 {
+        let mut ts_iters_guard = self.ts_iters.write().unwrap();
+        if *ts_iters_guard == 0 {
+            drop(ts_iters_guard);
             self.advance_clock(Instant::now());
+            ts_iters_guard = self.ts_iters.write().unwrap();
         }
-        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
+        *ts_iters_guard = (*ts_iters_guard + 1) % TIMER_RESOLUTION;
     }
 
     /// Gets the current time according to our internal timer.
@@ -501,7 +553,8 @@ impl SharedDemiRuntime {
 
     /// Checks if an identifier is in use and returns the queue descriptor if it is.
     pub fn get_qd_from_socket_id(&self, id: &SocketId) -> Option<QDesc> {
-        match self.network_table.get_qd(id) {
+        let net_table_guard = self.network_table.read().unwrap();
+        match net_table_guard.get_qd(id) {
             Some(qd) => {
                 trace!("Looking up queue descriptor: socket_id={:?} qd={:?}", id, qd);
                 Some(qd)
@@ -516,12 +569,14 @@ impl SharedDemiRuntime {
     /// Inserts a mapping and returns the previously mapped queue descriptor if it exists.
     pub fn insert_socket_id_to_qd(&mut self, id: SocketId, qd: QDesc) -> Option<QDesc> {
         trace!("Insert socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
-        self.network_table.insert_qd(id, qd)
+        let mut net_table_guard = self.network_table.write().unwrap();
+        net_table_guard.insert_qd(id, qd)
     }
 
     /// Removes a mapping and returns the mapped queue descriptor.
     pub fn remove_socket_id_to_qd(&mut self, id: &SocketId) -> Option<QDesc> {
-        match self.network_table.remove_qd(id) {
+        let mut net_table_guard = self.network_table.write().unwrap();
+        match net_table_guard.remove_qd(id) {
             Some(qd) => {
                 trace!("Remove socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
                 Some(qd)
@@ -538,7 +593,8 @@ impl SharedDemiRuntime {
 
     pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
         trace!("Check address in use: {:?}", local);
-        self.network_table.addr_in_use(local)
+        let net_table_guard = self.network_table.read().unwrap();
+        net_table_guard.addr_in_use(local)
     }
 }
 
@@ -597,12 +653,12 @@ impl Default for SharedDemiRuntime {
     fn default() -> Self {
         timer::global_set_time(Instant::now());
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            qtable: RwLock::new(IoQueueTable::default()),
-            scheduler: SharedScheduler::default(),
-            ephemeral_ports: EphemeralPorts::default(),
-            network_table: NetworkQueueTable::default(),
-            ts_iters: 0,
-            completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
+            qtable: Arc::new(RwLock::new(IoQueueTable::default())),
+            scheduler: Arc::new(RwLock::new(SharedScheduler::default())),
+            ephemeral_ports: Arc::new(RwLock::new(EphemeralPorts::default())),
+            network_table: Arc::new(RwLock::new(NetworkQueueTable::default())),
+            ts_iters: Arc::new(RwLock::new(0)),
+            completed_tasks: Arc::new(RwLock::new(HashMap::<QToken, (QDesc, OperationResult)>::new())),
         }))
     }
 }
