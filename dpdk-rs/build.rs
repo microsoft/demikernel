@@ -66,6 +66,10 @@ fn os_build() -> Result<()> {
         "librte_stack",
         "librte_telemetry",
         "librte_timer",
+        "mlx5devx",
+        "setupapi",
+        "dbghelp",
+        "mincore",
     ];
 
     let cflags: &str = "-mavx";
@@ -75,13 +79,9 @@ fn os_build() -> Result<()> {
     println!("cargo:rustc-link-search={}", devxlib_path);
 
     for lib in &libraries {
-        println!("cargo:rustc-link-lib=static:-bundle,+whole-archive={}", lib);
+        println!("cargo:rustc-link-lib=dylib={}", lib);
     }
 
-    println!("cargo:rustc-link-lib=dylib={}", "mlx5devx");
-    println!("cargo:rustc-link-lib=dylib={}", "setupapi");
-    println!("cargo:rustc-link-lib=dylib={}", "dbghelp");
-    println!("cargo:rustc-link-lib=dylib={}", "mincore");
 
     // Step 2: Generate bindings for the DPDK headers.
     let bindings: Bindings = Builder::default()
