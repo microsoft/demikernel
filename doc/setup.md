@@ -25,7 +25,7 @@ specification, check out the `README.md` file.
 ```bash
 export WORKDIR=$HOME                                                  # Change this to whatever you want.
 cd $WORKDIR                                                           # Switch to working directory.
-git clone --recursive https://github.com/demikernel/demikernel.git    # Recursive clone.
+git clone --recursive https://github.com/microsoft/demikernel.git    # Recursive clone.
 cd $WORKDIR/demikernel                                                # Switch to repository's source tree.
 ```
 
@@ -54,7 +54,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 ## 5. Setup Configuration File (Only Once)
 
-- Copy the template from `scripts/config/default.yaml` to `$HOME/config.yaml`.
+- Copy the template from `scripts/config/default.yaml` to
+  `$HOME/config.yaml`. If running on Azure, use `scripts/config/azure.yaml`.
 - Open the file in `$HOME/config.yaml` for editing and do the following:
   - Change `XX.XX.XX.XX` to match the IPv4 address of your server host.
   - Change `YY.YY.YY.YY` to match the IPv4 address of your client host.
