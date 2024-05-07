@@ -280,8 +280,18 @@ impl NetworkTransport for SharedCatnapTransport {
             Type::STREAM => Protocol::TCP,
             Type::DGRAM => Protocol::UDP,
             _ => {
-                return Err(Fail::new(libc::ENOTSUP, "socket type not supported"));
+                let cause: String = format!("socket type not supported: {:?}", typ);
+                error!("socket(): {}", cause);
+                return Err(Fail::new(libc::ENOTSUP, &cause));
             },
+        };
+
+        // Attempts to shutdown a socket. If we fail, log a warn message and do not overwrite the original error.
+        let attempt_shutdown = |socket: Socket| {
+            if let Err(e) = socket.shutdown(Shutdown::Both) {
+                let cause: String = format!("cannot shutdown socket: {:?}", e);
+                warn!("socket(): {}", cause);
+            }
         };
 
         // Create socket.
@@ -290,9 +300,10 @@ impl NetworkTransport for SharedCatnapTransport {
                 // Set socket options.
                 if let Err(e) = socket.set_reuse_address(true) {
                     let cause: String = format!("cannot set REUSE_ADDRESS option: {:?}", e);
-                    socket.shutdown(Shutdown::Both)?;
-                    error!("new(): {}", cause);
-                    return Err(Fail::new(get_libc_err(e), &cause));
+                    let errno: i32 = get_libc_err(e);
+                    error!("socket(): {}", cause);
+                    attempt_shutdown(socket);
+                    return Err(Fail::new(errno, &cause));
                 }
 
                 let socket_fd = socket.as_raw_fd();
@@ -300,9 +311,10 @@ impl NetworkTransport for SharedCatnapTransport {
                 if flags & libc::O_NONBLOCK == 0 {
                     if let Err(e) = socket.set_nonblocking(true) {
                         let cause: String = format!("cannot set NONBLOCKING option: {:?}", e);
-                        socket.shutdown(Shutdown::Both)?;
-                        error!("new(): {}", cause);
-                        return Err(Fail::new(get_libc_err(e), &cause));
+                        let errno: i32 = get_libc_err(e);
+                        error!("socket(): {}", cause);
+                        attempt_shutdown(socket);
+                        return Err(Fail::new(errno, &cause));
                     }
                 }
 
@@ -310,9 +322,10 @@ impl NetworkTransport for SharedCatnapTransport {
                 if typ == Type::STREAM {
                     if let Err(e) = socket.set_nodelay(true) {
                         let cause: String = format!("cannot set TCP_NODELAY option: {:?}", e);
-                        socket.shutdown(Shutdown::Both)?;
-                        error!("new(): {}", cause);
-                        return Err(Fail::new(get_libc_err(e), &cause));
+                        let errno: i32 = get_libc_err(e);
+                        error!("socket(): {}", cause);
+                        attempt_shutdown(socket);
+                        return Err(Fail::new(errno, &cause));
                     }
                 }
 
