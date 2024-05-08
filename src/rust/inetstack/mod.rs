@@ -26,6 +26,7 @@ use crate::{
             MemoryRuntime,
         },
         network::{
+            socket::option::SocketOption,
             transport::NetworkTransport,
             types::MacAddress,
             unwrap_socketaddr,
@@ -283,6 +284,35 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
             Type::STREAM => Ok(Socket::Tcp(self.ipv4.tcp.socket()?)),
             Type::DGRAM => Ok(Socket::Udp(self.ipv4.udp.socket()?)),
             _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
+        }
+    }
+
+    /// Set an SO_* option on the socket.
+    fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.set_socket_option(socket, option),
+            Socket::Udp(_) => {
+                let cause: String = format!("Socket options are not supported on UDP sockets");
+                error!("get_socket_option(): {}", cause);
+                Err(Fail::new(libc::ENOTSUP, &cause))
+            },
+        }
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
+    /// [option].
+    fn get_socket_option(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.get_socket_option(socket, option),
+            Socket::Udp(_) => {
+                let cause: String = format!("Socket options are not supported on UDP sockets");
+                error!("get_socket_option(): {}", cause);
+                Err(Fail::new(libc::ENOTSUP, &cause))
+            },
         }
     }
 

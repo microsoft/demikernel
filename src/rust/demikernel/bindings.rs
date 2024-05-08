@@ -14,9 +14,12 @@ use crate::{
         constants::{
             AF_INET,
             AF_INET6,
+            SOL_SOCKET,
+            SO_LINGER,
         },
         data_structures::{
             AddressFamily,
+            Linger,
             SockAddrIn,
             SockAddrIn6,
             SockAddrStorage,
@@ -34,6 +37,7 @@ use crate::{
         },
         QToken,
     },
+    SocketOption,
 };
 use ::libc::{
     c_char,
@@ -53,14 +57,6 @@ use ::std::{
     ptr,
     slice,
     time::Duration,
-};
-
-#[cfg(test)]
-use ::std::net::{
-    Ipv4Addr,
-    Ipv6Addr,
-    SocketAddrV4,
-    SocketAddrV6,
 };
 
 //======================================================================================================================
@@ -793,15 +789,63 @@ pub extern "C" fn demi_setsockopt(
     optval: *const c_void,
     optlen: Socklen,
 ) -> c_int {
-    // TODO: Implement this system call.
-    libc::ENOSYS
+    trace!("demi_setsockopt()");
+
+    // Check inputs.
+    if level != SOL_SOCKET {
+        let cause: String = format!("Only options at the socket level are supported");
+        error!("demi_setsockopt(): {}", cause);
+        return libc::EINVAL;
+    }
+
+    let opt: SocketOption = match optname {
+        SO_LINGER => {
+            // Check for invalid storage locations.
+            if optval.is_null() {
+                warn!("demi_setsockopt() linger value is a null pointer");
+                return libc::EINVAL;
+            }
+
+            if optlen as usize != mem::size_of::<Linger>() {
+                warn!("demi_setsockopt() linger len is incorrect");
+                return libc::EINVAL;
+            }
+
+            let linger: Linger = unsafe { *(optval as *const Linger) };
+            match linger.l_onoff {
+                0 => SocketOption::SO_LINGER(None),
+                _ => SocketOption::SO_LINGER(Some(Duration::from_secs(linger.l_linger as u64))),
+            }
+        },
+        _ => {
+            let cause: String = format!("Only SO_LINGER is supported right now");
+            error!("demi_setsockopt(): {}", cause);
+            return libc::EINVAL;
+        },
+    };
+
+    // Issue socket operation.
+    let ret: Result<(), Fail> = match do_syscall(|libos| libos.set_socket_option(qd.into(), opt)) {
+        Ok(result) => result,
+        Err(e) => {
+            trace!("demi_getsockopt() failed: {:?}", e);
+            return e.errno;
+        },
+    };
+
+    match ret {
+        Ok(_) => 0,
+        Err(e) => {
+            trace!("demi_getsockopt() failed: {:?}", e);
+            e.errno
+        },
+    }
 }
 
 //======================================================================================================================
 // getsockopt
 //======================================================================================================================
 
-#[allow(unused)]
 #[no_mangle]
 pub extern "C" fn demi_getsockopt(
     qd: c_int,
@@ -810,8 +854,78 @@ pub extern "C" fn demi_getsockopt(
     optval: *mut c_void,
     optlen: *mut Socklen,
 ) -> c_int {
-    // TODO: Implement this system call.
-    libc::ENOSYS
+    trace!("demi_getsockopt()");
+
+    // Check inputs.
+    if level != SOL_SOCKET {
+        let cause: String = format!("Only options at the socket level are supported");
+        error!("demi_getsockopt(): {}", cause);
+        return libc::EINVAL;
+    }
+
+    let opt: SocketOption = match optname {
+        SO_LINGER => SocketOption::SO_LINGER(None),
+        _ => {
+            let cause: String = format!("Only SO_LINGER is supported right now");
+            error!("demi_getsockopt(): {}", cause);
+            return libc::EINVAL;
+        },
+    };
+
+    // Check for invalid storage locations.
+    if optval.is_null() {
+        warn!("demi_getsockopt() option value is a null pointer");
+        return libc::EINVAL;
+    }
+
+    if optlen.is_null() {
+        warn!("demi_getsockopt() option len is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Issue socket operation.
+    let ret: Result<SocketOption, Fail> = match do_syscall(|libos| libos.get_socket_option(qd.into(), opt)) {
+        Ok(result) => result,
+        Err(e) => {
+            trace!("demi_getsockopt() failed: {:?}", e);
+            return e.errno;
+        },
+    };
+
+    match ret {
+        Ok(option) => {
+            // Unpack the value based on the option. We only support linger right now.
+            match option {
+                SocketOption::SO_LINGER(linger) => {
+                    let result: Linger = match linger {
+                        Some(linger) => Linger {
+                            l_onoff: 1,
+                            // Note that the linger values are different types on different platforms.
+                            #[cfg(target_os = "windows")]
+                            l_linger: linger.as_secs() as u16,
+                            #[cfg(target_os = "linux")]
+                            l_linger: linger.as_secs() as i32,
+                        },
+                        None => Linger {
+                            l_onoff: 0,
+                            l_linger: 0,
+                        },
+                    };
+
+                    let result_length = mem::size_of::<Linger>();
+                    unsafe {
+                        ptr::copy(&result as *const Linger as *const c_void, optval, result_length);
+                        *optlen = result_length as Socklen;
+                    }
+                },
+            };
+            0
+        },
+        Err(e) => {
+            trace!("demi_getsockopt() failed: {:?}", e);
+            return e.errno;
+        },
+    }
 }
 
 //======================================================================================================================
@@ -867,70 +981,219 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<Socke
     }
 }
 
-#[test]
-fn test_sockaddr_to_socketaddr() {
-    // Test IPv4 address
-    const PORT: u16 = 80;
-    const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
-    const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
-    let saddr: SockAddr = SockAddr::from(SADDR);
-    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
-        Ok(SocketAddr::V4(addr)) => {
-            assert_eq!(addr.port(), PORT);
-            assert_eq!(addr.ip(), &IPADDR);
-        },
-        _ => panic!("failed to convert"),
-    }
+//======================================================================================================================
+// Unit Tests
+//======================================================================================================================
 
-    // Test IPv6 address
-    const IPADDRV6: Ipv6Addr = Ipv6Addr::LOCALHOST;
-    const SADDR6: SocketAddrV6 = SocketAddrV6::new(IPADDRV6, PORT, 0, 0);
-    let saddr: SockAddr = SockAddr::from(SADDR6);
-    match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
-        Ok(SocketAddr::V6(addr)) => {
-            assert_eq!(addr.port(), PORT);
-            assert_eq!(addr.ip(), &IPADDRV6);
-        },
-        _ => panic!("failed to convert"),
-    }
-}
-
-#[test]
-fn test_sockaddr_to_socketaddr_failure() {
-    const PORT: u16 = 80;
-    const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
-    const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
-    let saddr: SockAddr = SockAddr::from(SADDR);
-
-    // Test invalid socket size
-    let mut storage = unsafe { mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
-    storage.ss_family = AF_INET;
-    match sockaddr_to_socketaddr(
-        ptr::addr_of!(storage).cast(),
-        mem::size_of::<AddressFamily>() as Socklen,
-    ) {
-        Err(e) if e.errno == libc::EINVAL => (),
-        _ => panic!("expected sockaddr_to_socketaddr to fail with EINVAL"),
+#[cfg(test)]
+mod test {
+    use ::std::net::{
+        Ipv4Addr,
+        Ipv6Addr,
+        SocketAddrV4,
+        SocketAddrV6,
+    };
+    use std::{
+        mem,
+        net::SocketAddr,
+        os::raw::c_void,
+        ptr,
     };
 
-    // NB AF_APPLETALK is not supported consistently between win/linux, so redefine here.
-    #[cfg(target_os = "windows")]
-    const AF_APPLETALK: u16 = windows::Win32::Networking::WinSock::AF_APPLETALK;
-    #[cfg(target_os = "linux")]
-    const AF_APPLETALK: u16 = libc::AF_APPLETALK as u16;
+    use libc::{
+        c_char,
+        c_int,
+    };
+    use socket2::{
+        Domain,
+        Protocol,
+        SockAddr,
+        Type,
+    };
 
-    // Test invalid address family (using AF_APPLETALK, since it probably won't be supported in future)
-    assert!(saddr.len() as usize <= mem::size_of::<SockAddrStorage>());
-    unsafe {
-        ptr::copy_nonoverlapping::<u8>(
-            saddr.as_ptr().cast(),
-            ptr::addr_of_mut!(storage).cast(),
-            saddr.len() as usize,
+    use crate::{
+        demikernel::bindings::{
+            demi_getsockopt,
+            demi_init,
+            demi_setsockopt,
+            demi_socket,
+            sockaddr_to_socketaddr,
+        },
+        ensure_eq,
+        ensure_neq,
+        pal::{
+            constants::{
+                AF_INET,
+                SOL_SOCKET,
+                SO_LINGER,
+            },
+            data_structures::{
+                AddressFamily,
+                Linger,
+                SockAddrStorage,
+                Socklen,
+            },
+        },
+    };
+
+    #[test]
+    fn test_sockaddr_to_socketaddr() {
+        // Test IPv4 address
+        const PORT: u16 = 80;
+        const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+        const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
+        let saddr: SockAddr = SockAddr::from(SADDR);
+        match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
+            Ok(SocketAddr::V4(addr)) => {
+                assert_eq!(addr.port(), PORT);
+                assert_eq!(addr.ip(), &IPADDR);
+            },
+            _ => panic!("failed to convert"),
+        }
+
+        // Test IPv6 address
+        const IPADDRV6: Ipv6Addr = Ipv6Addr::LOCALHOST;
+        const SADDR6: SocketAddrV6 = SocketAddrV6::new(IPADDRV6, PORT, 0, 0);
+        let saddr: SockAddr = SockAddr::from(SADDR6);
+        match sockaddr_to_socketaddr(saddr.as_ptr().cast(), saddr.len()) {
+            Ok(SocketAddr::V6(addr)) => {
+                assert_eq!(addr.port(), PORT);
+                assert_eq!(addr.ip(), &IPADDRV6);
+            },
+            _ => panic!("failed to convert"),
+        }
+    }
+
+    #[test]
+    fn test_sockaddr_to_socketaddr_failure() {
+        const PORT: u16 = 80;
+        const IPADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+        const SADDR: SocketAddrV4 = SocketAddrV4::new(IPADDR, PORT);
+        let saddr: SockAddr = SockAddr::from(SADDR);
+
+        // Test invalid socket size
+        let mut storage = unsafe { mem::MaybeUninit::<SockAddrStorage>::zeroed().assume_init() };
+        storage.ss_family = AF_INET;
+        match sockaddr_to_socketaddr(
+            ptr::addr_of!(storage).cast(),
+            mem::size_of::<AddressFamily>() as Socklen,
+        ) {
+            Err(e) if e.errno == libc::EINVAL => (),
+            _ => panic!("expected sockaddr_to_socketaddr to fail with EINVAL"),
+        };
+
+        // NB AF_APPLETALK is not supported consistently between win/linux, so redefine here.
+        #[cfg(target_os = "windows")]
+        const AF_APPLETALK: u16 = windows::Win32::Networking::WinSock::AF_APPLETALK;
+        #[cfg(target_os = "linux")]
+        const AF_APPLETALK: u16 = libc::AF_APPLETALK as u16;
+
+        // Test invalid address family (using AF_APPLETALK, since it probably won't be supported in future)
+        assert!(saddr.len() as usize <= mem::size_of::<SockAddrStorage>());
+        unsafe {
+            ptr::copy_nonoverlapping::<u8>(
+                saddr.as_ptr().cast(),
+                ptr::addr_of_mut!(storage).cast(),
+                saddr.len() as usize,
+            );
+        }
+        storage.ss_family = unsafe { mem::transmute(AF_APPLETALK) };
+        match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), saddr.len()) {
+            Err(e) if e.errno == libc::ENOTSUP => (),
+            _ => panic!("expected sockaddr_to_socketaddr to fail with ENOTSUP"),
+        };
+    }
+
+    #[cfg(not(feature = "catmem-libos"))]
+    #[test]
+    fn test_set_and_get_linger() -> anyhow::Result<()> {
+        // Initialize Demikernel
+        let result: c_int = demi_init(0, 0 as *mut *mut c_char);
+        ensure_eq!(result, 0);
+
+        let mut qd: c_int = 0;
+        let result: c_int = demi_socket(
+            &mut qd as *mut c_int,
+            Domain::IPV4.into(),
+            Type::STREAM.into(),
+            Protocol::TCP.into(),
         );
+
+        ensure_eq!(result, 0);
+        ensure_neq!(qd, 0);
+
+        // Turn linger on.
+        let linger_on: Linger = Linger {
+            l_onoff: 1,
+            l_linger: 1,
+        };
+        let linger_len: usize = mem::size_of::<Linger>();
+        let result: c_int = demi_setsockopt(
+            qd,
+            SOL_SOCKET,
+            SO_LINGER,
+            &linger_on as *const Linger as *const c_void,
+            linger_len as Socklen,
+        );
+
+        // Successfully turned linger on.
+        ensure_eq!(result, 0);
+        // Check linger value.
+        let mut linger_check: Linger = Linger {
+            l_onoff: 0,
+            l_linger: 0,
+        };
+        let mut linger_check_len: usize = 0;
+
+        let result: c_int = demi_getsockopt(
+            qd,
+            SOL_SOCKET,
+            SO_LINGER,
+            &mut linger_check as *mut Linger as *mut c_void,
+            &mut linger_check_len as *mut usize as *mut Socklen,
+        );
+
+        ensure_eq!(result, 0);
+        ensure_eq!(linger_check_len, mem::size_of::<Linger>());
+        ensure_eq!(linger_check.l_onoff, 1);
+        ensure_eq!(linger_check.l_linger, 1);
+
+        // Turn linger off.
+        let linger_on: Linger = Linger {
+            l_onoff: 0,
+            l_linger: 1,
+        };
+        let linger_len: usize = mem::size_of::<Linger>();
+        let result: c_int = demi_setsockopt(
+            qd,
+            SOL_SOCKET,
+            SO_LINGER,
+            &linger_on as *const Linger as *const c_void,
+            linger_len as Socklen,
+        );
+
+        // Successfully turned linger on.
+        ensure_eq!(result, 0);
+
+        // Check linger value is now off.
+        let mut linger_check: Linger = Linger {
+            l_onoff: 1,
+            l_linger: 1,
+        };
+        let mut linger_check_len: usize = 0;
+
+        let result: c_int = demi_getsockopt(
+            qd,
+            SOL_SOCKET,
+            SO_LINGER,
+            &mut linger_check as *mut Linger as *mut c_void,
+            &mut linger_check_len as *mut usize as *mut Socklen,
+        );
+
+        ensure_eq!(result, 0);
+        ensure_eq!(linger_check_len, mem::size_of::<Linger>());
+        ensure_eq!(linger_check.l_onoff, 0);
+
+        Ok(())
     }
-    storage.ss_family = unsafe { mem::transmute(AF_APPLETALK) };
-    match sockaddr_to_socketaddr(ptr::addr_of!(storage).cast(), saddr.len()) {
-        Err(e) if e.errno == libc::ENOTSUP => (),
-        _ => panic!("expected sockaddr_to_socketaddr to fail with ENOTSUP"),
-    };
 }

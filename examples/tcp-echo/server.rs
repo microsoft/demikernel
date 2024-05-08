@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::DEFAULT_TIMEOUT;
+use crate::{
+    DEFAULT_LINGER,
+    DEFAULT_TIMEOUT,
+};
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -16,6 +19,7 @@ use demikernel::{
     LibOS,
     QDesc,
     QToken,
+    SocketOption,
 };
 use std::{
     collections::{
@@ -68,6 +72,7 @@ impl TcpEchoServer {
     pub fn new(mut libos: LibOS, local: SocketAddr) -> Result<Self> {
         // Create a TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+        libos.set_socket_option(sockqd, SocketOption::SO_LINGER(Some(DEFAULT_LINGER)))?;
 
         // Bind the socket to a local address.
         if let Err(e) = libos.bind(sockqd, local) {

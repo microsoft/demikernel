@@ -27,7 +27,10 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::transport::NetworkTransport,
+        network::{
+            socket::option::SocketOption,
+            transport::NetworkTransport,
+        },
         poll_yield,
         DemiRuntime,
         SharedDemiRuntime,
@@ -347,6 +350,46 @@ impl NetworkTransport for SharedCatnapTransport {
             _ => unreachable!("We should have returned an error by now"),
         };
         Ok(sd)
+    }
+
+    /// Set an SO_* option on the socket.
+    fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
+        trace!("Set socket option to {:?}", option);
+        let socket: &mut Socket = self.socket_from_sd(sd);
+        match option {
+            SocketOption::SO_LINGER(linger) => {
+                if let Err(e) = socket.set_linger(linger) {
+                    let errno: i32 = get_libc_err(e);
+                    let cause: String = format!("SO_LINGER failed: {:?}", errno);
+                    error!("set_socket_option(): {}", cause);
+                    Err(Fail::new(errno, &cause))
+                } else {
+                    Ok(())
+                }
+            },
+        }
+    }
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value returned is either
+    /// an error or must match [option] with a value.
+    fn get_socket_option(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail> {
+        trace!("Set socket option to {:?}", option);
+        let socket: &mut Socket = self.socket_from_sd(sd);
+        match option {
+            SocketOption::SO_LINGER(_) => match socket.linger() {
+                Ok(linger) => Ok(SocketOption::SO_LINGER(linger)),
+                Err(e) => {
+                    let errno: i32 = get_libc_err(e);
+                    let cause: String = format!("SO_LINGER failed: {:?}", errno);
+                    error!("set_socket_option(): {}", cause);
+                    Err(Fail::new(errno, &cause))
+                },
+            },
+        }
     }
 
     /// Binds a socket to [local] on the underlying network transport.

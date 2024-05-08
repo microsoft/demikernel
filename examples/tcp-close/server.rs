@@ -7,14 +7,18 @@
 
 use crate::{
     helper_functions,
+    DEFAULT_LINGER,
     DEFAULT_TIMEOUT,
 };
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
+    runtime::{
+        network::socket::option::SocketOption,
+        types::{
+            demi_opcode_t,
+            demi_qresult_t,
+        },
     },
     LibOS,
     QDesc,
@@ -77,6 +81,8 @@ impl TcpServer {
     pub fn new(mut libos: LibOS, local: SocketAddr) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
+        // Set default linger to a short period, otherwise, this test will take a long time to complete.
+        libos.set_socket_option(sockqd, SocketOption::SO_LINGER(Some(DEFAULT_LINGER)))?;
 
         // Bind to local address.
         libos.bind(sockqd, local)?;

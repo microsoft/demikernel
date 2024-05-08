@@ -11,6 +11,7 @@ use crate::runtime::{
         DemiBuffer,
         MemoryRuntime,
     },
+    network::socket::option::SocketOption,
     SharedDemiRuntime,
 };
 use ::socket2::{
@@ -33,6 +34,17 @@ pub trait NetworkTransport: Clone + 'static + MemoryRuntime {
 
     /// Create a socket using the network transport layer.
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail>;
+
+    /// Set an SO_* option on the socket.
+    fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail>;
+
+    /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value returned is either
+    /// an error or must match [option] with a value.
+    fn get_socket_option(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+        option: SocketOption,
+    ) -> Result<SocketOption, Fail>;
 
     /// Bind an address to the socket.
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail>;
