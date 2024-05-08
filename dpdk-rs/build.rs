@@ -67,6 +67,8 @@ fn os_build() -> Result<()> {
         println!("cargo:rustc-link-lib=dylib={}", lib);
     }
 
+    println!("cargo:rustc-link-arg=/experimental:tlsDllInterface");
+
     // Step 2: Generate bindings for the DPDK headers.
     let bindings: Bindings = Builder::default()
         .clang_arg(&format!("-I{}", include_path))
@@ -151,11 +153,11 @@ fn os_build() -> Result<()> {
     // that aren't compiled into the libraries.
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
-    builder.flag("-std=c11");
-    builder.flag("-march=native");
-    builder.flag("-mavx");
-    builder.flag("-mrtm");
-    builder.flag("-mcldemote");
+    builder.flag("/std:c11");
+    builder.flag("/experimental:c11atomics");
+    builder.flag("/experimental:typeof");
+    builder.flag("/experimental:statementExpressions");
+    builder.flag("/experimental:tlsDllInterface");
     builder.file("inlined.c");
     builder.include(include_path);
     builder.compile("inlined");
