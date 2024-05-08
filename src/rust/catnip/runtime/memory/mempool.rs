@@ -74,7 +74,7 @@ impl MemoryPool {
 
         // Fill out some fields of the underlying mbuf.
         unsafe {
-            let mut num_bytes: u16 = (*mbuf_ptr).buf_len - (*mbuf_ptr).data_off;
+            let mut num_bytes: u16 = (*mbuf_ptr).__bindgen_anon_2.__bindgen_anon_1.buf_len - (*mbuf_ptr).__bindgen_anon_1.__bindgen_anon_1.data_off;
 
             if let Some(size) = size {
                 // Check if allocated buffer is big enough.
@@ -85,8 +85,8 @@ impl MemoryPool {
                 }
                 num_bytes = size as u16;
             }
-            (*mbuf_ptr).data_len = num_bytes;
-            (*mbuf_ptr).pkt_len = num_bytes as u32;
+            (*mbuf_ptr).__bindgen_anon_2.__bindgen_anon_1.data_len = num_bytes;
+            (*mbuf_ptr).__bindgen_anon_2.__bindgen_anon_1.pkt_len = num_bytes as u32;
         }
 
         Ok(mbuf_ptr)

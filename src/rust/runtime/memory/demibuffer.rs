@@ -493,7 +493,7 @@ impl DemiBuffer {
                 let mbuf: *mut rte_mbuf = self.as_mbuf();
                 unsafe {
                     // Safety: The `mbuf` dereference below is safe, as it is aligned and dereferenceable.
-                    if ((*mbuf).data_len as usize) < nbytes {
+                    if ((*mbuf).__bindgen_anon_2.__bindgen_anon_1.data_len as usize) < nbytes {
                         return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                     }
                 }
@@ -531,7 +531,7 @@ impl DemiBuffer {
                 let mbuf: *mut rte_mbuf = self.as_mbuf();
                 unsafe {
                     // Safety: The `mbuf` dereference below is safe, as it is aligned and dereferenceable.
-                    if ((*mbuf).data_len as usize) < nbytes {
+                    if ((*mbuf).__bindgen_anon_2.__bindgen_anon_1.data_len as usize) < nbytes {
                         return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                     }
                 }
@@ -735,7 +735,7 @@ impl DemiBuffer {
             // Safety: It is safe to dereference "mbuf" as it is known to be valid.
             let buf_ptr: *mut u8 = (*mbuf).buf_addr as *mut u8;
             // Safety: The call to offset is safe, as its argument is known to remain within the allocated region.
-            buf_ptr.offset((*mbuf).data_off as isize)
+            buf_ptr.offset((*mbuf).__bindgen_anon_1.__bindgen_anon_1.data_off as isize)
         }
     }
 
@@ -758,7 +758,7 @@ impl DemiBuffer {
             Tag::Dpdk => {
                 let mbuf: *const rte_mbuf = self.as_mbuf();
                 // Safety: The `mbuf` dereferences in this block are safe, as it is aligned and dereferenceable.
-                unsafe { (*mbuf).nb_segs != 1 }
+                unsafe { (*mbuf).__bindgen_anon_1.__bindgen_anon_1.nb_segs != 1 }
             },
         }
     }
