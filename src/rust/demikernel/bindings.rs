@@ -908,7 +908,7 @@ pub extern "C" fn demi_getsockopt(
                         },
                     };
 
-                    let result_length = mem::size_of::<Linger>();
+                    let result_length: usize = mem::size_of::<Linger>();
                     unsafe {
                         ptr::copy(&result as *const Linger as *const c_void, optval, result_length);
                         *optlen = result_length as Socklen;
