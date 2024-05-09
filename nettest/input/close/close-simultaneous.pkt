@@ -1,4 +1,4 @@
-// Tests for local close.
+// Tests for simultaneous close.
 
 // Establish a connection.
  +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
@@ -20,10 +20,8 @@
 // Send FIN segment.
 +.0 > F. seq 1(0) ack 1 win 65535 <nop>
 // Receive ACK on FIN segment.
-+.1 < . seq 1(0) ack 2 win 65535 <nop>
-
-// Receive FIN segment.
 +.1 < F. seq 1(0) ack 2 win 65535 <nop>
+
 // Send ACK on FIN segment.
 +.0 > . seq 2(0) ack 2 win 65534 <nop>
 
