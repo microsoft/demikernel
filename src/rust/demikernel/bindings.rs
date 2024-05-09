@@ -794,7 +794,7 @@ pub extern "C" fn demi_setsockopt(
     // Check inputs.
     if level != SOL_SOCKET {
         error!("demi_setsockopt(): only options in SOL_SOCKET level are supported");
-        return libc::EINVAL;
+        return libc::ENOTSUP;
     }
 
     let opt: SocketOption = match optname {
@@ -857,7 +857,7 @@ pub extern "C" fn demi_getsockopt(
     // Check inputs.
     if level != SOL_SOCKET {
         error!("demi_getsockopt(): only options in SOL_SOCKET level are supported");
-        return libc::EINVAL;
+        return libc::ENOTSUP;
     }
 
     let opt: SocketOption = match optname {
