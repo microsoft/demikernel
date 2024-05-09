@@ -36,6 +36,7 @@ On success, zero is returned. On error, a positive error code is returned.
 On error, one of the following positive error codes is returned:
 
 - `EBADF` - The specified `sockqd` is invalid.
+- `EBUSY` - Cannot set option because socket is busy.
 - `EINVAL` - The specified `optval` is invalid.
 - `EINVAL` - The specified `optlen` is invalid.
 - `ENOPROTOOPT` - The specified `optname` is not supported.
