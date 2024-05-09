@@ -33,7 +33,6 @@ extern "C"
     ATTR_NONNULL(2)
     extern int demi_init(_In_ int argc, _In_reads_(argc) _Deref_pre_z_ char *const argv[]);
 
-
     /**
      * @brief Creates a new memory I/O queue.
      *
@@ -115,7 +114,6 @@ extern "C"
     ATTR_NONNULL(1, 3)
     extern int demi_connect(_Out_ demi_qtoken_t *qt_out, _In_ int sockqd,
                             _In_reads_bytes_(size) const struct sockaddr *addr, _In_ socklen_t size);
-
 
     /**
      * @brief Closes an I/O queue descriptor.
