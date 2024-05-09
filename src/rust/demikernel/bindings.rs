@@ -818,7 +818,7 @@ pub extern "C" fn demi_setsockopt(
         },
         _ => {
             error!("demi_setsockopt(): only SO_LINGER is supported right now");
-            return libc::EINVAL;
+            return libc::ENOPROTOOPT;
         },
     };
 
@@ -864,7 +864,7 @@ pub extern "C" fn demi_getsockopt(
         SO_LINGER => SocketOption::SO_LINGER(None),
         _ => {
             error!("demi_getsockopt(): only SO_LINGER is supported right now");
-            return libc::EINVAL;
+            return libc::ENOPROTOOPT;
         },
     };
 
