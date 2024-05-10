@@ -126,6 +126,34 @@ static bool inval_pop(void)
     return (demi_pop(qt, qd) != 0);
 }
 
+/**
+ * @brief Issues an invalid call to demi_setsockopt().
+ */
+static bool inval_setsockopt(void)
+{
+    int qd = -1;
+    int level = -1;
+    int optname = -1;
+    const void *optval = NULL;
+    socklen_t optlen = 0;
+
+    return (demi_setsockopt(qd, level, optname, optval, optlen) != 0);
+}
+
+/**
+ * @brief Issues an invalid call to demi_getsockopt().
+ */
+static bool inval_getsockopt(void)
+{
+    int qd = -1;
+    int level = -1;
+    int optname = -1;
+    void *optval = NULL;
+    socklen_t *optlen = NULL;
+
+    return (demi_getsockopt(qd, level, optname, optval, optlen) != 0);
+}
+
 /*===================================================================================================================*
  * System Calls in demi/sga.h                                                                                        *
  *===================================================================================================================*/
@@ -199,11 +227,7 @@ struct test
 /**
  * @brief Tests for system calls in demi/libos.h
  */
-static struct test tests_libos[] = {{inval_socket, "invalid demi_socket()"},   {inval_accept, "invalid demi_accept()"},
-                                    {inval_bind, "invalid demi_bind()"},       {inval_close, "invalid_demi_close()"},
-                                    {inval_connect, "invalid demi_connect()"}, {inval_listen, "invalid demi_listen()"},
-                                    {inval_pop, "invalid demi_pop()"},         {inval_push, "invalid demi_push()"},
-                                    {inval_pushto, "invalid demi_pushto()"}};
+static struct test tests_libos[] = {{inval_socket, "invalid demi_socket()"}, {inval_accept, "invalid demi_accept()"}, {inval_bind, "invalid demi_bind()"}, {inval_close, "invalid_demi_close()"}, {inval_connect, "invalid demi_connect()"}, {inval_listen, "invalid demi_listen()"}, {inval_pop, "invalid demi_pop()"}, {inval_push, "invalid demi_push()"}, {inval_pushto, "invalid demi_pushto()"}, {inval_setsockopt, "invalid demi_setsockopt()"}, {inval_getsockopt, "invalid demi_getsockopt()}"}};
 
 /**
  * @brief Tests for system calls in demi/sga.h
