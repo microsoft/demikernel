@@ -20,16 +20,16 @@ license-file = "LICENSE.txt"
 #=======================================================================================================================
 
 [build-dependencies]
-cfgrammar = "0.13.4"
-lrlex = "0.13.4"
-lrpar = "0.13.4"
+cfgrammar = "0.13.5"
+lrlex = "0.13.5"
+lrpar = "0.13.5"
 anyhow = "1.0.82"
 libc = "0.2.153"
 
 [dependencies]
-cfgrammar = "0.13.4"
-lrlex = "0.13.4"
-lrpar = "0.13.4"
+cfgrammar = "0.13.5"
+lrlex = "0.13.5"
+lrpar = "0.13.5"
 anyhow = "1.0.83"
 clap = "4.5.4"
 libc = "0.2.154"
