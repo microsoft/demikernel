@@ -27,6 +27,7 @@ use ::socket2::{
 };
 use ::std::{
     net::{
+        Ipv4Addr,
         SocketAddr,
         SocketAddrV4,
     },
@@ -51,6 +52,8 @@ pub struct CatloopTransport {
     runtime: SharedDemiRuntime,
     /// Configuration.
     config: Config,
+    /// Local IP.
+    local_ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
@@ -61,12 +64,14 @@ pub struct SharedCatloopTransport(SharedObject<CatloopTransport>);
 //======================================================================================================================
 
 impl SharedCatloopTransport {
-    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Self {
-        Self(SharedObject::new(CatloopTransport {
+    pub fn new(config: &Config, runtime: SharedDemiRuntime) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::new(CatloopTransport {
             catmem: SharedCatmemLibOS::new(config, runtime.clone()),
             runtime,
             config: config.clone(),
-        }))
+            // Save this here so we can be sure to throw an error before we try to bind.
+            local_ipv4_addr: config.local_ipv4_addr()?,
+        })))
     }
 }
 
@@ -78,7 +83,7 @@ impl NetworkTransport for SharedCatloopTransport {
     /// that wraps the underlying Catmem queue.
     fn socket(&mut self, _: Domain, _: Type) -> Result<Self::SocketDescriptor, Fail> {
         // Create fake socket.
-        Ok(SharedMemorySocket::new())
+        SharedMemorySocket::new(&self.config)
     }
 
     /// Set an SO_* option on the socket.
@@ -109,7 +114,7 @@ impl NetworkTransport for SharedCatloopTransport {
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
         // Check if we are binding to a non-local address.
         let local: SocketAddrV4 = unwrap_socketaddr(local)?;
-        if &self.config.local_ipv4_addr() != local.ip() {
+        if self.local_ipv4_addr != *local.ip() {
             let cause: String = format!("cannot bind to non-local address (sd={:?})", sd);
             error!("bind(): {}", cause);
             return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));

@@ -131,12 +131,28 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
     pub fn new(config: Config) -> Result<Self, Fail> {
+        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for TCP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for UDP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
         let (mm, port_id, link_addr) = Self::initialize_dpdk(
-            &config.eal_init_args(),
-            config.use_jumbo_frames(),
+            &config.eal_init_args()?,
+            config.enable_jumbo_frames()?,
             config.mtu()?,
-            config.tcp_checksum_offload(),
-            config.udp_checksum_offload(),
+            tcp_offload.unwrap_or(false),
+            udp_offload.unwrap_or(false),
         )
         .unwrap();
 
@@ -144,10 +160,8 @@ impl SharedDPDKRuntime {
             Some(Duration::from_secs(15)),
             Some(Duration::from_secs(20)),
             Some(5),
-            Some(config.arp_table()),
-            Some(config.disable_arp()),
+            config.arp_table()?,
         );
-
         let tcp_config = TcpConfig::new(
             Some(config.mss()?),
             None,
@@ -155,17 +169,17 @@ impl SharedDPDKRuntime {
             Some(0xffff),
             Some(0),
             None,
-            Some(config.tcp_checksum_offload()),
-            Some(config.udp_checksum_offload()),
+            tcp_offload,
+            tcp_offload,
         );
 
-        let udp_config = UdpConfig::new(Some(config.udp_checksum_offload()), Some(config.udp_checksum_offload()));
+        let udp_config = UdpConfig::new(udp_offload, udp_offload);
 
         Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
             mm,
             port_id,
             link_addr,
-            ipv4_addr: config.local_ipv4_addr(),
+            ipv4_addr: config.local_ipv4_addr()?,
             arp_config,
             tcp_config,
             udp_config,

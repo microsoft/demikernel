@@ -82,7 +82,7 @@ impl TcpServer {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
         // Set default linger to a short period, otherwise, this test will take a long time to complete.
-        libos.set_socket_option(sockqd, SocketOption::SO_LINGER(Some(DEFAULT_LINGER)))?;
+        libos.set_socket_option(sockqd, SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
         // Bind to local address.
         libos.bind(sockqd, local)?;

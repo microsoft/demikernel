@@ -29,6 +29,9 @@ pub type AddressFamily = WinSock::ADDRESS_FAMILY;
 #[cfg(target_os = "windows")]
 pub type Linger = WinSock::LINGER;
 
+#[cfg(target_os = "windows")]
+pub type KeepAlive = WinSock::tcp_keepalive;
+
 //==============================================================================
 // Linux data structures
 //==============================================================================
@@ -53,3 +56,6 @@ pub type AddressFamily = libc::sa_family_t;
 
 #[cfg(target_os = "linux")]
 pub type Linger = libc::linger;
+
+#[cfg(target_os = "linux")]
+pub type KeepAlive = bool;

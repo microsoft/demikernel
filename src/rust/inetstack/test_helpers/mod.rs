@@ -44,7 +44,6 @@ pub fn new_alice(now: Instant) -> SharedEngine {
         Some(Duration::from_secs(1)),
         Some(2),
         Some(HashMap::new()),
-        Some(false),
     );
     let udp_config: UdpConfig = UdpConfig::default();
     let tcp_config: TcpConfig = TcpConfig::default();
@@ -59,7 +58,6 @@ pub fn new_bob(now: Instant) -> SharedEngine {
         Some(Duration::from_secs(1)),
         Some(2),
         Some(HashMap::new()),
-        Some(false),
     );
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
@@ -76,7 +74,6 @@ pub fn new_alice2(now: Instant) -> SharedEngine {
         Some(Duration::from_secs(1)),
         Some(2),
         Some(arp),
-        Some(false),
     );
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
@@ -93,7 +90,6 @@ pub fn new_bob2(now: Instant) -> SharedEngine {
         Some(Duration::from_secs(1)),
         Some(2),
         Some(arp),
-        Some(false),
     );
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();
@@ -107,7 +103,6 @@ pub fn new_carrie(now: Instant) -> SharedEngine {
         Some(Duration::from_secs(1)),
         Some(2),
         Some(HashMap::new()),
-        Some(false),
     );
     let udp_config = UdpConfig::default();
     let tcp_config = TcpConfig::default();

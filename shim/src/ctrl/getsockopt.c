@@ -37,17 +37,9 @@ int __getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *op
     TRACE("sockfd=%d, level=%d, optname=%d, optval=%p, optlen=%p", sockfd, level, optname, optval, (void *)optlen);
 
     // Issue warnings for common options that are not supported.
-    if (level == SOL_SOCKET && optname == SO_KEEPALIVE)
-    {
-        WARN("%s is not supported", "SO_KEEPALIVE");
-    }
-    else if (level == SOL_SOCKET && optname == SO_REUSEADDR)
+    if (level == SOL_SOCKET && optname == SO_REUSEADDR)
     {
         WARN("%s is not supported", "SO_REUSEADDR");
-    }
-    else if (level == IPPROTO_TCP && optname == TCP_NODELAY)
-    {
-        WARN("%s is not supported", "TCP_NODELAY");
     }
     else if (level == IPPROTO_TCP && optname == TCP_KEEPIDLE)
     {

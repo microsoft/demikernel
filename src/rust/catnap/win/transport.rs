@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod config;
 mod error;
 mod overlapped;
 mod socket;
@@ -14,7 +13,6 @@ mod winsock;
 use std::{
     net::SocketAddr,
     pin::Pin,
-    time::Duration,
     net::SocketAddrV4,
 };
 
@@ -52,7 +50,10 @@ use crate::{
             MemoryRuntime,
         },
         network::{
-            socket::option::SocketOption,
+            socket::option::{
+                SocketOption,
+                TcpSocketOptions,
+            },
             transport::NetworkTransport,
         },
         poll_yield,
@@ -67,18 +68,6 @@ use ::futures::FutureExt;
 // Structures
 //======================================================================================================================
 
-/// Structured configuration values loaded from `Config`.
-pub(super) struct WinConfig {
-    /// TCP keepalive parameters.
-    keepalive_params: tcp_keepalive,
-
-    /// Linger socket options.
-    linger_time: Option<Duration>,
-
-    /// Whether Nagle's algorithm is enabled or disabled.
-    nagle: Option<bool>,
-}
-
 /// Underlying network transport.
 pub struct CatnapTransport {
     /// Winsock runtime instance.
@@ -87,8 +76,8 @@ pub struct CatnapTransport {
     /// I/O completion port for overlapped I/O.
     iocp: IoCompletionPort<SocketOpState>,
 
-    /// Configuration values.
-    config: WinConfig,
+    /// Tcp socket options.
+    options: TcpSocketOptions,
 
     /// Shared Demikernel runtime.
     runtime: SharedDemiRuntime,
@@ -104,32 +93,23 @@ pub struct SharedCatnapTransport(SharedObject<CatnapTransport>);
 
 impl SharedCatnapTransport {
     /// Create a new transport instance.
-    pub fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Self {
-        let config: WinConfig = WinConfig {
-            keepalive_params: expect_ok!(config.tcp_keepalive(), "failed to load TCP settings"),
-            linger_time: expect_ok!(config.linger_time(), "failed to load linger settings"),
-            nagle: expect_ok!(config.nagle(), "failed to load nagle's algorithm settings"),
-        };
-
+    pub fn new(config: &Config, runtime: &mut SharedDemiRuntime) -> Result<Self, Fail> {
         let me: Self = Self(SharedObject::new(CatnapTransport {
             winsock: expect_ok!(WinsockRuntime::new(), "failed to initialize WinSock"),
             iocp: expect_ok!(IoCompletionPort::new(), "failed to setup I/O completion port"),
-            config,
+            options: TcpSocketOptions::new(config)?,
             runtime: runtime.clone(),
         }));
 
-        expect_ok!(
-            runtime.insert_background_coroutine(
-                "catnap::transport::epoll",
-                Box::pin({
-                    let mut me: Self = me.clone();
-                    async move { me.run_event_processor().await }.fuse()
-                }),
-            ),
-            "should be able to insert background coroutine"
-        );
+        runtime.insert_background_coroutine(
+            "catnap::transport::epoll",
+            Box::pin({
+                let mut me: Self = me.clone();
+                async move { me.run_event_processor().await }.fuse()
+            }),
+        )?;
 
-        me
+        Ok(me)
     }
 
     /// Run a coroutine which pulls the I/O completion port for events.
@@ -169,7 +149,7 @@ impl NetworkTransport for SharedCatnapTransport {
         // Create socket.
         let s: Socket = me
             .winsock
-            .socket(domain.into(), typ.into(), protocol.0, &me.config, &me.iocp)?;
+            .socket(domain.into(), typ.into(), protocol.0, &me.options, &me.iocp)?;
         Ok(s)
     }
 
@@ -177,7 +157,9 @@ impl NetworkTransport for SharedCatnapTransport {
     fn set_socket_option(&mut self, socket: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
         trace!("Set socket option to {:?}", option);
         match option {
-            SocketOption::SO_LINGER(linger) => socket.set_linger(linger),
+            SocketOption::Linger(linger) => socket.set_linger(linger),
+            SocketOption::KeepAlive(tcp_keepalive) => socket.set_tcp_keepalive(&tcp_keepalive),
+            SocketOption::NoDelay(nagle_enabled) => socket.set_nagle(nagle_enabled),
         }
     }
 
@@ -190,7 +172,22 @@ impl NetworkTransport for SharedCatnapTransport {
     ) -> Result<SocketOption, Fail> {
         trace!("Get socket option: {:?}", option);
         match option {
-            SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(socket.get_linger()?)),
+            SocketOption::Linger(_) => Ok(SocketOption::Linger(socket.get_linger()?)),
+            SocketOption::KeepAlive(_) => Ok(SocketOption::KeepAlive(socket.get_tcp_keepalive()?)),
+            SocketOption::NoDelay(_) => Ok(SocketOption::NoDelay(socket.get_nagle()?)),
+        }
+    }
+
+    // Gets address of peer connected to socket
+    fn getpeername(&mut self, socket: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
+        let addr: Result<SocketAddrV4, Fail> = socket.getpeername();
+        match addr {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                let cause: String = format!("failed to get peer address (errno={:?})", unsafe { WSAGetLastError() });
+                error!("getpeername(): {:?}", cause);
+                Err(Fail::new(libc::EINVAL, &cause))
+            },
         }
     }
 
@@ -226,11 +223,9 @@ impl NetworkTransport for SharedCatnapTransport {
         }
         .await
         {
-            Err(err) if err.errno == libc::ENOTCONN => {
-                match socket.shutdown() {
-                    Err(err) if err.errno == libc::ENOTCONN => Ok(()),
-                    r => r,
-                }
+            Err(err) if err.errno == libc::ENOTCONN => match socket.shutdown() {
+                Err(err) if err.errno == libc::ENOTCONN => Ok(()),
+                r => r,
             },
             r => r,
         }

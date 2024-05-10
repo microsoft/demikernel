@@ -113,7 +113,7 @@ pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
 
 impl<N: NetworkRuntime> SharedInetStack<N> {
     pub fn new(config: Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
-        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr(), config.local_ipv4_addr())
+        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr()?, config.local_ipv4_addr()?)
     }
 
     pub fn new_test(

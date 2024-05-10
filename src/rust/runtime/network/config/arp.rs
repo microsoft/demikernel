@@ -43,7 +43,6 @@ impl ArpConfig {
         request_timeout: Option<Duration>,
         retry_count: Option<usize>,
         initial_values: Option<HashMap<Ipv4Addr, MacAddress>>,
-        disable_arp: Option<bool>,
     ) -> Self {
         let mut config: ArpConfig = Self::default();
 
@@ -58,9 +57,8 @@ impl ArpConfig {
         }
         if let Some(initial_values) = initial_values {
             config.set_initial_values(initial_values);
-        }
-        if let Some(disable_arp) = disable_arp {
-            config.set_disable_arp(disable_arp);
+        } else {
+            config.set_disable_arp(true);
         }
 
         config

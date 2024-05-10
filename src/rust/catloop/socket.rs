@@ -7,6 +7,7 @@
 
 use crate::{
     catmem::SharedCatmemLibOS,
+    demikernel::config::Config,
     expect_ok,
     expect_some,
     runtime::{
@@ -90,8 +91,8 @@ pub struct RequestId(u64);
 
 impl SharedMemorySocket {
     /// Creates a new socket that is not bound to an address.
-    pub fn new() -> Self {
-        Self(SharedObject::new(MemorySocket {
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::new(MemorySocket {
             catmem_qd: None,
             local: None,
             remote: None,
@@ -101,13 +102,18 @@ impl SharedMemorySocket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
-            options: TcpSocketOptions::default(),
-        }))
+            options: TcpSocketOptions::new(config)?,
+        })))
     }
 
     /// Allocates a new socket that is bound to [local].
-    fn alloc(catmem_qd: QDesc, local: Option<SocketAddrV4>, remote: Option<SocketAddrV4>) -> Self {
-        Self(SharedObject::new(MemorySocket {
+    fn alloc(
+        catmem_qd: QDesc,
+        local: Option<SocketAddrV4>,
+        remote: Option<SocketAddrV4>,
+        options: &TcpSocketOptions,
+    ) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::new(MemorySocket {
             catmem_qd: Some(catmem_qd),
             local,
             remote,
@@ -117,14 +123,16 @@ impl SharedMemorySocket {
             rng: SmallRng::seed_from_u64(REQUEST_ID_SEED),
             #[cfg(not(debug_assertions))]
             rng: SmallRng::from_entropy(),
-            options: TcpSocketOptions::default(),
-        }))
+            options: options.clone(),
+        })))
     }
 
     /// Set an SO_* option on the socket.
     pub fn set_socket_option(&mut self, option: SocketOption) -> Result<(), Fail> {
         match option {
-            SocketOption::SO_LINGER(linger) => self.options.set_linger(linger),
+            SocketOption::Linger(linger) => self.options.set_linger(linger),
+            SocketOption::KeepAlive(keepalive) => self.options.set_keepalive(keepalive),
+            SocketOption::NoDelay(nodelay) => self.options.set_nodelay(nodelay),
         }
         Ok(())
     }
@@ -133,7 +141,9 @@ impl SharedMemorySocket {
     /// [option].
     pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
         match option {
-            SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(self.options.get_linger())),
+            SocketOption::Linger(_) => Ok(SocketOption::Linger(self.options.get_linger())),
+            SocketOption::KeepAlive(_) => Ok(SocketOption::KeepAlive(self.options.get_keepalive())),
+            SocketOption::NoDelay(_) => Ok(SocketOption::NoDelay(self.options.get_nodelay())),
         }
     }
 
@@ -205,7 +215,7 @@ impl SharedMemorySocket {
         };
 
         let new_addr: SocketAddrV4 = SocketAddrV4::new(ipv4, new_port);
-        let new_socket: Self = Self::alloc(new_qd, Some(new_addr), None);
+        let new_socket: Self = Self::alloc(new_qd, Some(new_addr), None, &self.options)?;
 
         // Check that the remote has retrieved the port number and responded with a valid request id.
         match pop_request_id(catmem.clone(), new_qd).await {

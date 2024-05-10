@@ -267,8 +267,6 @@ fn new_engine(
     remote_mac: &MacAddress,
     remote_ipv4: &Ipv4Addr,
 ) -> Result<SharedEngine> {
-    let disable_arp: bool = false;
-
     let arp_config: ArpConfig = {
         let initial_values: Option<HashMap<Ipv4Addr, MacAddress>> = {
             let mut initial_values: HashMap<Ipv4Addr, MacAddress> = HashMap::new();
@@ -282,7 +280,6 @@ fn new_engine(
             Some(ARP_REQUEST_TIMEOUT),
             Some(ARP_RETRY_COUNT),
             initial_values,
-            Some(disable_arp),
         )
     };
     let udp_config: UdpConfig = UdpConfig::default();

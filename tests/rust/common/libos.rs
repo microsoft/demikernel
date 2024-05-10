@@ -77,7 +77,6 @@ impl DummyLibOS {
             Some(Duration::from_secs(1)),
             Some(2),
             Some(arp.clone()),
-            Some(false),
         );
         let udp_config: UdpConfig = UdpConfig::default();
         let tcp_config: TcpConfig = TcpConfig::default();

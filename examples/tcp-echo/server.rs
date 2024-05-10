@@ -72,7 +72,7 @@ impl TcpEchoServer {
     pub fn new(mut libos: LibOS, local: SocketAddr) -> Result<Self> {
         // Create a TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-        libos.set_socket_option(sockqd, SocketOption::SO_LINGER(Some(DEFAULT_LINGER)))?;
+        libos.set_socket_option(sockqd, SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
         // Bind the socket to a local address.
         if let Err(e) = libos.bind(sockqd, local) {
