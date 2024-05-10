@@ -24,7 +24,7 @@ cfgrammar = "0.13.5"
 lrlex = "0.13.5"
 lrpar = "0.13.5"
 anyhow = "1.0.82"
-libc = "0.2.153"
+libc = "0.2.154"
 
 [dependencies]
 cfgrammar = "0.13.5"
