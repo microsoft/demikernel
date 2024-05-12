@@ -5,7 +5,7 @@
 #include <demi/sga.h>
 #include <demi/wait.h>
 
-static int __demi_reent_guard = 0;
+static __thread int __demi_reent_guard = 0;
 
 #define DEMI_CALL(type, fn, ...)    \
     {                               \
