@@ -33,6 +33,7 @@ use ::socket2::{
     Domain,
     Type,
 };
+use std::net::SocketAddrV4;
 use ::std::{
     any::Any,
     net::{

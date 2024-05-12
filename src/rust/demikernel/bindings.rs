@@ -48,6 +48,7 @@ use ::libc::{
     sockaddr,
 };
 use ::socket2::SockAddr;
+use std::net::SocketAddrV4;
 use ::std::{
     cell::RefCell,
     ffi::CStr,
@@ -976,6 +977,59 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
 
             return 0;
         },
+        Err(e) => {
+            trace!("demi_getpeername() failed {:?}", e);
+            return e.errno;
+        },
+    }
+}
+
+//======================================================================================================================
+// getpeername
+//======================================================================================================================
+
+#[no_mangle]
+pub extern "C" fn demi_getpeername(
+    qd: c_int,
+    addr: *mut data_structures::SockAddr,
+    addrlen: *mut Socklen
+) -> c_int {
+    trace!("demi_getpeername()");
+
+    // Check for invalid storage locations.
+    if addr.is_null() {
+        warn!("demi_getpeername() addr value is a null pointer");
+        return libc::EFAULT;
+    }
+
+    if addrlen.is_null() {
+        warn!("demi_getpeername(): addrlen value is a null pointer");
+        return libc::EINVAL;
+    }
+
+    // Issue peername operation on socket.
+    let ret: Result<SocketAddrV4, Fail> = match do_syscall(|libos| libos.getpeername(qd.into())) {
+        Ok(result) => result,
+        Err(e) => {
+            trace!("demi_getpeername(_ failed: {:?}", e);
+            return e.errno;
+        }
+    };
+
+    match ret {
+        Ok(sockaddr) => {
+            let result: data_structures::SockAddr = socketaddrv4_to_sockaddr(&sockaddr);
+            let result_length: usize = mem::size_of::<data_structures::SockAddr>();
+            
+            unsafe {
+                if (result_length as Socklen) < *addrlen {
+                    *addrlen = result_length as Socklen;
+                }
+                ptr::copy(&result, addr, *addrlen as usize);
+            }
+
+            return 0;
+        }
         Err(e) => {
             trace!("demi_getpeername() failed {:?}", e);
             return e.errno;

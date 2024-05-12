@@ -18,6 +18,7 @@ use ::socket2::{
     Domain,
     Type,
 };
+use std::net::SocketAddrV4;
 use ::std::{
     fmt::Debug,
     net::{
@@ -25,6 +26,7 @@ use ::std::{
         SocketAddrV4,
     },
 };
+
 
 //======================================================================================================================
 // Trait Definition
@@ -49,7 +51,10 @@ pub trait NetworkTransport: Clone + 'static + MemoryRuntime {
         option: SocketOption,
     ) -> Result<SocketOption, Fail>;
 
-    fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail>;
+    fn getpeername(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+    ) -> Result<SocketAddrV4, Fail>;
 
     /// Bind an address to the socket.
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail>;
