@@ -50,6 +50,7 @@ use ::std::{
     net::{
         Shutdown,
         SocketAddr,
+        SocketAddrV4,
     },
     ops::{
         Deref,
@@ -388,6 +389,27 @@ impl NetworkTransport for SharedCatnapTransport {
                     error!("set_socket_option(): {}", cause);
                     Err(Fail::new(errno, &cause))
                 },
+            },
+        }
+    }
+
+    // Gets peer name of connected socket.
+    fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
+        let socket: &mut Socket = self.socket_from_sd(sd);
+        match socket.peer_addr() {
+            Ok(addr) => match addr.as_socket_ipv4() {
+                Some(ipv4_addr) => Ok(ipv4_addr),
+                None => {
+                    let cause: String = format!("invalid IPv4 address");
+                    error!("getpeername(): {}", cause);
+                    Err(Fail::new(libc::EINVAL, &cause))
+                },
+            },
+            Err(e) => {
+                let errno: i32 = get_libc_err(e);
+                let cause: String = format!("failed to get peer name (errno={:?})", errno);
+                error!("getpeername(): {}", cause);
+                Err(Fail::new(errno, &cause))
             },
         }
     }

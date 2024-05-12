@@ -31,6 +31,7 @@ extern int __demi_sgafree(demi_sgarray_t *sga);
 extern int __demi_wait(demi_qresult_t *qr_out, demi_qtoken_t qt, const struct timespec *timeout);
 extern int __demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken_t qts[], int num_qts,
                            const struct timespec *timeout);
+extern int __demi_getpeername(int qd, struct sockaddr *addr, socklen_t *addrlen);
 
 extern int __init(void);
 extern int __socket(int domain, int type, int protocol);

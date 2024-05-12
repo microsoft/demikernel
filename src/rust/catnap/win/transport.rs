@@ -15,15 +15,16 @@ use std::{
     net::SocketAddr,
     pin::Pin,
     time::Duration,
+    net::SocketAddrV4,
 };
 
-use libc::ENOTSUP;
 use windows::Win32::{
     Networking::WinSock::{
         tcp_keepalive,
         IPPROTO,
         IPPROTO_TCP,
         IPPROTO_UDP,
+        WSAGetLastError,
     },
     System::IO::OVERLAPPED,
 };
@@ -159,7 +160,7 @@ impl NetworkTransport for SharedCatnapTransport {
             _ => {
                 let cause: String = format!("socket type not supported: {}", libc::c_int::from(typ));
                 error!("transport::socket(): {}", &cause);
-                return Err(Fail::new(ENOTSUP, &cause));
+                return Err(Fail::new(libc::ENOTSUP, &cause));
             },
         };
 
@@ -190,6 +191,22 @@ impl NetworkTransport for SharedCatnapTransport {
         trace!("Get socket option: {:?}", option);
         match option {
             SocketOption::SO_LINGER(_) => Ok(SocketOption::SO_LINGER(socket.get_linger()?)),
+        }
+    }
+
+    // Gets address of peer connected to socket
+    fn getpeername(
+        &mut self,
+        socket: &mut Self::SocketDescriptor
+    ) -> Result<SocketAddrV4, Fail> {
+        let addr: Result<SocketAddrV4, Fail> = socket.getpeername();
+        match addr {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                let cause: String = format!("failed to get peer address (errno={:?})", unsafe { WSAGetLastError() } );
+                error!("getpeername(): {:?}", cause);
+                Err(Fail::new(libc::EINVAL, &cause))
+            }
         }
     }
 

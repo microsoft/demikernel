@@ -27,7 +27,10 @@ use crate::{
     },
 };
 use ::std::{
-    net::SocketAddr,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
@@ -109,6 +112,20 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnip(libos) => libos.get_socket_option(sockqd, option),
             #[cfg(feature = "catloop-libos")]
             NetworkLibOSWrapper::Catloop(libos) => libos.get_socket_option(sockqd, option),
+        }
+    }
+
+    /// Gets the address of the peer connected to the socket.
+    pub fn getpeername(&mut self, sockqd: QDesc) -> Result<SocketAddrV4, Fail> {
+        match self {
+            #[cfg(feature = "catpowder-libos")]
+            NetworkLibOSWrapper::Catpowder(libos) => libos.getpeername(sockqd),
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap(libos) => libos.getpeername(sockqd),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip(libos) => libos.getpeername(sockqd),
+            #[cfg(feature = "catloop-libos")]
+            NetworkLibOSWrapper::Catloop(libos) => libos.getpeername(sockqd),
         }
     }
 

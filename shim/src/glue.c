@@ -101,3 +101,8 @@ int __demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken
 {
     DEMI_CALL(int, demi_wait_any, qr_out, ready_offset, qts, num_qts, timeout);
 }
+
+int __demi_getpeername(int qd, struct sockaddr *addr, socklen_t *addrlen)
+{
+    DEMI_CALL(int, demi_getpeername, qd, addr, addrlen);
+}

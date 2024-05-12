@@ -130,6 +130,14 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         socket.get_socket_option(option)
     }
 
+    /// Gets a peer address on a TCP socket.
+    pub fn getpeername(
+        &mut self,
+        socket: &mut SharedTcpSocket<N>,
+    ) -> Result<SocketAddrV4, Fail> {
+        socket.getpeername()
+    }
+
     /// Binds a socket to a local address supplied by [local].
     pub fn bind(&mut self, socket: &mut SharedTcpSocket<N>, local: SocketAddrV4) -> Result<(), Fail> {
         // All other checks should have been done already.

@@ -217,6 +217,12 @@ impl Socket {
         }
     }
 
+    /// Get address of peer connected to socket
+    pub fn getpeername(&self) -> Result<SocketAddrV4, Fail> {
+        let addr: Result<SocketAddrV4, Fail> = WinsockRuntime::getpeername(self.s);
+        addr
+    }
+
     /// Set TCP keepalive socket options.
     fn set_tcp_keepalive(&self, keepalive_params: &tcp_keepalive) -> Result<(), Fail> {
         unsafe { WinsockRuntime::do_setsockopt(self.s, SOL_SOCKET, SO_KEEPALIVE, Some(&keepalive_params.onoff)) }?;

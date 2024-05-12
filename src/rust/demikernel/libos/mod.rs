@@ -55,7 +55,10 @@ use crate::{
 };
 use ::std::{
     env,
-    net::SocketAddr,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
@@ -293,6 +296,30 @@ impl LibOS {
                 LibOS::MemoryLibOS(_) => {
                     let cause: String = format!("Socket options are not supported on memory liboses");
                     error!("get_socket_option(): {}", cause);
+                    Err(Fail::new(libc::ENOTSUP, &cause))
+                },
+            }
+        };
+
+        self.poll();
+
+        result
+    }
+
+    pub fn getpeername(&mut self, sockqd: QDesc) -> Result<SocketAddrV4, Fail> {
+        let result: Result<SocketAddrV4, Fail> = {
+            match self {
+                #[cfg(any(
+                    feature = "catnap-libos",
+                    feature = "catnip-libos",
+                    feature = "catpowder-libos",
+                    feature = "catloop-libos"
+                ))]
+                LibOS::NetworkLibOS(libos) => libos.getpeername(sockqd),
+                #[cfg(feature = "catmem-libos")]
+                LibOS::MemoryLibOS(_) => {
+                    let cause: String = format!("Peername is not supported on memory liboses");
+                    error!("getpeername(): {}", cause);
                     Err(Fail::new(libc::ENOTSUP, &cause))
                 },
             }
