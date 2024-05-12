@@ -192,6 +192,22 @@ impl NetworkTransport for SharedCatnapTransport {
         }
     }
 
+    // Gets address of peer connected to socket
+    fn get_peername(
+        &mut self,
+        socket: &mut Self::SocketDescriptor
+    ) -> Result<SocketAddrV4, Fail> {
+        addr = socket.peer_addr()?;
+        match addr.as_socket_ipv4() {
+            Some(ipv4_addr) => Ok(ipv4_addr),
+            None => {
+                let cause: String = format!("as_socket_ipv4() on socket failed");
+                error!("getpeername(): {}", cause);
+                Err(Fail::new(EINVAL, &cause))
+            }
+        }
+    }
+
     /// Synchronously shut down the specified socket.
     fn hard_close(&mut self, socket: &mut Self::SocketDescriptor) -> Result<(), Fail> {
         socket.shutdown()
