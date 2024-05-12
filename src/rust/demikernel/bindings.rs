@@ -999,7 +999,7 @@ pub extern "C" fn demi_getpeername(
     // Check for invalid storage locations.
     if addr.is_null() {
         warn!("demi_getpeername() addr value is a null pointer");
-        return libc::EFAULT;
+        return libc::EINVAL;
     }
 
     if addrlen.is_null() {
