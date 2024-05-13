@@ -21,8 +21,10 @@ LD_LIBRARY_PATH = $(USERPROFILE)/lib
 # Build Configuration
 #=======================================================================================================================
 
+RUST_LOG = none
 BUILD = release
 !if "$(DEBUG)" == "yes"
+RUST_LOG = trace
 BUILD = dev
 !endif
 
@@ -240,6 +242,7 @@ test-system: test-system-rust
 
 # Rust system tests.
 test-system-rust:
+	set RUST_LOG=$(RUST_LOG)
 	$(BINDIR)\examples\rust\$(TEST).exe $(ARGS)
 
 # Runs unit tests.
@@ -247,10 +250,12 @@ test-unit: test-unit-rust
 
 # C unit tests.
 test-unit-c: all-tests-c
+	set RUST_LOG=$(RUST_LOG)
 	$(BINDIR)\syscalls.exe
 
 # Rust unit tests.
 test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
+	set RUST_LOG=$(RUST_LOG)
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
@@ -261,16 +266,20 @@ test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
 # Rust unit tests for the library.
 test-unit-rust-lib: all-tests-rust
 	set INPUT=$(INPUT)
+	set RUST_LOG=$(RUST_LOG)
 	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Rust unit tests for UDP.
 test-unit-rust-udp: all-tests-rust
+	set RUST_LOG=$(RUST_LOG)
 	$(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Rust unit tests for TCP.
 test-unit-rust-tcp: all-tests-rust
+	set RUST_LOG=$(RUST_LOG)
 	$(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Runs Rust integration tests.
 test-integration-rust:
+	set RUST_LOG=$(RUST_LOG)
 	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
