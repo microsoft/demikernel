@@ -7,6 +7,7 @@
 #include "../utils.h"
 #include <demi/libos.h>
 #include <errno.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 
 /**
@@ -35,12 +36,35 @@ int __getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *op
 
     TRACE("sockfd=%d, level=%d, optname=%d, optval=%p, optlen=%p", sockfd, level, optname, optval, (void *)optlen);
 
-    // TODO: Hook in demi_getsockopt().
-    UNUSED(level);
-    UNUSED(optname);
-    UNUSED(optval);
-    UNUSED(optlen);
-    UNIMPLEMETED("demi_getsockopt() is not hooked in");
+    // Issue warnings for common options that are not supported.
+    if (level == SOL_SOCKET && optname == SO_KEEPALIVE)
+    {
+        WARN("%s is not supported", "SO_KEEPALIVE");
+    }
+    else if (level == SOL_SOCKET && optname == SO_REUSEADDR)
+    {
+        WARN("%s is not supported", "SO_REUSEADDR");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_NODELAY)
+    {
+        WARN("%s is not supported", "TCP_NODELAY");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPIDLE)
+    {
+        WARN("%s is not supported", "TCP_KEEPIDLE");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPINTVL)
+    {
+        WARN("%s is not supported", "TCP_KEEPINTLVL");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_KEEPCNT)
+    {
+        WARN("%s is not supported", "TCP_KEEPCNT");
+    }
+    else if (level == IPPROTO_TCP && optname == TCP_ULP)
+    {
+        WARN("%s is not supported", "TCP_ULP");
+    }
 
-    return (ret);
+    return (demi_getsockopt(sockfd, level, optname, optval, optlen));
 }
