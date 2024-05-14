@@ -193,11 +193,11 @@ impl NetworkTransport for SharedCatnapTransport {
     }
 
     // Gets address of peer connected to socket
-    fn get_peername(
+    fn getpeername(
         &mut self,
         socket: &mut Self::SocketDescriptor
     ) -> Result<SocketAddrV4, Fail> {
-        addr = socket.peer_addr()?;
+        let addr = socket.peer_addr()?;
         match addr.as_socket_ipv4() {
             Some(ipv4_addr) => Ok(ipv4_addr),
             None => {
