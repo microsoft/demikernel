@@ -793,21 +793,20 @@ pub extern "C" fn demi_setsockopt(
 
     // Check inputs.
     if level != SOL_SOCKET {
-        let cause: String = format!("Only options at the socket level are supported");
-        error!("demi_setsockopt(): {}", cause);
-        return libc::EINVAL;
+        error!("demi_setsockopt(): only options in SOL_SOCKET level are supported");
+        return libc::ENOTSUP;
     }
 
     let opt: SocketOption = match optname {
         SO_LINGER => {
             // Check for invalid storage locations.
             if optval.is_null() {
-                warn!("demi_setsockopt() linger value is a null pointer");
+                error!("demi_setsockopt(): linger value is a null pointer");
                 return libc::EINVAL;
             }
 
             if optlen as usize != mem::size_of::<Linger>() {
-                warn!("demi_setsockopt() linger len is incorrect");
+                warn!("demi_setsockopt(): linger len is incorrect");
                 return libc::EINVAL;
             }
 
@@ -818,9 +817,8 @@ pub extern "C" fn demi_setsockopt(
             }
         },
         _ => {
-            let cause: String = format!("Only SO_LINGER is supported right now");
-            error!("demi_setsockopt(): {}", cause);
-            return libc::EINVAL;
+            error!("demi_setsockopt(): only SO_LINGER is supported right now");
+            return libc::ENOPROTOOPT;
         },
     };
 
@@ -828,7 +826,7 @@ pub extern "C" fn demi_setsockopt(
     let ret: Result<(), Fail> = match do_syscall(|libos| libos.set_socket_option(qd.into(), opt)) {
         Ok(result) => result,
         Err(e) => {
-            trace!("demi_getsockopt() failed: {:?}", e);
+            trace!("demi_getsockopt(): {:?}", e);
             return e.errno;
         },
     };
@@ -836,7 +834,7 @@ pub extern "C" fn demi_setsockopt(
     match ret {
         Ok(_) => 0,
         Err(e) => {
-            trace!("demi_getsockopt() failed: {:?}", e);
+            trace!("demi_getsockopt(): {:?}", e);
             e.errno
         },
     }
@@ -858,28 +856,26 @@ pub extern "C" fn demi_getsockopt(
 
     // Check inputs.
     if level != SOL_SOCKET {
-        let cause: String = format!("Only options at the socket level are supported");
-        error!("demi_getsockopt(): {}", cause);
-        return libc::EINVAL;
+        error!("demi_getsockopt(): only options in SOL_SOCKET level are supported");
+        return libc::ENOTSUP;
     }
 
     let opt: SocketOption = match optname {
         SO_LINGER => SocketOption::SO_LINGER(None),
         _ => {
-            let cause: String = format!("Only SO_LINGER is supported right now");
-            error!("demi_getsockopt(): {}", cause);
-            return libc::EINVAL;
+            error!("demi_getsockopt(): only SO_LINGER is supported right now");
+            return libc::ENOPROTOOPT;
         },
     };
 
     // Check for invalid storage locations.
     if optval.is_null() {
-        warn!("demi_getsockopt() option value is a null pointer");
+        warn!("demi_getsockopt(): option value is a null pointer");
         return libc::EINVAL;
     }
 
     if optlen.is_null() {
-        warn!("demi_getsockopt() option len is a null pointer");
+        warn!("demi_getsockopt(): option len is a null pointer");
         return libc::EINVAL;
     }
 
@@ -887,7 +883,7 @@ pub extern "C" fn demi_getsockopt(
     let ret: Result<SocketOption, Fail> = match do_syscall(|libos| libos.get_socket_option(qd.into(), opt)) {
         Ok(result) => result,
         Err(e) => {
-            trace!("demi_getsockopt() failed: {:?}", e);
+            trace!("demi_getsockopt(): {:?}", e);
             return e.errno;
         },
     };
@@ -912,7 +908,7 @@ pub extern "C" fn demi_getsockopt(
                         },
                     };
 
-                    let result_length = mem::size_of::<Linger>();
+                    let result_length: usize = mem::size_of::<Linger>();
                     unsafe {
                         ptr::copy(&result as *const Linger as *const c_void, optval, result_length);
                         *optlen = result_length as Socklen;
@@ -922,7 +918,7 @@ pub extern "C" fn demi_getsockopt(
             0
         },
         Err(e) => {
-            trace!("demi_getsockopt() failed: {:?}", e);
+            trace!("demi_getsockopt(): {:?}", e);
             return e.errno;
         },
     }

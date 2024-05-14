@@ -351,7 +351,7 @@ impl SocketStateMachine {
     }
 
     /// Ensures that the target [SocketState] is not closing.
-    fn ensure_not_closing(&self) -> Result<(), Fail> {
+    pub fn ensure_not_closing(&self) -> Result<(), Fail> {
         if self.current.get() == SocketState::Closing {
             let cause: String = format!("socket is closing");
             error!("ensure_not_closing(): {}", cause);
