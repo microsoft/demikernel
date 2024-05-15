@@ -197,11 +197,11 @@ impl NetworkTransport for SharedCatnapTransport {
         &mut self,
         socket: &mut Self::SocketDescriptor
     ) -> Result<SocketAddrV4, Fail> {
-        let addr = socket.peer_addr()?;
-        match addr.as_socket_ipv4() {
-            Some(ipv4_addr) => Ok(ipv4_addr),
-            None => {
-                let cause: String = format!("as_socket_ipv4() on socket failed");
+        let addr: Result<SocketAddrV4, Fail> = socket.getpeername();
+        match addr {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                let cause: String = format!("socket.getpeername() failed");
                 error!("getpeername(): {}", cause);
                 Err(Fail::new(EINVAL, &cause))
             }

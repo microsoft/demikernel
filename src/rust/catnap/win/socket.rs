@@ -213,6 +213,11 @@ impl Socket {
             _ => Ok(Some(Duration::from_secs(l.l_linger.into()))),
         }
     }
+    
+    pub fn getpeername(&self) -> Result<SocketAddrV4, Fail> {
+        let addr: Result<SocketAddrV4, Fail> = WinsockRuntime::getpeername(self.s);
+        addr
+    }
 
     /// Get address of peer connected to socket
     pub fn getpeername(&self) -> Result<SocketAddrV4, Fail> {
