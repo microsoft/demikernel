@@ -209,7 +209,12 @@ impl NetworkTransport for SharedCatnapTransport {
         }
         .await
         {
-            Err(err) if err.errno == libc::ENOTCONN => socket.shutdown(),
+            Err(err) if err.errno == libc::ENOTCONN => {
+                match socket.shutdown() {
+                    Err(err) if err.errno == libc::ENOTCONN => Ok(()),
+                    r => r,
+                }
+            },
             r => r,
         }
     }
