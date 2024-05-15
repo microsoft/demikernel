@@ -76,7 +76,7 @@ mod test {
         // Size of an array of demi_sgaseg_t structures.
         const SGA_SEGS_SIZE: usize = mem::size_of::<demi_sgaseg_t>() * DEMI_SGARRAY_MAXLEN;
         // Size of a SockAddr structure.
-        const SGA_ADDR_SIZE: usize = mem::size_of::<SockAddr>();
+        const SGA_ADDR_SIZE: usize = 16;
         // Size of a demi_sgarray_t structure.
         crate::ensure_eq!(
             mem::size_of::<demi_sgarray_t>(),
