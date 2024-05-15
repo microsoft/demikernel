@@ -249,7 +249,13 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: all-tests-c
+test-unit-c: all-tests-c test-unit-c-sizes test-unit-c-syscalls
+
+test-unit-c-sizes: all-tests-c
+	set RUST_LOG=$(RUST_LOG)
+	$(BINDIR)\sizes.exe
+
+test-unit-c-syscalls: all-tests-c
 	set RUST_LOG=$(RUST_LOG)
 	$(BINDIR)\syscalls.exe
 
