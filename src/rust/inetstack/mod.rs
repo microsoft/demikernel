@@ -316,6 +316,20 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         }
     }
 
+    fn getpeername(
+        &mut self,
+        sd: &mut Self::SocketDescriptor,
+    ) -> Result<SocketAddrV4, Fail> {
+        match sd {
+            Socket::Tcp(socket) => self.ipv4.tcp.getpeername(socket),
+            Socket::Udp(_) => {
+                let cause: String = format!("Getting peer address is not supported on UDP sockets");
+                error!("getpeername(): {}", cause);
+                Err(Fail::new(libc::ENOTSUP, &cause))
+            }
+        }
+    }
+
     ///
     /// **Brief**
     ///

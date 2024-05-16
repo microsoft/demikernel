@@ -35,7 +35,10 @@ use ::socket2::{
 };
 use ::std::{
     any::Any,
-    net::SocketAddr,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -114,6 +117,11 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     /// Sets a SO_* option on the socket referenced by [sockqd].
     pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
         self.transport.clone().get_socket_option(&mut self.socket, option)
+    }
+
+    /// Gets the peer address connected to the socket.
+    pub fn getpeername(&mut self) -> Result<SocketAddrV4, Fail> {
+        self.transport.clone().getpeername(&mut self.socket)
     }
 
     /// Binds the target queue to `local` address.

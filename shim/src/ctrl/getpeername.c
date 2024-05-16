@@ -4,6 +4,7 @@
 #include "../log.h"
 #include "../qman.h"
 #include "../utils.h"
+#include <glue.h>
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -32,10 +33,7 @@ int __getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 
     TRACE("sockfd=%d, addr=%p, addrlen=%p", sockfd, (void *)addr, (void *)addrlen);
 
-    // TODO: Hook in demi_getpeername().
-    UNUSED(addr);
-    UNUSED(addrlen);
-    ret = ENOSYS;
+    ret = __demi_getpeername(sockfd, addr, addrlen);
 
     return (ret);
 }

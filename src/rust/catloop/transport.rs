@@ -96,6 +96,14 @@ impl NetworkTransport for SharedCatloopTransport {
         sd.get_socket_option(option)
     }
 
+    /// Gets the address of the peer connected to this socket.
+    fn getpeername(
+        &mut self,
+        sd: &mut Self::SocketDescriptor
+    ) -> Result<SocketAddrV4, Fail> {
+        sd.getpeername()
+    }
+
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedCatloopQueue to a local address.
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {

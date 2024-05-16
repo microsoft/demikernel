@@ -143,6 +143,14 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         self.get_shared_queue(&qd)?.get_socket_option(option)
     }
 
+    /// Gets the peer address connected to the scoket.
+    pub fn getpeername(&mut self, qd: QDesc) -> Result<SocketAddrV4, Fail> {
+        trace!("getpeername() qd={:?}", qd);
+
+        // Issue operation.
+        self.get_shared_queue(&qd)?.getpeername()
+    }
+
     /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
     /// SharedNetworkQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {

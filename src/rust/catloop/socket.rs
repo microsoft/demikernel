@@ -137,6 +137,19 @@ impl SharedMemorySocket {
         }
     }
 
+    /// Gets address of peer connected to socket.
+    pub fn getpeername(&mut self) -> Result<SocketAddrV4, Fail> {
+        match self.remote {
+            Some(addr) => Ok(addr),
+            None => {
+                let cause: String = format!("socket is not connected");
+                error!("getpeername(): {:?}", &cause);
+                Err(Fail::new(libc::ENOTCONN, &cause))
+            }
+
+        }
+    }
+
     /// Binds the target socket to `local` address.
     /// TODO: Should probably move the create of the duplex pipe to listen.
     pub fn bind(&mut self, local: SocketAddrV4, catmem: &mut SharedCatmemLibOS) -> Result<(), Fail> {

@@ -150,6 +150,21 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         }
     }
 
+    /// Gets the peer address of the socket.
+    pub fn getpeername(&mut self) -> Result<SocketAddrV4, Fail> {
+        match self.state {
+            SocketState::Established(ref mut socket) => {
+                let (_, remote_endpoint): (SocketAddrV4, SocketAddrV4) = socket.endpoints();
+                return Ok(remote_endpoint);
+            },
+            _ => {
+                let cause: String = format!("socket is not in established state");
+                error!("getpeername(): {}", &cause);
+                Err(Fail::new(libc::ENOTCONN, &cause))
+            },
+        }
+    }
+
     /// Binds the target queue to `local` address.
     pub fn bind(&mut self, local: SocketAddrV4) -> Result<(), Fail> {
         self.state = SocketState::Bound(local);

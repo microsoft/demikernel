@@ -22,3 +22,25 @@ pub fn socketaddrv4_to_sockaddr(addr: &SocketAddrV4) -> SOCKADDR {
     let sockaddr: SOCKADDR = unsafe { std::mem::transmute(sockaddr_in) };
     sockaddr
 }
+
+#[cfg(target_os = "linux")]
+use std::net::SocketAddrV4;
+
+#[cfg(target_os = "linux")]
+use libc::sockaddr;
+
+#[cfg(target_os = "linux")]
+use libc::sockaddr_in;
+
+#[cfg(target_os = "linux")]
+use crate::pal::constants::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub fn socketaddrv4_to_sockaddr(addr: &SocketAddrV4) -> sockaddr {
+    let mut sockaddr_in: sockaddr_in = unsafe { std::mem::zeroed() };
+    sockaddr_in.sin_family = AF_INET;
+    sockaddr_in.sin_port = addr.port().to_be();
+    sockaddr_in.sin_addr.s_addr = u32::from_be_bytes(addr.ip().octets()).to_be();
+    let sockaddr: sockaddr = unsafe { std::mem::transmute(sockaddr_in) };
+    sockaddr
+}

@@ -154,6 +154,16 @@ static bool inval_getsockopt(void)
     return (demi_getsockopt(qd, level, optname, optval, optlen) != 0);
 }
 
+/*
+* @brief Issues an invalid call to getpeername().
+*/
+static bool inval_getpeername(void)
+{
+    int qd = -1;
+
+    return (demi_getpeername(qd, NULL, NULL) != 0);
+}
+
 /*===================================================================================================================*
  * System Calls in demi/sga.h                                                                                        *
  *===================================================================================================================*/
@@ -227,7 +237,12 @@ struct test
 /**
  * @brief Tests for system calls in demi/libos.h
  */
-static struct test tests_libos[] = {{inval_socket, "invalid demi_socket()"}, {inval_accept, "invalid demi_accept()"}, {inval_bind, "invalid demi_bind()"}, {inval_close, "invalid_demi_close()"}, {inval_connect, "invalid demi_connect()"}, {inval_listen, "invalid demi_listen()"}, {inval_pop, "invalid demi_pop()"}, {inval_push, "invalid demi_push()"}, {inval_pushto, "invalid demi_pushto()"}, {inval_setsockopt, "invalid demi_setsockopt()"}, {inval_getsockopt, "invalid demi_getsockopt()}"}};
+static struct test tests_libos[] = {{inval_socket, "invalid demi_socket()"},   {inval_accept, "invalid demi_accept()"},
+                                    {inval_bind, "invalid demi_bind()"},       {inval_close, "invalid_demi_close()"},
+                                    {inval_connect, "invalid demi_connect()"}, {inval_listen, "invalid demi_listen()"},
+                                    {inval_pop, "invalid demi_pop()"},         {inval_push, "invalid demi_push()"},
+                                    {inval_pushto, "invalid demi_pushto()"},   {inval_getpeername, "invalid demi_getpeername()"},
+                                    {inval_setsockopt, "invalid demi_setsockopt()"}, {inval_getsockopt, "invalid demi_getsockopt()}"}};
 
 /**
  * @brief Tests for system calls in demi/sga.h
