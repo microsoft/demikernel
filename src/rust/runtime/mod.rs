@@ -90,8 +90,8 @@ use std::pin::Pin;
 
 // TODO: Make this more accurate using rdtsc.
 // FIXME: https://github.com/microsoft/demikernel/issues/1226
-const TIMER_RESOLUTION: usize = 1024;
-const TIMER_FINER_RESOLUTION: usize = 16;
+const TIMER_RESOLUTION: usize = 64;
+const TIMER_FINER_RESOLUTION: usize = 2;
 
 //======================================================================================================================
 // Structures
