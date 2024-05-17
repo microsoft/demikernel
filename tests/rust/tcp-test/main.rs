@@ -121,5 +121,6 @@ pub fn check_for_network_error(qr: &demi_qresult_t) -> bool {
         && (qr.qr_ret == (libc::EBADF as i64)
             || qr.qr_ret == (libc::ECANCELED as i64)
             || qr.qr_ret == (libc::ECONNREFUSED as i64)
-            || qr.qr_ret == (libc::ECONNABORTED as i64))
+            || qr.qr_ret == (libc::ECONNABORTED as i64)
+            || qr.qr_ret == (libc::EADDRNOTAVAIL as i64))
 }
