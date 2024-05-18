@@ -11,18 +11,19 @@ mod winsock;
 //==============================================================================
 
 use std::{
-    net::SocketAddr,
+    net::{
+        SocketAddr,
+        SocketAddrV4,
+    },
     pin::Pin,
-    net::SocketAddrV4,
 };
 
 use windows::Win32::{
     Networking::WinSock::{
-        tcp_keepalive,
+        WSAGetLastError,
         IPPROTO,
         IPPROTO_TCP,
         IPPROTO_UDP,
-        WSAGetLastError,
     },
     System::IO::OVERLAPPED,
 };
@@ -188,22 +189,6 @@ impl NetworkTransport for SharedCatnapTransport {
                 error!("getpeername(): {:?}", cause);
                 Err(Fail::new(libc::EINVAL, &cause))
             },
-        }
-    }
-
-    // Gets address of peer connected to socket
-    fn getpeername(
-        &mut self,
-        socket: &mut Self::SocketDescriptor
-    ) -> Result<SocketAddrV4, Fail> {
-        let addr: Result<SocketAddrV4, Fail> = socket.getpeername();
-        match addr {
-            Ok(addr) => Ok(addr),
-            Err(_) => {
-                let cause: String = format!("failed to get peer address (errno={:?})", unsafe { WSAGetLastError() } );
-                error!("getpeername(): {:?}", cause);
-                Err(Fail::new(libc::EINVAL, &cause))
-            }
         }
     }
 
