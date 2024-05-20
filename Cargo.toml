@@ -47,6 +47,7 @@ x86 = "0.52.0"
 # Local crates.
 nettest = { path = "nettest" }
 dpdk-rs = { path = "dpdk-rs", optional = true }
+xdp-rs = { path = "xdp-rs", optional = true }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
@@ -61,6 +62,7 @@ windows = { version = "0.56.0", features = [
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
+catpowder-libos = { version = "0.1", features = ["lbxdp"] }
 # for interacting with socket2.
 windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }
 
@@ -154,6 +156,7 @@ catmem-libos = []
 catnip-libos = ["libdpdk"]
 catloop-libos = ["catmem-libos"]
 libdpdk = ["dpdk-rs"]
+libxdp = ["xdp-rs"]
 mlx4 = ["dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs/mlx5"]
 profiler = []
