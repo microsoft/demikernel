@@ -12,15 +12,20 @@ repository = "https://github.com/demikernel/demikernel"
 
 [dependencies]
 cfg-if = "1.0.0"
+windows = { version = "0.56.0", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
 
 [build-dependencies]
 anyhow = "1.0.83"
 bindgen = "0.69.4"
 cc = "1.0.97"
-
-[features]
-mlx4 = []
-mlx5 = []
 
 # Build profile used for releases.
 [profile.release]

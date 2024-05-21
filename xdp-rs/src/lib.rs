@@ -7,8 +7,6 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-pub mod ring;
-
 // Redefinition of some types to allow tight integration with windows crate.
 extern crate windows;
 
