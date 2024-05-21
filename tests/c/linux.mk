@@ -28,10 +28,14 @@ export COMPILE_CMD = $(CC) $(CFLAGS) $@.o -o $(BINDIR)/$@.$(EXEC_SUFFIX) $(LIBS)
 #=======================================================================================================================
 
 # Builds everything.
-all: syscalls
+all: sizes syscalls
 
 make-dirs:
 	mkdir -p $(BINDIR)
+
+# Builds 'sizes' test.
+sizes: make-dirs sizes.o
+	$(COMPILE_CMD)
 
 # Builds system call test.
 syscalls: make-dirs syscalls.o
@@ -40,6 +44,7 @@ syscalls: make-dirs syscalls.o
 # Cleans up all build artifacts.
 clean:
 	@rm -rf $(OBJ)
+	@rm -rf $(BINDIR)/sizes.$(EXEC_SUFFIX)
 	@rm -rf $(BINDIR)/syscalls.$(EXEC_SUFFIX)
 
 # Builds a C source file.

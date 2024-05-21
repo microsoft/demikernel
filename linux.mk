@@ -231,7 +231,12 @@ test-system-rust:
 test-unit: test-unit-rust
 
 # C unit tests.
-test-unit-c: all-tests $(BINDIR)/syscalls.elf
+test-unit-c: all-tests test-unit-c-sizes test-unit-c-syscalls
+
+test-unit-c-sizes: all-tests $(BINDIR)/sizes.elf
+	timeout $(TIMEOUT) $(BINDIR)/sizes.elf
+
+test-unit-c-syscalls: all-tests $(BINDIR)/syscalls.elf
 	timeout $(TIMEOUT) $(BINDIR)/syscalls.elf
 
 # Rust unit tests.
