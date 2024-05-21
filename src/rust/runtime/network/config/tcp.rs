@@ -8,6 +8,7 @@
 use crate::runtime::network::consts::{
     DEFAULT_MSS,
     MAX_MSS,
+    MAX_WINDOW_SCALE,
     MIN_MSS,
     TCP_ACK_DELAY_TIMEOUT,
     TCP_HANDSHAKE_TIMEOUT,
@@ -71,7 +72,15 @@ impl TcpConfig {
             options = options.set_receive_window_size(value);
         }
         if let Some(value) = window_scale {
-            options = options.set_window_scale(value);
+            if (value as usize) < MAX_WINDOW_SCALE {
+                options = options.set_window_scale(value);
+            } else {
+                warn!(
+                    "remote windows scale larger than {:?} is incorrect, so setting to {:?}. See RFC 1323.",
+                    MAX_WINDOW_SCALE, MAX_WINDOW_SCALE
+                );
+                options = options.set_window_scale(MAX_WINDOW_SCALE as u8);
+            }
         }
         if let Some(value) = ack_delay_timeout {
             options = options.set_ack_delay_timeout(value);
