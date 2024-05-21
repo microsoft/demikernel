@@ -27,9 +27,11 @@ use crate::{
             Socket,
             SocketOpState,
         },
-        WinConfig,
     },
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        network::socket::option::TcpSocketOptions,
+    },
 };
 use windows::{
     core::{
@@ -360,7 +362,7 @@ impl WinsockRuntime {
         domain: libc::c_int,
         typ: libc::c_int,
         protocol: libc::c_int,
-        config: &WinConfig,
+        options: &TcpSocketOptions,
         iocp: &IoCompletionPort<SocketOpState>,
     ) -> Result<Socket, Fail> {
         // Safety: SOCKET is a loose handle; it must be closed with `closesocket` to clean up resources. Socket struct
@@ -368,7 +370,7 @@ impl WinsockRuntime {
         let s: SOCKET = unsafe { Self::raw_socket(domain, typ, protocol, None, WSA_FLAG_OVERLAPPED) }?;
 
         self.get_or_init_extensions(s)
-            .and_then(|extensions: Rc<SocketExtensions>| Socket::new(s, protocol, config, extensions, iocp))
+            .and_then(|extensions: Rc<SocketExtensions>| Socket::new(s, protocol, options, extensions, iocp))
             .or_else(|err: Fail| {
                 unsafe { closesocket(s) };
                 Err(err)

@@ -1,36 +1,29 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-client:
-  connect_to:
-    host: XX.XX.XX.XX
-    port: PPPP
-  client:
-    host: YY.YY.YY.YY
-    port: PPPP
-server:
-  bind:
-    host: XX.XX.XX.XX
-    port: PPPP
-  client:
-    host: YY.YY.YY.YY
-    port: PPPP
-catnip:
-  my_ipv4_addr: ZZ.ZZ.ZZ.ZZ
-  my_link_addr: "ff:ff:ff:ff:ff:ff"
-  my_interface_name: "abcde"
-  arp_table:
-    "ff:ff:ff:ff:ff:ff": "XX.XX.XX.XX"
-    "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
+demikernel:
+  local_ipv4_addr: XX.XX.XX.XX
+  local_link_addr: "ff:ff:ff:ff:ff:ff"
+raw_socket:
+  interface_name: "abcde"
 dpdk:
   eal_init: ["", "-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto"]
-catnap:
-  tcp_keepalive:
+tcp_socket_options:
+  keepalive:
     enabled: false
     time_millis: 0
     interval: 0
   linger:
     enabled: true
     time_seconds: 0
-
+  nodelay: true
+inetstack_config:
+  mtu: 1500
+  mss: 1500
+  enable_jumbo_frames: false
+  udp_checksum_offload: false
+  tcp_checksum_offload: false
+  arp_table:
+    "ff:ff:ff:ff:ff:ff": "XX.XX.XX.XX"
+    "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
 # vim: set tabstop=2 shiftwidth=2

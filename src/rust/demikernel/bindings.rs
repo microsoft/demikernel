@@ -817,8 +817,8 @@ pub extern "C" fn demi_setsockopt(
 
             let linger: Linger = unsafe { *(optval as *const Linger) };
             match linger.l_onoff {
-                0 => SocketOption::SO_LINGER(None),
-                _ => SocketOption::SO_LINGER(Some(Duration::from_secs(linger.l_linger as u64))),
+                0 => SocketOption::Linger(None),
+                _ => SocketOption::Linger(Some(Duration::from_secs(linger.l_linger as u64))),
             }
         },
         _ => {
@@ -866,7 +866,7 @@ pub extern "C" fn demi_getsockopt(
     }
 
     let opt: SocketOption = match optname {
-        SO_LINGER => SocketOption::SO_LINGER(None),
+        SO_LINGER => SocketOption::Linger(None),
         _ => {
             error!("demi_getsockopt(): only SO_LINGER is supported right now");
             return libc::ENOPROTOOPT;
@@ -897,7 +897,7 @@ pub extern "C" fn demi_getsockopt(
         Ok(option) => {
             // Unpack the value based on the option. We only support linger right now.
             match option {
-                SocketOption::SO_LINGER(linger) => {
+                SocketOption::Linger(linger) => {
                     let result: Linger = match linger {
                         Some(linger) => Linger {
                             l_onoff: 1,
@@ -918,6 +918,11 @@ pub extern "C" fn demi_getsockopt(
                         ptr::copy(&result as *const Linger as *const c_void, optval, result_length);
                         *optlen = result_length as Socklen;
                     }
+                },
+                _ => {
+                    let cause: String = format!("Only SO_LINGER is supported right now");
+                    error!("demi_setsockopt(): {}", cause);
+                    return libc::EINVAL;
                 },
             };
             0
@@ -1154,7 +1159,12 @@ mod test {
         };
     }
 
-    #[cfg(not(feature = "catmem-libos"))]
+    #[cfg(any(
+        feature = "catnap-libos",
+        feature = "catnip-libos",
+        feature = "catpowder-libos",
+        feature = "catloop-libos"
+    ))]
     #[test]
     fn test_set_and_get_linger() -> anyhow::Result<()> {
         // Initialize Demikernel

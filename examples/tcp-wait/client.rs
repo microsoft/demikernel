@@ -302,7 +302,7 @@ impl TcpClient {
         self.sockqd = Some(self.libos.socket(AF_INET, SOCK_STREAM, 0)?);
         // Set default linger to a short period, otherwise, this test will take a long time to complete.
         self.libos
-            .set_socket_option(self.sockqd.unwrap(), SocketOption::SO_LINGER(Some(DEFAULT_LINGER)))?;
+            .set_socket_option(self.sockqd.unwrap(), SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
         let qt: QToken = self
             .libos

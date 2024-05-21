@@ -218,13 +218,11 @@ impl Simulation {
         const ARP_CACHE_TTL: Duration = Duration::from_secs(600);
         let request_timeout: Duration = Duration::from_secs(1);
         let retry_count: usize = 2;
-        let disable_arp: bool = false;
 
         let arp_config: ArpConfig = Self::new_arp_config(
             Some(ARP_CACHE_TTL),
             Some(request_timeout),
             Some(retry_count),
-            Some(disable_arp),
             local_mac,
             local_ipv4,
             remote_mac,
@@ -284,7 +282,6 @@ impl Simulation {
         cache_ttl: Option<Duration>,
         request_timeout: Option<Duration>,
         retry_count: Option<usize>,
-        disable_arp: Option<bool>,
         local_mac: &MacAddress,
         local_ipv4: &Ipv4Addr,
         remote_mac: &MacAddress,
@@ -294,13 +291,7 @@ impl Simulation {
         initial_values.insert(local_ipv4.clone(), local_mac.clone());
         initial_values.insert(remote_ipv4.clone(), remote_mac.clone());
 
-        ArpConfig::new(
-            cache_ttl,
-            request_timeout,
-            retry_count,
-            Some(initial_values),
-            disable_arp,
-        )
+        ArpConfig::new(cache_ttl, request_timeout, retry_count, Some(initial_values))
     }
 
     /// Creates a new UDP configuration.

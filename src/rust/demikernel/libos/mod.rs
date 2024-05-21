@@ -113,7 +113,7 @@ impl LibOS {
                 ))
             },
         };
-        let config: Config = Config::new(config_path);
+        let config: Config = Config::new(config_path)?;
         #[allow(unused_mut)]
         let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
         // Instantiate LibOS.
@@ -123,22 +123,22 @@ impl LibOS {
             LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap(SharedNetworkLibOS::<
                 SharedCatnapTransport,
             >::new(
-                config.local_ipv4_addr(),
+                config.local_ipv4_addr()?,
                 runtime.clone(),
-                SharedCatnapTransport::new(&config, &mut runtime),
+                SharedCatnapTransport::new(&config, &mut runtime)?,
             ))),
 
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: LinuxRuntime = LinuxRuntime::new(config.clone());
+                let transport: LinuxRuntime = LinuxRuntime::new(config.clone())?;
                 // This is our transport for Catpowder.
                 let inetstack: SharedInetStack<LinuxRuntime> =
                     SharedInetStack::<LinuxRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
                     SharedInetStack<LinuxRuntime>,
                 >::new(
-                    config.local_ipv4_addr(),
+                    config.local_ipv4_addr()?,
                     runtime.clone(),
                     inetstack,
                 )))
@@ -153,7 +153,7 @@ impl LibOS {
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
                     SharedInetStack<SharedDPDKRuntime>,
                 >::new(
-                    config.local_ipv4_addr(),
+                    config.local_ipv4_addr()?,
                     runtime.clone(),
                     inetstack,
                 )))
@@ -166,9 +166,9 @@ impl LibOS {
             LibOSName::Catloop => Self::NetworkLibOS(NetworkLibOSWrapper::Catloop(SharedNetworkLibOS::<
                 SharedCatloopTransport,
             >::new(
-                config.local_ipv4_addr(),
+                config.local_ipv4_addr()?,
                 runtime.clone(),
-                SharedCatloopTransport::new(&config, runtime.clone()),
+                SharedCatloopTransport::new(&config, runtime.clone())?,
             ))),
             _ => panic!("unsupported libos"),
         };

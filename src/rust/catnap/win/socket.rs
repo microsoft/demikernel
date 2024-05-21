@@ -85,11 +85,11 @@ use crate::{
             SocketExtensions,
             WinsockRuntime,
         },
-        WinConfig,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
+        network::socket::option::TcpSocketOptions,
     },
 };
 
@@ -166,12 +166,12 @@ impl Socket {
     pub(super) fn new(
         s: SOCKET,
         protocol: libc::c_int,
-        config: &WinConfig,
+        options: &TcpSocketOptions,
         extensions: Rc<SocketExtensions>,
         iocp: &IoCompletionPort<SocketOpState>,
     ) -> Result<Socket, Fail> {
         let s: Socket = Socket { s, extensions };
-        s.setup_socket(protocol, config)?;
+        s.setup_socket(protocol, options)?;
         iocp.associate_socket(s.s, 0)?;
         Ok(s)
     }
@@ -185,14 +185,11 @@ impl Socket {
     }
 
     /// Setup relevant socket options according to the configuration.
-    fn setup_socket(&self, protocol: libc::c_int, config: &WinConfig) -> Result<(), Fail> {
-        self.set_linger(config.linger_time)?;
+    fn setup_socket(&self, protocol: libc::c_int, options: &TcpSocketOptions) -> Result<(), Fail> {
+        self.set_linger(options.get_linger())?;
         if protocol == IPPROTO_TCP.0 {
-            self.set_tcp_keepalive(&config.keepalive_params)?;
-
-            if let Some(nagle) = config.nagle {
-                self.set_nagle(nagle)?;
-            }
+            self.set_tcp_keepalive(&options.get_keepalive())?;
+            self.set_nagle(options.get_nodelay())?;
         }
         Ok(())
     }
@@ -224,7 +221,7 @@ impl Socket {
     }
 
     /// Set TCP keepalive socket options.
-    fn set_tcp_keepalive(&self, keepalive_params: &tcp_keepalive) -> Result<(), Fail> {
+    pub fn set_tcp_keepalive(&self, keepalive_params: &tcp_keepalive) -> Result<(), Fail> {
         unsafe { WinsockRuntime::do_setsockopt(self.s, SOL_SOCKET, SO_KEEPALIVE, Some(&keepalive_params.onoff)) }?;
 
         if keepalive_params.onoff != 0 {
@@ -237,12 +234,25 @@ impl Socket {
         Ok(())
     }
 
+    /// Get linger socket option.
+    pub fn get_tcp_keepalive(&self) -> Result<tcp_keepalive, Fail> {
+        unsafe { WinsockRuntime::do_getsockopt(self.s, SOL_SOCKET, SO_KEEPALIVE) }
+    }
+
     /// Enable or disable the use of Nagle's algorithm for TCP.
-    fn set_nagle(&self, enabled: bool) -> Result<(), Fail> {
+    pub fn set_nagle(&self, enabled: bool) -> Result<(), Fail> {
         // Note the inverted condition here: TCP_NODELAY is a disabler for Nagle's algorithm.
         let value: BOOL = if enabled { FALSE } else { TRUE };
         unsafe { WinsockRuntime::do_setsockopt(self.s, IPPROTO_TCP.0, TCP_NODELAY, Some(&value)) }?;
         Ok(())
+    }
+
+    /// Get linger socket option.
+    pub fn get_nagle(&self) -> Result<bool, Fail> {
+        match unsafe { WinsockRuntime::do_getsockopt(self.s, IPPROTO_TCP.0, TCP_NODELAY) }? {
+            FALSE => Ok(false),
+            _ => Ok(true),
+        }
     }
 
     /// Make a new socket like some template socket.

@@ -33,17 +33,9 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
     TRACE("sockfd=%d, level=%d, optname=%d, optval=%p, optlen=%d", sockfd, level, optname, optval, optlen);
 
     // Issue warnings for common options that are not supported.
-    if (level == SOL_SOCKET && optname == SO_KEEPALIVE)
-    {
-        WARN("%s is not supported", "SO_KEEPALIVE");
-    }
-    else if (level == SOL_SOCKET && optname == SO_REUSEADDR)
+    if (level == SOL_SOCKET && optname == SO_REUSEADDR)
     {
         WARN("%s is not supported", "SO_REUSEADDR");
-    }
-    else if (level == IPPROTO_TCP && optname == TCP_NODELAY)
-    {
-        WARN("%s is not supported", "TCP_NODELAY");
     }
     else if (level == IPPROTO_TCP && optname == TCP_KEEPIDLE)
     {
@@ -51,10 +43,14 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
     }
     else if (level == IPPROTO_TCP && optname == TCP_KEEPINTVL)
     {
+        // TODO: Unify this support with Windows SO_KEEPALIVE once we support TCP-level options.
+        // FIXME: https://github.com/microsoft/demikernel/issues/1282
         WARN("%s is not supported", "TCP_KEEPINTLVL");
     }
     else if (level == IPPROTO_TCP && optname == TCP_KEEPCNT)
     {
+        // TODO: Unify this support with Windows SO_KEEPALIVE once we support TCP-level options.
+        // FIXME: https://github.com/microsoft/demikernel/issues/1282
         WARN("%s is not supported", "TCP_KEEPCNT");
     }
     else if (level == IPPROTO_TCP && optname == TCP_ULP)

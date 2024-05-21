@@ -24,6 +24,8 @@ Currently the following values for `level` are supported:
 Currently the following values for `option` are supported:
 
 - `SO_LINGER` - Linger on/off and linger time in seconds, for queued, unsent data on `demi_close()`.
+- `SO_KEEPALIVE` - Whether connections should be kept alive. On Linux, this is a boolean flag. On Windows, this includes a boolean flag, a keep alive time and a keep alive interval.
+- `SO_NODELAY` - Nagle algoirthm on/off.
 
 ## Return Value
 
