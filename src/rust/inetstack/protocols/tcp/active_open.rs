@@ -7,7 +7,6 @@
 
 use crate::{
     collections::async_queue::SharedAsyncQueue,
-    expect_ok,
     expect_some,
     inetstack::protocols::{
         arp::SharedArpPeer,
@@ -185,39 +184,32 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 
         let (local_window_scale, remote_window_scale): (u32, u8) = match remote_window_scale {
             Some(remote_window_scale) => {
-                let local: u32 = if self.tcp_config.get_window_scale() > 14 {
-                    warn!("local windows scale larger than 14 is incorrect, so setting to 14. See RFC 1323.");
-                    MAX_WINDOW_SCALE as u32
-                } else {
-                    self.tcp_config.get_window_scale() as u32
-                };
-                let remote: u8 = if remote_window_scale > 14 {
-                    warn!("remote windows scale larger than 14 is incorrect, so setting to 14. See RFC 1323.");
+                let remote: u8 = if remote_window_scale as usize > MAX_WINDOW_SCALE {
+                    warn!(
+                        "remote windows scale larger than {:?} is incorrect, so setting to {:?}. See RFC 1323.",
+                        MAX_WINDOW_SCALE, MAX_WINDOW_SCALE
+                    );
                     MAX_WINDOW_SCALE as u8
                 } else {
                     remote_window_scale
                 };
-                (local, remote)
+                (self.tcp_config.get_window_scale() as u32, remote)
             },
             None => (0, 0),
         };
 
-        let rx_window_size: u32 = expect_ok!(
-            expect_some!(
-                (self.tcp_config.get_receive_window_size() as u32).checked_shl(local_window_scale as u32),
-                "TODO: Window size overflow"
-            )
-            .try_into(),
-            "TODO: Window size overflow"
+        // Expect is safe here because the receive window size is a 16-bit unsigned integer and MAX_WINDOW_SCALE is 14,
+        // so it is impossible to overflow the 32-bit unsigned int.
+        debug_assert!((local_window_scale as usize) <= MAX_WINDOW_SCALE);
+        let rx_window_size: u32 = expect_some!(
+            (self.tcp_config.get_receive_window_size() as u32).checked_shl(local_window_scale as u32),
+            "Window size overflow"
         );
-
-        let tx_window_size: u32 = expect_ok!(
-            expect_some!(
-                (header.window_size as u32).checked_shl(remote_window_scale as u32),
-                "TODO: Window size overflow"
-            )
-            .try_into(),
-            "TODO: Window size overflow"
+        // Expect is safe here because the window size is a 16-bit unsigned integer and MAX_WINDOW_SCALE is 14, so it is impossible to overflow the 32-bit
+        debug_assert!((remote_window_scale as usize) <= MAX_WINDOW_SCALE);
+        let tx_window_size: u32 = expect_some!(
+            (header.window_size as u32).checked_shl(remote_window_scale as u32),
+            "Window size overflow"
         );
 
         info!("Window sizes: local {}, remote {}", rx_window_size, tx_window_size);
