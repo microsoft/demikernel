@@ -7,6 +7,7 @@
 #include "epoll.h"
 #include "error.h"
 #include "qman.h"
+#include "utils.h"
 #include <assert.h>
 #include <demi/types.h>
 #include <dlfcn.h>
@@ -22,6 +23,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sched.h>
 
 #define INTERPOSE_CALL2(type, fn_libc, fn_demi, ...) \
     {                                                \
@@ -101,7 +103,7 @@ static volatile uint8_t in_init = 0;
 
 static void init_libc(void)
 {
-if (initialized_libc == 0)
+    if (initialized_libc == 0)
     {
 
         if (__sync_fetch_and_add(&in_init_libc, 1) == 0)
@@ -153,15 +155,14 @@ if (initialized_libc == 0)
 
 static void init(void)
 {
-    int ret;
-
     if (initialized == 0)
     {
         if (__sync_fetch_and_add(&in_init, 1) == 0)
         {
-            ret = __init();
+            int ret = __init();
             if (ret != 0 && ret != EEXIST)
                 abort();
+
             __sync_fetch_and_sub(&in_init, 1);
             MEM_BARRIER();
             initialized = 1;
@@ -401,7 +402,9 @@ ssize_t pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 
 int epoll_create1(int flags)
 {
-    assert(flags == 0);
+    if (flags != 0)
+        WARN("flags != 0");
+
     return (epoll_create(EPOLL_MAX_FDS));
 }
 
