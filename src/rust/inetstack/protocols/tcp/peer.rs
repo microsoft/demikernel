@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::{
+    demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
@@ -79,11 +80,9 @@ pub struct SharedTcpPeer<N: NetworkRuntime>(SharedObject<TcpPeer<N>>);
 
 impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub fn new(
+        config: &Config,
         runtime: SharedDemiRuntime,
         transport: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
@@ -94,9 +93,9 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
             transport,
-            local_link_addr,
-            local_ipv4_addr,
-            tcp_config,
+            local_link_addr: config.local_link_addr()?,
+            local_ipv4_addr: config.local_ipv4_addr()?,
+            tcp_config: TcpConfig::new(config)?,
             arp,
             rng,
             dead_socket_tx: tx,
@@ -131,10 +130,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     }
 
     /// Gets a peer address on a TCP socket.
-    pub fn getpeername(
-        &mut self,
-        socket: &mut SharedTcpSocket<N>,
-    ) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<SocketAddrV4, Fail> {
         socket.getpeername()
     }
 

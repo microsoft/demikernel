@@ -112,41 +112,21 @@ pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
 //======================================================================================================================
 
 impl<N: NetworkRuntime> SharedInetStack<N> {
-    pub fn new(config: Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
-        SharedInetStack::<N>::new_test(runtime, network, config.local_link_addr()?, config.local_ipv4_addr()?)
+    pub fn new(config: &Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+        SharedInetStack::<N>::new_test(config, runtime, network)
     }
 
-    pub fn new_test(
-        mut runtime: SharedDemiRuntime,
-        network: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-    ) -> Result<Self, Fail> {
+    pub fn new_test(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: SharedArpPeer<N> = SharedArpPeer::new(
-            runtime.clone(),
-            network.clone(),
-            local_link_addr,
-            local_ipv4_addr,
-            network.get_arp_config(),
-        )?;
-        let ipv4: Peer<N> = Peer::new(
-            runtime.clone(),
-            network.clone(),
-            local_link_addr,
-            local_ipv4_addr,
-            network.get_udp_config(),
-            network.get_tcp_config(),
-            arp.clone(),
-            rng_seed,
-        )?;
+        let arp: SharedArpPeer<N> = SharedArpPeer::new(config, runtime.clone(), network.clone())?;
+        let ipv4: Peer<N> = Peer::new(config, runtime.clone(), network.clone(), arp.clone(), rng_seed)?;
         let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack::<N> {
             arp,
             ipv4,
             runtime: runtime.clone(),
             network,
-            local_link_addr,
-            local_ipv4_addr,
+            local_link_addr: config.local_link_addr()?,
+            local_ipv4_addr: config.local_ipv4_addr()?,
         }));
         runtime.insert_background_coroutine("inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
         Ok(me)
@@ -316,17 +296,14 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         }
     }
 
-    fn getpeername(
-        &mut self,
-        sd: &mut Self::SocketDescriptor,
-    ) -> Result<SocketAddrV4, Fail> {
+    fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
         match sd {
             Socket::Tcp(socket) => self.ipv4.tcp.getpeername(socket),
             Socket::Udp(_) => {
                 let cause: String = format!("Getting peer address is not supported on UDP sockets");
                 error!("getpeername(): {}", cause);
                 Err(Fail::new(libc::ENOTSUP, &cause))
-            }
+            },
         }
     }
 

@@ -5,7 +5,13 @@
 // Imports
 //==============================================================================
 
-use crate::runtime::network::types::MacAddress;
+use crate::{
+    demikernel::config::Config,
+    runtime::{
+        fail::Fail,
+        network::types::MacAddress,
+    },
+};
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
@@ -38,30 +44,25 @@ pub struct ArpConfig {
 /// Associate Functions for ARP Configuration Descriptor
 impl ArpConfig {
     /// Creates an ARP Configuration Descriptor.
-    pub fn new(
-        cache_ttl: Option<Duration>,
-        request_timeout: Option<Duration>,
-        retry_count: Option<usize>,
-        initial_values: Option<HashMap<Ipv4Addr, MacAddress>>,
-    ) -> Self {
-        let mut config: ArpConfig = Self::default();
-
-        if let Some(cache_ttl) = cache_ttl {
-            config.set_cache_ttl(cache_ttl);
-        }
-        if let Some(request_timeout) = request_timeout {
-            config.set_request_timeout(request_timeout);
-        }
-        if let Some(retry_count) = retry_count {
-            config.set_retry_count(retry_count);
-        }
-        if let Some(initial_values) = initial_values {
-            config.set_initial_values(initial_values);
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        if let Some(initial_values) = config.arp_table()? {
+            Ok(Self {
+                cache_ttl: config.arp_cache_ttl()?,
+                request_timeout: config.arp_request_timeout()?,
+                retry_count: config.arp_request_retries()?,
+                initial_values,
+                disable_arp: false,
+            })
         } else {
-            config.set_disable_arp(true);
+            warn!("disabling arp");
+            Ok(Self {
+                cache_ttl: Duration::ZERO,
+                request_timeout: Duration::ZERO,
+                retry_count: 0,
+                initial_values: HashMap::new(),
+                disable_arp: true,
+            })
         }
-
-        config
     }
 
     /// Gets the time to live for entries of the ARP Cache in the target [ArpConfig].
@@ -87,31 +88,6 @@ impl ArpConfig {
     /// Gets the disable option of the ARP in the target [ArpConfig].
     pub fn get_disable_arp(&self) -> bool {
         self.disable_arp
-    }
-
-    /// Sets the time to live for entries of the ARP Cache in the target [ArpConfig].
-    fn set_cache_ttl(&mut self, cache_ttl: Duration) {
-        self.cache_ttl = cache_ttl
-    }
-
-    /// Sets the request timeout for ARP requests in the target [ArpConfig].
-    fn set_request_timeout(&mut self, request_timeout: Duration) {
-        self.request_timeout = request_timeout
-    }
-
-    /// Sets the retry count for ARP requests in the target [ArpConfig].
-    fn set_retry_count(&mut self, retry_count: usize) {
-        self.retry_count = retry_count
-    }
-
-    /// Sets the initial values for the ARP Cache in the target [ArpConfig].
-    fn set_initial_values(&mut self, initial_values: HashMap<Ipv4Addr, MacAddress>) {
-        self.initial_values = initial_values;
-    }
-
-    /// Sets the disable option of the ARP in the target [ArpConfig].
-    fn set_disable_arp(&mut self, disable_arp: bool) {
-        self.disable_arp = disable_arp
     }
 }
 

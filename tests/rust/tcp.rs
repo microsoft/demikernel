@@ -15,14 +15,11 @@ mod test {
     // Imports
     //======================================================================================================================
     use crate::common::{
-        arp,
         libos::*,
+        ALICE_CONFIG_PATH,
         ALICE_IP,
-        ALICE_IPV4,
-        ALICE_MAC,
+        BOB_CONFIG_PATH,
         BOB_IP,
-        BOB_IPV4,
-        BOB_MAC,
         PORT_BASE,
     };
     use ::anyhow::Result;
@@ -117,7 +114,7 @@ mod test {
     #[test]
     fn tcp_connection_setup() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp())?;
+        let mut libos: DummyLibOS = DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx)?;
 
         do_passive_connection_setup(&mut libos)?;
         do_passive_connection_setup_ephemeral(&mut libos)?;
@@ -139,7 +136,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -154,7 +151,7 @@ mod test {
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
 
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket on error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -171,7 +168,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -217,7 +214,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -232,7 +229,7 @@ mod test {
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
 
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket on error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -250,7 +247,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -301,7 +298,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -316,7 +313,7 @@ mod test {
             let qt: QToken = safe_accept(&mut libos, sockqd)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket on error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -344,7 +341,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -400,7 +397,7 @@ mod test {
     #[test]
     fn tcp_bad_socket() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -511,7 +508,7 @@ mod test {
     #[test]
     fn tcp_bad_bind() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -554,7 +551,7 @@ mod test {
     #[test]
     fn tcp_bad_listen() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -632,7 +629,7 @@ mod test {
     #[test]
     fn tcp_bad_accept() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, tx, rx, arp()) {
+        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -664,7 +661,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -678,7 +675,7 @@ mod test {
             let qt: QToken = safe_accept(&mut libos, sockqd)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket on error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -694,7 +691,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -768,7 +765,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -783,7 +780,7 @@ mod test {
             let qt: QToken = safe_accept(&mut libos, sockqd)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket if error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -812,7 +809,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -876,7 +873,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -891,7 +888,7 @@ mod test {
             let qt: QToken = safe_accept(&mut libos, sockqd)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket if error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -920,7 +917,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -1011,7 +1008,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_MAC, ALICE_IPV4, alice_tx, bob_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -1026,7 +1023,7 @@ mod test {
             let qt: QToken = safe_accept(&mut libos, sockqd)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             let qd: QDesc = match qr {
-                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IPV4 => qd,
+                OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
                 _ => {
                     // Close socket if error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -1065,7 +1062,7 @@ mod test {
         });
 
         let bob: JoinHandle<Result<()>> = thread::spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_MAC, BOB_IPV4, bob_tx, alice_rx, arp()) {
+            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };

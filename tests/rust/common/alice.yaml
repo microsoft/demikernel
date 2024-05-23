@@ -2,8 +2,8 @@
 # Licensed under the MIT license.
 
 demikernel:
-  local_ipv4_addr: XX.XX.XX.XX
-  local_link_addr: "ff:ff:ff:ff:ff:ff"
+  local_ipv4_addr: 127.0.0.1
+  local_link_addr: "12:23:45:67:89:ab"
 raw_socket:
   interface_name: "abcde"
 dpdk:
@@ -24,10 +24,10 @@ inetstack_config:
   udp_checksum_offload: false
   tcp_checksum_offload: false
   arp_table:
-    "ff:ff:ff:ff:ff:ff": "XX.XX.XX.XX"
-    "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
-  arp_request_retries: 5
-  arp_request_timeout: 20
-  arp_cache_ttl: 15
+    "12:23:45:67:89:ab": "127.0.0.1"
+    "ab:89:67:45:23:12": "192.168.1.2"
+  arp_request_retries: 2
+  arp_request_timeout: 1
+  arp_cache_ttl: 600
 
 # vim: set tabstop=2 shiftwidth=2

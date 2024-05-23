@@ -6,22 +6,21 @@
 //==============================================================================
 
 use ::arrayvec::ArrayVec;
-use ::demikernel::runtime::{
-    memory::{
-        DemiBuffer,
-        MemoryRuntime,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use ::demikernel::{
+    demikernel::config::Config,
+    runtime::{
+        fail::Fail,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
         },
-        consts::RECEIVE_BATCH_SIZE,
-        NetworkRuntime,
-        PacketBuf,
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+            PacketBuf,
+        },
+        SharedObject,
     },
-    SharedObject,
 };
 use ::std::ops::{
     Deref,
@@ -40,12 +39,6 @@ pub struct DummyRuntime {
     incoming: crossbeam_channel::Receiver<DemiBuffer>,
     /// Outgoing Queue of Packets
     outgoing: crossbeam_channel::Sender<DemiBuffer>,
-    /// ARP config.
-    arp_config: ArpConfig,
-    /// TCP config.
-    tcp_config: TcpConfig,
-    /// UDP config.
-    udp_config: UdpConfig,
 }
 
 #[derive(Clone)]
@@ -63,17 +56,8 @@ impl SharedDummyRuntime {
     pub fn new(
         incoming: crossbeam_channel::Receiver<DemiBuffer>,
         outgoing: crossbeam_channel::Sender<DemiBuffer>,
-        arp_config: ArpConfig,
-        tcp_config: TcpConfig,
-        udp_config: UdpConfig,
     ) -> Self {
-        Self(SharedObject::new(DummyRuntime {
-            incoming,
-            outgoing,
-            arp_config,
-            tcp_config,
-            udp_config,
-        }))
+        Self(SharedObject::new(DummyRuntime { incoming, outgoing }))
     }
 }
 
@@ -83,6 +67,14 @@ impl SharedDummyRuntime {
 
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl NetworkRuntime for SharedDummyRuntime {
+    /// Creates a Dummy Runtime.
+    fn new(_config: &Config) -> Result<Self, Fail> {
+        Err(Fail::new(
+            libc::ENOTSUP,
+            "this function is not supported for the dummy runtime",
+        ))
+    }
+
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
@@ -105,18 +97,6 @@ impl NetworkRuntime for SharedDummyRuntime {
             out.push(buf);
         }
         out
-    }
-
-    fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
-    }
-
-    fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
     }
 }
 

@@ -6,9 +6,16 @@
 //======================================================================================================================
 
 use crate::common::runtime::SharedDummyRuntime;
+use ::crossbeam_channel::{
+    Receiver,
+    Sender,
+};
 use ::demikernel::{
     demi_sgarray_t,
-    demikernel::libos::network::libos::SharedNetworkLibOS,
+    demikernel::{
+        config::Config,
+        libos::network::libos::SharedNetworkLibOS,
+    },
     inetstack::SharedInetStack,
     runtime::{
         fail::Fail,
@@ -17,27 +24,13 @@ use ::demikernel::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
-            types::MacAddress,
-        },
         QDesc,
         QToken,
         SharedDemiRuntime,
     },
     OperationResult,
 };
-use crossbeam_channel::{
-    Receiver,
-    Sender,
-};
-use std::{
-    collections::HashMap,
-    net::Ipv4Addr,
+use ::std::{
     ops::{
         Deref,
         DerefMut,
@@ -64,28 +57,17 @@ pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>);
 
 impl DummyLibOS {
     /// Initializes the libOS.
-    pub fn new(
-        link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
-        tx: Sender<DemiBuffer>,
-        rx: Receiver<DemiBuffer>,
-        arp: HashMap<Ipv4Addr, MacAddress>,
-    ) -> Result<Self, Fail> {
+    pub fn new_test(config_path: &str, tx: Sender<DemiBuffer>, rx: Receiver<DemiBuffer>) -> Result<Self, Fail> {
+        let config: Config = Config::new(config_path.to_string())?;
         let runtime: SharedDemiRuntime = SharedDemiRuntime::default();
-        let arp_config: ArpConfig = ArpConfig::new(
-            Some(Duration::from_secs(600)),
-            Some(Duration::from_secs(1)),
-            Some(2),
-            Some(arp.clone()),
-        );
-        let udp_config: UdpConfig = UdpConfig::default();
-        let tcp_config: TcpConfig = TcpConfig::default();
-        let network: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx, arp_config, tcp_config, udp_config);
+        let network: SharedDummyRuntime = SharedDummyRuntime::new(rx, tx);
 
         logging::initialize();
-        let transport = SharedInetStack::new_test(runtime.clone(), network, link_addr, ipv4_addr)?;
+        let transport = SharedInetStack::new_test(&config, runtime.clone(), network)?;
         Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedDummyRuntime>>::new(
-            ipv4_addr, runtime, transport,
+            config.local_ipv4_addr()?,
+            runtime,
+            transport,
         )))
     }
 

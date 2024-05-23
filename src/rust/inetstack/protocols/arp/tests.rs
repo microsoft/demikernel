@@ -27,11 +27,6 @@ use crate::{
     runtime::{
         memory::DemiBuffer,
         network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
             types::MacAddress,
             PacketBuf,
         },
@@ -61,9 +56,6 @@ const ARP_RETRY_COUNT: usize = 2;
 /// ARP request timeout.
 const ARP_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// ARP cache TTL.
-const ARP_CACHE_TTL: Duration = Duration::from_secs(600);
-
 //======================================================================================================================
 // Tests
 //======================================================================================================================
@@ -76,7 +68,7 @@ fn arp_immediate_reply() -> Result<()> {
     let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
-    let mut engine: SharedEngine = new_engine(now, &local_mac, &local_ipv4, &remote_mac, &remote_ipv4)?;
+    let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
     let pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &local_ipv4);
@@ -114,12 +106,10 @@ fn arp_immediate_reply() -> Result<()> {
 #[test]
 fn arp_no_reply() -> Result<()> {
     let mut now: Instant = Instant::now();
-    let local_mac: MacAddress = test_helpers::ALICE_MAC;
-    let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
     let other_remote_ipv4: Ipv4Addr = test_helpers::CARRIE_IPV4;
-    let mut engine: SharedEngine = new_engine(now, &local_mac, &local_ipv4, &remote_mac, &remote_ipv4)?;
+    let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to a different IP address.
     let pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &other_remote_ipv4);
@@ -144,13 +134,11 @@ fn arp_no_reply() -> Result<()> {
 #[test]
 fn arp_cache_update() -> Result<()> {
     let mut now: Instant = Instant::now();
-    let local_mac: MacAddress = test_helpers::ALICE_MAC;
-    let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
-    let remote_mac: MacAddress = test_helpers::BOB_MAC;
-    let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
+    let local_mac: MacAddress = test_helpers::BOB_MAC;
+    let local_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
     let other_remote_mac: MacAddress = test_helpers::CARRIE_MAC;
     let other_remote_ipv4: Ipv4Addr = test_helpers::CARRIE_IPV4;
-    let mut engine: SharedEngine = new_engine(now, &local_mac, &local_ipv4, &remote_mac, &remote_ipv4)?;
+    let mut engine: SharedEngine = new_engine(now, &test_helpers::BOB_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
     let pkt: ArpMessage = build_arp_query(&other_remote_mac, &other_remote_ipv4, &local_ipv4);
@@ -193,12 +181,8 @@ fn arp_cache_timeout() -> Result<()> {
     use crate::QToken;
 
     let mut now: Instant = Instant::now();
-    let local_mac: MacAddress = test_helpers::ALICE_MAC;
-    let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
-    let remote_mac: MacAddress = test_helpers::BOB_MAC;
-    let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
     let other_remote_ipv4: Ipv4Addr = test_helpers::CARRIE_IPV4;
-    let mut engine: SharedEngine = new_engine(now, &local_mac, &local_ipv4, &remote_mac, &remote_ipv4)?;
+    let mut engine: SharedEngine = new_engine(now, test_helpers::ALICE_CONFIG_PATH)?;
 
     let coroutine = Box::pin(engine.clone().arp_query(other_remote_ipv4).fuse());
     let qt: QToken = engine.get_runtime().clone().insert_coroutine("arp query", coroutine)?;
@@ -260,38 +244,7 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
 }
 
 /// Creates a new engine.
-fn new_engine(
-    now: Instant,
-    local_mac: &MacAddress,
-    local_ipv4: &Ipv4Addr,
-    remote_mac: &MacAddress,
-    remote_ipv4: &Ipv4Addr,
-) -> Result<SharedEngine> {
-    let arp_config: ArpConfig = {
-        let initial_values: Option<HashMap<Ipv4Addr, MacAddress>> = {
-            let mut initial_values: HashMap<Ipv4Addr, MacAddress> = HashMap::new();
-            initial_values.insert(local_ipv4.clone(), local_mac.clone());
-            initial_values.insert(remote_ipv4.clone(), remote_mac.clone());
-            Some(initial_values)
-        };
-
-        ArpConfig::new(
-            Some(ARP_CACHE_TTL),
-            Some(ARP_REQUEST_TIMEOUT),
-            Some(ARP_RETRY_COUNT),
-            initial_values,
-        )
-    };
-    let udp_config: UdpConfig = UdpConfig::default();
-    let tcp_config: TcpConfig = TcpConfig::default();
-
-    let test_rig: SharedTestRuntime = SharedTestRuntime::new(
-        now,
-        arp_config,
-        udp_config,
-        tcp_config,
-        local_mac.clone(),
-        local_ipv4.clone(),
-    );
-    Ok(SharedEngine::new(test_rig, now)?)
+fn new_engine(now: Instant, config_path: &str) -> Result<SharedEngine> {
+    let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
+    Ok(SharedEngine::new(config_path, test_rig, now)?)
 }

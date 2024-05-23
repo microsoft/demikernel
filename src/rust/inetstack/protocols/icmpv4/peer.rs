@@ -3,6 +3,7 @@
 
 use crate::{
     collections::async_queue::AsyncQueue,
+    demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
@@ -103,10 +104,9 @@ pub struct SharedIcmpv4Peer<N: NetworkRuntime>(SharedObject<Icmpv4Peer<N>>);
 
 impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
     pub fn new(
+        config: &Config,
         mut runtime: SharedDemiRuntime,
         transport: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
@@ -114,8 +114,8 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
         let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
             transport: transport.clone(),
-            local_link_addr,
-            local_ipv4_addr,
+            local_link_addr: config.local_link_addr()?,
+            local_ipv4_addr: config.local_ipv4_addr()?,
             arp: arp.clone(),
             recv_queue: AsyncQueue::<(Ipv4Header, DemiBuffer)>::default(),
             seq: Wrapping(0),

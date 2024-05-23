@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
+    demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
         icmpv4::SharedIcmpv4Peer,
@@ -13,14 +14,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::{
-                TcpConfig,
-                UdpConfig,
-            },
-            types::MacAddress,
-            NetworkRuntime,
-        },
+        network::NetworkRuntime,
         SharedDemiRuntime,
     },
 };
@@ -41,44 +35,19 @@ pub struct Peer<N: NetworkRuntime> {
 
 impl<N: NetworkRuntime> Peer<N> {
     pub fn new(
+        config: &Config,
         runtime: SharedDemiRuntime,
         transport: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        udp_config: UdpConfig,
-        tcp_config: TcpConfig,
         arp: SharedArpPeer<N>,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let udp_offload_checksum: bool = udp_config.get_tx_checksum_offload();
-        let udp: SharedUdpPeer<N> = SharedUdpPeer::<N>::new(
-            runtime.clone(),
-            transport.clone(),
-            local_link_addr,
-            local_ipv4_addr,
-            udp_offload_checksum,
-            arp.clone(),
-        )?;
-        let icmpv4: SharedIcmpv4Peer<N> = SharedIcmpv4Peer::<N>::new(
-            runtime.clone(),
-            transport.clone(),
-            local_link_addr,
-            local_ipv4_addr,
-            arp.clone(),
-            rng_seed,
-        )?;
-        let tcp: SharedTcpPeer<N> = SharedTcpPeer::<N>::new(
-            runtime.clone(),
-            transport.clone(),
-            local_link_addr,
-            local_ipv4_addr,
-            tcp_config,
-            arp,
-            rng_seed,
-        )?;
+        let udp: SharedUdpPeer<N> = SharedUdpPeer::<N>::new(config, runtime.clone(), transport.clone(), arp.clone())?;
+        let icmpv4: SharedIcmpv4Peer<N> =
+            SharedIcmpv4Peer::<N>::new(config, runtime.clone(), transport.clone(), arp.clone(), rng_seed)?;
+        let tcp: SharedTcpPeer<N> = SharedTcpPeer::<N>::new(config, runtime.clone(), transport.clone(), arp, rng_seed)?;
 
         Ok(Peer {
-            local_ipv4_addr,
+            local_ipv4_addr: config.local_ipv4_addr()?,
             icmpv4,
             tcp,
             udp,

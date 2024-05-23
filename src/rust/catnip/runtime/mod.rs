@@ -3,9 +3,9 @@
 
 pub mod memory;
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use self::memory::{
     consts::DEFAULT_MAX_BODY_SIZE,
@@ -59,11 +59,6 @@ use crate::{
         },
         memory::DemiBuffer,
         network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
             consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             NetworkRuntime,
@@ -91,9 +86,9 @@ use ::std::{
     time::Duration,
 };
 
-//==============================================================================
+//======================================================================================================================
 // Macros
-//==============================================================================
+//======================================================================================================================
 
 macro_rules! expect_zero {
     ($name:ident ( $($arg: expr),* $(,)* )) => {{
@@ -106,9 +101,9 @@ macro_rules! expect_zero {
     }};
 }
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 /// DPDK Runtime
 pub struct DPDKRuntime {
@@ -116,76 +111,17 @@ pub struct DPDKRuntime {
     port_id: u16,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
-    arp_config: ArpConfig,
-    tcp_config: TcpConfig,
-    udp_config: UdpConfig,
 }
 
 #[derive(Clone)]
 pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
-    pub fn new(config: Config) -> Result<Self, Fail> {
-        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for TCP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for UDP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let (mm, port_id, link_addr) = Self::initialize_dpdk(
-            &config.eal_init_args()?,
-            config.enable_jumbo_frames()?,
-            config.mtu()?,
-            tcp_offload.unwrap_or(false),
-            udp_offload.unwrap_or(false),
-        )
-        .unwrap();
-
-        let arp_config = ArpConfig::new(
-            Some(Duration::from_secs(15)),
-            Some(Duration::from_secs(20)),
-            Some(5),
-            config.arp_table()?,
-        );
-        let tcp_config = TcpConfig::new(
-            Some(config.mss()?),
-            None,
-            None,
-            Some(0xffff),
-            Some(0),
-            None,
-            tcp_offload,
-            tcp_offload,
-        );
-
-        let udp_config = UdpConfig::new(udp_offload, udp_offload);
-
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
-            mm,
-            port_id,
-            link_addr,
-            ipv4_addr: config.local_ipv4_addr()?,
-            arp_config,
-            tcp_config,
-            udp_config,
-        })))
-    }
-
     /// Initializes DPDK.
     fn initialize_dpdk(
         eal_init_args: &[CString],
@@ -399,23 +335,11 @@ impl SharedDPDKRuntime {
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4_addr
     }
-
-    pub fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    pub fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
-    }
-
-    pub fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
-    }
 }
 
-//==============================================================================
-// Trait Implementations
-//==============================================================================
+//======================================================================================================================
+// Imports
+//======================================================================================================================
 
 impl Deref for SharedDPDKRuntime {
     type Target = DPDKRuntime;
@@ -431,12 +355,41 @@ impl DerefMut for SharedDPDKRuntime {
     }
 }
 
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for SharedDPDKRuntime {
+    fn new(config: &Config) -> Result<Self, Fail> {
+        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for TCP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for UDP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
+            &config.eal_init_args()?,
+            config.enable_jumbo_frames()?,
+            config.mtu()?,
+            tcp_offload.unwrap_or(false),
+            udp_offload.unwrap_or(false),
+        )?;
+
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+            mm,
+            port_id,
+            link_addr,
+            ipv4_addr: config.local_ipv4_addr()?,
+        })))
+    }
+
     fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
@@ -555,17 +508,5 @@ impl NetworkRuntime for SharedDPDKRuntime {
         }
 
         out
-    }
-
-    fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
-    }
-
-    fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
     }
 }

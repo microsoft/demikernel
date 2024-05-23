@@ -34,7 +34,10 @@ use crate::demikernel::libos::network::{
     NetworkLibOSWrapper,
 };
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::inetstack::SharedInetStack;
+use crate::{
+    inetstack::SharedInetStack,
+    runtime::network::NetworkRuntime,
+};
 
 use crate::{
     demikernel::config::Config,
@@ -131,10 +134,10 @@ impl LibOS {
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: LinuxRuntime = LinuxRuntime::new(config.clone())?;
+                let transport: LinuxRuntime = LinuxRuntime::new(&config)?;
                 // This is our transport for Catpowder.
                 let inetstack: SharedInetStack<LinuxRuntime> =
-                    SharedInetStack::<LinuxRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
+                    SharedInetStack::<LinuxRuntime>::new(&config, runtime.clone(), transport).unwrap();
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
                     SharedInetStack<LinuxRuntime>,
                 >::new(
@@ -146,9 +149,9 @@ impl LibOS {
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(config.clone())?;
+                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(&config)?;
                 let inetstack: SharedInetStack<SharedDPDKRuntime> =
-                    SharedInetStack::<SharedDPDKRuntime>::new(config.clone(), runtime.clone(), transport).unwrap();
+                    SharedInetStack::<SharedDPDKRuntime>::new(&config, runtime.clone(), transport).unwrap();
 
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
                     SharedInetStack<SharedDPDKRuntime>,
