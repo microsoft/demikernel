@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#include "log.h"
 #include <demi/libos.h>
 #include <demi/sga.h>
 #include <demi/wait.h>
-#include <pthread.h>
-#include <stdlib.h>
 
 static __thread int __demi_reent_guard = 0;
 
@@ -121,4 +118,3 @@ int __demi_getpeername(int qd, struct sockaddr *addr, socklen_t *addrlen)
 {
     DEMI_CALL(int, demi_getpeername, qd, addr, addrlen);
 }
-
