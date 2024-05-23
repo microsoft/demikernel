@@ -34,6 +34,11 @@ int __getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
     TRACE("sockfd=%d, addr=%p, addrlen=%p", sockfd, (void *)addr, (void *)addrlen);
 
     ret = __demi_getpeername(sockfd, addr, addrlen);
+    if (ret != 0)
+    {
+        errno = ret;
+        return -1;
+    }
 
     return (ret);
 }
