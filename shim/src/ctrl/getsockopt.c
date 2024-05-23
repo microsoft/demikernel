@@ -5,6 +5,7 @@
 #include "../log.h"
 #include "../qman.h"
 #include "../utils.h"
+#include <glue.h>
 #include <demi/libos.h>
 #include <errno.h>
 #include <netinet/tcp.h>
@@ -58,5 +59,5 @@ int __getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *op
         WARN("%s is not supported", "TCP_ULP");
     }
 
-    return (demi_getsockopt(sockfd, level, optname, optval, optlen));
+    return (__demi_getsockopt(sockfd, level, optname, optval, optlen));
 }

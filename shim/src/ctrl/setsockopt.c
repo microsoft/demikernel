@@ -3,6 +3,7 @@
 
 #include "../log.h"
 #include "../qman.h"
+#include <glue.h>
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -58,5 +59,5 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
         WARN("%s is not supported", "TCP_ULP");
     }
 
-    return (demi_setsockopt(sockfd, level, optname, optval, optlen));
+    return (__demi_setsockopt(sockfd, level, optname, optval, optlen));
 }

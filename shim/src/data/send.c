@@ -108,15 +108,15 @@ ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 
     demi_qtoken_t qt = -1;
     demi_qresult_t qr;
-    demi_sgarray_t sga = demi_sgaalloc(iov_len);
+    demi_sgarray_t sga = __demi_sgaalloc(iov_len);
 
     // Copy iovecs to sga
     bytes = fill_sga(msg->msg_iov, &sga, msg->msg_iovlen);
 
-    assert(demi_push(&qt, sockfd, &sga) == 0);
-    assert(demi_wait(&qr, qt, NULL) == 0);
+    assert(__demi_push(&qt, sockfd, &sga) == 0);
+    assert(__demi_wait(&qr, qt, NULL) == 0);
     assert(qr.qr_opcode == DEMI_OPC_PUSH);
-    demi_sgafree(&sga);
+    __demi_sgafree(&sga);
 
     return (bytes);
 }
@@ -169,7 +169,7 @@ static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
     size_t iovcnt)
 {
     size_t len, sga_len, iov_len;
-    
+
     size_t i_iov = 0;
     uint8_t sga_pos = 0, iov_pos = 0;
 
@@ -180,11 +180,11 @@ static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
         sga_len = sga->sga_segs[0].sgaseg_len - sga_pos;
 
         len = MIN(iov_len, sga_len);
-        memcpy(sga->sga_segs[0].sgaseg_buf + sga_pos, 
+        memcpy(sga->sga_segs[0].sgaseg_buf + sga_pos,
                 iov[i_iov].iov_base + iov_pos, len);
-        
+
         sga_pos += len;
-        
+
         if (len == iov_len)
         {
             iov_pos = 0;
