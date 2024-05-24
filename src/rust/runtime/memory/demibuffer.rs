@@ -49,6 +49,7 @@ use ::dpdk_rs::{
     rte_pktmbuf_clone,
     rte_pktmbuf_free,
     rte_pktmbuf_trim,
+    rte_pktmbuf_prepend,
 };
 use ::std::{
     alloc::{
@@ -544,6 +545,21 @@ impl DemiBuffer {
         }
 
         Ok(())
+    }
+
+    /// Prepends `nbytes` bytes to the begining of the `DemiBuffer`.
+    #[cfg(feature = "libdpdk")]
+    pub fn prepend(&mut self, nbytes: u16) -> Result<(), Fail> {
+        let mbuf: *mut rte_mbuf = unsafe {
+            // Safety: rte_pktmbuf_prepend does both sanity and headroom space checks.
+            rte_pktmbuf_prepend(self.as_mbuf(), nbytes) as *mut rte_mbuf
+        };
+
+        if mbuf.is_null() {
+            Err(Fail::new(libc::EINVAL, "tried to prepend more bytes than are allowed"))
+        } else {
+            Ok(())
+        }
     }
 
     ///

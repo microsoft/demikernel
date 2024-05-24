@@ -83,7 +83,7 @@ impl PacketBuf for Icmpv4Message {
             .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)], &self.data);
     }
 
-    fn take_body(&self) -> Option<DemiBuffer> {
+    fn take_body(&mut self) -> Option<DemiBuffer> {
         Some(self.data.clone())
     }
 }

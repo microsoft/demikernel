@@ -111,7 +111,7 @@ impl PacketBuf for UdpDatagram {
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(&self) -> Option<DemiBuffer> {
+    fn take_body(&mut self) -> Option<DemiBuffer> {
         Some(self.data.clone())
     }
 }

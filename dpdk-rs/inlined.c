@@ -97,3 +97,8 @@ int rte_eth_tx_offload_multi_segs_()
 {
     return RTE_ETH_TX_OFFLOAD_MULTI_SEGS;
 }
+
+char *rte_pktmbuf_prepend_(struct rte_mbuf *m, uint16_t len)
+{
+    return rte_pktmbuf_prepend(m, len);
+}
