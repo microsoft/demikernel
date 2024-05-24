@@ -198,8 +198,8 @@ extern "C"
      *
      * @return On success, zero is returned. On failure, a possitive error code is returned.
      */
-    ATTR_NONNULL(2, 3)
-    extern int demi_getpeername(_In_ int qd, _Out_ struct sockaddr *addr, _Out_ socklen_t *addrlen);
+    ATTR_NONNULL(2)
+    extern int demi_getpeername(_In_ int qd, _Out_writes_to_(addrlen, *addrlen) struct sockaddr *addr, _In_ socklen_t *addrlen);
 
 #ifdef __cplusplus
 }

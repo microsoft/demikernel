@@ -953,11 +953,18 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
         return libc::EINVAL;
     }
 
+    let expected_len = mem::size_of::<data_structures::SockAddrIn>() as Socklen;
+
+    if unsafe { *addrlen != expected_len } {
+        warn!("demi_getpeername(): addrlen does not match size of SockAddrIn");
+        return libc::EINVAL;
+    }
+
     // Issue peername operation on socket.
     let ret: Result<SocketAddrV4, Fail> = match do_syscall(|libos| libos.getpeername(qd.into())) {
         Ok(result) => result,
         Err(e) => {
-            trace!("demi_getpeername(_ failed: {:?}", e);
+            trace!("demi_getpeername() failed: {:?}", e);
             return e.errno;
         },
     };
@@ -966,18 +973,21 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
         Ok(sockaddr) => {
             let result: data_structures::SockAddr = socketaddrv4_to_sockaddr(&sockaddr);
             let result_length: usize = mem::size_of::<data_structures::SockAddr>();
-
             unsafe {
                 if (result_length as Socklen) < *addrlen {
                     *addrlen = result_length as Socklen;
                 }
-                ptr::copy(&result, addr, *addrlen as usize);
+
+                // Need to pass dst a as c_void pointer or else we get a stack-smashing error
+                ptr::copy_nonoverlapping(&result as *const data_structures::SockAddr as *const c_void,
+                        addr as *mut c_void,
+                        *addrlen as usize);
             }
 
             return 0;
         },
         Err(e) => {
-            trace!("demi_getpeername() failed {:?}", e);
+            trace!("demi_getpeername() failed: {:?}", e);
             return e.errno;
         },
     }
