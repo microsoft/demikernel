@@ -14,9 +14,12 @@ mod socket;
 //======================================================================================================================
 
 use crate::{
-    catnap::transport::socket::{
-        SharedSocketData,
-        SocketData,
+    catnap::{
+        transport::socket::{
+            SharedSocketData,
+            SocketData,
+        },
+        YIELD_TIMEOUT_MS,
     },
     demikernel::config::Config,
     expect_ok,
@@ -173,7 +176,7 @@ impl SharedCatnapTransport {
                     self.epoll_fd,
                     events.as_mut_ptr() as *mut libc::epoll_event,
                     EPOLL_BATCH_SIZE as i32,
-                    0,
+                    YIELD_TIMEOUT_MS as i32,
                 )
             } {
                 result if result >= 0 => {
