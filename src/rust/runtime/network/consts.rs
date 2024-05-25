@@ -20,6 +20,10 @@ pub const MIN_MSS: usize = FALLBACK_MSS;
 /// Maximum MSS Parameter for TCP
 pub const MAX_MSS: usize = u16::max_value() as usize;
 
+/// Maximum Segment Lifetime
+/// See: https://www.rfc-editor.org/rfc/rfc793.txt
+pub const MSL: Duration = Duration::from_secs(2);
+
 /// Delay timeout for TCP ACKs.
 /// See: https://www.rfc-editor.org/rfc/rfc5681#section-4.2
 pub const TCP_ACK_DELAY_TIMEOUT: Duration = Duration::from_millis(500);

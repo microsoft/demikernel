@@ -77,7 +77,7 @@ pub struct TcpSocket<N: NetworkRuntime> {
     network: N,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
-    tcp_options: TcpSocketOptions,
+    socket_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
@@ -95,6 +95,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         network: N,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
@@ -105,7 +106,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             network,
             local_link_addr,
             tcp_config,
-            tcp_options: TcpSocketOptions::default(),
+            socket_options: default_socket_options,
             arp,
             dead_socket_tx,
         }))
@@ -117,6 +118,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         network: N,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
@@ -128,7 +130,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             network,
             local_link_addr,
             tcp_config,
-            tcp_options: TcpSocketOptions::default(),
+            socket_options: default_socket_options,
             arp,
             dead_socket_tx,
         }))
@@ -137,9 +139,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
     /// Set an SO_* option on the socket.
     pub fn set_socket_option(&mut self, option: SocketOption) -> Result<(), Fail> {
         match option {
-            SocketOption::Linger(linger) => self.tcp_options.set_linger(linger),
-            SocketOption::KeepAlive(keep_alive) => self.tcp_options.set_keepalive(keep_alive),
-            SocketOption::NoDelay(no_delay) => self.tcp_options.set_nodelay(no_delay),
+            SocketOption::Linger(linger) => self.socket_options.set_linger(linger),
+            SocketOption::KeepAlive(keep_alive) => self.socket_options.set_keepalive(keep_alive),
+            SocketOption::NoDelay(no_delay) => self.socket_options.set_nodelay(no_delay),
         }
         Ok(())
     }
@@ -148,9 +150,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
     /// [option].
     pub fn get_socket_option(&mut self, option: SocketOption) -> Result<SocketOption, Fail> {
         match option {
-            SocketOption::Linger(_) => Ok(SocketOption::Linger(self.tcp_options.get_linger())),
-            SocketOption::KeepAlive(_) => Ok(SocketOption::KeepAlive(self.tcp_options.get_keepalive())),
-            SocketOption::NoDelay(_) => Ok(SocketOption::NoDelay(self.tcp_options.get_nodelay())),
+            SocketOption::Linger(_) => Ok(SocketOption::Linger(self.socket_options.get_linger())),
+            SocketOption::KeepAlive(_) => Ok(SocketOption::KeepAlive(self.socket_options.get_keepalive())),
+            SocketOption::NoDelay(_) => Ok(SocketOption::NoDelay(self.socket_options.get_nodelay())),
         }
     }
 
@@ -189,6 +191,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             recv_queue.clone(),
             self.network.clone(),
             self.tcp_config.clone(),
+            self.socket_options.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.dead_socket_tx.clone(),
@@ -212,6 +215,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             self.network.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
+            self.socket_options.clone(),
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         );
@@ -237,6 +241,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             recv_queue.clone(),
             ack_queue,
             self.tcp_config.clone(),
+            self.socket_options.clone(),
             self.local_link_addr,
             self.arp.clone(),
             self.dead_socket_tx.clone(),

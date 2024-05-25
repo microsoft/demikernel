@@ -23,7 +23,10 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::{
-                option::SocketOption,
+                option::{
+                    SocketOption,
+                    TcpSocketOptions,
+                },
                 SocketId,
             },
             types::MacAddress,
@@ -65,6 +68,7 @@ pub struct TcpPeer<N: NetworkRuntime> {
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
+    default_socket_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
@@ -96,6 +100,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             tcp_config: TcpConfig::new(config)?,
+            default_socket_options: TcpSocketOptions::new(config)?,
             arp,
             rng,
             dead_socket_tx: tx,
@@ -110,6 +115,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             self.transport.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
+            self.default_socket_options.clone(),
             self.arp.clone(),
             self.dead_socket_tx.clone(),
         ))

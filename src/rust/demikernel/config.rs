@@ -199,7 +199,7 @@ impl Config {
         let linger: u64 = if let Some(linger) = Self::get_typed_env_option(tcp_socket_options::LINGER)? {
             linger
         } else {
-            let section: &Yaml = Self::get_subsection(self.get_tcp_socket_options()?, tcp_socket_options::KEEP_ALIVE)?;
+            let section: &Yaml = Self::get_subsection(self.get_tcp_socket_options()?, tcp_socket_options::LINGER)?;
             if Self::get_bool_option(section, "enabled")? {
                 Self::get_int_option(section, "time_seconds")?
             } else {

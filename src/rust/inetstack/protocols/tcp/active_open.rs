@@ -41,6 +41,7 @@ use crate::{
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
+            socket::option::TcpSocketOptions,
             types::MacAddress,
             NetworkRuntime,
         },
@@ -72,6 +73,7 @@ pub struct ActiveOpenSocket<N: NetworkRuntime> {
     ack_queue: SharedAsyncQueue<usize>,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
+    socket_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
@@ -93,6 +95,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
         local_link_addr: MacAddress,
         arp: SharedArpPeer<N>,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
@@ -109,6 +112,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             ack_queue,
             local_link_addr,
             tcp_config,
+            socket_options: default_socket_options,
             arp,
             dead_socket_tx,
         })))
@@ -226,6 +230,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             self.ack_queue.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
+            self.socket_options,
             self.arp.clone(),
             remote_seq_num,
             self.tcp_config.get_ack_delay_timeout(),

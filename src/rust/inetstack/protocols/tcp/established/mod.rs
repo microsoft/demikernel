@@ -27,6 +27,7 @@ use crate::{
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
+            socket::option::TcpSocketOptions,
             NetworkRuntime,
         },
         QDesc,
@@ -66,6 +67,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         ack_queue: SharedAsyncQueue<usize>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer<N>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
@@ -87,6 +89,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
             transport,
             local_link_addr,
             tcp_config,
+            default_socket_options,
             arp,
             receiver_seq_no,
             ack_delay_timeout,
@@ -145,17 +148,3 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         (self.cb.get_local(), self.cb.get_remote())
     }
 }
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
-
-// TODO: Uncomment this once we have proper resource clean up on asynchronous close.
-// FIXME: https://github.com/microsoft/demikernel/issues/988
-// impl Drop for EstablishedSocket {
-//     fn drop(&mut self) {
-//         if let Err(e) = self.runtime.remove_background_coroutine(self.background_task_qt) {
-//             panic!("Failed to drop established socket (error={})", e);
-//         }
-//     }
-// }
