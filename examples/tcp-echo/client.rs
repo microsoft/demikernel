@@ -5,10 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    DEFAULT_LINGER,
-    DEFAULT_TIMEOUT,
-};
+use crate::DEFAULT_TIMEOUT;
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -19,7 +16,6 @@ use demikernel::{
     LibOS,
     QDesc,
     QToken,
-    SocketOption,
 };
 use histogram::Histogram;
 use std::{
@@ -108,9 +104,6 @@ impl TcpEchoClient {
         // Open all connections.
         for _ in 0..nclients {
             let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            // Set default linger to a short period, otherwise, this test will take a long time to complete.
-            self.libos
-                .set_socket_option(sockqd, SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
             self.clients.insert(sockqd, (vec![0; self.bufsize], 0));
             let qt: QToken = self.libos.connect(sockqd, self.remote)?;
@@ -200,8 +193,6 @@ impl TcpEchoClient {
         for i in 0..nclients {
             let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
             // Set default linger to a short period, otherwise, this test will take a long time to complete.
-            self.libos
-                .set_socket_option(qd, SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
             let qt: QToken = self.libos.connect(qd, self.remote)?;
             self.register_operation(qd, qt);

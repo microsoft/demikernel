@@ -5,7 +5,6 @@
 // Imports
 //======================================================================================================================
 
-use crate::DEFAULT_LINGER;
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -16,7 +15,6 @@ use ::demikernel::{
     LibOS,
     QDesc,
     QToken,
-    SocketOption,
 };
 use ::std::{
     collections::{
@@ -73,8 +71,6 @@ impl TcpServer {
     pub fn new(mut libos: LibOS, local: SocketAddr, nclients: usize) -> Result<Self> {
         // Create TCP socket.
         let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
-        // Set default linger to a short period, otherwise, this test will take a long time to complete.
-        libos.set_socket_option(sockqd, SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
         // Bind to local address.
         libos.bind(sockqd, local)?;
