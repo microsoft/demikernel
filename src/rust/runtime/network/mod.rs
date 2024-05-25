@@ -17,22 +17,20 @@ pub mod types;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    memory::{
-        DemiBuffer,
-        MemoryRuntime,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    demikernel::config::Config,
+    runtime::{
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
         },
-        consts::RECEIVE_BATCH_SIZE,
-        socket::SocketId,
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            socket::SocketId,
+        },
+        Fail,
+        QDesc,
     },
-    Fail,
-    QDesc,
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
@@ -125,16 +123,12 @@ pub trait PacketBuf {
 
 /// Network Runtime
 pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
+    /// Creates a new NetworkRuntime with the [config] parameters.
+    fn new(config: &Config) -> Result<Self, Fail>;
+
     /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>);
 
     /// Receives a batch of [DemiBuffer].
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
-
-    /// Gets the UDP config options.
-    fn get_udp_config(&self) -> UdpConfig;
-
-    fn get_tcp_config(&self) -> TcpConfig;
-
-    fn get_arp_config(&self) -> ArpConfig;
 }

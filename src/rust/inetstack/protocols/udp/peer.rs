@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::{
+    demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
@@ -72,19 +73,17 @@ pub struct SharedUdpPeer<N: NetworkRuntime>(SharedObject<UdpPeer<N>>);
 
 impl<N: NetworkRuntime> SharedUdpPeer<N> {
     pub fn new(
+        config: &Config,
         _runtime: SharedDemiRuntime,
         transport: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        offload_checksum: bool,
         arp: SharedArpPeer<N>,
     ) -> Result<Self, Fail> {
         Ok(Self(SharedObject::<UdpPeer<N>>::new(UdpPeer {
             transport,
             arp,
-            local_link_addr,
-            local_ipv4_addr,
-            checksum_offload: offload_checksum,
+            local_link_addr: config.local_link_addr()?,
+            local_ipv4_addr: config.local_ipv4_addr()?,
+            checksum_offload: config.udp_checksum_offload()?,
             addresses: HashMap::<SocketAddrV4, SharedUdpSocket<N>>::new(),
         })))
     }

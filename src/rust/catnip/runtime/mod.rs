@@ -3,9 +3,9 @@
 
 pub mod memory;
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use self::memory::{
     consts::DEFAULT_MAX_BODY_SIZE,
@@ -59,11 +59,6 @@ use crate::{
         },
         memory::DemiBuffer,
         network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
             consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
             NetworkRuntime,
@@ -75,11 +70,6 @@ use crate::{
 use ::arrayvec::ArrayVec;
 use ::std::mem;
 
-use ::anyhow::{
-    bail,
-    format_err,
-    Error,
-};
 use ::std::{
     ffi::CString,
     mem::MaybeUninit,
@@ -91,24 +81,9 @@ use ::std::{
     time::Duration,
 };
 
-//==============================================================================
-// Macros
-//==============================================================================
-
-macro_rules! expect_zero {
-    ($name:ident ( $($arg: expr),* $(,)* )) => {{
-        let ret = $name($($arg),*);
-        if ret == 0 {
-            Ok(0)
-        } else {
-            Err(format_err!("{} failed with {:?}", stringify!($name), ret))
-        }
-    }};
-}
-
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
 /// DPDK Runtime
 pub struct DPDKRuntime {
@@ -116,76 +91,17 @@ pub struct DPDKRuntime {
     port_id: u16,
     link_addr: MacAddress,
     ipv4_addr: Ipv4Addr,
-    arp_config: ArpConfig,
-    tcp_config: TcpConfig,
-    udp_config: UdpConfig,
 }
 
 #[derive(Clone)]
 pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
-    pub fn new(config: Config) -> Result<Self, Fail> {
-        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for TCP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for UDP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let (mm, port_id, link_addr) = Self::initialize_dpdk(
-            &config.eal_init_args()?,
-            config.enable_jumbo_frames()?,
-            config.mtu()?,
-            tcp_offload.unwrap_or(false),
-            udp_offload.unwrap_or(false),
-        )
-        .unwrap();
-
-        let arp_config = ArpConfig::new(
-            Some(Duration::from_secs(15)),
-            Some(Duration::from_secs(20)),
-            Some(5),
-            config.arp_table()?,
-        );
-        let tcp_config = TcpConfig::new(
-            Some(config.mss()?),
-            None,
-            None,
-            Some(0xffff),
-            Some(0),
-            None,
-            tcp_offload,
-            tcp_offload,
-        );
-
-        let udp_config = UdpConfig::new(udp_offload, udp_offload);
-
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
-            mm,
-            port_id,
-            link_addr,
-            ipv4_addr: config.local_ipv4_addr()?,
-            arp_config,
-            tcp_config,
-            udp_config,
-        })))
-    }
-
     /// Initializes DPDK.
     fn initialize_dpdk(
         eal_init_args: &[CString],
@@ -193,7 +109,7 @@ impl SharedDPDKRuntime {
         mtu: u16,
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
-    ) -> Result<(MemoryManager, u16, MacAddress), Error> {
+    ) -> Result<(MemoryManager, u16, MacAddress), Fail> {
         std::env::set_var("MLX5_SHUT_UP_BF", "1");
         std::env::set_var("MLX5_SINGLE_THREADED", "1");
         std::env::set_var("MLX4_SINGLE_THREADED", "1");
@@ -201,13 +117,15 @@ impl SharedDPDKRuntime {
         let ret: libc::c_int = unsafe { rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _) };
         if ret < 0 {
             let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
-            bail!("EAL initialization failed (rte_errno={:?})", rte_errno);
+            let cause: String = format!("EAL initialization failed (rte_errno={:?})", rte_errno);
+            error!("initialize_dpdk(): {}", cause);
+            return Err(Fail::new(libc::EIO, &cause));
         }
         let nb_ports: u16 = unsafe { rte_eth_dev_count_avail() };
         if nb_ports == 0 {
-            bail!("No ethernet ports available");
+            return Err(Fail::new(libc::EIO, "No ethernet ports available"));
         }
-        eprintln!("DPDK reports that {} ports (interfaces) are available.", nb_ports);
+        trace!("DPDK reports that {} ports (interfaces) are available.", nb_ports);
 
         let max_body_size: usize = if use_jumbo_frames {
             (RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM) as usize
@@ -215,7 +133,14 @@ impl SharedDPDKRuntime {
             DEFAULT_MAX_BODY_SIZE
         };
 
-        let memory_manager = MemoryManager::new(max_body_size)?;
+        let memory_manager = match MemoryManager::new(max_body_size) {
+            Ok(manager) => manager,
+            Err(e) => {
+                let cause: String = format!("Failed to set up memory manager: {:?}", e);
+                error!("initialize_dpdk(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
+            },
+        };
 
         let owner: u64 = RTE_ETH_DEV_NO_OWNER as u64;
         let port_id: u16 = unsafe { rte_eth_find_next_owned_by(0, owner) as u16 };
@@ -240,7 +165,9 @@ impl SharedDPDKRuntime {
             MacAddress::new(m.assume_init().addr_bytes)
         };
         if local_link_addr.is_nil() || !local_link_addr.is_unicast() {
-            Err(format_err!("Invalid mac address"))?;
+            let cause: String = format!("Invalid mac address: {:?}", local_link_addr);
+            error!("initialize_dpdk(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
         }
 
         Ok((memory_manager, port_id, local_link_addr))
@@ -254,7 +181,7 @@ impl SharedDPDKRuntime {
         mtu: u16,
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Fail> {
         let rx_rings: u16 = 1;
         let tx_rings: u16 = 1;
         let rx_ring_size: u16 = 2048;
@@ -313,21 +240,28 @@ impl SharedDPDKRuntime {
         tx_conf.tx_thresh.wthresh = tx_wthresh;
         tx_conf.tx_free_thresh = 32;
 
-        unsafe {
-            expect_zero!(rte_eth_dev_configure(
-                port_id,
-                rx_rings,
-                tx_rings,
-                &port_conf as *const _,
-            ))?;
+        if unsafe { rte_eth_dev_configure(port_id, rx_rings, tx_rings, &port_conf as *const _) } != 0 {
+            let cause: String = format!("Failed to configure ethernet device");
+            error!("initialize_dpdk_port(): {}", cause);
+            return Err(Fail::new(libc::EIO, &cause));
         }
 
         unsafe {
-            expect_zero!(rte_eth_dev_set_mtu(port_id, mtu))?;
+            if rte_eth_dev_set_mtu(port_id, mtu) != 0 {
+                let cause: String = format!("Failed to set mtu {:?}", mtu);
+                error!("initialize_dpdk_port(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
+            }
             let mut dpdk_mtu: u16 = 0u16;
-            expect_zero!(rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _))?;
+            if (rte_eth_dev_get_mtu(port_id, &mut dpdk_mtu as *mut _)) != 0 {
+                let cause: String = format!("Failed to get mtu");
+                error!("initialize_dpdk_port(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
+            }
             if dpdk_mtu != mtu {
-                bail!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
+                let cause: String = format!("Failed to set MTU to {}, got back {}", mtu, dpdk_mtu);
+                error!("initialize_dpdk_port(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
             }
         }
 
@@ -335,30 +269,39 @@ impl SharedDPDKRuntime {
 
         unsafe {
             for i in 0..rx_rings {
-                expect_zero!(rte_eth_rx_queue_setup(
+                if rte_eth_rx_queue_setup(
                     port_id,
                     i,
                     nb_rxd,
                     socket_id,
                     &rx_conf as *const _,
                     memory_manager.body_pool(),
-                ))?;
+                ) != 0
+                {
+                    let cause: String = format!("Failed to set up rx queue");
+                    error!("initialize_dpdk_port(): {}", cause);
+                    return Err(Fail::new(libc::EIO, &cause));
+                }
             }
             for i in 0..tx_rings {
-                expect_zero!(rte_eth_tx_queue_setup(
-                    port_id,
-                    i,
-                    nb_txd,
-                    socket_id,
-                    &tx_conf as *const _
-                ))?;
+                if rte_eth_tx_queue_setup(port_id, i, nb_txd, socket_id, &tx_conf as *const _) != 0 {
+                    let cause: String = format!("Failed to set up tx ring {:?}", i);
+                    error!("initialize_dpdk_port(): {}", cause);
+                    return Err(Fail::new(libc::EIO, &cause));
+                }
             }
-            expect_zero!(rte_eth_dev_start(port_id))?;
+            if rte_eth_dev_start(port_id) != 0 {
+                let cause: String = format!("Failed to set up ethernet device");
+                error!("initialize_dpdk_port(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
+            }
             rte_eth_promiscuous_enable(port_id);
         }
 
         if unsafe { rte_eth_dev_is_valid_port(port_id) } == 0 {
-            bail!("Invalid port");
+            let cause: String = format!("Invalid port id");
+            error!("initialize_dpdk_port(): {}", cause);
+            return Err(Fail::new(libc::EIO, &cause));
         }
 
         let sleep_duration: Duration = Duration::from_millis(100);
@@ -384,7 +327,9 @@ impl SharedDPDKRuntime {
                 rte_delay_us_block(sleep_duration.as_micros() as u32);
             }
             if retry_count == 0 {
-                bail!("Link never came up");
+                let cause: String = format!("Link never came up");
+                error!("initialize_dpdk_port(): {}", cause);
+                return Err(Fail::new(libc::EIO, &cause));
             }
             retry_count -= 1;
         }
@@ -399,23 +344,11 @@ impl SharedDPDKRuntime {
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4_addr
     }
-
-    pub fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    pub fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
-    }
-
-    pub fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
-    }
 }
 
-//==============================================================================
-// Trait Implementations
-//==============================================================================
+//======================================================================================================================
+// Imports
+//======================================================================================================================
 
 impl Deref for SharedDPDKRuntime {
     type Target = DPDKRuntime;
@@ -431,12 +364,41 @@ impl DerefMut for SharedDPDKRuntime {
     }
 }
 
-//==============================================================================
-// Trait Implementations
-//==============================================================================
-
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl NetworkRuntime for SharedDPDKRuntime {
+    fn new(config: &Config) -> Result<Self, Fail> {
+        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for TCP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for UDP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
+            &config.eal_init_args()?,
+            config.enable_jumbo_frames()?,
+            config.mtu()?,
+            tcp_offload.unwrap_or(false),
+            udp_offload.unwrap_or(false),
+        )?;
+
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+            mm,
+            port_id,
+            link_addr,
+            ipv4_addr: config.local_ipv4_addr()?,
+        })))
+    }
+
     fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
@@ -555,17 +517,5 @@ impl NetworkRuntime for SharedDPDKRuntime {
         }
 
         out
-    }
-
-    fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
-    }
-
-    fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
     }
 }

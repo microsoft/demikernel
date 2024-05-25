@@ -3,6 +3,7 @@
 
 use crate::{
     collections::async_queue::AsyncQueue,
+    demikernel::config::Config,
     expect_ok,
     inetstack::protocols::{
         arp::{
@@ -85,13 +86,8 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
-    pub fn new(
-        mut runtime: SharedDemiRuntime,
-        network: N,
-        local_link_addr: MacAddress,
-        local_ipv4_addr: Ipv4Addr,
-        arp_config: ArpConfig,
-    ) -> Result<Self, Fail> {
+    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+        let arp_config: ArpConfig = ArpConfig::new(config)?;
         let cache: ArpCache = ArpCache::new(
             runtime.get_now(),
             Some(arp_config.get_cache_ttl()),
@@ -101,8 +97,8 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
 
         let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer {
             network,
-            local_link_addr,
-            local_ipv4_addr,
+            local_link_addr: config.local_link_addr()?,
+            local_ipv4_addr: config.local_ipv4_addr()?,
             cache,
             waiters: HashMap::default(),
             arp_config,

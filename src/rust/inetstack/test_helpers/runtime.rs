@@ -5,30 +5,27 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    logging,
-    memory::{
-        DemiBuffer,
-        MemoryRuntime,
-    },
-    network::{
-        config::{
-            ArpConfig,
-            TcpConfig,
-            UdpConfig,
+use crate::{
+    demikernel::config::Config,
+    runtime::{
+        fail::Fail,
+        logging,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
         },
-        consts::RECEIVE_BATCH_SIZE,
-        types::MacAddress,
-        NetworkRuntime,
-        PacketBuf,
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            NetworkRuntime,
+            PacketBuf,
+        },
+        SharedDemiRuntime,
+        SharedObject,
     },
-    SharedDemiRuntime,
-    SharedObject,
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
     collections::VecDeque,
-    net::Ipv4Addr,
     ops::{
         Deref,
         DerefMut,
@@ -41,11 +38,6 @@ use ::std::{
 //======================================================================================================================
 
 pub struct TestRuntime {
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
-    arp_config: ArpConfig,
-    udp_config: UdpConfig,
-    tcp_config: TcpConfig,
     incoming: VecDeque<DemiBuffer>,
     outgoing: VecDeque<DemiBuffer>,
     runtime: SharedDemiRuntime,
@@ -59,24 +51,12 @@ pub struct SharedTestRuntime(SharedObject<TestRuntime>);
 //======================================================================================================================
 
 impl SharedTestRuntime {
-    pub fn new(
-        now: Instant,
-        arp_config: ArpConfig,
-        udp_config: UdpConfig,
-        tcp_config: TcpConfig,
-        link_addr: MacAddress,
-        ipv4_addr: Ipv4Addr,
-    ) -> Self {
+    pub fn new_test(now: Instant) -> Self {
         logging::initialize();
         Self(SharedObject::<TestRuntime>::new(TestRuntime {
-            link_addr,
-            ipv4_addr,
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
             runtime: SharedDemiRuntime::new(now),
-            arp_config,
-            udp_config,
-            tcp_config,
         }))
     }
 
@@ -95,16 +75,6 @@ impl SharedTestRuntime {
         self.pop_frames(1).pop_front().expect("should be at least one frame")
     }
 
-    /// Get the link address assigned to the runtime.
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    /// Get the ip address assigned to the runtime.
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
-    }
-
     /// Get the underlying DemiRuntime.
     pub fn get_runtime(&self) -> SharedDemiRuntime {
         self.runtime.clone()
@@ -116,6 +86,15 @@ impl SharedTestRuntime {
 //==============================================================================
 
 impl NetworkRuntime for SharedTestRuntime {
+    fn new(_config: &Config) -> Result<Self, Fail> {
+        logging::initialize();
+        Ok(Self(SharedObject::<TestRuntime>::new(TestRuntime {
+            incoming: VecDeque::new(),
+            outgoing: VecDeque::new(),
+            runtime: SharedDemiRuntime::new(Instant::now()),
+        })))
+    }
+
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
@@ -139,18 +118,6 @@ impl NetworkRuntime for SharedTestRuntime {
             out.push(buf);
         }
         out
-    }
-
-    fn get_arp_config(&self) -> ArpConfig {
-        self.arp_config.clone()
-    }
-
-    fn get_tcp_config(&self) -> TcpConfig {
-        self.tcp_config.clone()
-    }
-
-    fn get_udp_config(&self) -> UdpConfig {
-        self.udp_config.clone()
     }
 }
 

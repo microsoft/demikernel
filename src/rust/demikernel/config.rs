@@ -10,11 +10,10 @@ use crate::{
     runtime::fail::Fail,
     MacAddress,
 };
-#[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
-use ::std::collections::HashMap;
 #[cfg(any(feature = "catnip-libos"))]
 use ::std::ffi::CString;
 use ::std::{
+    collections::HashMap,
     fs::File,
     io::Read,
     net::Ipv4Addr,
@@ -51,10 +50,12 @@ mod tcp_socket_options {
 }
 
 // TCP stack configurations. These only apply to the inetstack.
-#[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
 mod inetstack_config {
     pub const SECTION_NAME: &str = "inetstack_config";
     pub const ARP_TABLE: &str = "arp_table";
+    pub const ARP_CACHE_TTL: &str = "arp_cache_ttl";
+    pub const ARP_REQUEST_TIMEOUT: &str = "arp_request_timeout";
+    pub const ARP_REQUEST_RETRIES: &str = "arp_request_retries";
     pub const MTU: &str = "mtu";
     pub const MSS: &str = "mss";
     pub const ENABLE_JUMBO_FRAMES: &str = "enable_jumbo_frames";
@@ -111,7 +112,6 @@ impl Config {
         Self::get_subsection(&self.0, tcp_socket_options::SECTION_NAME)
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     fn get_inetstack_config(&self) -> Result<&Yaml, Fail> {
         Self::get_subsection(&self.0, inetstack_config::SECTION_NAME)
     }
@@ -218,7 +218,6 @@ impl Config {
         }
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Tcp Config: Reads the "ARP table" parameter from the underlying configuration file. If no ARP table is present,
     /// then ARP is disabled. This cannot be passed in as an environment variable.
     pub fn arp_table(&self) -> Result<Option<HashMap<Ipv4Addr, MacAddress>>, Fail> {
@@ -254,6 +253,33 @@ impl Config {
             return Ok(Some(result));
         };
         Ok(None)
+    }
+
+    pub fn arp_cache_ttl(&self) -> Result<Duration, Fail> {
+        let ttl: u64 = if let Some(ttl) = Self::get_typed_env_option(inetstack_config::ARP_CACHE_TTL)? {
+            ttl
+        } else {
+            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_CACHE_TTL)?
+        };
+        Ok(Duration::from_secs(ttl))
+    }
+
+    pub fn arp_request_timeout(&self) -> Result<Duration, Fail> {
+        let timeout: u64 = if let Some(timeout) = Self::get_typed_env_option(inetstack_config::ARP_REQUEST_TIMEOUT)? {
+            timeout
+        } else {
+            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_REQUEST_TIMEOUT)?
+        };
+        Ok(Duration::from_secs(timeout))
+    }
+
+    pub fn arp_request_retries(&self) -> Result<usize, Fail> {
+        let retries: usize = if let Some(retries) = Self::get_typed_env_option(inetstack_config::ARP_REQUEST_RETRIES)? {
+            retries
+        } else {
+            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_REQUEST_RETRIES)?
+        };
+        Ok(retries)
     }
 
     #[cfg(feature = "catpowder-libos")]
@@ -305,7 +331,6 @@ impl Config {
         Ok(result)
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "MTU" parameter from environment variables.
     pub fn mtu(&self) -> Result<u16, Fail> {
         // Parse local MAC address.
@@ -316,25 +341,21 @@ impl Config {
         }
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "MSS" parameter from environment variables.
     pub fn mss(&self) -> Result<usize, Fail> {
         Self::get_int_option(self.get_inetstack_config()?, inetstack_config::MSS)
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "TCP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn tcp_checksum_offload(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::TCP_CHECKSUM_OFFLOAD)
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "UDP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn udp_checksum_offload(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::UDP_CHECKSUM_OFFLOAD)
     }
 
-    #[cfg(any(feature = "catnip-libos", feature = "catpowder-libos"))]
     /// Gets the "USE_JUMBO" parameter from environment variables.
     pub fn enable_jumbo_frames(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::ENABLE_JUMBO_FRAMES)

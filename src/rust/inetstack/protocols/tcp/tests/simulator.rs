@@ -32,14 +32,7 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::{
-            config::{
-                ArpConfig,
-                TcpConfig,
-                UdpConfig,
-            },
-            PacketBuf,
-        },
+        network::PacketBuf,
         OperationResult,
     },
     MacAddress,
@@ -62,10 +55,7 @@ use nettest::glue::{
     TcpPacket,
 };
 use std::{
-    collections::{
-        HashMap,
-        VecDeque,
-    },
+    collections::VecDeque,
     env,
     fs::{
         DirEntry,
@@ -84,10 +74,7 @@ use std::{
         Path,
         PathBuf,
     },
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Instant,
 };
 
 //======================================================================================================================
@@ -215,31 +202,9 @@ impl Simulation {
         remote_ipv4: &Ipv4Addr,
     ) -> Result<Simulation> {
         let now: Instant = Instant::now();
-        const ARP_CACHE_TTL: Duration = Duration::from_secs(600);
-        let request_timeout: Duration = Duration::from_secs(1);
-        let retry_count: usize = 2;
 
-        let arp_config: ArpConfig = Self::new_arp_config(
-            Some(ARP_CACHE_TTL),
-            Some(request_timeout),
-            Some(retry_count),
-            local_mac,
-            local_ipv4,
-            remote_mac,
-            remote_ipv4,
-        );
-        let udp_config: UdpConfig = Self::new_udp_config();
-        let tcp_config: TcpConfig = Self::new_tcp_config();
-
-        let test_rig: SharedTestRuntime = SharedTestRuntime::new(
-            now,
-            arp_config,
-            udp_config,
-            tcp_config,
-            local_mac.clone(),
-            local_ipv4.clone(),
-        );
-        let local: SharedEngine = SharedEngine::new(test_rig, now)?;
+        let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
+        let local: SharedEngine = SharedEngine::new(test_helpers::ALICE_CONFIG_PATH, test_rig, now)?;
 
         info!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
         info!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
@@ -275,33 +240,6 @@ impl Simulation {
         }
 
         Ok(lines)
-    }
-
-    /// Creates a new ARP configuration.
-    fn new_arp_config(
-        cache_ttl: Option<Duration>,
-        request_timeout: Option<Duration>,
-        retry_count: Option<usize>,
-        local_mac: &MacAddress,
-        local_ipv4: &Ipv4Addr,
-        remote_mac: &MacAddress,
-        remote_ipv4: &Ipv4Addr,
-    ) -> ArpConfig {
-        let mut initial_values: HashMap<std::net::Ipv4Addr, MacAddress> = HashMap::new();
-        initial_values.insert(local_ipv4.clone(), local_mac.clone());
-        initial_values.insert(remote_ipv4.clone(), remote_mac.clone());
-
-        ArpConfig::new(cache_ttl, request_timeout, retry_count, Some(initial_values))
-    }
-
-    /// Creates a new UDP configuration.
-    fn new_udp_config() -> UdpConfig {
-        UdpConfig::default()
-    }
-
-    /// Creates a new TCP configuration.
-    fn new_tcp_config() -> TcpConfig {
-        TcpConfig::default()
     }
 
     /// Runs the simulation.

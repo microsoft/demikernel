@@ -3,7 +3,10 @@
 
 use crate::{
     demi_sgarray_t,
-    demikernel::libos::network::libos::SharedNetworkLibOS,
+    demikernel::{
+        config::Config,
+        libos::network::libos::SharedNetworkLibOS,
+    },
     inetstack::{
         test_helpers::SharedTestRuntime,
         SharedInetStack,
@@ -52,19 +55,17 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
 
 impl SharedEngine {
-    pub fn new(test_rig: SharedTestRuntime, now: Instant) -> Result<Self, Fail> {
+    pub fn new(config_path: &str, test_rig: SharedTestRuntime, now: Instant) -> Result<Self, Fail> {
+        let config: Config = Config::new(config_path.to_string())?;
         // Instantiate all of the layers.
         // Shared Demikernel runtime.
         let runtime: SharedDemiRuntime = SharedDemiRuntime::new(now);
-        let transport: SharedInetStack<SharedTestRuntime> = SharedInetStack::new_test(
-            runtime.clone(),
-            test_rig.clone(),
-            test_rig.get_link_addr(),
-            test_rig.get_ip_addr(),
-        )?;
+
+        let transport: SharedInetStack<SharedTestRuntime> =
+            SharedInetStack::new_test(&config, runtime.clone(), test_rig.clone())?;
 
         Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedTestRuntime>>::new(
-            test_rig.get_ip_addr(),
+            config.local_ipv4_addr()?,
             runtime,
             transport,
         )))
