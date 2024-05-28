@@ -5,10 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    DEFAULT_LINGER,
-    DEFAULT_TIMEOUT,
-};
+use crate::DEFAULT_TIMEOUT;
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -19,7 +16,6 @@ use ::demikernel::{
     LibOS,
     QDesc,
     QToken,
-    SocketOption,
 };
 use ::std::{
     net::SocketAddr,
@@ -300,9 +296,6 @@ impl TcpClient {
 
     fn connect_to_server(&mut self, num_clients: usize) -> Result<()> {
         self.sockqd = Some(self.libos.socket(AF_INET, SOCK_STREAM, 0)?);
-        // Set default linger to a short period, otherwise, this test will take a long time to complete.
-        self.libos
-            .set_socket_option(self.sockqd.unwrap(), SocketOption::Linger(Some(DEFAULT_LINGER)))?;
 
         let qt: QToken = self
             .libos

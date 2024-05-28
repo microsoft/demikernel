@@ -23,6 +23,7 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         tcp::{
+            constants::MSL,
             established::{
                 congestion_control::{
                     self,
@@ -46,9 +47,11 @@ use crate::{
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
+            socket::option::TcpSocketOptions,
             types::MacAddress,
             NetworkRuntime,
         },
+        yield_with_timeout,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -180,6 +183,7 @@ pub struct ControlBlock<N: NetworkRuntime> {
     runtime: SharedDemiRuntime,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
+    socket_options: TcpSocketOptions,
 
     // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
@@ -248,6 +252,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         transport: N,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer<N>,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
@@ -270,6 +275,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             transport,
             local_link_addr,
             tcp_config,
+            socket_options: default_socket_options,
             arp,
             sender,
             state: State::Established,
@@ -1144,6 +1150,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // 1. Send FIN.
         self.send_fin();
 
+        // 2. TIME_WAIT
         while self.state != State::TimeWait {
             // Wait for next packet.
             let (_, header, _) = self.recv_queue.pop(None).await?;
@@ -1178,14 +1185,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             }
         }
 
-        // TODO: Get 2MSL value or linger option if set.
-        // TODO: Turn this on when our tests support it.
-        // let timeout_yielder: Yielder = Yielder::new();
-        // self.runtime
-        //     .get_timer()
-        //     .wait(Duration::from_secs(1), &timeout_yielder)
-        //     .await?;
-
+        // 3. TIMED_WAIT
+        trace!("socket options: {:?}", self.socket_options.get_linger());
+        let timeout: Duration = self.socket_options.get_linger().unwrap_or(MSL * 2);
+        yield_with_timeout(timeout).await;
         self.state = State::Closed;
         Ok(())
     }
