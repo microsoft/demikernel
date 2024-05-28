@@ -18,7 +18,7 @@ LD_LIBRARY_PATH = $(USERPROFILE)/lib
 !endif
 
 !ifndef XDP_PATH
-XDP_PATH = "c:\xdp"
+XDP_PATH = c:\xdp
 !endif
 
 #=======================================================================================================================

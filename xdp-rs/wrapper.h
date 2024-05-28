@@ -42,7 +42,7 @@
 #include <Windows.h>
 
 #include <afxdp.h>
-//#include <afxdp_helper.h>
+#include <afxdp_helper.h>
 #include <xdpapi.h>
 
 // non-inlined load/unload functions.
@@ -57,4 +57,44 @@ VOID
 _XdpUnloadApi(
     _In_ XDP_LOAD_API_CONTEXT XdpLoadApiContext,
     _In_ CONST XDP_API_TABLE *XdpApiTable
+    );
+
+VOID
+_XskRingInitialize(
+    _Out_ XSK_RING *Ring,
+    _In_ const XSK_RING_INFO *RingInfo
+    );
+
+UINT32
+_XskRingConsumerReserve(
+    _In_ XSK_RING *Ring,
+    _In_ UINT32 MaxCount,
+    _Out_ UINT32 *Index
+    );
+
+UINT32
+_XskRingProducerReserve(
+    _In_ XSK_RING *Ring,
+    _In_ UINT32 MaxCount,
+    _Out_ UINT32 *Index
+    );
+
+
+VOID
+_XskRingConsumerRelease(
+    _Inout_ XSK_RING *Ring,
+    _In_ UINT32 Count
+    );
+
+
+VOID
+_XskRingProducerSubmit(
+    _Inout_ XSK_RING *Ring,
+    _In_ UINT32 Count
+    );
+
+VOID *
+_XskRingGetElement(
+    _In_ const XSK_RING *Ring,
+    _In_ UINT32 Index
     );

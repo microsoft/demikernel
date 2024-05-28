@@ -22,7 +22,7 @@ use self::name::LibOSName;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::runtime::SharedDPDKRuntime;
 #[cfg(feature = "catpowder-libos")]
-use crate::catpowder::runtime::LinuxRuntime;
+use crate::catpowder::CatpowderRuntime;
 #[cfg(any(
     feature = "catnap-libos",
     feature = "catnip-libos",
@@ -34,10 +34,7 @@ use crate::demikernel::libos::network::{
     NetworkLibOSWrapper,
 };
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::{
-    inetstack::SharedInetStack,
-    runtime::network::NetworkRuntime,
-};
+use crate::inetstack::SharedInetStack;
 
 use crate::{
     demikernel::config::Config,
@@ -45,7 +42,10 @@ use crate::{
         fail::Fail,
         limits,
         logging,
-        network::socket::option::SocketOption,
+        network::{
+            socket::option::SocketOption,
+            NetworkRuntime,
+        },
         types::{
             demi_qresult_t,
             demi_sgarray_t,
@@ -134,12 +134,12 @@ impl LibOS {
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: LinuxRuntime = LinuxRuntime::new(&config)?;
+                let transport: CatpowderRuntime = CatpowderRuntime::new(&config)?;
                 // This is our transport for Catpowder.
-                let inetstack: SharedInetStack<LinuxRuntime> =
-                    SharedInetStack::<LinuxRuntime>::new(&config, runtime.clone(), transport).unwrap();
+                let inetstack: SharedInetStack<CatpowderRuntime> =
+                    SharedInetStack::<CatpowderRuntime>::new(&config, runtime.clone(), transport).unwrap();
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
-                    SharedInetStack<LinuxRuntime>,
+                    SharedInetStack<CatpowderRuntime>,
                 >::new(
                     config.local_ipv4_addr()?,
                     runtime.clone(),

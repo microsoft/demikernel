@@ -12,13 +12,13 @@ extern crate cc;
 // Imports
 //==============================================================================
 
-use ::anyhow::Result;
-use ::bindgen::{
+use anyhow::Result;
+use bindgen::{
     Bindings,
     Builder,
 };
-use ::cc::Build;
-use ::std::{
+use cc::Build;
+use std::{
     env,
     path::{
         Path,
@@ -34,7 +34,7 @@ static WRAPPER_HEADER_NAME: &str = "wrapper.h";
 static INLINED_C_NAME: &str = "inlined.c";
 static OUT_DIR_VAR: &str = "OUT_DIR";
 static XDP_PATH_VAR: &str = "XDP_PATH";
-static INCLUDE_DIR: &str = "include";
+static INCLUDE_DIR: &str = "\\include";
 static XDP_API_LIB: &str = "xdpapi";
 static SAL_BLOCKLIST_REGEX: &str = r".*SAL.*";
 static TYPE_BLOCKLIST: [&str; 8] = [
@@ -55,12 +55,15 @@ fn main() -> Result<()> {
 
     let libxdp_path: String = env::var(XDP_PATH_VAR)?;
 
-    let include_path: String = format!("{}\\{}", &libxdp_path, INCLUDE_DIR);
+    let include_path: String = format!("{}{}", &libxdp_path, INCLUDE_DIR);
     let lib_path: String = format!("{}", &libxdp_path);
 
+    println!("include_path: {}", include_path);
+    println!("lib_path: {}", lib_path);
+
     // Point cargo to the libraries.
-    println!("cargo:rustc-link-search=native={}", lib_path);
-    println!("cargo:rustc-link-lib={}", XDP_API_LIB);
+    println!("cargo:rustc-link-search={}", lib_path);
+    println!("cargo:rustc-link-lib=dylib={}", XDP_API_LIB);
 
     let mut builder = Builder::default();
     for t in TYPE_BLOCKLIST.iter() {
