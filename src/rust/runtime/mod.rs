@@ -111,6 +111,10 @@ pub struct DemiRuntime {
     ts_iters: usize,
     /// Tasks that have been completed and removed from the
     completed_tasks: HashMap<QToken, (QDesc, OperationResult)>,
+    /// Background tasks.
+    background_task_group: TaskId,
+    /// Foreground I/O tasks.
+    io_task_group: TaskId,
 }
 
 #[derive(Clone)]
@@ -139,15 +143,9 @@ impl DemiRuntime {
 impl SharedDemiRuntime {
     #[cfg(test)]
     pub fn new(now: Instant) -> Self {
+        let me: Self = Self::default();
         timer::global_set_time(now);
-        Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
-            qtable: IoQueueTable::default(),
-            scheduler: SharedScheduler::default(),
-            ephemeral_ports: EphemeralPorts::default(),
-            network_table: NetworkQueueTable::default(),
-            ts_iters: 0,
-            completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
-        }))
+        me
     }
 
     /// Inserts the `coroutine` named `task_name` into the scheduler.
@@ -156,7 +154,7 @@ impl SharedDemiRuntime {
         task_name: &'static str,
         coroutine: Pin<Box<F>>,
     ) -> Result<QToken, Fail> {
-        self.insert_coroutine(task_name, coroutine)
+        self.insert_coroutine(task_name, coroutine, self.io_task_group)
     }
 
     /// Inserts the background `coroutine` named `task_name` into the scheduler
@@ -165,11 +163,34 @@ impl SharedDemiRuntime {
         task_name: &'static str,
         coroutine: Pin<Box<F>>,
     ) -> Result<QToken, Fail> {
-        self.insert_coroutine(task_name, coroutine)
+        self.insert_coroutine(task_name, coroutine, self.background_task_group)
     }
 
     /// Inserts a coroutine of type T and task
-    pub fn insert_coroutine<F: FusedFuture + 'static>(
+    fn insert_coroutine<F: FusedFuture + 'static>(
+        &mut self,
+        task_name: &'static str,
+        coroutine: Pin<Box<F>>,
+        group_id: TaskId,
+    ) -> Result<QToken, Fail>
+    where
+        F::Output: Unpin + Clone + Any,
+    {
+        #[cfg(feature = "profiler")]
+        let coroutine = coroutine_timer!(task_name, coroutine);
+        let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, coroutine);
+        match self.scheduler.insert_task(group_id, task) {
+            Some(task_id) => Ok(task_id.into()),
+            None => {
+                let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
+                error!("insert_background_coroutine(): {}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub fn insert_test_coroutine<F: FusedFuture + 'static>(
         &mut self,
         task_name: &'static str,
         coroutine: Pin<Box<F>>,
@@ -177,11 +198,11 @@ impl SharedDemiRuntime {
     where
         F::Output: Unpin + Clone + Any,
     {
-        trace!("Inserting coroutine: {:?}", task_name);
         #[cfg(feature = "profiler")]
         let coroutine = coroutine_timer!(task_name, coroutine);
+        let group_id: TaskId = self.io_task_group;
         let task: TaskWithResult<F::Output> = TaskWithResult::<F::Output>::new(task_name, coroutine);
-        match self.scheduler.insert_task(task) {
+        match self.scheduler.insert_task(group_id, task) {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
@@ -215,24 +236,29 @@ impl SharedDemiRuntime {
         // 2. None of the tasks have already completed, so start a timer and move the clock.
         self.advance_clock_to_now();
 
+        let group_id: TaskId = self.io_task_group;
         loop {
-            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
-                // Perform bookkeeping for the completed and removed task.
-                trace!("Removing coroutine: {:?}", boxed_task.get_name());
-                let completed_qt: QToken = boxed_task.get_id().into();
-                // If an operation task (and not a background task), then check the task to see if it is one of ours.
-                if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
-                    let (qd, result): (QDesc, OperationResult) =
-                        expect_some!(operation_task.get_result(), "coroutine not finished");
+            match self.scheduler.get_next_completed_task(group_id, TIMER_RESOLUTION) {
+                (_, Some(boxed_task)) => {
+                    // Perform bookkeeping for the completed and removed task.
+                    trace!("Removing coroutine: {:?}", boxed_task.get_name());
+                    let completed_qt: QToken = boxed_task.get_id().into();
+                    // If an operation task (and not a background task), then check the task to see if it is one of ours.
+                    if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                        let (qd, result): (QDesc, OperationResult) =
+                            expect_some!(operation_task.get_result(), "coroutine not finished");
 
-                    // Check whether it matches any of the queue tokens that we are waiting on.
-                    if completed_qt == qt {
-                        return Ok((qd, result));
+                        // Check whether it matches any of the queue tokens that we are waiting on.
+                        if completed_qt == qt {
+                            return Ok((qd, result));
+                        }
+
+                        // If not a queue token that we are waiting on, then insert into our list of completed tasks.
+                        self.completed_tasks.insert(qt, (qd, result));
                     }
-
-                    // If not a queue token that we are waiting on, then insert into our list of completed tasks.
-                    self.completed_tasks.insert(qt, (qd, result));
-                }
+                },
+                (i, None) if i < TIMER_RESOLUTION => self.poll_background(),
+                _ => (),
             }
             // Check the timeout.
             if let Some(abstime) = abstime {
@@ -317,11 +343,12 @@ impl SharedDemiRuntime {
 
         // 3. Invoke the scheduler and run some tasks.
         loop {
-            // Run for one quanta and if one of our queue tokens completed, then return.
+            // Run for one quanta and if the acceptor condition is not met, then return.
             if let Some((qt, qd, result)) = self.run_next(remaining_time) {
                 if acceptor(qt, qd, result) == false {
                     return Ok(());
                 }
+            } else {
             }
             // Otherwise, move time forward.
             self.advance_clock_to_now();
@@ -362,27 +389,35 @@ impl SharedDemiRuntime {
             timeout if timeout.as_secs() > 0 => TIMER_RESOLUTION,
             _ => TIMER_FINER_RESOLUTION,
         };
-        if let Some(boxed_task) = self.scheduler.get_next_completed_task(iterations) {
-            // Perform bookkeeping for the completed and removed task.
-            trace!("Removing coroutine: {:?}", boxed_task.get_name());
-            let qt: QToken = boxed_task.get_id().into();
+        let group_id: TaskId = self.io_task_group;
+        match self.scheduler.get_next_completed_task(group_id, iterations) {
+            (_, Some(boxed_task)) => {
+                // Perform bookkeeping for the completed and removed task.
+                trace!("Removing coroutine: {:?}", boxed_task.get_name());
+                let qt: QToken = boxed_task.get_id().into();
 
-            // If an operation task, then take a look at the result.
-            if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
-                let (qd, result): (QDesc, OperationResult) =
-                    expect_some!(operation_task.get_result(), "coroutine not finished");
+                // If an operation task, then take a look at the result.
+                if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                    let (qd, result): (QDesc, OperationResult) =
+                        expect_some!(operation_task.get_result(), "coroutine not finished");
 
-                return Some((qt, qd, result));
-            }
+                    Some((qt, qd, result))
+                } else {
+                    None
+                }
+            },
+            (i, None) if i < iterations => {
+                self.poll_background();
+                None
+            },
+            _ => None,
         }
-
-        None
     }
 
-    /// Performs a single pool on the underlying scheduler.
-    pub fn poll(&mut self) {
+    /// Performs a single poll on the underlying scheduler of a single task.
+    pub fn poll_task(&mut self, qt: QToken) {
         // For all ready tasks that were removed from the scheduler, add to our completed task list.
-        for boxed_task in self.scheduler.poll_all() {
+        if let Some(boxed_task) = self.scheduler.poll_task(qt.into()) {
             trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
             let qt: QToken = boxed_task.get_id().into();
 
@@ -392,6 +427,31 @@ impl SharedDemiRuntime {
                 self.completed_tasks.insert(qt, (qd, result));
             }
         }
+    }
+
+    /// Performs a single poll on the underlying scheduler of a group of tasks.
+    pub fn poll_group(&mut self, group_id: TaskId) {
+        // For all ready tasks that were removed from the scheduler, add to our completed task list.
+        for boxed_task in self.scheduler.poll_group(&group_id) {
+            trace!("Completed while polling coroutine: {:?}", boxed_task.get_name());
+            let qt: QToken = boxed_task.get_id().into();
+
+            if let Ok(mut operation_task) = OperationTask::try_from(boxed_task.as_any()) {
+                let (qd, result): (QDesc, OperationResult) =
+                    expect_some!(operation_task.get_result(), "coroutine not finished");
+                self.completed_tasks.insert(qt, (qd, result));
+            }
+        }
+    }
+
+    /// Polls all of the background coroutines.
+    pub fn poll_background(&mut self) {
+        self.poll_group(self.background_task_group)
+    }
+
+    /// Polls all of the foreground I/O coroutines.
+    pub fn poll_io(&mut self) {
+        self.poll_group(self.io_task_group)
     }
 
     /// Allocates a queue of type `T` and returns the associated queue descriptor.
@@ -591,13 +651,19 @@ pub async fn poll_yield() {
 impl Default for SharedDemiRuntime {
     fn default() -> Self {
         timer::global_set_time(Instant::now());
+        let mut scheduler: SharedScheduler = SharedScheduler::default();
+        let background_task_group: TaskId = scheduler.create_group();
+        let io_task_group: TaskId = scheduler.create_group();
+
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
-            scheduler: SharedScheduler::default(),
+            scheduler,
             ephemeral_ports: EphemeralPorts::default(),
             network_table: NetworkQueueTable::default(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
+            background_task_group,
+            io_task_group,
         }))
     }
 }

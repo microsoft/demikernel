@@ -638,8 +638,8 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Runs all runnable coroutines.
-    pub fn poll(&mut self) {
-        self.runtime.poll()
+    pub fn poll_task(&mut self, qt: QToken) {
+        self.runtime.poll_task(qt)
     }
 
     /// Releases a scatter-gather array.

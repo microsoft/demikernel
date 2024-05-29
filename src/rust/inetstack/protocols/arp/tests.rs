@@ -80,7 +80,7 @@ fn arp_immediate_reply() -> Result<()> {
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
     engine.advance_clock(now);
-    engine.poll();
+    engine.poll_background();
 
     // Check if the ARP cache outputs a reply message.
     let buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
@@ -121,7 +121,7 @@ fn arp_no_reply() -> Result<()> {
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
     engine.advance_clock(now);
-    engine.poll();
+    engine.poll_background();
 
     // Ensure that no reply message is output.
     let buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
@@ -150,7 +150,7 @@ fn arp_cache_update() -> Result<()> {
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
     engine.advance_clock(now);
-    engine.poll();
+    engine.poll_background();
 
     // Check if the ARP cache has been updated.
     let cache: HashMap<Ipv4Addr, MacAddress> = engine.get_transport().export_arp_cache();
@@ -185,9 +185,11 @@ fn arp_cache_timeout() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, test_helpers::ALICE_CONFIG_PATH)?;
 
     let coroutine = Box::pin(engine.clone().arp_query(other_remote_ipv4).fuse());
-    let qt: QToken = engine.get_runtime().clone().insert_coroutine("arp query", coroutine)?;
-    engine.poll();
-    engine.poll();
+    let qt: QToken = engine
+        .get_runtime()
+        .clone()
+        .insert_test_coroutine("arp query", coroutine)?;
+    engine.poll_task(qt);
 
     for _ in 0..(ARP_RETRY_COUNT + 1) {
         // Check if the ARP cache outputs a reply message.
@@ -197,8 +199,7 @@ fn arp_cache_timeout() -> Result<()> {
         // Move clock forward and poll the engine.
         now += ARP_REQUEST_TIMEOUT;
         engine.advance_clock(now);
-        engine.poll();
-        engine.poll();
+        engine.poll_task(qt);
     }
 
     // Check if the ARP cache outputs a reply message.

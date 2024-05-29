@@ -220,16 +220,16 @@ impl SharedCatmemLibOS {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         mut acceptor: Acceptor,
-        timeout: Duration
-    ) -> Result<(), Fail>
-    {
-        self.runtime.clone().wait_next_n(
-            |qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
+        timeout: Duration,
+    ) -> Result<(), Fail> {
+        self.runtime
+            .clone()
+            .wait_next_n(|qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn poll(&mut self) {
-        self.runtime.poll()
+    pub fn poll_task(&mut self, qt: QToken) {
+        self.runtime.poll_task(qt)
     }
 
     pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {

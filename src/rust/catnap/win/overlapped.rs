@@ -689,7 +689,7 @@ mod tests {
 
         let result: OperationResult = loop {
             iocp.get_mut().process_events()?;
-            runtime.poll();
+            runtime.poll_task(server_task);
             if let Some((_, result)) = runtime.get_completed_task(&server_task) {
                 break result;
             }

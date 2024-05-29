@@ -49,7 +49,7 @@ use ::std::{
 };
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone)]
 pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
@@ -87,8 +87,8 @@ impl SharedEngine {
         // We no longer do processing in this function, so we will not know if the packet is dropped or not.
         self.get_transport().receive(bytes)?;
         // So poll the scheduler to do the processing.
-        self.get_runtime().poll();
-        self.get_runtime().poll();
+        self.get_runtime().poll_background();
+        self.get_runtime().poll_background();
 
         Ok(())
     }
@@ -163,8 +163,16 @@ impl SharedEngine {
         self.get_transport().export_arp_cache()
     }
 
-    pub fn poll(&self) {
-        self.get_runtime().poll()
+    pub fn poll_io(&self) {
+        self.get_runtime().poll_io()
+    }
+
+    pub fn poll_background(&self) {
+        self.get_runtime().poll_background()
+    }
+
+    pub fn poll_task(&self, qt: QToken) {
+        self.get_runtime().poll_task(qt)
     }
 
     pub fn wait(&self, qt: QToken, timeout: Duration) -> Result<(QDesc, OperationResult), Fail> {

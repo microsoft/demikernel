@@ -305,16 +305,16 @@ impl NetworkLibOSWrapper {
     }
 
     /// Waits for any operation in an I/O queue.
-    pub fn poll(&mut self) {
+    pub fn poll_task(&mut self, qt: QToken) {
         match self {
             #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder(libos) => libos.poll(),
+            NetworkLibOSWrapper::Catpowder(libos) => libos.poll_task(qt),
             #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap(libos) => libos.poll(),
+            NetworkLibOSWrapper::Catnap(libos) => libos.poll_task(qt),
             #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip(libos) => libos.poll(),
+            NetworkLibOSWrapper::Catnip(libos) => libos.poll_task(qt),
             #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.poll(),
+            NetworkLibOSWrapper::Catloop(libos) => libos.poll_task(qt),
         }
     }
 

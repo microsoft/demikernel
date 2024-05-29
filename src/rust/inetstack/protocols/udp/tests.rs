@@ -204,7 +204,7 @@ fn udp_ping_pong() -> Result<()> {
     // Receive data from Bob.
     carrie.receive(bob.pop_frame()).unwrap();
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
-    carrie.poll();
+    carrie.poll_task(carrie_qt);
 
     let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
         match carrie.wait(carrie_qt, DEFAULT_TIMEOUT)? {
@@ -223,7 +223,7 @@ fn udp_ping_pong() -> Result<()> {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    carrie.poll();
+    carrie.poll_background();
     now += Duration::from_micros(1);
 
     // Receive data from Carrie.
@@ -331,7 +331,7 @@ fn udp_loop2_push_pop() -> Result<()> {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
-        bob.poll();
+        bob.poll_background();
 
         now += Duration::from_micros(1);
 
@@ -395,7 +395,7 @@ fn udp_loop2_ping_pong() -> Result<()> {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
-        bob.poll();
+        bob.poll_background();
 
         now += Duration::from_micros(1);
 
@@ -546,7 +546,7 @@ fn udp_pop_not_bound() -> Result<()> {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    bob.poll();
+    bob.poll_background();
 
     now += Duration::from_micros(1);
 
