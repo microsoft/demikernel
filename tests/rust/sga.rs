@@ -32,7 +32,7 @@ fn do_test_unit_sga_alloc_free_single(size: usize) -> Result<()> {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
     };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
+    let mut libos: LibOS = match LibOS::new(libos_name, None) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
     };
@@ -69,7 +69,7 @@ fn do_test_unit_sga_alloc_free_loop_tight(size: usize) -> Result<()> {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
     };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
+    let mut libos: LibOS = match LibOS::new(libos_name, None) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
     };
@@ -120,7 +120,7 @@ fn do_test_unit_sga_alloc_free_loop_decoupled(size: usize) -> Result<()> {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
     };
-    let mut libos: LibOS = match LibOS::new(libos_name) {
+    let mut libos: LibOS = match LibOS::new(libos_name, None) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
     };

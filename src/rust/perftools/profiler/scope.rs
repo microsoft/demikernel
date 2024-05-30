@@ -7,8 +7,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::perftools::profiler::PROFILER;
-use std::{
+use crate::{
+    perftools::profiler::PROFILER,
+    runtime::types::demi_callback_t,
+};
+use ::std::{
     cell::RefCell,
     fmt::{
         self,
@@ -40,6 +43,9 @@ pub struct Scope {
     /// Child scopes in the tree.
     succs: Vec<Rc<RefCell<Scope>>>,
 
+    /// Callback to report statistics. If this is set to None, we collect averages by default.
+    perf_callback: Option<demi_callback_t>,
+
     /// How often has this scope been visited?
     num_calls: usize,
 
@@ -63,13 +69,14 @@ pub struct AsyncScope<'a, F: Future> {
 //======================================================================================================================
 
 impl Scope {
-    pub fn new(name: &'static str, pred: Option<Rc<RefCell<Scope>>>) -> Scope {
+    pub fn new(name: &'static str, pred: Option<Rc<RefCell<Scope>>>, perf_callback: Option<demi_callback_t>) -> Scope {
         Scope {
             name,
             pred,
             succs: Vec::new(),
             num_calls: 0,
             duration_sum: 0,
+            perf_callback,
         }
     }
 
@@ -108,10 +115,14 @@ impl Scope {
     /// Leave this scope. Called automatically by the `Guard` instance.
     #[inline]
     pub fn leave(&mut self, duration: u64) {
-        self.num_calls += 1;
+        if let Some(callback) = self.perf_callback {
+            callback(self.name.as_ptr() as *const i8, self.name.len() as u32, duration);
+        } else {
+            self.num_calls += 1;
 
-        // Even though this is extremely unlikely, let's not panic on overflow.
-        self.duration_sum = self.duration_sum + duration;
+            // Even though this is extremely unlikely, let's not panic on overflow.
+            self.duration_sum = self.duration_sum + duration;
+        }
     }
 
     /// Dump statistics.

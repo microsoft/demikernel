@@ -137,7 +137,7 @@ void build_addr(const char *const ip_str, const char *const port_str, struct soc
 // Exercises a one-way direction communication through TCP. This system-level test instantiates two demikernel peers: a
 // client and a server. The client sends TCP packets to the server in a tight loop. The server process is a tight loop
 // received TCP packets from the client.
-int main(int argc, const char *argv[])
+int main(int argc, char *const argv[])
 {
     if (argc >= 4)
     {
@@ -154,7 +154,12 @@ int main(int argc, const char *argv[])
 
         build_addr(argv[2], argv[3], &addr);
 
-        assert(demi_init(argc, (char **)argv) == 0);
+        const struct demi_args args = {
+            .argc = argc,
+            .argv = argv,
+            .callback = NULL,
+        };
+        assert(demi_init(&args) == 0);
 
         if (!strcmp(argv[1], "--server")) {
             run_server(&addr, data_size, max_msgs);

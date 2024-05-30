@@ -111,7 +111,12 @@ static void server(int argc,
     int sockqd = -1;
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup local socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);
@@ -162,16 +167,21 @@ static void client(int argc,
 {
     int sockqd = -1;
 
-    #ifdef _WIN32
+#ifdef _WIN32
     char expected_buf[DATA_SIZE];
-    #endif
+#endif
 
-    #ifdef  __linux__
+#ifdef __linux__
     char expected_buf[data_size];
-    #endif
+#endif
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_DGRAM, 0) == 0);

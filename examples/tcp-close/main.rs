@@ -46,7 +46,7 @@ fn main() -> Result<()> {
 
     let libos: LibOS = {
         let libos_name: LibOSName = LibOSName::from_env()?.into();
-        LibOS::new(libos_name)?
+        LibOS::new(libos_name, None)?
     };
 
     match args.who_closes().expect("missing whocloses the socket").as_str() {

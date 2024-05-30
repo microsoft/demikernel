@@ -33,12 +33,8 @@ use crate::demikernel::libos::network::{
     libos::SharedNetworkLibOS,
     NetworkLibOSWrapper,
 };
-#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::{
-    inetstack::SharedInetStack,
-    runtime::network::NetworkRuntime,
-};
-
+#[cfg(feature = "profiler")]
+use crate::perftools::profiler::set_callback;
 use crate::{
     demikernel::config::Config,
     runtime::{
@@ -47,6 +43,7 @@ use crate::{
         logging,
         network::socket::option::SocketOption,
         types::{
+            demi_callback_t,
             demi_qresult_t,
             demi_sgarray_t,
         },
@@ -55,6 +52,11 @@ use crate::{
         SharedDemiRuntime,
     },
     timer,
+};
+#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
+use crate::{
+    inetstack::SharedInetStack,
+    runtime::network::NetworkRuntime,
 };
 use ::std::{
     env,
@@ -101,7 +103,7 @@ pub enum LibOS {
 /// Associated functions for LibOS.
 impl LibOS {
     /// Instantiates a new LibOS.
-    pub fn new(libos_name: LibOSName) -> Result<Self, Fail> {
+    pub fn new(libos_name: LibOSName, _perf_callback: Option<demi_callback_t>) -> Result<Self, Fail> {
         timer!("demikernel::new");
 
         logging::initialize();
@@ -116,6 +118,12 @@ impl LibOS {
                 ))
             },
         };
+
+        #[cfg(feature = "profiler")]
+        if let Some(callback) = _perf_callback {
+            set_callback(callback)
+        };
+
         let config: Config = Config::new(config_path)?;
         #[allow(unused_mut)]
         let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
