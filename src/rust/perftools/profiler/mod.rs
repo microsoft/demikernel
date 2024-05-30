@@ -173,8 +173,8 @@ impl Profiler {
 
     /// Actually enter a scope.
     fn enter_scope(&mut self, scope: Rc<RefCell<Scope>>) -> Guard {
+        trace!("Entering scope: {}", scope.borrow().get_name());
         let guard = scope.borrow_mut().enter();
-
         self.current = Some(scope);
 
         guard
