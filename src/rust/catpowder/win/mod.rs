@@ -73,9 +73,13 @@ impl CatpowderRuntime {}
 
 impl NetworkRuntime for CatpowderRuntime {
     fn new(igconfig: &Config) -> Result<Self, Fail> {
+        trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
+
+        trace!("Creating XDP socket.");
         let mut socket: XdpSocket = XdpSocket::create(&mut api)?;
-        let index: u32 = 0; // Todo: read this from config file.
+
+        let index: u32 = 2; // Todo: read this from config file.
         let mut rx_buffer: [MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX] =
             [unsafe { MaybeUninit::uninit().assume_init() }; limits::RECVBUF_SIZE_MAX];
 
@@ -86,6 +90,7 @@ impl NetworkRuntime for CatpowderRuntime {
             Address: rx_buffer.as_mut_ptr() as *mut core::ffi::c_void,
         };
 
+        trace!("Registering UMEM.");
         socket.setsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_UMEM_REG,
@@ -93,6 +98,7 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
         )?;
 
+        trace!("Creating RX queue.");
         socket.bind(
             &mut api,
             index,
@@ -102,6 +108,7 @@ impl NetworkRuntime for CatpowderRuntime {
 
         const RING_SIZE: u32 = 1;
 
+        trace!("Setting RX ring size.");
         socket.setsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_RX_RING_SIZE,
@@ -109,6 +116,7 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<u32>() as u32,
         )?;
 
+        trace!("Setting RX Fill ring size.");
         socket.setsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_RX_FILL_RING_SIZE,
@@ -116,6 +124,7 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<u32>() as u32,
         )?;
 
+        trace!("Setting TX ring size.");
         socket.setsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_TX_RING_SIZE,
@@ -123,6 +132,7 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<u32>() as u32,
         )?;
 
+        trace!("Setting TX completion ring size.");
         socket.setsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
@@ -130,10 +140,13 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<u32>() as u32,
         )?;
 
+        trace!("Activating XDP socket.");
         socket.activate(&mut api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
 
         let mut ring_info: xdp_rs::XSK_RING_INFO = unsafe { std::mem::zeroed() };
         let mut option_length: u32 = 0;
+
+        trace!("Getting RX ring info.");
         socket.getsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_RING_INFO,
@@ -146,11 +159,14 @@ impl NetworkRuntime for CatpowderRuntime {
         let mut tx_ring: Ring = Ring::ring_initialize(&ring_info);
         let mut tx_completion_ring: Ring = Ring::ring_initialize(&ring_info);
 
+        trace!("Reserving RX ring buffer.");
         let mut ring_index: u32 = 0;
         rx_fill_ring.ring_producer_reserve(1, &mut ring_index);
 
+        trace!("Submitting RX ring buffer.");
         rx_fill_ring.ring_producer_submit(1);
 
+        trace!("Setting RX Fill ring.");
         let mut rule: xdp_rs::XDP_RULE = unsafe {
             let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
             rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
@@ -166,6 +182,7 @@ impl NetworkRuntime for CatpowderRuntime {
             SubLayer: _XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
         };
 
+        trace!("Creating XDP program.");
         let mut program: windows::Win32::Foundation::HANDLE = unsafe { std::mem::zeroed() };
         socket.create_program(&mut api, 0, &XDP_INSPECT_RX, 0, 0, &rule, 1, &mut program)?;
 

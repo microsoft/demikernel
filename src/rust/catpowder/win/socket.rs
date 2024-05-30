@@ -82,7 +82,10 @@ impl XdpSocket {
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
-                false => Err(Fail::from(&error)),
+                false => {
+                    error!("bind(): {:?}", &error);
+                    Err(Fail::from(&error))
+                },
             }
         } else {
             let cause: String = format!("XskBind is not implemented");
