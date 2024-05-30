@@ -25,13 +25,12 @@ extern "C"
     /**
      * @brief Initializes Demikernel.
      *
-     * @param argc Number of arguments.
-     * @param argv Argument values.
+     * @param args Args
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
-    ATTR_NONNULL(2)
-    extern int demi_init(_In_ int argc, _In_reads_(argc) _Deref_pre_z_ char *const argv[]);
+    ATTR_NONNULL(1)
+    extern int demi_init(_In_ const struct demi_args *args);
 
     /**
      * @brief Creates a new memory I/O queue.

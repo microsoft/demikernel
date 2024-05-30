@@ -162,7 +162,12 @@ static void server(int argc, char *const argv[], struct sockaddr_in *local, size
     size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup local socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_STREAM, 0) == 0);
@@ -216,7 +221,12 @@ static void client(int argc, char *const argv[], const struct sockaddr_in *remot
     size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup socket. */
     assert(demi_socket(&sockqd, AF_INET, SOCK_STREAM, 0) == 0);

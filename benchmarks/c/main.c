@@ -74,7 +74,12 @@ int main(int argc, char *const argv[])
     ((void)argv);
 
     // This shall never fail.
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     microbench_wait_any(100000, 1048576);
 

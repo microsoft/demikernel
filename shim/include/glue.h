@@ -13,7 +13,7 @@
 
 extern int is_reentrant_demi_call();
 
-extern int __demi_init(int argc, char *const argv[]);
+extern int __demi_init(const struct demi_args *args);
 extern int __demi_create_pipe(int *memqd_out, const char *name);
 extern int __demi_open_pipe(int *memqd_out, const char *name);
 extern int __demi_socket(int *sockqd_out, int domain, int type, int protocol);

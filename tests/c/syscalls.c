@@ -274,7 +274,12 @@ int main(int argc, char *const argv[])
     ((void)argv);
 
     /* This shall never fail. */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* System calls in demi/libos.h */
     for (size_t i = 0; i < sizeof(tests_libos) / sizeof(struct test); i++)

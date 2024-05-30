@@ -22,7 +22,12 @@ int __init()
     queue_man_init();
     epoll_table_init();
 
-    ret = __demi_init(argc, argv);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    ret = demi_init(&args);
 
     if (ret != 0)
     {

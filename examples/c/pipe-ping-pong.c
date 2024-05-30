@@ -125,7 +125,12 @@ static void server(int argc, char *const argv[], size_t data_size, unsigned max_
     size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup memory queues. */
     sprintf(name, "%s:rx", argv[2]);
@@ -178,7 +183,12 @@ static void client(int argc, char *const argv[], size_t data_size, unsigned max_
     size_t max_bytes = data_size * max_msgs;
 
     /* Initialize demikernel */
-    assert(demi_init(argc, argv) == 0);
+    const struct demi_args args = {
+        .argc = argc,
+        .argv = argv,
+        .callback = NULL,
+    };
+    assert(demi_init(&args) == 0);
 
     /* Setup memory queues. */
     sprintf(name, "%s:tx", argv[2]);
