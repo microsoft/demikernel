@@ -562,7 +562,7 @@ impl LibOS {
     /// Waits for a pending I/O operation to complete or a timeout to expire.
     /// This is just a single-token convenience wrapper for wait_any().
     pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<demi_qresult_t, Fail> {
-        timer!("demikernel::wait");
+        // No profiling scope here because we may enter a coroutine scope.
         match self {
             #[cfg(any(
                 feature = "catnap-libos",
@@ -578,7 +578,7 @@ impl LibOS {
 
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Option<Duration>) -> Result<(usize, demi_qresult_t), Fail> {
-        timer!("demikernel::wait_any");
+        // No profiling scope here because we may enter a coroutine scope.
         match self {
             #[cfg(any(
                 feature = "catnap-libos",
@@ -601,7 +601,7 @@ impl LibOS {
         acceptor: Acceptor,
         timeout: Option<Duration>,
     ) -> Result<(), Fail> {
-        timer!("demikernel::wait_next_n");
+        // No profiling scope here because we may enter a coroutine scope.
         match self {
             #[cfg(any(
                 feature = "catnap-libos",
@@ -656,7 +656,7 @@ impl LibOS {
     }
 
     pub fn poll(&mut self) {
-        timer!("demikernel::poll");
+        // No profiling scope here because we may enter a coroutine scope.
         match self {
             #[cfg(any(
                 feature = "catnap-libos",
