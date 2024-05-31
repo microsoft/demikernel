@@ -23,6 +23,8 @@
  */
 int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
 {
+    int ret;
+
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -59,5 +61,12 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
         WARN("%s is not supported", "TCP_ULP");
     }
 
-    return (__demi_setsockopt(sockfd, level, optname, optval, optlen));
+    ret = __demi_setsockopt(sockfd, level, optname, optval, optlen);
+    if (ret != 0)
+    {
+        errno = ret;
+        return -1;
+    }
+
+    return (ret);
 }

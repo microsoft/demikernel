@@ -59,5 +59,12 @@ int __getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *op
         WARN("%s is not supported", "TCP_ULP");
     }
 
-    return (__demi_getsockopt(sockfd, level, optname, optval, optlen));
+    ret = __demi_getsockopt(sockfd, level, optname, optval, optlen);
+    if (ret != 0)
+    {
+        errno = ret;
+        return -1;
+    }
+
+    return (ret);
 }
