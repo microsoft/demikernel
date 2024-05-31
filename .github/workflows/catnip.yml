@@ -53,7 +53,7 @@ jobs:
         else
           branch_name="${{ github.ref_name }}"
         fi
-        pip install --pre azure-data-tables
+        pip install --pre azure-identity azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
@@ -103,7 +103,7 @@ jobs:
         else
           branch_name="${{ github.ref_name }}"
         fi
-        pip install --pre azure-data-tables
+        pip install --pre azure-identity azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
@@ -114,7 +114,7 @@ jobs:
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
-          --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+          --storage-account-url "${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}" \
           --table-name ${{ secrets.AZURE_STORAGE_TABLE_NAME }}
     - name: Archive Logs
       if: always()
@@ -145,9 +145,9 @@ jobs:
     - name: Parse Statistics
       id: parse-stats
       run: |
-        pip install --pre azure-data-tables azure-storage-blob pandas matplotlib tabulate
+        pip install --pre azure-identity azure-data-tables azure-storage-blob pandas matplotlib tabulate
         stats=$(python3 tools/perf.py \
-          --connection "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+          --storage-account-url "${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}" \
           --table  ${{ secrets.AZURE_STORAGE_TABLE_NAME }} \
           --key ${{ secrets.AZURE_STORAGE_KEY }} \
           --branch origin/${{ github.head_ref }} \

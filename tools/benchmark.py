@@ -7,7 +7,7 @@ from shutil import move, rmtree
 from os.path import isdir
 import yaml
 from ci.job.linux import CheckoutJobOnLinux, CleanupJobOnLinux, CompileJobOnLinux, TcpEchoTest
-from ci.job.utils import set_commit_hash, set_connection_string, set_libos, set_table_name
+from ci.job.utils import set_commit_hash, set_storage_account_url, set_libos, set_table_name
 import ci.git as git
 
 # =====================================================================================================================
@@ -123,8 +123,8 @@ def read_args() -> argparse.Namespace:
     # Other options.
     parser.add_argument("--output-dir", required=False,
                         default=".", help="output directory for logs")
-    parser.add_argument("--connection-string", required=False,
-                        default="", help="connection string to access Azure tables")
+    parser.add_argument("--storage-account-url", required=False,
+                        default="", help="Storage Account URL to access Azure tables")
     parser.add_argument("--table-name", required=False,
                         default="", help="Azure table to place results")
 
@@ -160,7 +160,7 @@ def main():
     # Initialize glboal variables.
     head_commit: str = git.get_head_commit(branch)
     set_commit_hash(head_commit)
-    set_connection_string(args.connection_string)
+    set_storage_account_url(args.storage_account_url)
     set_table_name(args.table_name)
     set_libos(libos)
 

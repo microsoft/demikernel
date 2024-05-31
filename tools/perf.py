@@ -4,6 +4,7 @@
 import datetime
 import fnmatch
 from typing import List
+from azure.identity import DefaultAzureCredential
 from azure.data.tables import TableServiceClient
 import pandas
 import argparse
@@ -19,14 +20,12 @@ def main():
 
     # Extract command line arguments.
     table_name: str = args.table
-    connection_str: str = args.connection
-    key: str = args.key
+    storage_account_url: str = args.storage_account_url
     branch_name: str = args.branch
     libos: str = args.libos
     ndays: int = 15
 
-    __build_report(table_name=table_name, connection_str=connection_str,
-                   key=key, branch_name=branch_name, libos=libos, ndays=ndays)
+    __build_report(table_name, storage_account_url, branch_name, libos, ndays)
 
 
 # =====================================================================================================================
@@ -44,8 +43,7 @@ def __read_args() -> argparse.Namespace:
     parser.add_argument("--table", required=True, help="Set Azure Table to use.")
 
     # Options related to credentials.
-    parser.add_argument("--connection", required=True, help="Set connection string to access Azure Storage Account.")
-    parser.add_argument("--key", required=True, help="Set connection key to access Azure Storage Account.")
+    parser.add_argument("--storage-account-url", required=True, help="Set the Azure Storage Account URL.")
 
     # Options related to repository.
     parser.add_argument("--branch", required=True, help="Set the branch to report performance statistics for.")
@@ -55,22 +53,20 @@ def __read_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def __build_report(table_name: str, connection_str: str, key: str, branch_name: str, libos: str, ndays: int) -> None:
+def __build_report(table_name: str, storage_account_url: str, branch_name: str, libos: str, ndays: int) -> None:
 
     # Sanity check inputs.
     if not table_name:
         raise ValueError("Invalid table name.")
-    if not connection_str:
-        raise ValueError("Invalid connection string.")
-    if not key:
-        raise ValueError("Invalid key.")
+    if not storage_account_url:
+        raise ValueError("Invalid storage account url.")
     if not branch_name:
         raise ValueError("Invalid branch name.")
     if ndays <= 0:
         raise ValueError("Invalid number of days.")
 
     # Connect to Azure table.
-    table_service = TableServiceClient.from_connection_string(connection_str)
+    table_service = TableServiceClient(endpoint=storage_account_url, credential=DefaultAzureCredential())
     table_client = table_service.get_table_client(table_name)
 
     # Query Azure table for performance statistics.

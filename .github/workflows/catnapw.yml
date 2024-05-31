@@ -53,7 +53,7 @@ jobs:
         else
           branch_name="${{ github.ref_name }}"
         fi
-        pip install --pre azure-data-tables
+        pip install --pre azure-identity azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
@@ -104,7 +104,7 @@ jobs:
         else
           branch_name="${{ github.ref_name }}"
         fi
-        pip install --pre azure-data-tables
+        pip install --pre azure-identity azure-data-tables
         python3 tools/demikernel_ci.py \
           --server $SERVER \
           --client $CLIENT \
@@ -116,7 +116,7 @@ jobs:
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
-          --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+          --storage-account-url "${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}" \
           --table-name ${{ secrets.AZURE_STORAGE_TABLE_NAME }}
     - name: Archive Logs
       if: always()

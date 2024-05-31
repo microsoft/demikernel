@@ -3,6 +3,7 @@
 
 import time
 from typing import List
+from azure.identity import DefaultAzureCredential
 from azure.data.tables import TableServiceClient
 
 # ======================================================================================================================
@@ -10,7 +11,7 @@ from azure.data.tables import TableServiceClient
 # ======================================================================================================================
 
 COMMIT_HASH: str = ""
-CONNECTION_STRING: str = ""
+STORAGE_ACCOUNT_URL: str = ""
 TABLE_NAME = ""
 LIBOS = ""
 
@@ -26,11 +27,11 @@ def set_commit_hash(commit_hash: str):
     COMMIT_HASH = commit_hash
 
 
-def set_connection_string(connection_string: str) -> None:
-    global CONNECTION_STRING
-    if CONNECTION_STRING != "":
-        raise Exception("Connection string is already set.")
-    CONNECTION_STRING = connection_string
+def set_storage_account_url(storage_account_url: str) -> None:
+    global STORAGE_ACCOUNT_URL
+    if STORAGE_ACCOUNT_URL != "":
+        raise Exception("Storage Account URL is already set.")
+    STORAGE_ACCOUNT_URL = storage_account_url
 
 
 def set_table_name(table_name: str) -> None:
@@ -54,9 +55,9 @@ def get_commit_hash() -> str:
     return COMMIT_HASH
 
 
-def get_connection_string() -> str:
-    global CONNECTION_STRING
-    return CONNECTION_STRING
+def get_storage_account_url() -> str:
+    global STORAGE_ACCOUNT_URL
+    return STORAGE_ACCOUNT_URL
 
 
 def get_table_name() -> str:
@@ -82,14 +83,15 @@ def timing(f):
 
 
 def extract_performance(job_name, file):
-    connection_string: str = get_connection_string()
+    storage_account_url: str = get_storage_account_url()
     table_name: str = get_table_name()
     libos: str = get_libos()
     commit_hash: str = get_commit_hash()
 
     # Connect to Azure Tables.
-    if not connection_string == "":
-        table_service = TableServiceClient.from_connection_string(connection_string)
+    if not storage_account_url == "":
+        table_service = TableServiceClient(
+            endpoint=storage_account_url, credential=DefaultAzureCredential())
         table_client = table_service.get_table_client(table_name)
 
         # Filter profiler lines.
