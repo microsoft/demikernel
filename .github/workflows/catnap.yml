@@ -114,8 +114,8 @@ jobs:
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
-          --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-          --table-name ${{ secrets.AZURE_STORAGE_TABLE_NAME }}
+          --db-file-path /tmp/demikernel_sqlite.db \
+          --table-name performance_data
     - name: Archive Logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -195,9 +195,8 @@ jobs:
       run: |
         pip install --pre azure-data-tables azure-storage-blob pandas matplotlib tabulate
         stats=$(python3 tools/perf.py \
-          --connection "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-          --table  ${{ secrets.AZURE_STORAGE_TABLE_NAME }} \
-          --key ${{ secrets.AZURE_STORAGE_KEY }} \
+          --db-file-path ${{ secrets.LOCAL_SQLITE_DB_FILE }} \
+          --table-name ${{ secrets.TABLE_NAME }}
           --branch origin/${{ github.head_ref }} \
           --libos $LIBOS)
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)

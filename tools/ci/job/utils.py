@@ -3,15 +3,15 @@
 
 import time
 from typing import List
-from azure.data.tables import TableServiceClient
+import sqlite3
 
 # ======================================================================================================================
 # Global Variables
 # ======================================================================================================================
 
 COMMIT_HASH: str = ""
-CONNECTION_STRING: str = ""
-TABLE_NAME = ""
+DB_FILE_PATH: str = ""
+TABLE_NAME: str = ""
 LIBOS = ""
 
 # ======================================================================================================================
@@ -26,12 +26,11 @@ def set_commit_hash(commit_hash: str):
     COMMIT_HASH = commit_hash
 
 
-def set_connection_string(connection_string: str) -> None:
-    global CONNECTION_STRING
-    if CONNECTION_STRING != "":
-        raise Exception("Connection string is already set.")
-    CONNECTION_STRING = connection_string
-
+def set_db_file_path(path: str) -> None:
+    global DB_FILE_PATH
+    if DB_FILE_PATH != "":
+        raise Exception("db_file is already set.")
+    DB_FILE_PATH = path
 
 def set_table_name(table_name: str) -> None:
     global TABLE_NAME
@@ -54,9 +53,9 @@ def get_commit_hash() -> str:
     return COMMIT_HASH
 
 
-def get_connection_string() -> str:
-    global CONNECTION_STRING
-    return CONNECTION_STRING
+def get_db_file_path() -> str:
+    global DB_FILE_PATH
+    return DB_FILE_PATH
 
 
 def get_table_name() -> str:
@@ -82,48 +81,58 @@ def timing(f):
 
 
 def extract_performance(job_name, file):
-    connection_string: str = get_connection_string()
-    table_name: str = get_table_name()
-    libos: str = get_libos()
     commit_hash: str = get_commit_hash()
 
-    # Connect to Azure Tables.
-    if not connection_string == "":
-        table_service = TableServiceClient.from_connection_string(connection_string)
-        table_client = table_service.get_table_client(table_name)
+    # Filter profiler lines.
+    lines = [line for line in file if line.startswith("+")]
 
-        # Filter profiler lines.
-        lines = [line for line in file if line.startswith("+")]
+    # Parse statistics and upload them to azure tables.
+    for line in lines:
+        line = line.replace("::", ";")
+        columns = line.split(";")
+        # Workaround for LibOses which are miss behaving.
+        if len(columns) == 6:
+            scope = columns[1]
+            syscall = columns[2]
+            total_time = columns[3]
+            average_cycles = columns[4]
+            average_time = columns[5]
 
-        # Parse statistics and upload them to azure tables.
-        for line in lines:
-            line = line.replace("::", ";")
-            columns = line.split(";")
-            # Workaround for LibOses which are miss behaving.
-            if len(columns) == 6:
-                scope = columns[1]
-                syscall = columns[2]
-                total_time = columns[3]
-                average_cycles = columns[4]
-                average_time = columns[5]
+            partition_key: str = f"{commit_hash}-{get_libos()}-{job_name}"
+            row_key: str = syscall
 
-                partition_key: str = f"{commit_hash}-{get_libos()}-{job_name}"
-                row_key: str = syscall
+            entry: dict[str, str, str, str, str, str, float, float, float] = {}
+            entry["PartitionKey"] = partition_key
+            entry["RowKey"] = row_key
+            entry["CommitHash"] = commit_hash
+            entry["LibOS"] = get_libos()
+            entry["JobName"] = job_name
+            entry["Scope"] = scope
+            entry["Syscall"] = syscall
+            entry["TotalTime"] = float(total_time)
+            entry["AverageCyclesPerSyscall"] = float(average_cycles)
+            entry["AverageTimePerSyscall"] = float(average_time)
 
-                entry: dict[str, str, str, str, str, str, float, float, float] = {}
-                entry["PartitionKey"] = partition_key
-                entry["RowKey"] = row_key
-                entry["CommitHash"] = commit_hash
-                entry["LibOS"] = libos
-                entry["JobName"] = job_name
-                entry["Scope"] = scope
-                entry["Syscall"] = syscall
-                entry["TotalTime"] = float(total_time)
-                entry["AverageCyclesPerSyscall"] = float(average_cycles)
-                entry["AverageTimePerSyscall"] = float(average_time)
+            write_to_db(entry)
 
-                table_client.delete_entity(partition_key, row_key)
-                table_client.create_entity(entry)
+
+def write_to_db(entry):
+    db_file_path = get_db_file_path()
+    table_name = get_table_name()
+    if db_file_path == "" or table_name == "":
+        return
+    conn = sqlite3.connect(database=db_file_path)
+    c = conn.cursor()
+    c.execute(f'''CREATE TABLE IF NOT EXISTS {table_name}
+                 (PartitionKey text, RowKey text, CommitHash text, LibOS text, 
+                  JobName text, Scope text, Syscall text, TotalTime real, 
+                  AverageCyclesPerSyscall real, AverageTimePerSyscall real)''')
+    c.execute(f"INSERT OR REPLACE INTO {table_name} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+              (entry["PartitionKey"], entry["RowKey"], entry["CommitHash"], entry["LibOS"], 
+               entry["JobName"], entry["Scope"], entry["Syscall"], entry["TotalTime"], 
+               entry["AverageCyclesPerSyscall"], entry["AverageTimePerSyscall"]))
+    conn.commit()
+    conn.close()
 
 
 def wait_jobs(log_directory: str, jobs: dict, no_wait: bool = False):
