@@ -121,6 +121,7 @@ def write_to_db(entry):
     table_name = get_table_name()
     if db_file_path == "" or table_name == "":
         return
+    print(f"Writing to {db_file_path} table {table_name} entry {entry}")
     conn = sqlite3.connect(database=db_file_path)
     c = conn.cursor()
     c.execute(f'''CREATE TABLE IF NOT EXISTS {table_name}

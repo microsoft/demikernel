@@ -4,10 +4,10 @@
 import datetime
 import fnmatch
 from typing import List
-from azure.data.tables import TableServiceClient
 import pandas
 import argparse
 import ci.git as git
+import sqlite3
 
 # =====================================================================================================================
 
@@ -18,15 +18,14 @@ def main():
     args: argparse.Namespace = __read_args()
 
     # Extract command line arguments.
+    db_file_path: str = args.db_file_path
     table_name: str = args.table
-    connection_str: str = args.connection
-    key: str = args.key
     branch_name: str = args.branch
     libos: str = args.libos
     ndays: int = 15
 
-    __build_report(table_name=table_name, connection_str=connection_str,
-                   key=key, branch_name=branch_name, libos=libos, ndays=ndays)
+    __build_report(db_file_path=db_file_path, table_name=table_name, branch_name=branch_name, libos=libos, 
+                   ndays=ndays)
 
 
 # =====================================================================================================================
@@ -55,23 +54,17 @@ def __read_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def __build_report(table_name: str, connection_str: str, key: str, branch_name: str, libos: str, ndays: int) -> None:
+def __build_report(db_file_path: str, table_name: str, branch_name: str, libos: str, ndays: int) -> None:
 
     # Sanity check inputs.
+    if not db_file_path:
+        raise ValueError("Invalid db file path.")
     if not table_name:
         raise ValueError("Invalid table name.")
-    if not connection_str:
-        raise ValueError("Invalid connection string.")
-    if not key:
-        raise ValueError("Invalid key.")
     if not branch_name:
         raise ValueError("Invalid branch name.")
     if ndays <= 0:
         raise ValueError("Invalid number of days.")
-
-    # Connect to Azure table.
-    table_service = TableServiceClient.from_connection_string(connection_str)
-    table_client = table_service.get_table_client(table_name)
 
     # Query Azure table for performance statistics.
     base_date = datetime.datetime.now() - datetime.timedelta(days=ndays)
@@ -82,7 +75,9 @@ def __build_report(table_name: str, connection_str: str, key: str, branch_name: 
     syscall_filter: str = f"(Syscall eq 'push' or Syscall eq 'pop')"
     query_filter: str = f"{datetime_filter} and {scope_filter} and {libos_filter} and {syscall_filter}"
     select: List[str] = ["LibOS", "JobName", "CommitHash", "Syscall", "AverageCyclesPerSyscall"]
-    data = table_client.query_entities(query_filter=query_filter, select=select)
+
+    data = sqlite3.query_db(db_file_path, table_name, query_filter)
+
 
     job_types: list[str] = ["tcp-ping-pong-server", "tcp-ping-pong-client"]
     syscalls: list[str] = ["push", "pop"]
