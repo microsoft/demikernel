@@ -259,10 +259,8 @@ def read_args() -> argparse.Namespace:
     # Other options.
     parser.add_argument("--output-dir", required=False,
                         default=".", help="output directory for logs")
-    parser.add_argument("--connection-string", required=False,
-                        default="", help="connection string to access Azure tables")
-    parser.add_argument("--table-name", required=False,
-                        default="", help="Azure table to place results")
+    parser.add_argument("--db-file", required=False, default="", help="SQLite database file")
+    parser.add_argument("--table-name", required=False, default="", help="Table to place results")
 
     # Read arguments from command line.
     return parser.parse_args()

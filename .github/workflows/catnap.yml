@@ -114,8 +114,8 @@ jobs:
           --delay 2 \
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR \
-          --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-          --table-name ${{ secrets.AZURE_STORAGE_TABLE_NAME }}
+          --db-file "demikernel.sqlite" \
+          --table-name "performance_data"
     - name: Archive Logs
       if: always()
       uses: actions/upload-artifact@v4
