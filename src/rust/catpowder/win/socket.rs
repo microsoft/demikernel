@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use std::mem;
+
 use crate::runtime::fail::Fail;
 use windows::{
     core::HRESULT,
@@ -164,15 +166,41 @@ impl XdpSocket {
         hookid: *const xdp_rs::XDP_HOOK_ID,
         queueid: u32,
         flags: xdp_rs::XDP_CREATE_PROGRAM_FLAGS,
-        rules: *const xdp_rs::XDP_RULE,
-        rule_count: u32,
         program: *mut HANDLE,
     ) -> Result<(), Fail> {
         let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
 
+        let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
+            let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
+            redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
+            redirect.Target = self.socket;
+            redirect
+        };
+
+        let pattern: xdp_rs::_XDP_MATCH_PATTERN = {
+            let pattern: xdp_rs::_XDP_MATCH_PATTERN = unsafe { mem::zeroed() };
+            pattern
+        };
+
+        let rule_count: u32 = 1;
+        let rules: xdp_rs::XDP_RULE = unsafe {
+            let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
+            rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
+            rule.Action = xdp_rs::_XDP_RULE_ACTION_XDP_PROGRAM_ACTION_REDIRECT;
+            rule.Pattern = pattern;
+            // TODO: Set redirect.
+            // TODO: Set pattern
+            // Perform bitweise copu from redirect to rule.
+            rule.__bindgen_anon_1 =
+                mem::transmute_copy::<xdp_rs::XDP_REDIRECT_PARAMS, xdp_rs::_XDP_RULE__bindgen_ty_1>(&redirect);
+
+            rule
+        };
+
         if let Some(create_program) = api.XdpCreateProgram {
             let result: HRESULT =
-                unsafe { create_program(ifindex, hookid, queueid, flags, rules, rule_count, program) };
+                unsafe { create_program(ifindex, hookid, queueid, flags, &rules, rule_count, program) };
+            println!("{:?}", result);
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),

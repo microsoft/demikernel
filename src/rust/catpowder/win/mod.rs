@@ -33,14 +33,19 @@ use socket::{
     XdpApi,
     XdpSocket,
 };
-use windows::Win32::System::Threading::QUEUE_USER_APC_CALLBACK_DATA_CONTEXT;
+use windows::Win32::{
+    Foundation::HANDLE,
+    System::Threading::QUEUE_USER_APC_CALLBACK_DATA_CONTEXT,
+};
 use xdp_rs::{
     XDP_HOOK_ID,
     XSK_RING_INFO,
     XSK_SOCKOPT_RX_RING_SIZE,
+    _XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_RX,
     _XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_TX,
     _XDP_HOOK_LAYER_XDP_HOOK_L2,
     _XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
+    _XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK,
 };
 
 //======================================================================================================================
@@ -50,8 +55,8 @@ use xdp_rs::{
 struct CatpowderRuntimeInner {
     rx_ring: Ring,
     rx_fill_ring: Ring,
-    tx_ring: Ring,
-    tx_completion_ring: Ring,
+    // tx_ring: Ring,
+    // tx_completion_ring: Ring,
 }
 
 /// Underlying network transport.
@@ -76,6 +81,8 @@ impl NetworkRuntime for CatpowderRuntime {
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
+        let queueid: u32 = 0;
+
         trace!("Creating XDP socket.");
         let mut socket: XdpSocket = XdpSocket::create(&mut api)?;
 
@@ -97,24 +104,7 @@ impl NetworkRuntime for CatpowderRuntime {
             &mem as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
             std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
         )?;
-
-        trace!("Creating RX queue.");
-        socket.bind(
-            &mut api,
-            index,
-            0,
-            xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX | xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX,
-        )?;
-
         const RING_SIZE: u32 = 1;
-
-        trace!("Setting RX ring size.");
-        socket.setsockopt(
-            &mut api,
-            xdp_rs::XSK_SOCKOPT_RX_RING_SIZE,
-            &RING_SIZE as *const u32 as *const core::ffi::c_void,
-            std::mem::size_of::<u32>() as u32,
-        )?;
 
         trace!("Setting RX Fill ring size.");
         socket.setsockopt(
@@ -124,40 +114,50 @@ impl NetworkRuntime for CatpowderRuntime {
             std::mem::size_of::<u32>() as u32,
         )?;
 
-        trace!("Setting TX ring size.");
+        trace!("Setting RX ring size.");
         socket.setsockopt(
             &mut api,
-            xdp_rs::XSK_SOCKOPT_TX_RING_SIZE,
+            xdp_rs::XSK_SOCKOPT_RX_RING_SIZE,
             &RING_SIZE as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
 
-        trace!("Setting TX completion ring size.");
-        socket.setsockopt(
-            &mut api,
-            xdp_rs::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
-            &RING_SIZE as *const u32 as *const core::ffi::c_void,
-            std::mem::size_of::<u32>() as u32,
-        )?;
+        // trace!("Setting TX ring size.");
+        // socket.setsockopt(
+        //     &mut api,
+        //     xdp_rs::XSK_SOCKOPT_TX_RING_SIZE,
+        //     &RING_SIZE as *const u32 as *const core::ffi::c_void,
+        //     std::mem::size_of::<u32>() as u32,
+        // )?;
+
+        // trace!("Setting TX completion ring size.");
+        // socket.setsockopt(
+        //     &mut api,
+        //     xdp_rs::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
+        //     &RING_SIZE as *const u32 as *const core::ffi::c_void,
+        //     std::mem::size_of::<u32>() as u32,
+        // )?;
+
+        trace!("Binding RX queue.");
+        socket.bind(&mut api, index, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX)?;
 
         trace!("Activating XDP socket.");
         socket.activate(&mut api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
 
-        let mut ring_info: xdp_rs::XSK_RING_INFO = unsafe { std::mem::zeroed() };
-        let mut option_length: u32 = 0;
-
         trace!("Getting RX ring info.");
+        let mut ring_info: xdp_rs::XSK_RING_INFO_SET = unsafe { std::mem::zeroed() };
+        let mut option_length: u32 = std::mem::size_of::<xdp_rs::XSK_RING_INFO_SET>() as u32;
         socket.getsockopt(
             &mut api,
             xdp_rs::XSK_SOCKOPT_RING_INFO,
-            &mut ring_info as *mut xdp_rs::XSK_RING_INFO as *mut core::ffi::c_void,
+            &mut ring_info as *mut xdp_rs::XSK_RING_INFO_SET as *mut core::ffi::c_void,
             &mut option_length as *mut u32,
         )?;
 
-        let mut rx_ring: Ring = Ring::ring_initialize(&ring_info);
-        let mut rx_fill_ring: Ring = Ring::ring_initialize(&ring_info);
-        let mut tx_ring: Ring = Ring::ring_initialize(&ring_info);
-        let mut tx_completion_ring: Ring = Ring::ring_initialize(&ring_info);
+        let mut rx_fill_ring: Ring = Ring::ring_initialize(&ring_info.Fill);
+        let rx_ring: Ring = Ring::ring_initialize(&ring_info.Rx);
+        // let mut tx_ring: Ring = Ring::ring_initialize(&ring_info);
+        // let mut tx_completion_ring: Ring = Ring::ring_initialize(&ring_info);
 
         trace!("Reserving RX ring buffer.");
         let mut ring_index: u32 = 0;
@@ -167,32 +167,26 @@ impl NetworkRuntime for CatpowderRuntime {
         rx_fill_ring.ring_producer_submit(1);
 
         trace!("Setting RX Fill ring.");
-        let mut rule: xdp_rs::XDP_RULE = unsafe {
-            let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
-            rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
-            // TODO: Set redirect target.
-            rule.Action = xdp_rs::_XDP_RULE_ACTION_XDP_PROGRAM_ACTION_REDIRECT;
-            rule
-        };
 
         // Create XDP program.
         const XDP_INSPECT_RX: XDP_HOOK_ID = XDP_HOOK_ID {
             Layer: _XDP_HOOK_LAYER_XDP_HOOK_L2,
-            Direction: _XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_TX,
+            Direction: _XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_RX,
             SubLayer: _XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
         };
 
         trace!("Creating XDP program.");
-        let mut program: windows::Win32::Foundation::HANDLE = unsafe { std::mem::zeroed() };
-        socket.create_program(&mut api, 0, &XDP_INSPECT_RX, 0, 0, &rule, 1, &mut program)?;
+        let mut program: HANDLE = HANDLE::default();
+        socket.create_program(&mut api, index, &XDP_INSPECT_RX, queueid, 0, &mut program)?;
 
+        trace!("XDP program created.");
         Ok(Self {
             idx: index,
             inner: SharedObject::new(CatpowderRuntimeInner {
                 rx_ring,
                 rx_fill_ring,
-                tx_ring,
-                tx_completion_ring,
+                // tx_ring,
+                // tx_completion_ring,
             }),
         })
     }
