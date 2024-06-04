@@ -8,7 +8,7 @@ from os import mkdir
 from shutil import move, rmtree
 from os.path import isdir
 import yaml
-from ci.job.utils import set_commit_hash, set_connection_string, set_libos, set_table_name
+from ci.job.utils import set_commit_hash, set_db_file, set_libos, set_table_name
 from ci.job.factory import JobFactory
 import ci.git as git
 
@@ -259,8 +259,10 @@ def read_args() -> argparse.Namespace:
     # Other options.
     parser.add_argument("--output-dir", required=False,
                         default=".", help="output directory for logs")
-    parser.add_argument("--db-file", required=False, default="", help="SQLite database file")
-    parser.add_argument("--table-name", required=False, default="", help="Table to place results")
+    parser.add_argument("--db-file", required=False, default="",
+                        help="SQLite database file")
+    parser.add_argument("--table-name", required=False, default="",
+                        help="Table to place results")
 
     # Read arguments from command line.
     return parser.parse_args()
@@ -299,7 +301,7 @@ def main():
     # Initialize glboal variables.
     head_commit: str = git.get_head_commit(branch)
     set_commit_hash(head_commit)
-    set_connection_string(args.connection_string)
+    set_db_file(args.db_file)
     set_table_name(args.table_name)
     set_libos(libos)
 
