@@ -542,7 +542,7 @@ impl Simulation {
                 self.inflight = Some(push_qt);
                 // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
                 // TODO: Remove this once we separate the poll and advance clock functions.
-                self.engine.poll();
+                self.engine.poll_task(push_qt);
 
                 Ok(())
             },
@@ -755,7 +755,7 @@ impl Simulation {
         let buf: DemiBuffer = Self::serialize_segment(segment);
         self.engine.receive(buf)?;
 
-        self.engine.poll();
+        self.engine.poll_background();
         Ok(())
     }
 
@@ -848,21 +848,20 @@ impl Simulation {
 
     /// Runs an outgoing packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let mut n = 0;
-        let frames = loop {
-            let frames = self.engine.pop_all_frames();
+        let mut frames: VecDeque<DemiBuffer> = VecDeque::<DemiBuffer>::new();
+        for _ in 0..5 {
+            frames = self.engine.pop_all_frames();
             if frames.is_empty() {
-                if n > 5 {
-                    anyhow::bail!("did not emit a frame after 5 loops");
-                } else {
-                    self.engine.poll();
-                    n += 1;
-                }
+                self.engine.poll_io();
+                self.engine.poll_background();
             } else {
                 // FIXME: We currently do not support multi-frame segments.
                 crate::ensure_eq!(frames.len(), 1);
-                break frames;
+                break;
             }
+        }
+        if frames.is_empty() {
+            anyhow::bail!("did not emit a frame after 5 loops");
         };
         let bytes = &frames[0];
         let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;

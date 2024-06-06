@@ -119,9 +119,8 @@ impl MemoryLibOS {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         acceptor: Acceptor,
-        timeout: Duration
-    ) -> Result<(), Fail>
-    {
+        timeout: Duration,
+    ) -> Result<(), Fail> {
         trace!("wait_next_n(): acceptor, timeout={:?}", timeout);
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -129,7 +128,6 @@ impl MemoryLibOS {
             _ => unreachable!("unknown memory libos"),
         }
     }
-
 
     /// Allocates a scatter-gather array.
     #[allow(unreachable_patterns, unused_variables)]
@@ -153,10 +151,10 @@ impl MemoryLibOS {
 
     /// Waits for any operation in an I/O queue.
     #[allow(unreachable_patterns, unused_variables)]
-    pub fn poll(&mut self) {
+    pub fn poll_task(&mut self, qt: QToken) {
         match self {
             #[cfg(feature = "catmem-libos")]
-            MemoryLibOS::Catmem(libos) => libos.poll(),
+            MemoryLibOS::Catmem(libos) => libos.poll_task(qt),
             _ => unreachable!("unknown memory libos"),
         }
     }
