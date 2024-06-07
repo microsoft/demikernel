@@ -38,6 +38,8 @@ pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
 #[cfg(target_os = "windows")]
 pub const SOCK_DGRAM: i32 = windows::Win32::Networking::WinSock::SOCK_DGRAM.0 as i32;
 
+pub const SOCK_TYPE: i32 = windows::Win32::Networking::WinSock::IPPROTO_UDP.0 as i32;
+
 #[cfg(target_os = "linux")]
 pub const AF_INET: i32 = libc::AF_INET;
 
@@ -229,7 +231,7 @@ impl Application {
         let injection_rate: u64 = args.get_injection_rate();
 
         // Create UDP socket.
-        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 1) {
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, SOCK_TYPE) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };

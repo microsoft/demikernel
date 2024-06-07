@@ -186,8 +186,8 @@ impl Socket {
 
     /// Setup relevant socket options according to the configuration.
     fn setup_socket(&self, protocol: libc::c_int, options: &TcpSocketOptions) -> Result<(), Fail> {
-        self.set_linger(options.get_linger())?;
         if protocol == IPPROTO_TCP.0 {
+            self.set_linger(options.get_linger())?;
             self.set_tcp_keepalive(&options.get_keepalive())?;
             self.set_nagle(options.get_nodelay())?;
         }

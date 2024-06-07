@@ -35,6 +35,7 @@ static INLINED_C_NAME: &str = "inlined.c";
 static OUT_DIR_VAR: &str = "OUT_DIR";
 static XDP_PATH_VAR: &str = "XDP_PATH";
 static INCLUDE_DIR: &str = "\\include";
+static LIB_DIR: &str = "\\lib";
 static XDP_API_LIB: &str = "xdpapi";
 static SAL_BLOCKLIST_REGEX: &str = r".*SAL.*";
 static TYPE_BLOCKLIST: [&str; 8] = [
@@ -56,7 +57,7 @@ fn main() -> Result<()> {
     let libxdp_path: String = env::var(XDP_PATH_VAR)?;
 
     let include_path: String = format!("{}{}", &libxdp_path, INCLUDE_DIR);
-    let lib_path: String = format!("{}", &libxdp_path);
+    let lib_path: String = format!("{}{}", &libxdp_path, LIB_DIR);
 
     println!("include_path: {}", include_path);
     println!("lib_path: {}", lib_path);

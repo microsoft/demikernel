@@ -76,6 +76,7 @@ pub struct SharedNetworkQueue<T: NetworkTransport>(SharedObject<NetworkQueue<T>>
 /// Associate Functions for Catnap LibOS
 impl<T: NetworkTransport> SharedNetworkQueue<T> {
     pub fn new(domain: Domain, typ: Type, transport: &mut T) -> Result<Self, Fail> {
+        trace!("new(domain={:?}, typ={:?})", domain, typ);
         // This was previously checked in the LibOS layer.
         debug_assert!(typ == Type::STREAM || typ == Type::DGRAM);
 

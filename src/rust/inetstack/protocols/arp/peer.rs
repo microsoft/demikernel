@@ -84,7 +84,7 @@ pub struct SharedArpPeer<N: NetworkRuntime>(SharedObject<ArpPeer<N>>);
 
 impl<N: NetworkRuntime> SharedArpPeer<N> {
     /// ARP Cleanup timeout.
-    const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+    const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(60);
 
     pub fn new(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
         let arp_config: ArpConfig = ArpConfig::new(config)?;

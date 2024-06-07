@@ -22,6 +22,7 @@ use crate::{
 //======================================================================================================================
 
 /// Message for ICMP
+#[derive(Debug)]
 pub struct Icmpv4Message {
     ethernet2_hdr: Ethernet2Header,
     ipv4_hdr: Ipv4Header,

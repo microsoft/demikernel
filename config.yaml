@@ -1,0 +1,27 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+demikernel:
+  local_ipv4_addr: 10.9.1.22
+  local_link_addr: "00-22-48-7B-B3-80"
+raw_socket:
+  interface_name: "Ethernet 3"
+dpdk:
+  eal_init: ["-c", "0xff", "-n", "4", "-a", "YY:YY:.Y","--proc-type=auto", "--vdev=net_vdev_netvsc0,iface='Ethernet 3'"]
+tcp_socket_options:
+  keepalive:
+    enabled: false
+    time_millis: 0
+    interval: 0
+  linger:
+    enabled: true
+    time_seconds: 0
+  nodelay: true
+inetstack_config:
+  mtu: 1500
+  mss: 1500
+  enable_jumbo_frames: false
+  udp_checksum_offload: false
+  tcp_checksum_offload: false
+
+# vim: set tabstop=2 shiftwidth=2

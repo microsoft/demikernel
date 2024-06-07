@@ -13,6 +13,7 @@ use xdp_rs::{
     XdpOpenApi,
 };
 
+#[derive(Clone)]
 pub struct XdpApi {
     pub endpoint: *const xdp_rs::_XDP_API_TABLE,
 }
@@ -53,7 +54,7 @@ impl Drop for XdpApi {
 
 /// A XDP socket.
 pub struct XdpSocket {
-    socket: HANDLE,
+    pub socket: HANDLE,
 }
 
 /// Associated functions for XDP sockets.
@@ -162,6 +163,7 @@ impl XdpSocket {
     pub fn create_program(
         &self,
         api: &mut XdpApi,
+        rules: &xdp_rs::XDP_RULE,
         ifindex: u32,
         hookid: *const xdp_rs::XDP_HOOK_ID,
         queueid: u32,
@@ -170,37 +172,11 @@ impl XdpSocket {
     ) -> Result<(), Fail> {
         let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
 
-        let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
-            let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
-            redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
-            redirect.Target = self.socket;
-            redirect
-        };
-
-        let pattern: xdp_rs::_XDP_MATCH_PATTERN = {
-            let pattern: xdp_rs::_XDP_MATCH_PATTERN = unsafe { mem::zeroed() };
-            pattern
-        };
-
         let rule_count: u32 = 1;
-        let rules: xdp_rs::XDP_RULE = unsafe {
-            let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
-            rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
-            rule.Action = xdp_rs::_XDP_RULE_ACTION_XDP_PROGRAM_ACTION_REDIRECT;
-            rule.Pattern = pattern;
-            // TODO: Set redirect.
-            // TODO: Set pattern
-            // Perform bitweise copu from redirect to rule.
-            rule.__bindgen_anon_1 =
-                mem::transmute_copy::<xdp_rs::XDP_REDIRECT_PARAMS, xdp_rs::_XDP_RULE__bindgen_ty_1>(&redirect);
-
-            rule
-        };
 
         if let Some(create_program) = api.XdpCreateProgram {
             let result: HRESULT =
-                unsafe { create_program(ifindex, hookid, queueid, flags, &rules, rule_count, program) };
-            println!("{:?}", result);
+                unsafe { create_program(ifindex, hookid, queueid, flags, rules, rule_count, program) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -267,7 +243,7 @@ impl Ring {
         unsafe { xdp_rs::_XskRingProducerSubmit(&mut self.ring, count) }
     }
 
-    pub fn ring_get_element(&mut self, idx: u32) -> *mut std::ffi::c_void {
-        unsafe { xdp_rs::_XskRingGetElement(&mut self.ring, idx) }
+    pub fn ring_get_element(&self, idx: u32) -> *mut std::ffi::c_void {
+        unsafe { xdp_rs::_XskRingGetElement(&self.ring, idx) }
     }
 }

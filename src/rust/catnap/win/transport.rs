@@ -134,6 +134,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Create a new socket for the specified domain and type.
     fn socket(&mut self, domain: socket2::Domain, typ: socket2::Type) -> Result<Socket, Fail> {
+        trace!("Create socket (domain={:?}, type={:?})", domain, typ);
         // Select protocol.
         let protocol: IPPROTO = match typ {
             socket2::Type::STREAM => IPPROTO_TCP,
@@ -151,6 +152,7 @@ impl NetworkTransport for SharedCatnapTransport {
         let s: Socket = me
             .winsock
             .socket(domain.into(), typ.into(), protocol.0, &me.options, &me.iocp)?;
+        trace!("Socket created: {:?}", s);
         Ok(s)
     }
 

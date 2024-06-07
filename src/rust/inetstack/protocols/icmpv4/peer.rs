@@ -54,7 +54,7 @@ use ::std::{
 };
 
 /// Arbitrary time out for waiting for pings.
-const PING_TIMEOUT: Duration = Duration::from_secs(5);
+const PING_TIMEOUT: Duration = Duration::from_secs(60);
 
 //==============================================================================
 // Icmpv4Peer
@@ -170,12 +170,14 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             // Send reply message.
             let local_link_addr: MacAddress = self.local_link_addr;
             let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
-            self.transport.transmit(Box::new(Icmpv4Message::new(
+            let msg = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
                 data,
-            )));
+            );
+            debug!("ICMPv4 sending {:?}", msg);
+            self.transport.transmit(Box::new(msg));
         }
     }
 
