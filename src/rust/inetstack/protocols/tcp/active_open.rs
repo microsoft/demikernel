@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::SharedAsyncQueue,
+    collections::{
+        async_queue::SharedAsyncQueue,
+        async_value::SharedAsyncValue,
+    },
     expect_some,
     inetstack::protocols::{
         arp::SharedArpPeer,
@@ -37,6 +40,7 @@ use crate::{
         },
     },
     runtime::{
+        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
@@ -50,7 +54,11 @@ use crate::{
         SharedObject,
     },
 };
-use ::futures::channel::mpsc;
+use ::futures::{
+    channel::mpsc,
+    select_biased,
+    FutureExt,
+};
 use ::std::{
     net::SocketAddrV4,
     ops::{
@@ -62,6 +70,15 @@ use ::std::{
 //======================================================================================================================
 // Structures
 //======================================================================================================================
+
+/// States of a connecting socket.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum State {
+    /// The socket is listening for new connections.
+    Connecting,
+    /// The socket is closed.
+    Closed,
+}
 
 pub struct ActiveOpenSocket<N: NetworkRuntime> {
     local_isn: SeqNumber,
@@ -76,6 +93,7 @@ pub struct ActiveOpenSocket<N: NetworkRuntime> {
     socket_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+    state: SharedAsyncValue<State>,
 }
 
 #[derive(Clone)]
@@ -115,6 +133,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             socket_options: default_socket_options,
             arp,
             dead_socket_tx,
+            state: SharedAsyncValue::new(State::Connecting),
         })))
     }
 
@@ -251,17 +270,35 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
-        for _ in 0..handshake_retries {
-            // Look up remote MAC address.
-            // TODO: Do we need to do this every iteration?
-            let remote_link_addr = match self.clone().arp.query(self.remote.ip().clone()).await {
-                Ok(r) => r,
-                Err(e) => {
-                    warn!("ARP query failed: {:?}", e);
-                    continue;
+        // Look up remote MAC address.
+        let mut retries_left: usize = handshake_retries;
+        // Look up MAC address.
+        let remote_link_addr: MacAddress = loop {
+            match conditional_yield_with_timeout(
+                self.clone().arp.query(self.remote.ip().clone()).fuse(),
+                handshake_timeout,
+            )
+            .await
+            {
+                Ok(r) => break r?,
+                Err(e) if e.errno == libc::ETIMEDOUT && retries_left > 0 => {
+                    retries_left = retries_left - 1;
                 },
-            };
+                Err(e) if e.errno == libc::ETIMEDOUT => {
+                    let cause: String = format!("ARP query failed");
+                    error!("connect(): {}", cause);
+                    return Err(Fail::new(libc::ECONNREFUSED, &cause));
+                },
+                Err(e) => {
+                    let cause: String = format!("ARP query failed: {:?}", e);
+                    error!("connect(): {}", cause);
+                    return Err(e);
+                },
+            }
+        };
 
+        // Try to connect.
+        for _ in 0..handshake_retries {
             // Set up SYN packet.
             let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
             tcp_hdr.syn = true;
@@ -287,24 +324,39 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             self.transport.transmit(Box::new(segment));
 
             // Wait for either a response or timeout.
-            match self.recv_queue.pop(Some(handshake_timeout)).await {
+            let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
+            let mut state: SharedAsyncValue<State> = self.state.clone();
+            select_biased! {
+            r = state.wait_for_change(None).fuse() => if let Ok(r) = r {
+                if r == State::Closed {
+                    let cause: &str = "Closing socket while connecting";
+                    warn!("{}", cause);
+                    return Err(Fail::new(libc::ECONNABORTED, &cause));
+                }
+            },
+            r = recv_queue.pop(Some(handshake_timeout)).fuse() => match r {
                 Ok((_, header, _)) => match self.process_ack(header) {
-                    Ok(socket) => return Ok(socket),
-                    Err(Fail { errno, cause: _ }) if errno == libc::EAGAIN => continue,
-                    Err(e) => return Err(e),
-                },
-                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => continue,
-                Err(_) => {
-                    unreachable!(
-                        "either the ack deadline changed or the deadline passed, no other errors are possible!"
-                    )
-                },
+                        Ok(socket) => return Ok(socket),
+                        Err(Fail { errno, cause: _ }) if errno == libc::EAGAIN => continue,
+                        Err(e) => return Err(e),
+                    },
+                    Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => continue,
+                    Err(_) => {
+                        unreachable!(
+                            "either the ack deadline changed or the deadline passed, no other errors are possible!"
+                        )
+                    },
+                }
             }
         }
 
         let cause: String = format!("connection handshake timed out");
         error!("connect(): {}", cause);
-        Err(Fail::new(libc::ETIMEDOUT, &cause))
+        Err(Fail::new(libc::ECONNREFUSED, &cause))
+    }
+
+    pub fn close(&mut self) {
+        self.state.set(State::Closed);
     }
 
     /// Returns the addresses of the two ends of this connection.

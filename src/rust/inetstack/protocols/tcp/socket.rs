@@ -281,10 +281,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
                 Ok(Some(SocketId::Passive(socket.endpoint())))
             },
             // Closing a connecting socket.
-            SocketState::Connecting(_) => {
-                let cause: String = format!("cannot close a connecting socket");
-                error!("do_close(): {}", &cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
+            SocketState::Connecting(ref mut socket) => {
+                socket.close();
+                Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a closing socket.
             SocketState::Closing(_) => {
@@ -310,10 +309,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
                 Ok(Some(SocketId::Passive(socket.endpoint())))
             },
             // Closing a connecting socket.
-            SocketState::Connecting(_) => {
-                let cause: String = format!("cannot close a connecting socket");
-                error!("do_close(): {}", &cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
+            SocketState::Connecting(ref mut socket) => {
+                socket.close();
+                Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a closing socket.
             SocketState::Closing(_) => {

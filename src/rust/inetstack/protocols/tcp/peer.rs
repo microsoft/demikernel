@@ -180,7 +180,11 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub async fn connect(&mut self, socket: &mut SharedTcpSocket<N>, remote: SocketAddrV4) -> Result<(), Fail> {
         // Check whether we need to allocate an ephemeral port.
         let local: SocketAddrV4 = match socket.local() {
-            Some(addr) => addr,
+            Some(addr) => {
+                // If socket is already bound to a local address, use it but remove the old binding.
+                self.addresses.remove(&SocketId::Passive(addr));
+                addr
+            },
             None => {
                 let local_port: u16 = self.runtime.alloc_ephemeral_port()?;
                 SocketAddrV4::new(self.local_ipv4_addr, local_port)
