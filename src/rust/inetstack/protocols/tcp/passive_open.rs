@@ -6,9 +6,12 @@
 //======================================================================================================================
 
 use crate::{
-    collections::async_queue::{
-        AsyncQueue,
-        SharedAsyncQueue,
+    collections::{
+        async_queue::{
+            AsyncQueue,
+            SharedAsyncQueue,
+        },
+        async_value::SharedAsyncValue,
     },
     expect_some,
     inetstack::protocols::{
@@ -76,7 +79,18 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
+/// States of a passive socket.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum State {
+    /// The socket is listening for new connections.
+    Listening,
+    /// The socket is closed.
+    Closed,
+}
+
 pub struct PassiveSocket<N: NetworkRuntime> {
+    // TCP Connection State.
+    state: SharedAsyncValue<State>,
     connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
@@ -93,6 +107,7 @@ pub struct PassiveSocket<N: NetworkRuntime> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 
     background_task_qt: Option<QToken>,
+    socket_queue: SharedAsyncQueue<SocketAddrV4>,
 }
 
 #[derive(Clone)]
@@ -116,7 +131,9 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
+        let socket_queue: SharedAsyncQueue<SocketAddrV4> = SharedAsyncQueue::<SocketAddrV4>::default();
         let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
+            state: SharedAsyncValue::new(State::Listening),
             connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
             ready: AsyncQueue::<Result<EstablishedSocket<N>, Fail>>::default(),
@@ -131,6 +148,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             arp,
             dead_socket_tx,
             background_task_qt: None,
+            socket_queue,
         }));
         let qt: QToken =
             runtime.insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll().fuse()))?;
@@ -148,42 +166,69 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         self.ready.pop(None).await?
     }
 
+    // Closes the target socket.
+    pub fn close(&mut self) -> Result<(), Fail> {
+        self.state.set(State::Closed);
+        Ok(())
+    }
+
     async fn poll(mut self) {
         loop {
-            let (ipv4_hdr, tcp_hdr, buf) = match self.recv_queue.pop(None).await {
-                Ok(result) => result,
-                Err(_) => break,
-            };
-            let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
-            if let Some(recv_queue) = self.connections.get_mut(&remote) {
-                // Packet is either for an inflight request or established connection.
-                recv_queue.push((ipv4_hdr, tcp_hdr, buf));
-                continue;
-            }
+            let mut socket_queue: SharedAsyncQueue<SocketAddrV4> = self.socket_queue.clone();
+            let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
+            let mut state: SharedAsyncValue<State> = self.state.clone();
+            // Remove sockets that have been closed.
+            futures::select! {
+                res = socket_queue.pop(None).fuse() => match res {
+                    Ok(socket) => match self.connections.remove(&socket) {
+                        Some(_recv_queue) => {},
+                        None => unreachable!("poll(): should have a matching connection"),
+                    },
+                    Err(_) => continue,
+                },
+                result = recv_queue.pop(None).fuse() => {
+                    match result {
+                        Ok((ipv4_hdr, tcp_hdr, buf)) =>  {
+                                    let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
+                                    if let Some(recv_queue) = self.connections.get_mut(&remote) {
+                                        // Packet is either for an inflight request or established connection.
+                                        recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+                                        continue;
+                                    }
 
-            // If not a SYN, then this packet is not for a new connection and we throw it away.
-            if !tcp_hdr.syn || tcp_hdr.ack || tcp_hdr.rst {
-                let cause: String = format!(
-                    "invalid TCP flags (syn={}, ack={}, rst={})",
-                    tcp_hdr.syn, tcp_hdr.ack, tcp_hdr.rst
-                );
-                warn!("poll(): {}", cause);
-                self.send_rst(&remote, tcp_hdr);
-                continue;
-            }
+                                    // If not a SYN, then this packet is not for a new connection and we throw it away.
+                                    if !tcp_hdr.syn || tcp_hdr.ack || tcp_hdr.rst {
+                                        let cause: String = format!(
+                                            "invalid TCP flags (syn={}, ack={}, rst={})",
+                                            tcp_hdr.syn, tcp_hdr.ack, tcp_hdr.rst
+                                        );
+                                        warn!("poll(): {}", cause);
+                                        self.send_rst(&remote, tcp_hdr);
+                                        continue;
+                                    }
 
-            // Check if this SYN segment carries any data.
-            if !buf.is_empty() {
-                // RFC 793 allows connections to be established with data-carrying segments, but we do not support this.
-                // We simply drop the data and and proceed with the three-way handshake protocol, on the hope that the
-                // remote will retransmit the data after the connection is established.
-                // See: https://datatracker.ietf.org/doc/html/rfc793#section-3.4 fo more details.
-                warn!("Received SYN with data (len={})", buf.len());
-                // TODO: https://github.com/microsoft/demikernel/issues/1115
-            }
+                                    // Check if this SYN segment carries any data.
+                                    if !buf.is_empty() {
+                                        // RFC 793 allows connections to be established with data-carrying segments, but we do not support this.
+                                        // We simply drop the data and and proceed with the three-way handshake protocol, on the hope that the
+                                        // remote will retransmit the data after the connection is established.
+                                        // See: https://datatracker.ietf.org/doc/html/rfc793#section-3.4 fo more details.
+                                        warn!("Received SYN with data (len={})", buf.len());
+                                        // TODO: https://github.com/microsoft/demikernel/issues/1115
+                                    }
 
-            // Start a new connection.
-            self.handle_new_syn(remote, tcp_hdr);
+                                    // Start a new connection.
+                                    self.handle_new_syn(remote, tcp_hdr);
+                        }
+                        Err(_) => continue,
+                    }
+                },
+                result = state.wait_for_change(None).fuse() => {
+                    if let Ok(result) = result {
+                        if result == State::Closed {return;}
+                    }
+                }
+            }
         }
     }
 
@@ -476,6 +521,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             congestion_control::None::new,
             None,
             self.dead_socket_tx.clone(),
+            Some(self.socket_queue.clone()),
         )?;
 
         Ok(new_socket)
