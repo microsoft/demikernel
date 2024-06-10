@@ -4,4 +4,4 @@
 #[cfg(target_os = "windows")]
 pub mod win;
 
-pub use win::CatpowderRuntime;
+pub use win::runtime::CatpowderRuntime;

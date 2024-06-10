@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use std::mem;
-
 use crate::runtime::fail::Fail;
 use windows::{
     core::HRESULT,
@@ -15,12 +13,12 @@ use xdp_rs::{
 
 #[derive(Clone)]
 pub struct XdpApi {
-    pub endpoint: *const xdp_rs::_XDP_API_TABLE,
+    pub endpoint: *const xdp_rs::XDP_API_TABLE,
 }
 
 impl XdpApi {
     pub fn new() -> Result<Self, Fail> {
-        let mut api: *const xdp_rs::_XDP_API_TABLE = std::ptr::null_mut();
+        let mut api: *const xdp_rs::XDP_API_TABLE = std::ptr::null_mut();
 
         let result: HRESULT = unsafe { XdpOpenApi(xdp_rs::XDP_API_VERSION_1, &mut api) };
 
@@ -31,9 +29,9 @@ impl XdpApi {
         }
     }
 
-    pub fn endpoint(&self) -> xdp_rs::_XDP_API_TABLE {
+    pub fn endpoint(&self) -> xdp_rs::XDP_API_TABLE {
         unsafe {
-            let api: *const xdp_rs::_XDP_API_TABLE = self.endpoint;
+            let api: *const xdp_rs::XDP_API_TABLE = self.endpoint;
             *api
         }
     }
@@ -41,8 +39,8 @@ impl XdpApi {
 
 impl Drop for XdpApi {
     fn drop(&mut self) {
-        let api: xdp_rs::_XDP_API_TABLE = unsafe {
-            let api: *const xdp_rs::_XDP_API_TABLE = self.endpoint;
+        let api: xdp_rs::XDP_API_TABLE = unsafe {
+            let api: *const xdp_rs::XDP_API_TABLE = self.endpoint;
             *api
         };
 
@@ -60,7 +58,7 @@ pub struct XdpSocket {
 /// Associated functions for XDP sockets.
 impl XdpSocket {
     pub fn create(api: &mut XdpApi) -> Result<Self, Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         let mut socket: HANDLE = HANDLE::default();
         if let Some(create) = api.XskCreate {
@@ -78,7 +76,7 @@ impl XdpSocket {
     }
 
     pub fn bind(&self, api: &mut XdpApi, index: u32, queueid: u32, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(bind) = api.XskBind {
             let result: HRESULT = unsafe { bind(self.socket, index, queueid, flags) };
@@ -104,7 +102,7 @@ impl XdpSocket {
         val: *const std::ffi::c_void,
         len: u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(setsocket) = api.XskSetSockopt {
             let result: HRESULT = unsafe { setsocket(self.socket, opt, val, len) };
@@ -127,7 +125,7 @@ impl XdpSocket {
         val: *mut std::ffi::c_void,
         len: *mut u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(getsockopt) = api.XskGetSockopt {
             let result: HRESULT = unsafe { getsockopt(self.socket, opt, val, len) };
@@ -144,7 +142,7 @@ impl XdpSocket {
     }
 
     pub fn activate(&self, api: &mut XdpApi, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(activate) = api.XskActivate {
             let result: HRESULT = unsafe { activate(self.socket, flags) };
@@ -170,7 +168,7 @@ impl XdpSocket {
         flags: xdp_rs::XDP_CREATE_PROGRAM_FLAGS,
         program: *mut HANDLE,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         let rule_count: u32 = 1;
 
@@ -196,7 +194,7 @@ impl XdpSocket {
         timeout: u32,
         result: *mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::_XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(notify) = api.XskNotifySocket {
             let result: HRESULT = unsafe { notify(self.socket, flags, timeout, result) };
@@ -213,11 +211,11 @@ impl XdpSocket {
     }
 }
 
-pub struct Ring {
+pub struct XdpRing {
     ring: xdp_rs::XSK_RING,
 }
 
-impl Ring {
+impl XdpRing {
     pub fn ring_initialize(info: &xdp_rs::XSK_RING_INFO) -> Self {
         let ring = unsafe {
             let mut ring: xdp_rs::XSK_RING = std::mem::zeroed();
