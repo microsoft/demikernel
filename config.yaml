@@ -3,7 +3,7 @@
 
 demikernel:
   local_ipv4_addr: 10.9.1.22
-  local_link_addr: "00-22-48-7B-B3-80"
+  local_link_addr: "00:22:48:7B:B3:80"
 raw_socket:
   interface_name: "Ethernet 3"
 dpdk:
@@ -23,5 +23,11 @@ inetstack_config:
   enable_jumbo_frames: false
   udp_checksum_offload: false
   tcp_checksum_offload: false
+  arp_table:
+    "00:22:48:7B:B3:80": "10.9.1.22"
+    "00:22:48:7d:21:47": "10.9.1.14"
+  arp_request_retries: 5
+  arp_request_timeout: 20
+  arp_cache_ttl: 15
 
 # vim: set tabstop=2 shiftwidth=2

@@ -306,6 +306,7 @@ impl NetworkRuntime for CatpowderRuntime {
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
+        trace!("header_size={:?}, body_size={:?}", header_size, body_size);
 
         assert!(header_size + body_size < u16::MAX as usize);
         let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
@@ -314,8 +315,6 @@ impl NetworkRuntime for CatpowderRuntime {
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-
-        println!("{:?}", &buf[..]);
 
         let count: u32 = 1;
         let mut idx: u32 = 0;
@@ -354,7 +353,6 @@ impl NetworkRuntime for CatpowderRuntime {
             // );
             std::ptr::copy(src, dst, buf.len());
             let slice: &[u8] = core::slice::from_raw_parts(dst, buf.len());
-            println!("{:?}", slice);
         }
 
         trace!("coutn={:?}", count);
