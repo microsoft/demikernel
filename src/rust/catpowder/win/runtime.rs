@@ -16,7 +16,10 @@ use std::{
 };
 
 use crate::{
-    catpowder::win::tx_ring::TxRing,
+    catpowder::win::{
+        buffer::XdpBuffer,
+        tx_ring::TxRing,
+    },
     demikernel::config::Config,
     expect_ok,
     runtime::{
@@ -109,22 +112,19 @@ impl NetworkRuntime for CatpowderRuntime {
                 .ring_producer_reserve(count, &mut idx)
                 == 1
         );
-        trace!("idx={:?}", idx);
 
         let b = self.inner.borrow_mut().tx.tx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR;
 
-        assert!(buf.len() <= self.inner.borrow_mut().tx.mem.mem.TotalSize as usize);
+        assert!(buf.len() <= self.inner.borrow_mut().tx.mem.chunk_size() as usize);
         unsafe {
             let slice: &[u8] = &buf;
             let src = slice.as_ptr() as *const u8;
-            let dst = self.inner.borrow_mut().tx.mem.mem.Address as *mut u8;
+            let dst = self.inner.borrow_mut().tx.mem.get_address() as *mut u8;
             (*b).Length = buf.len() as u32;
             std::ptr::copy(src, dst, buf.len());
         }
 
         self.inner.borrow_mut().tx.tx_ring.ring_producer_submit(count);
-
-        trace!("notify socket");
 
         // Notify socket.
         let mut outflags = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
@@ -140,33 +140,23 @@ impl NetworkRuntime for CatpowderRuntime {
             )
             .unwrap();
 
-        loop {
-            if self
-                .inner
+        if self
+            .inner
+            .borrow_mut()
+            .tx
+            .tx_completion_ring
+            .ring_consumer_reserve(count, &mut idx)
+            == 1
+        {
+            self.inner
                 .borrow_mut()
                 .tx
                 .tx_completion_ring
-                .ring_consumer_reserve(count, &mut idx)
-                == 1
-            {
-                self.inner
-                    .borrow_mut()
-                    .tx
-                    .tx_completion_ring
-                    .ring_consumer_release(count);
-                trace!("sent");
-                break;
-            }
-
-            let mut outflags = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
-            let _ = self.inner.borrow().tx.socket.notify_socket(
-                &mut self.api,
-                xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX,
-                1000,
-                &mut outflags,
-            );
-            trace!("Waiting for TX completion.");
+                .ring_consumer_release(count);
+            return;
         }
+
+        warn!("failed to send packet");
     }
 
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
@@ -174,28 +164,17 @@ impl NetworkRuntime for CatpowderRuntime {
         let count: u32 = 1;
         let mut idx: u32 = 0;
 
-        if self
-            .inner
-            .borrow_mut()
-            .rx
-            .rx_ring
-            .ring_consumer_reserve(count, &mut idx)
-            == 1
-        {
-            trace!("receive()");
+        if self.inner.borrow_mut().rx.consumer_reserve(count, &mut idx) == 1 {
             let mut out: [u8; limits::RECVBUF_SIZE_MAX] = [0; limits::RECVBUF_SIZE_MAX];
 
             // Get Rx buffer.
-            let b = self.inner.borrow().rx.rx_ring.ring_get_element(idx) as *const xdp_rs::XSK_BUFFER_DESCRIPTOR;
-            let len = unsafe { (*b).Length };
+            let b: XdpBuffer = self.inner.borrow().rx.get_element(idx);
 
-            assert!(len as u64 <= self.inner.borrow().rx.mem.mem.TotalSize);
+            assert!(b.len() <= self.inner.borrow().rx.mem.chunk_size() as usize);
             unsafe {
-                let src = self.inner.borrow().rx.mem.mem.Address as *const u8;
+                let src = self.inner.borrow().rx.mem.get_address() as *const u8;
                 let dest = out.as_mut_ptr();
-                let prev_addr = (*b).Address.__bindgen_anon_1.BaseAddress();
-                trace!("rx.mem.Address={:?}, prev_addr={:?}", src, prev_addr,);
-                std::ptr::copy_nonoverlapping(src, dest, len as usize);
+                std::ptr::copy_nonoverlapping(src, dest, b.len());
             }
 
             let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
@@ -203,27 +182,23 @@ impl NetworkRuntime for CatpowderRuntime {
             let mut dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&bytes), "'bytes' should fit");
 
             expect_ok!(
-                dbuf.trim(limits::RECVBUF_SIZE_MAX - len as usize),
+                dbuf.trim(limits::RECVBUF_SIZE_MAX - b.len()),
                 "'bytes' <= RECVBUF_SIZE_MAX"
             );
 
             ret.push(dbuf);
 
-            self.inner.borrow_mut().rx.rx_ring.ring_consumer_release(count);
+            self.inner.borrow_mut().rx.consumer_release(count);
 
             // Reserve RX ring buffer.
             let mut ring_index: u32 = 0;
-            self.inner
-                .borrow_mut()
-                .rx
-                .rx_fill_ring
-                .ring_producer_reserve(count, &mut ring_index);
+            self.inner.borrow_mut().rx.producer_reserve(count, &mut ring_index);
 
-            let b = self.inner.borrow_mut().rx.rx_fill_ring.ring_get_element(ring_index) as *mut u64;
-            unsafe { *b = 0 };
+            // let b = self.inner.borrow_mut().rx.rx_fill_ring.ring_get_element(ring_index) as *mut u64;
+            // unsafe { *b = 0 };
 
             // Submit RX ring buffer.
-            self.inner.borrow_mut().rx.rx_fill_ring.ring_producer_submit(count);
+            self.inner.borrow_mut().rx.producer_submit(count);
         }
 
         ret

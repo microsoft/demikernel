@@ -1,5 +1,6 @@
 pub struct UmemReg {
-    pub mem: Box<xdp_rs::XSK_UMEM_REG>,
+    chunk_size: u32,
+    mem: Box<xdp_rs::XSK_UMEM_REG>,
 }
 
 impl UmemReg {
@@ -14,10 +15,18 @@ impl UmemReg {
             Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
         });
 
-        Self { mem }
+        Self { mem, chunk_size }
     }
 
     pub fn as_ref(&self) -> &xdp_rs::XSK_UMEM_REG {
         self.mem.as_ref()
+    }
+
+    pub fn get_address(&self) -> *mut core::ffi::c_void {
+        self.mem.Address
+    }
+
+    pub fn chunk_size(&self) -> u32 {
+        self.chunk_size
     }
 }

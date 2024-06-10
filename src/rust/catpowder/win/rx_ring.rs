@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use super::{
+    buffer::XdpBuffer,
     socket::{
         XdpApi,
         XdpRing,
@@ -27,11 +28,11 @@ use windows::Win32::Foundation::HANDLE;
 //======================================================================================================================
 
 pub struct RxRing {
-    pub program: HANDLE,
+    program: HANDLE,
     pub mem: UmemReg,
-    pub socket: XdpSocket,
-    pub rx_ring: XdpRing,
-    pub rx_fill_ring: XdpRing,
+    socket: XdpSocket,
+    rx_ring: XdpRing,
+    rx_fill_ring: XdpRing,
 }
 
 impl RxRing {
@@ -39,7 +40,8 @@ impl RxRing {
         trace!("Creating XDP socket.");
         let mut socket: XdpSocket = XdpSocket::create(api)?;
 
-        let mem = UmemReg::new(1, limits::RECVBUF_SIZE_MAX as u32);
+        const RING_SIZE: u32 = 1;
+        let mem: UmemReg = UmemReg::new(RING_SIZE, limits::RECVBUF_SIZE_MAX as u32);
 
         trace!("Registering UMEM.");
         socket.setsockopt(
@@ -48,7 +50,6 @@ impl RxRing {
             mem.as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
             std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
         )?;
-        const RING_SIZE: u32 = 1;
         trace!(
             "rx.address={:?}",
             mem.as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void
@@ -91,13 +92,13 @@ impl RxRing {
 
         trace!("Reserving RX ring buffer.");
         let mut ring_index: u32 = 0;
-        rx_fill_ring.ring_producer_reserve(1, &mut ring_index);
+        rx_fill_ring.ring_producer_reserve(RING_SIZE, &mut ring_index);
 
         let b = rx_fill_ring.ring_get_element(ring_index) as *mut u64;
         unsafe { *b = 0 };
 
         trace!("Submitting RX ring buffer.");
-        rx_fill_ring.ring_producer_submit(1);
+        rx_fill_ring.ring_producer_submit(RING_SIZE);
 
         trace!("Setting RX Fill ring.");
 
@@ -140,5 +141,25 @@ impl RxRing {
             rx_ring,
             rx_fill_ring,
         })
+    }
+
+    pub fn consumer_reserve(&mut self, count: u32, idx: &mut u32) -> u32 {
+        self.rx_ring.ring_consumer_reserve(count, idx)
+    }
+
+    pub fn get_element(&self, idx: u32) -> XdpBuffer {
+        XdpBuffer::new(self.rx_ring.ring_get_element(idx) as *const xdp_rs::XSK_BUFFER_DESCRIPTOR)
+    }
+
+    pub fn consumer_release(&mut self, count: u32) {
+        self.rx_ring.ring_consumer_release(count);
+    }
+
+    pub fn producer_reserve(&mut self, count: u32, idx: &mut u32) -> u32 {
+        self.rx_fill_ring.ring_producer_reserve(count, idx)
+    }
+
+    pub fn producer_submit(&mut self, count: u32) {
+        self.rx_fill_ring.ring_producer_submit(count);
     }
 }
