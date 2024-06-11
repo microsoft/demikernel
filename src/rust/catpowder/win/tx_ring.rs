@@ -1,7 +1,10 @@
-use super::socket::{
-    XdpApi,
-    XdpRing,
-    XdpSocket,
+use super::{
+    buffer::XdpBuffer,
+    socket::{
+        XdpApi,
+        XdpRing,
+        XdpSocket,
+    },
 };
 
 use crate::{
@@ -27,13 +30,11 @@ impl TxRing {
 
         let mem: UmemReg = UmemReg::new(1, limits::RECVBUF_SIZE_MAX as u32);
 
-        trace!("tx.address={:?}", mem.as_ref().Address);
-
         trace!("Registering UMEM.");
         socket.setsockopt(
             api,
             xdp_rs::XSK_SOCKOPT_UMEM_REG,
-            mem.as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
+            mem.as_ptr() as *const core::ffi::c_void,
             std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
         )?;
         const RING_SIZE: u32 = 1;
@@ -100,7 +101,10 @@ impl TxRing {
         self.tx_ring.ring_producer_submit(count);
     }
 
-    pub fn get_element(&self, idx: u32) -> *mut xdp_rs::XSK_BUFFER_DESCRIPTOR {
-        self.tx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR
+    pub fn get_element(&self, idx: u32) -> XdpBuffer {
+        XdpBuffer::new(
+            self.tx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR,
+            self.mem.clone(),
+        )
     }
 }

@@ -106,14 +106,14 @@ impl NetworkRuntime for CatpowderRuntime {
 
         assert!(self.inner.borrow_mut().tx.producer_reserve(count, &mut idx) == 1);
 
-        let b = self.inner.borrow_mut().tx.get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR;
+        let mut b: XdpBuffer = self.inner.borrow_mut().tx.get_element(idx);
 
         assert!(buf.len() <= self.inner.borrow_mut().tx.mem.chunk_size() as usize);
         unsafe {
             let slice: &[u8] = &buf;
             let src = slice.as_ptr() as *const u8;
             let dst = self.inner.borrow_mut().tx.mem.get_address() as *mut u8;
-            (*b).Length = buf.len() as u32;
+            b.set_len(buf.len());
             std::ptr::copy(src, dst, buf.len());
         }
 
@@ -157,26 +157,13 @@ impl NetworkRuntime for CatpowderRuntime {
         let mut idx: u32 = 0;
 
         if self.inner.borrow_mut().rx.consumer_reserve(count, &mut idx) == 1 {
-            let mut out: [u8; limits::RECVBUF_SIZE_MAX] = [0; limits::RECVBUF_SIZE_MAX];
-
             // Get Rx buffer.
             let b: XdpBuffer = self.inner.borrow().rx.get_element(idx);
+            let mut out = Vec::with_capacity(b.len());
 
-            assert!(b.len() <= self.inner.borrow().rx.mem.chunk_size() as usize);
-            unsafe {
-                let src: *const u8 = self.inner.borrow().rx.mem.get_address() as *const u8;
-                let dest: *mut u8 = out.as_mut_ptr();
-                std::ptr::copy_nonoverlapping(src, dest, b.len());
-            }
+            b[..].clone_into(&mut out);
 
-            let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
-                unsafe { mem::transmute::<[u8; limits::RECVBUF_SIZE_MAX], [u8; limits::RECVBUF_SIZE_MAX]>(out) };
-            let mut dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&bytes), "'bytes' should fit");
-
-            expect_ok!(
-                dbuf.trim(limits::RECVBUF_SIZE_MAX - b.len()),
-                "'bytes' <= RECVBUF_SIZE_MAX"
-            );
+            let dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&out), "'bytes' should fit");
 
             ret.push(dbuf);
 

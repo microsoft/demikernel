@@ -29,7 +29,7 @@ use windows::Win32::Foundation::HANDLE;
 
 pub struct RxRing {
     program: HANDLE,
-    pub mem: UmemReg,
+    mem: UmemReg,
     socket: XdpSocket,
     rx_ring: XdpRing,
     rx_fill_ring: XdpRing,
@@ -47,13 +47,9 @@ impl RxRing {
         socket.setsockopt(
             api,
             xdp_rs::XSK_SOCKOPT_UMEM_REG,
-            mem.as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
+            mem.as_ptr() as *const core::ffi::c_void,
             std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
         )?;
-        trace!(
-            "rx.address={:?}",
-            mem.as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void
-        );
 
         trace!("Setting RX ring size.");
         socket.setsockopt(
@@ -148,7 +144,10 @@ impl RxRing {
     }
 
     pub fn get_element(&self, idx: u32) -> XdpBuffer {
-        XdpBuffer::new(self.rx_ring.ring_get_element(idx) as *const xdp_rs::XSK_BUFFER_DESCRIPTOR)
+        XdpBuffer::new(
+            self.rx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR,
+            self.mem.clone(),
+        )
     }
 
     pub fn consumer_release(&mut self, count: u32) {
