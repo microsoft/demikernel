@@ -17,7 +17,7 @@ use crate::{
 
 #[allow(dead_code)]
 pub struct TxRing {
-    pub mem: UmemReg,
+    mem: UmemReg,
     socket: XdpSocket,
     tx_ring: XdpRing,
     pub tx_completion_ring: XdpRing,
@@ -91,6 +91,14 @@ impl TxRing {
         outflags: &mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
     ) -> Result<(), Fail> {
         self.socket.notify_socket(api, flags, count, outflags)
+    }
+
+    pub fn consumer_reserve(&mut self, count: u32, idx: &mut u32) -> u32 {
+        self.tx_completion_ring.ring_consumer_reserve(count, idx)
+    }
+
+    pub fn consumer_release(&mut self, count: u32) {
+        self.tx_completion_ring.ring_consumer_release(count);
     }
 
     pub fn producer_reserve(&mut self, count: u32, idx: &mut u32) -> u32 {

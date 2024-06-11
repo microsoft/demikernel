@@ -1,13 +1,27 @@
-use std::{
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
+use ::std::{
     cell::RefCell,
     rc::Rc,
 };
 
+//======================================================================================================================
+// Structures
+//======================================================================================================================
+
 #[derive(Clone)]
 pub struct UmemReg {
-    chunk_size: u32,
     mem: Rc<RefCell<xdp_rs::XSK_UMEM_REG>>,
 }
+
+//======================================================================================================================
+// Implementations
+//======================================================================================================================
 
 impl UmemReg {
     pub fn new(count: u32, chunk_size: u32) -> Self {
@@ -21,7 +35,7 @@ impl UmemReg {
             Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
         }));
 
-        Self { mem, chunk_size }
+        Self { mem }
     }
 
     pub fn as_ptr(&self) -> *mut xdp_rs::XSK_UMEM_REG {
@@ -30,9 +44,5 @@ impl UmemReg {
 
     pub fn get_address(&self) -> *mut core::ffi::c_void {
         self.mem.borrow().Address
-    }
-
-    pub fn chunk_size(&self) -> u32 {
-        self.chunk_size
     }
 }

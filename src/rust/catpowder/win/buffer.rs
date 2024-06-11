@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use std::ops::Deref;
+use std::ops::{
+    Deref,
+    DerefMut,
+};
 
 use super::umemreg::UmemReg;
 
@@ -15,10 +18,6 @@ impl XdpBuffer {
         Self { b, umemreg }
     }
 
-    pub fn addr(&self) -> u64 {
-        unsafe { (*self.b).Address.__bindgen_anon_1.BaseAddress() }
-    }
-
     pub fn len(&self) -> usize {
         unsafe { (*self.b).Length as usize }
     }
@@ -29,8 +28,19 @@ impl XdpBuffer {
         }
     }
 
-    pub fn get_addr(&self) -> *mut core::ffi::c_void {
-        self.umemreg.get_address()
+    unsafe fn base_address(&self) -> u64 {
+        (*self.b).Address.__bindgen_anon_1.BaseAddress()
+    }
+
+    unsafe fn offset(&self) -> u64 {
+        (*self.b).Address.__bindgen_anon_1.Offset()
+    }
+
+    unsafe fn addr(&self) -> *mut core::ffi::c_void {
+        let mut ptr: *mut u8 = self.umemreg.get_address() as *mut u8;
+        ptr = ptr.add(self.base_address() as usize);
+        ptr = ptr.add(self.offset() as usize);
+        ptr as *mut core::ffi::c_void
     }
 }
 
@@ -38,6 +48,12 @@ impl Deref for XdpBuffer {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.get_addr() as *const u8, self.len()) }
+        unsafe { std::slice::from_raw_parts(self.addr() as *const u8, self.len()) }
+    }
+}
+
+impl DerefMut for XdpBuffer {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.addr() as *mut u8, self.len()) }
     }
 }

@@ -91,33 +91,23 @@ impl NetworkRuntime for CatpowderRuntime {
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
+        assert!(header_size + body_size < u16::MAX as usize);
         trace!("header_size={:?}, body_size={:?}", header_size, body_size);
 
-        assert!(header_size + body_size < u16::MAX as usize);
-        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
+        const COUNT: u32 = 1;
+        let mut idx: u32 = 0;
+
+        assert!(self.inner.borrow_mut().tx.producer_reserve(COUNT, &mut idx) == COUNT);
+
+        let mut buf: XdpBuffer = self.inner.borrow_mut().tx.get_element(idx);
+        buf.set_len(header_size + body_size);
 
         pkt.write_header(&mut buf[..header_size]);
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
 
-        let count: u32 = 1;
-        let mut idx: u32 = 0;
-
-        assert!(self.inner.borrow_mut().tx.producer_reserve(count, &mut idx) == 1);
-
-        let mut b: XdpBuffer = self.inner.borrow_mut().tx.get_element(idx);
-
-        assert!(buf.len() <= self.inner.borrow_mut().tx.mem.chunk_size() as usize);
-        unsafe {
-            let slice: &[u8] = &buf;
-            let src = slice.as_ptr() as *const u8;
-            let dst = self.inner.borrow_mut().tx.mem.get_address() as *mut u8;
-            b.set_len(buf.len());
-            std::ptr::copy(src, dst, buf.len());
-        }
-
-        self.inner.borrow_mut().tx.producer_submit(count);
+        self.inner.borrow_mut().tx.producer_submit(COUNT);
 
         // Notify socket.
         let mut outflags = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
@@ -132,19 +122,8 @@ impl NetworkRuntime for CatpowderRuntime {
             )
             .unwrap();
 
-        if self
-            .inner
-            .borrow_mut()
-            .tx
-            .tx_completion_ring
-            .ring_consumer_reserve(count, &mut idx)
-            == 1
-        {
-            self.inner
-                .borrow_mut()
-                .tx
-                .tx_completion_ring
-                .ring_consumer_release(count);
+        if self.inner.borrow_mut().tx.consumer_reserve(COUNT, &mut idx) == COUNT {
+            self.inner.borrow_mut().tx.consumer_release(COUNT);
             return;
         }
 
@@ -153,28 +132,24 @@ impl NetworkRuntime for CatpowderRuntime {
 
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        let count: u32 = 1;
+        const COUNT: u32 = 1;
         let mut idx: u32 = 0;
 
-        if self.inner.borrow_mut().rx.consumer_reserve(count, &mut idx) == 1 {
-            // Get Rx buffer.
-            let b: XdpBuffer = self.inner.borrow().rx.get_element(idx);
-            let mut out = Vec::with_capacity(b.len());
+        if self.inner.borrow_mut().rx.consumer_reserve(COUNT, &mut idx) == COUNT {
+            let xdpbuf: XdpBuffer = self.inner.borrow().rx.get_element(idx);
+            let mut out: Vec<u8> = Vec::with_capacity(xdpbuf.len());
 
-            b[..].clone_into(&mut out);
+            xdpbuf[..].clone_into(&mut out);
 
             let dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&out), "'bytes' should fit");
 
             ret.push(dbuf);
 
-            self.inner.borrow_mut().rx.consumer_release(count);
+            self.inner.borrow_mut().rx.consumer_release(COUNT);
 
-            // Reserve RX ring buffer.
-            let mut ring_index: u32 = 0;
-            self.inner.borrow_mut().rx.producer_reserve(count, &mut ring_index);
+            self.inner.borrow_mut().rx.producer_reserve(COUNT, &mut idx);
 
-            // Submit RX ring buffer.
-            self.inner.borrow_mut().rx.producer_submit(count);
+            self.inner.borrow_mut().rx.producer_submit(COUNT);
         }
 
         ret
