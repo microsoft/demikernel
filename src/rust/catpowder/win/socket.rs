@@ -11,6 +11,8 @@ use xdp_rs::{
     XdpOpenApi,
 };
 
+use super::program::XdpRule;
+
 #[derive(Clone)]
 pub struct XdpApi {
     pub endpoint: *const xdp_rs::XDP_API_TABLE,
@@ -75,11 +77,11 @@ impl XdpSocket {
         }
     }
 
-    pub fn bind(&self, api: &mut XdpApi, index: u32, queueid: u32, flags: i32) -> Result<(), Fail> {
+    pub fn bind(&self, api: &mut XdpApi, ifindex: u32, queueid: u32, flags: i32) -> Result<(), Fail> {
         let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         if let Some(bind) = api.XskBind {
-            let result: HRESULT = unsafe { bind(self.socket, index, queueid, flags) };
+            let result: HRESULT = unsafe { bind(self.socket, ifindex, queueid, flags) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -161,7 +163,7 @@ impl XdpSocket {
     pub fn create_program(
         &self,
         api: &mut XdpApi,
-        rules: &xdp_rs::XDP_RULE,
+        rule: &XdpRule,
         ifindex: u32,
         hookid: *const xdp_rs::XDP_HOOK_ID,
         queueid: u32,
@@ -170,11 +172,11 @@ impl XdpSocket {
     ) -> Result<(), Fail> {
         let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
+        let rule = rule.as_ptr();
         let rule_count: u32 = 1;
 
         if let Some(create_program) = api.XdpCreateProgram {
-            let result: HRESULT =
-                unsafe { create_program(ifindex, hookid, queueid, flags, rules, rule_count, program) };
+            let result: HRESULT = unsafe { create_program(ifindex, hookid, queueid, flags, rule, rule_count, program) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),

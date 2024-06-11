@@ -14,9 +14,12 @@ use super::{
     },
     umemreg::UmemReg,
 };
-use crate::runtime::{
-    fail::Fail,
-    limits,
+use crate::{
+    catpowder::win::program::XdpRule,
+    runtime::{
+        fail::Fail,
+        limits,
+    },
 };
 use std::mem::{
     self,
@@ -36,7 +39,7 @@ pub struct RxRing {
 }
 
 impl RxRing {
-    pub fn new(api: &mut XdpApi, index: u32, queueid: u32) -> Result<Self, Fail> {
+    pub fn new(api: &mut XdpApi, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
         trace!("Creating XDP socket.");
         let mut socket: XdpSocket = XdpSocket::create(api)?;
 
@@ -68,7 +71,7 @@ impl RxRing {
         )?;
 
         trace!("Binding RX queue.");
-        socket.bind(api, index, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX)?;
+        socket.bind(api, ifindex, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX)?;
 
         trace!("Activating XDP socket.");
         socket.activate(api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
@@ -105,29 +108,11 @@ impl RxRing {
             SubLayer: xdp_rs::_XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
         };
 
-        let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
-            let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
-            redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
-            redirect.Target = socket.socket;
-            redirect
-        };
-
-        let rules: xdp_rs::XDP_RULE = unsafe {
-            let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
-            rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
-            rule.Action = xdp_rs::_XDP_RULE_ACTION_XDP_PROGRAM_ACTION_REDIRECT;
-            // TODO: Set redirect.
-            // TODO: Set pattern
-            // Perform bitwise copu from redirect to rule.
-            rule.__bindgen_anon_1 =
-                mem::transmute_copy::<xdp_rs::XDP_REDIRECT_PARAMS, xdp_rs::_XDP_RULE__bindgen_ty_1>(&redirect);
-
-            rule
-        };
+        let rule: XdpRule = XdpRule::new(&socket);
 
         trace!("Creating XDP program.");
         let mut program: HANDLE = HANDLE::default();
-        socket.create_program(api, &rules, index, &XDP_INSPECT_RX, queueid, 0, &mut program)?;
+        socket.create_program(api, &rule, ifindex, &XDP_INSPECT_RX, queueid, 0, &mut program)?;
 
         trace!("XDP program created.");
         Ok(Self {

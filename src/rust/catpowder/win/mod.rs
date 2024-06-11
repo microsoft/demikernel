@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 mod buffer;
+mod program;
 pub mod runtime;
 mod rx_ring;
 mod socket;
