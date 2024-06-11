@@ -5,16 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use std::{
-    borrow::{
-        Borrow,
-        BorrowMut,
-    },
-    mem::{
-        self,
-    },
+use super::{
+    rx_ring::RxRing,
+    socket,
 };
-
 use crate::{
     catpowder::win::{
         buffer::XdpBuffer,
@@ -24,7 +18,6 @@ use crate::{
     expect_ok,
     runtime::{
         fail::Fail,
-        limits,
         memory::{
             DemiBuffer,
             MemoryRuntime,
@@ -40,10 +33,9 @@ use crate::{
 };
 use arrayvec::ArrayVec;
 use socket::XdpApi;
-
-use super::{
-    rx_ring::RxRing,
-    socket,
+use std::borrow::{
+    Borrow,
+    BorrowMut,
 };
 
 //======================================================================================================================

@@ -7,6 +7,7 @@
 
 use super::{
     buffer::XdpBuffer,
+    program::XdpProgram,
     socket::{
         XdpApi,
         XdpRing,
@@ -21,17 +22,13 @@ use crate::{
         limits,
     },
 };
-use std::mem::{
-    self,
-};
-use windows::Win32::Foundation::HANDLE;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
 pub struct RxRing {
-    program: HANDLE,
+    program: XdpProgram,
     mem: UmemReg,
     socket: XdpSocket,
     rx_ring: XdpRing,
@@ -111,8 +108,7 @@ impl RxRing {
         let rule: XdpRule = XdpRule::new(&socket);
 
         trace!("Creating XDP program.");
-        let mut program: HANDLE = HANDLE::default();
-        socket.create_program(api, &rule, ifindex, &XDP_INSPECT_RX, queueid, 0, &mut program)?;
+        let program: XdpProgram = socket.create_program(api, &rule, ifindex, &XDP_INSPECT_RX, queueid, 0)?;
 
         trace!("XDP program created.");
         Ok(Self {

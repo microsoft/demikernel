@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 use super::{
     buffer::XdpBuffer,
     socket::{
@@ -6,7 +9,6 @@ use super::{
         XdpSocket,
     },
 };
-
 use crate::{
     catpowder::win::umemreg::UmemReg,
     runtime::{

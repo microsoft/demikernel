@@ -1,9 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use std::mem;
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
+use windows::Win32::Foundation::HANDLE;
 
 use super::socket::XdpSocket;
+use std::mem;
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 pub struct XdpRule {
     rule: xdp_rs::XDP_RULE,
@@ -36,9 +45,8 @@ impl XdpRule {
             let mut rule: xdp_rs::XDP_RULE = std::mem::zeroed();
             rule.Match = xdp_rs::_XDP_MATCH_TYPE_XDP_MATCH_ALL;
             rule.Action = xdp_rs::_XDP_RULE_ACTION_XDP_PROGRAM_ACTION_REDIRECT;
-            // TODO: Set redirect.
             // TODO: Set pattern
-            // Perform bitwise copu from redirect to rule.
+            // Perform bitwise copy from redirect to rule.
             rule.__bindgen_anon_1 =
                 mem::transmute_copy::<xdp_rs::XDP_REDIRECT_PARAMS, xdp_rs::_XDP_RULE__bindgen_ty_1>(redirect.as_ptr());
 
@@ -49,5 +57,16 @@ impl XdpRule {
 
     pub fn as_ptr(&self) -> *const xdp_rs::XDP_RULE {
         &self.rule
+    }
+}
+
+#[derive(Default)]
+pub struct XdpProgram {
+    program: HANDLE,
+}
+
+impl XdpProgram {
+    pub fn as_ptr(&mut self) -> *mut HANDLE {
+        &mut self.program as *mut HANDLE
     }
 }

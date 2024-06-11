@@ -11,7 +11,10 @@ use xdp_rs::{
     XdpOpenApi,
 };
 
-use super::program::XdpRule;
+use super::program::{
+    XdpProgram,
+    XdpRule,
+};
 
 #[derive(Clone)]
 pub struct XdpApi {
@@ -168,18 +171,19 @@ impl XdpSocket {
         hookid: *const xdp_rs::XDP_HOOK_ID,
         queueid: u32,
         flags: xdp_rs::XDP_CREATE_PROGRAM_FLAGS,
-        program: *mut HANDLE,
-    ) -> Result<(), Fail> {
+    ) -> Result<XdpProgram, Fail> {
         let api: xdp_rs::XDP_API_TABLE = api.endpoint();
 
         let rule = rule.as_ptr();
         let rule_count: u32 = 1;
+        let mut program: XdpProgram = XdpProgram::default();
 
         if let Some(create_program) = api.XdpCreateProgram {
-            let result: HRESULT = unsafe { create_program(ifindex, hookid, queueid, flags, rule, rule_count, program) };
+            let result: HRESULT =
+                unsafe { create_program(ifindex, hookid, queueid, flags, rule, rule_count, program.as_ptr()) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
-                true => Ok(()),
+                true => Ok(program),
                 false => Err(Fail::from(&error)),
             }
         } else {
