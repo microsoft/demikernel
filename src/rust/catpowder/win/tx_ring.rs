@@ -15,8 +15,8 @@ use crate::{
 #[allow(dead_code)]
 pub struct TxRing {
     pub mem: UmemReg,
-    pub socket: XdpSocket,
-    pub tx_ring: XdpRing,
+    socket: XdpSocket,
+    tx_ring: XdpRing,
     pub tx_completion_ring: XdpRing,
 }
 
@@ -80,5 +80,27 @@ impl TxRing {
             tx_ring,
             tx_completion_ring,
         })
+    }
+
+    pub fn notify_socket(
+        &self,
+        api: &mut XdpApi,
+        flags: i32,
+        count: u32,
+        outflags: &mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
+    ) -> Result<(), Fail> {
+        self.socket.notify_socket(api, flags, count, outflags)
+    }
+
+    pub fn producer_reserve(&mut self, count: u32, idx: &mut u32) -> u32 {
+        self.tx_ring.ring_producer_reserve(count, idx)
+    }
+
+    pub fn producer_submit(&mut self, count: u32) {
+        self.tx_ring.ring_producer_submit(count);
+    }
+
+    pub fn get_element(&self, idx: u32) -> *mut xdp_rs::XSK_BUFFER_DESCRIPTOR {
+        self.tx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR
     }
 }

@@ -104,16 +104,9 @@ impl NetworkRuntime for CatpowderRuntime {
         let count: u32 = 1;
         let mut idx: u32 = 0;
 
-        assert!(
-            self.inner
-                .borrow_mut()
-                .tx
-                .tx_ring
-                .ring_producer_reserve(count, &mut idx)
-                == 1
-        );
+        assert!(self.inner.borrow_mut().tx.producer_reserve(count, &mut idx) == 1);
 
-        let b = self.inner.borrow_mut().tx.tx_ring.ring_get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR;
+        let b = self.inner.borrow_mut().tx.get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR;
 
         assert!(buf.len() <= self.inner.borrow_mut().tx.mem.chunk_size() as usize);
         unsafe {
@@ -124,14 +117,13 @@ impl NetworkRuntime for CatpowderRuntime {
             std::ptr::copy(src, dst, buf.len());
         }
 
-        self.inner.borrow_mut().tx.tx_ring.ring_producer_submit(count);
+        self.inner.borrow_mut().tx.producer_submit(count);
 
         // Notify socket.
         let mut outflags = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
         self.inner
             .borrow()
             .tx
-            .socket
             .notify_socket(
                 &mut self.api,
                 xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX,
@@ -172,8 +164,8 @@ impl NetworkRuntime for CatpowderRuntime {
 
             assert!(b.len() <= self.inner.borrow().rx.mem.chunk_size() as usize);
             unsafe {
-                let src = self.inner.borrow().rx.mem.get_address() as *const u8;
-                let dest = out.as_mut_ptr();
+                let src: *const u8 = self.inner.borrow().rx.mem.get_address() as *const u8;
+                let dest: *mut u8 = out.as_mut_ptr();
                 std::ptr::copy_nonoverlapping(src, dest, b.len());
             }
 
@@ -193,9 +185,6 @@ impl NetworkRuntime for CatpowderRuntime {
             // Reserve RX ring buffer.
             let mut ring_index: u32 = 0;
             self.inner.borrow_mut().rx.producer_reserve(count, &mut ring_index);
-
-            // let b = self.inner.borrow_mut().rx.rx_fill_ring.ring_get_element(ring_index) as *mut u64;
-            // unsafe { *b = 0 };
 
             // Submit RX ring buffer.
             self.inner.borrow_mut().rx.producer_submit(count);

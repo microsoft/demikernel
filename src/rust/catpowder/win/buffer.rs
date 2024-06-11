@@ -10,6 +10,10 @@ impl XdpBuffer {
         Self { b }
     }
 
+    pub fn addr(&self) -> u64 {
+        unsafe { (*self.b).Address.__bindgen_anon_1.BaseAddress() }
+    }
+
     pub fn len(&self) -> usize {
         unsafe { (*self.b).Length as usize }
     }
