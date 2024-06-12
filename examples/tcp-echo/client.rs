@@ -146,8 +146,8 @@ impl TcpEchoClient {
                         "INFO: {:?} requests, {:2?} rps, p50 {:?} ns, p99 {:?} ns",
                         nrequests,
                         rps,
-                        self.stats.percentile(0.50)?.start(),
-                        self.stats.percentile(0.99)?.start()
+                        self.stats.percentile(0.50)?.unwrap().start(),
+                        self.stats.percentile(0.99)?.unwrap().start(),
                     );
                     last_log = Instant::now();
                     self.nbytes = 0;
@@ -245,8 +245,8 @@ impl TcpEchoClient {
                         "INFO: {:?} requests, {:2?} rps, p50 {:?} ns, p99 {:?} ns",
                         nrequests,
                         rps,
-                        self.stats.percentile(0.50)?.start(),
-                        self.stats.percentile(0.99)?.start()
+                        self.stats.percentile(0.50)?.unwrap().start(),
+                        self.stats.percentile(0.99)?.unwrap().start(),
                     );
                     last_log = Instant::now();
                     self.nbytes = 0;
