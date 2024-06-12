@@ -183,18 +183,18 @@ ssize_t __readv(int sockfd, const struct iovec *iov, int iovcnt)
             if (ev->qr.qr_value.sga.sga_segs[0].sgaseg_len == 0)
             {
                 TRACE("read zero bytes");
-                demi_sgafree(&ev->qr.qr_value.sga);
+                __demi_sgafree(&ev->qr.qr_value.sga);
                 return (0);
             }
 
             count = fill_iov(iov, &ev->qr.qr_value.sga, iovcnt, num_segs);
             if (count > 0)
             {
-                demi_sgafree(&ev->qr.qr_value.sga);
+                __demi_sgafree(&ev->qr.qr_value.sga);
             }
 
             // Re-issue I/O queue operation.
-            assert(demi_pop(&ev->qt, ev->sockqd) == 0);
+            assert(__demi_pop(&ev->qt, ev->sockqd) == 0);
             assert(ev->qt != (demi_qtoken_t)-1);
 
             return (count);
@@ -246,11 +246,11 @@ static size_t fill_iov(const struct iovec *iov, demi_sgarray_t *sga,
         iov_len = iov[i_iov].iov_len - iov_off;
         sga_len = sga->sga_segs[i_sga].sgaseg_len - sga_off;
         count = MIN(iov_len, sga_len);
-        memcpy(iov[i_iov].iov_base + iov_off, 
+        memcpy(iov[i_iov].iov_base + iov_off,
                 sga->sga_segs[i_sga].sgaseg_buf + sga_off, count);
-        
+
         total += count;
-    
+
         if (iov_len > sga_len)
         {
             i_sga += 1;

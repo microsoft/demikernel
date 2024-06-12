@@ -10,6 +10,8 @@
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
+#define MEM_BARRIER() __asm__ volatile("" ::: "memory")
+
 struct hashset;
 extern struct hashset *hashset_create(int);
 extern int hashset_insert(struct hashset *, int);

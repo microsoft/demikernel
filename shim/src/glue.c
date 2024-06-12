@@ -5,7 +5,7 @@
 #include <demi/sga.h>
 #include <demi/wait.h>
 
-static int __demi_reent_guard = 0;
+static __thread int __demi_reent_guard = 0;
 
 #define DEMI_CALL(type, fn, ...)    \
     {                               \
@@ -100,6 +100,18 @@ int __demi_wait_any(demi_qresult_t *qr_out, int *ready_offset, const demi_qtoken
                     const struct timespec *timeout)
 {
     DEMI_CALL(int, demi_wait_any, qr_out, ready_offset, qts, num_qts, timeout);
+}
+
+int __demi_getsockopt(int sockfd, int level, int optname,
+        void *optval, socklen_t *optlen)
+{
+    DEMI_CALL(int, demi_getsockopt, sockfd, level, optname, optval, optlen);
+}
+
+int __demi_setsockopt(int sockfd, int level, int optname,
+        const void *optval, socklen_t optlen)
+{
+    DEMI_CALL(int, demi_setsockopt, sockfd, level, optname, optval, optlen);
 }
 
 int __demi_getpeername(int qd, struct sockaddr *addr, socklen_t *addrlen)

@@ -3,6 +3,7 @@
 
 #include "../log.h"
 #include "../qman.h"
+#include <glue.h>
 #include <demi/libos.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -22,6 +23,8 @@
  */
 int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
 {
+    int ret;
+
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -58,5 +61,14 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
         WARN("%s is not supported", "TCP_ULP");
     }
 
-    return (demi_setsockopt(sockfd, level, optname, optval, optlen));
+    ret = __demi_setsockopt(sockfd, level, optname, optval, optlen);
+    // TODO: Add SO_REUSEADDR and uncomment this out. Without the
+    //       SO_REUSEADDR option implemented the Redis pipeline will fail.
+    // if (ret != 0)
+    // {
+    //     errno = ret;
+    //     return -1;
+    // }
+
+    return (ret);
 }
