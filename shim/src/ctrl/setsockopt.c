@@ -62,11 +62,13 @@ int __setsockopt(int sockfd, int level, int optname, const void *optval, socklen
     }
 
     ret = __demi_setsockopt(sockfd, level, optname, optval, optlen);
-    if (ret != 0)
-    {
-        errno = ret;
-        return -1;
-    }
+    // TODO: Add SO_REUSEADDR and uncomment this out. Without the
+    //       SO_REUSEADDR option implemented the Redis pipeline will fail.
+    // if (ret != 0)
+    // {
+    //     errno = ret;
+    //     return -1;
+    // }
 
     return (ret);
 }
