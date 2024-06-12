@@ -23,7 +23,7 @@ license-file = "LICENSE.txt"
 cfgrammar = "0.13.6"
 lrlex = "0.13.6"
 lrpar = "0.13.6"
-anyhow = "1.0.82"
+anyhow = "1.0.86"
 libc = "0.2.155"
 
 [dependencies]
