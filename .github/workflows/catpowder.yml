@@ -168,3 +168,10 @@ jobs:
             repo: context.repo.repo,
             body: message
           })
+    - name: Upload Performance Statistics
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: perf-stats
+        path: |
+          **/perf_data.csv
