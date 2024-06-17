@@ -1,0 +1,3 @@
+REM bindgen --blocklist-item ".*SAL.*" --blocklist-file ".*vadefs.h" --blocklist-file ".*excpt.h" --blocklist-file ".*vcruntime.*" --blocklist-file ".*[Ww]indows [Kk]its.*" --verbose wrapper.h -o bindings.rs -- "-IC:\Program Files\xdp\include"
+
+bindgen --blocklist-item ".*SAL.*" --blocklist-type ".*OVERLAPPED.*" --allowlist-file ".*xdp.*" --verbose wrapper.h -o bindings.rs -- "-IC:\Program Files\xdp\include"

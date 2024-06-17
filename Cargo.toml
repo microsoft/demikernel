@@ -61,6 +61,7 @@ windows = { version = "0.57.0", features = [
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
+xdp-rs = { path = "xdp-rs", optional = true }
 # for interacting with socket2.
 windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }
 
@@ -154,6 +155,7 @@ catmem-libos = []
 catnip-libos = ["libdpdk"]
 catloop-libos = ["catmem-libos"]
 libdpdk = ["dpdk-rs"]
+libxdp = ["xdp-rs"]
 mlx4 = ["dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs/mlx5"]
 profiler = []

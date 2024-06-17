@@ -17,6 +17,10 @@ INSTALL_PREFIX = $(USERPROFILE)
 LD_LIBRARY_PATH = $(USERPROFILE)/lib
 !endif
 
+!ifndef XDP_PATH
+XDP_PATH = $(USERPROFILE)\xdp
+!endif
+
 #=======================================================================================================================
 # Build Configuration
 #=======================================================================================================================
@@ -118,7 +122,9 @@ install:
 # Builds all libraries.
 all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
+	@echo "XDP_PATH: $(XDP_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	set XDP_PATH=$(XDP_PATH)
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 	IF NOT EXIST $(BINDIR) mkdir $(BINDIR)
 	$(RECURSIVE_COPY_FORCE_NO_PROMPT) $(DEMIKERNEL_DLL) $(BINDIR)
