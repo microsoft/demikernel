@@ -91,7 +91,6 @@ fn main() -> Result<()> {
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
     builder.pic(true);
-    builder.flag("-march=native");
     builder.file(INLINED_C_NAME);
     builder.include(include_path);
     builder.compile("inlined");

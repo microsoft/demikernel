@@ -92,6 +92,11 @@ DRIVER = mlx5	# defaults to mlx5, set the DRIVER env var if you want to change t
 CARGO_FEATURES = $(CARGO_FEATURES) --features=$(DRIVER)
 !endif
 
+# Switch for XDP
+!if "$(LIBOS)" == "catpowder"
+CARGO_FEATURES = $(CARGO_FEATURES) --features=libxdp
+!endif
+
 # Switch for profiler.
 !if "$(PROFILER)" == "yes"
 CARGO_FEATURES = $(CARGO_FEATURES) --features=profiler
