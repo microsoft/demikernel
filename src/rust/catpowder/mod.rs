@@ -2,6 +2,13 @@
 // Licensed under the MIT license.
 
 #[cfg(target_os = "windows")]
-pub mod win;
+mod win;
 
+#[cfg(target_os = "linux")]
+mod linux;
+
+#[cfg(target_os = "windows")]
 pub use win::runtime::CatpowderRuntime;
+
+#[cfg(target_os = "linux")]
+pub use linux::LinuxRuntime as CatpowderRuntime;

@@ -5,10 +5,9 @@
 // Imports
 //======================================================================================================================
 
-use windows::Win32::Foundation::HANDLE;
-
 use super::socket::XdpSocket;
 use std::mem;
+use windows::Win32::Foundation::HANDLE;
 
 //======================================================================================================================
 // Structures
@@ -21,6 +20,21 @@ pub struct XdpRule {
 pub struct XdpRedirectParams {
     redirect: xdp_rs::XDP_REDIRECT_PARAMS,
 }
+
+#[derive(Default)]
+pub struct XdpProgram {
+    program: HANDLE,
+}
+
+impl XdpProgram {
+    pub fn as_ptr(&mut self) -> *mut HANDLE {
+        &mut self.program as *mut HANDLE
+    }
+}
+
+//======================================================================================================================
+// Implementations
+//======================================================================================================================
 
 impl XdpRedirectParams {
     pub fn new(socket: &XdpSocket) -> Self {
@@ -57,16 +71,5 @@ impl XdpRule {
 
     pub fn as_ptr(&self) -> *const xdp_rs::XDP_RULE {
         &self.rule
-    }
-}
-
-#[derive(Default)]
-pub struct XdpProgram {
-    program: HANDLE,
-}
-
-impl XdpProgram {
-    pub fn as_ptr(&mut self) -> *mut HANDLE {
-        &mut self.program as *mut HANDLE
     }
 }
