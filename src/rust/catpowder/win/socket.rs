@@ -1,20 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::runtime::fail::Fail;
-use windows::{
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
+use crate::{
+    catpowder::win::{
+        program::XdpProgram,
+        rule::XdpRule,
+    },
+    runtime::fail::Fail,
+};
+use ::windows::{
     core::HRESULT,
     Win32::Foundation::HANDLE,
 };
-use xdp_rs::{
-    self,
-    XdpOpenApi,
-};
+use ::xdp_rs;
 
-use super::program::{
-    XdpProgram,
-    XdpRule,
-};
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 #[derive(Clone)]
 pub struct XdpApi {
@@ -25,7 +31,7 @@ impl XdpApi {
     pub fn new() -> Result<Self, Fail> {
         let mut api: *const xdp_rs::XDP_API_TABLE = std::ptr::null_mut();
 
-        let result: HRESULT = unsafe { XdpOpenApi(xdp_rs::XDP_API_VERSION_1, &mut api) };
+        let result: HRESULT = unsafe { xdp_rs::XdpOpenApi(xdp_rs::XDP_API_VERSION_1, &mut api) };
 
         let error: windows::core::Error = windows::core::Error::from_hresult(result);
         match error.code().is_ok() {

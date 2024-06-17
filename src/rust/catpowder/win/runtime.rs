@@ -5,13 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use super::{
-    rx_ring::RxRing,
-    socket,
-};
 use crate::{
     catpowder::win::{
         buffer::XdpBuffer,
+        rx_ring::RxRing,
+        socket::XdpApi,
         tx_ring::TxRing,
     },
     demikernel::config::Config,
@@ -31,9 +29,8 @@ use crate::{
         SharedObject,
     },
 };
-use arrayvec::ArrayVec;
-use socket::XdpApi;
-use std::borrow::{
+use ::arrayvec::ArrayVec;
+use ::std::borrow::{
     Borrow,
     BorrowMut,
 };

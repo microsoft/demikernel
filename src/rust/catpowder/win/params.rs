@@ -5,23 +5,33 @@
 // Imports
 //======================================================================================================================
 
-use ::windows::Win32::Foundation::HANDLE;
+use crate::catpowder::win::socket::XdpSocket;
+use ::std::mem;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-#[derive(Default)]
-pub struct XdpProgram {
-    program: HANDLE,
+pub struct XdpRedirectParams {
+    redirect: xdp_rs::XDP_REDIRECT_PARAMS,
 }
 
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
 
-impl XdpProgram {
-    pub fn as_ptr(&mut self) -> *mut HANDLE {
-        &mut self.program as *mut HANDLE
+impl XdpRedirectParams {
+    pub fn new(socket: &XdpSocket) -> Self {
+        let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
+            let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
+            redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
+            redirect.Target = socket.socket;
+            redirect
+        };
+        Self { redirect }
+    }
+
+    pub fn as_ptr(&self) -> &xdp_rs::XDP_REDIRECT_PARAMS {
+        &self.redirect
     }
 }

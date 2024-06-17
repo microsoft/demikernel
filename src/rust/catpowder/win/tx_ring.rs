@@ -1,21 +1,29 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use super::{
-    buffer::XdpBuffer,
-    socket::{
-        XdpApi,
-        XdpRing,
-        XdpSocket,
-    },
-};
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
-    catpowder::win::umemreg::UmemReg,
+    catpowder::win::{
+        buffer::XdpBuffer,
+        socket::{
+            XdpApi,
+            XdpRing,
+            XdpSocket,
+        },
+        umemreg::UmemReg,
+    },
     runtime::{
         fail::Fail,
         limits,
     },
 };
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 #[allow(dead_code)]
 pub struct TxRing {

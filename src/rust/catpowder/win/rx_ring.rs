@@ -5,18 +5,18 @@
 // Imports
 //======================================================================================================================
 
-use super::{
-    buffer::XdpBuffer,
-    program::XdpProgram,
-    socket::{
-        XdpApi,
-        XdpRing,
-        XdpSocket,
-    },
-    umemreg::UmemReg,
-};
 use crate::{
-    catpowder::win::program::XdpRule,
+    catpowder::win::{
+        buffer::XdpBuffer,
+        program::XdpProgram,
+        rule::XdpRule,
+        socket::{
+            XdpApi,
+            XdpRing,
+            XdpSocket,
+        },
+        umemreg::UmemReg,
+    },
     runtime::{
         fail::Fail,
         limits,

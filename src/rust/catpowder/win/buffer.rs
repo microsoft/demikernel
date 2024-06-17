@@ -5,8 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use super::umemreg::UmemReg;
-use std::ops::{
+use crate::catpowder::win::umemreg::UmemReg;
+use ::std::ops::{
     Deref,
     DerefMut,
 };
