@@ -1,6 +1,16 @@
 catnip:
   udp_ping_pong: {}
   udp_push_pop: {}
+  tcp_close:
+    nclients: [32]
+    run_mode: [sequential, concurrent]
+    who_closes: [client, server]
+  tcp_wait:
+    nclients: [32]
+    scenario: [push_close_wait, push_async_close_wait,
+               push_async_close_pending_wait, pop_close_wait,
+               pop_async_close_wait,
+               pop_async_close_pending_wait]
   tcp_ping_pong: {}
   tcp_push_pop: {}
   tcp_echo:
@@ -9,7 +19,3 @@ catnip:
     nrequests: [128, 1024]
     run_mode: [sequential, concurrent]
     nthreads: [1]
-tcp_close:
-    nclients: [1]
-    run_mode: [sequential, concurrent]
-    who_closes: [client, server]
