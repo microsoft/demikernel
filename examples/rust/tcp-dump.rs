@@ -267,7 +267,7 @@ fn main() -> Result<()> {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
     };
-    let libos: LibOS = match LibOS::new(libos_name) {
+    let libos: LibOS = match LibOS::new(libos_name, None) {
         Ok(libos) => libos,
         Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
     };

@@ -17,8 +17,8 @@ use crate::{
             SOL_SOCKET,
             SO_LINGER,
         },
-        data_structures,
         data_structures::{
+            self,
             AddressFamily,
             Linger,
             SockAddrIn,
@@ -32,6 +32,8 @@ use crate::{
         fail::Fail,
         logging,
         types::{
+            demi_args_t,
+            demi_callback_t,
             demi_qresult_t,
             demi_qtoken_t,
             demi_sgarray_t,
@@ -42,7 +44,6 @@ use crate::{
     SocketOption,
 };
 use ::libc::{
-    c_char,
     c_int,
     c_void,
     sockaddr,
@@ -79,7 +80,7 @@ thread_local! {
 
 #[allow(unused)]
 #[no_mangle]
-pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
+pub extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
     logging::initialize();
     trace!("demi_init()");
 
@@ -98,8 +99,16 @@ pub extern "C" fn demi_init(argc: c_int, argv: *mut *mut c_char) -> c_int {
         return ret;
     }
 
-    // TODO: Pass arguments to the underlying libOS.
-    match LibOS::new(libos_name) {
+    // Parse arguments.
+    let perf_callback: Option<demi_callback_t> = if args.is_null() {
+        None
+    } else {
+        let args: &demi_args_t = unsafe { &*args };
+        args.callback
+    };
+
+    // Create LibOS.
+    match LibOS::new(libos_name, perf_callback) {
         Ok(libos) => {
             DEMIKERNEL.with(move |demikernel| {
                 *demikernel.borrow_mut() = Some(libos);
@@ -1065,10 +1074,7 @@ mod test {
         ptr,
     };
 
-    use libc::{
-        c_char,
-        c_int,
-    };
+    use libc::c_int;
     use socket2::{
         Domain,
         Protocol,
@@ -1178,7 +1184,10 @@ mod test {
     #[test]
     fn test_set_and_get_linger() -> anyhow::Result<()> {
         // Initialize Demikernel
-        let result: c_int = demi_init(0, 0 as *mut *mut c_char);
+
+        use crate::runtime::types::demi_args_t;
+        let args: demi_args_t = demi_args_t::default();
+        let result: c_int = demi_init(&args);
         ensure_eq!(result, 0);
 
         let mut qd: c_int = 0;

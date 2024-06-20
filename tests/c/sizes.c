@@ -62,6 +62,10 @@
 #define QR_RET_SIZE 8
 #define QR_VALUE_SIZE (MAX(DEMI_ACCEPT_RESULT_T_SIZE, DEMI_SGARRAY_T_SIZE))
 #define DEMI_QRESULT_T_SIZE (QR_OPCODE_SIZE + QR_QD_SIZE + QR_QT_SIZE + QR_RET_SIZE + QR_VALUE_SIZE)
+#define DEMI_ARGS_ARGC_SIZE 4
+#define DEMI_ARGS_ARGV_SIZE 8
+#define DEMI_ARGS_CALLBACK_SIZE 8
+#define DEMI_ARGS_SIZE (DEMI_ARGS_ARGC_SIZE + DEMI_ARGS_ARGV_SIZE + DEMI_ARGS_CALLBACK_SIZE)
 
 /*====================================================================================================================*
  * Private Functions                                                                                                  *
@@ -111,6 +115,15 @@ static void test_size_demi_qresult_t(void)
     printf("sizeof(demi_qresult_t) = %zu\n", sizeof(demi_qresult_t));
 }
 
+/**
+ * @brief Tests if demi_args_t has the expected size.
+ */
+static void test_size_demi_args_t(void)
+{
+    KASSERT_SIZE(sizeof(struct demi_args), DEMI_ARGS_SIZE);
+    printf("sizeof(demi_args_t) = %zu\n", sizeof(struct demi_args));
+}
+
 /*====================================================================================================================*
  * Public Functions                                                                                                   *
  *====================================================================================================================*/
@@ -135,6 +148,7 @@ int main(int argc, char *const argv[])
     test_size_sga_t();
     test_size_demi_accept_result_t();
     test_size_demi_qresult_t();
+    test_size_demi_args_t();
 
     return (EXIT_SUCCESS);
 }

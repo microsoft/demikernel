@@ -229,7 +229,7 @@ fn start_server_thread(
     log_interval: Option<u64>,
 ) -> Result<JoinHandle<Result<()>>> {
     Ok(thread::spawn(move || -> Result<()> {
-        let libos: LibOS = match LibOS::new(libos_name) {
+        let libos: LibOS = match LibOS::new(libos_name, None) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
         };
@@ -249,7 +249,7 @@ fn start_client_thread(
 ) -> Result<JoinHandle<Result<()>>> {
     match run_mode.as_str() {
         "sequential" => Ok(thread::spawn(move || -> Result<()> {
-            let libos: LibOS = match LibOS::new(libos_name) {
+            let libos: LibOS = match LibOS::new(libos_name, None) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
             };
@@ -257,7 +257,7 @@ fn start_client_thread(
             client.run_sequential(log_interval, nclients, nrequests)
         })),
         "concurrent" => Ok(thread::spawn(move || -> Result<()> {
-            let libos: LibOS = match LibOS::new(libos_name) {
+            let libos: LibOS = match LibOS::new(libos_name, None) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
             };

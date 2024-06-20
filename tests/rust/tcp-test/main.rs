@@ -87,7 +87,7 @@ fn main() -> Result<()> {
 
     let mut libos: LibOS = {
         let libos_name: LibOSName = LibOSName::from_env()?.into();
-        LibOS::new(libos_name)?
+        LibOS::new(libos_name, None)?
     };
 
     crate::collect!(result, socket::run(&mut libos));

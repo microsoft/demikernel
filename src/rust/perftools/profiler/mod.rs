@@ -16,9 +16,12 @@ mod tests;
 // Imports
 //======================================================================================================================
 
-use crate::perftools::profiler::scope::{
-    Guard,
-    Scope,
+use crate::{
+    perftools::profiler::scope::{
+        Guard,
+        Scope,
+    },
+    runtime::types::demi_callback_t,
 };
 use ::futures::future::FusedFuture;
 use ::std::{
@@ -54,6 +57,7 @@ pub struct Profiler {
     roots: Vec<Rc<RefCell<Scope>>>,
     current: Option<Rc<RefCell<Scope>>>,
     ns_per_cycle: f64,
+    perf_callback: Option<demi_callback_t>,
     #[cfg(feature = "auto-calibrate")]
     clock_drift: u64,
 }
@@ -79,15 +83,25 @@ pub fn reset() {
     PROFILER.with(|p| p.borrow_mut().reset());
 }
 
+pub fn set_callback(perf_callback: demi_callback_t) {
+    PROFILER.with(|p| p.borrow_mut().set_callback(perf_callback));
+}
+
 impl Profiler {
     fn new() -> Profiler {
         Profiler {
             roots: Vec::new(),
             current: None,
             ns_per_cycle: Self::measure_ns_per_cycle(),
+            perf_callback: None,
             #[cfg(feature = "auto-calibrate")]
             clock_drift: Self::clock_drift(SAMPLE_SIZE),
         }
+    }
+
+    /// Set a callback and stop collecting statistics.
+    pub fn set_callback(&mut self, perf_callback: demi_callback_t) {
+        self.perf_callback = Some(perf_callback)
     }
 
     /// Create and enter a syncronous scope. Returns a [`Guard`](struct.Guard.html) that should be
@@ -120,7 +134,7 @@ impl Profiler {
 
         existing_root.unwrap_or_else(|| {
             // Add a new root node.
-            let new_scope = Scope::new(name, None);
+            let new_scope: Scope = Scope::new(name, None, self.perf_callback);
             let succ = Rc::new(RefCell::new(new_scope));
 
             self.roots.push(succ.clone());
@@ -144,7 +158,7 @@ impl Profiler {
 
             existing_succ.unwrap_or_else(|| {
                 // Add new successor node to the current node.
-                let new_scope = Scope::new(name, Some(current.clone()));
+                let new_scope: Scope = Scope::new(name, Some(current.clone()), self.perf_callback);
                 let succ = Rc::new(RefCell::new(new_scope));
 
                 current.borrow_mut().add_succ(succ.clone());
@@ -159,8 +173,8 @@ impl Profiler {
 
     /// Actually enter a scope.
     fn enter_scope(&mut self, scope: Rc<RefCell<Scope>>) -> Guard {
+        trace!("Entering scope: {}", scope.borrow().get_name());
         let guard = scope.borrow_mut().enter();
-
         self.current = Some(scope);
 
         guard

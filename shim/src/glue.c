@@ -20,9 +20,9 @@ int is_reentrant_demi_call()
     return __demi_reent_guard;
 }
 
-int __demi_init(int argc, char *const argv[])
+int __demi_init(const struct demi_args *args)
 {
-    DEMI_CALL(int, demi_init, argc, argv);
+    DEMI_CALL(int, demi_init, args);
 }
 
 int __demi_create_pipe(int *memqd_out, const char *name)
