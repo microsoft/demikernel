@@ -185,7 +185,7 @@ impl SharedDemiRuntime {
             Some(task_id) => Ok(task_id.into()),
             None => {
                 let cause: String = format!("cannot schedule coroutine (task_name={:?})", &task_name);
-                error!("insert_background_coroutine(): {}", cause);
+                error!("insert_coroutine(): {}", cause);
                 Err(Fail::new(libc::EAGAIN, &cause))
             },
         }

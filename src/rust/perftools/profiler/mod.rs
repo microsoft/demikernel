@@ -34,6 +34,7 @@ use ::std::{
         SystemTime,
     },
 };
+use std::thread;
 
 //======================================================================================================================
 // Structures
@@ -215,14 +216,15 @@ impl Profiler {
 
     fn write<W: io::Write>(&self, out: &mut W, max_depth: Option<usize>) -> io::Result<()> {
         let total_duration = self.roots.iter().map(|root| root.borrow().get_duration_sum()).sum();
+        let thread_id: thread::ThreadId = thread::current().id();
 
         writeln!(
             out,
-            "call-depth;function-name;percent-total;cycles-per-call;ns-per-call"
+            "call_depth,thread_id,function_name,percent_time,cycles_per_call,nanoseconds_per_call"
         )?;
         for root in self.roots.iter() {
             root.borrow()
-                .write_recursive(out, total_duration, 0, max_depth, self.ns_per_cycle)?;
+                .write_recursive(out, thread_id, total_duration, 0, max_depth, self.ns_per_cycle)?;
         }
 
         out.flush()

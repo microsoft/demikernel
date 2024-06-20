@@ -151,7 +151,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             socket_queue,
         }));
         let qt: QToken =
-            runtime.insert_background_coroutine("passive_listening::poll", Box::pin(me.clone().poll().fuse()))?;
+            runtime.insert_background_coroutine("bgc::passive_listening::poll", Box::pin(me.clone().poll().fuse()))?;
         me.background_task_qt = Some(qt);
         Ok(me)
     }
@@ -264,7 +264,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             .fuse();
         match self
             .runtime
-            .insert_background_coroutine("Inetstack::TCP::passiveopen::background", Box::pin(future))
+            .insert_background_coroutine("bgc::inetstack::tcp::passiveopen::background", Box::pin(future))
         {
             Ok(qt) => qt,
             Err(e) => {

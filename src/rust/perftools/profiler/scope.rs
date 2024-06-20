@@ -25,6 +25,7 @@ use ::std::{
         Context,
         Poll,
     },
+    thread,
 };
 
 //======================================================================================================================
@@ -129,6 +130,7 @@ impl Scope {
     pub fn write_recursive<W: io::Write>(
         &self,
         out: &mut W,
+        thread_id: thread::ThreadId,
         total_duration: u64,
         depth: usize,
         max_depth: Option<usize>,
@@ -146,7 +148,7 @@ impl Scope {
             .pred
             .clone()
             .map_or(total_duration_secs, |pred| (pred.borrow().duration_sum) as f64);
-        let percent = duration_sum_secs / pred_sum_secs * 100.0;
+        let percent_time = duration_sum_secs / pred_sum_secs * 100.0;
 
         // Write markers.
         let mut markers = String::from("+");
@@ -155,9 +157,9 @@ impl Scope {
         }
         writeln!(
             out,
-            "{};{};{};{}",
-            format!("{};{}", markers, self.name),
-            percent,
+            "{},{},{},{}",
+            format!("{},{:?},{}", markers, thread_id, self.name),
+            percent_time,
             duration_sum_secs / (self.num_calls as f64),
             duration_sum_secs / (self.num_calls as f64) * ns_per_cycle,
         )?;
@@ -165,7 +167,7 @@ impl Scope {
         // Write children
         for succ in &self.succs {
             succ.borrow()
-                .write_recursive(out, total_duration, depth + 1, max_depth, ns_per_cycle)?;
+                .write_recursive(out, thread_id, total_duration, depth + 1, max_depth, ns_per_cycle)?;
         }
 
         Ok(())
