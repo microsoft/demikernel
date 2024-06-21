@@ -181,7 +181,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             futures::select! {
                 res = socket_queue.pop(None).fuse() => match res {
                     Ok(socket) => match self.connections.remove(&socket) {
-                        Some(_recv_queue) => {},
+                        Some(_recv_queue) => trace!("poll(): Closing socket"),
                         None => unreachable!("poll(): should have a matching connection"),
                     },
                     Err(_) => continue,
@@ -235,7 +235,9 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
     fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) {
         debug!("Received SYN: {:?}", tcp_hdr);
         let inflight_len: usize = self.connections.len();
-        if inflight_len + self.ready.len() >= self.max_backlog {
+        // Check backlog. Since we might receive data even on connections that have completed their handshake, all
+        // ready sockets are also in the inflight table.
+        if inflight_len >= self.max_backlog {
             let cause: String = format!(
                 "backlog full (inflight={}, ready={}, backlog={})",
                 inflight_len,
