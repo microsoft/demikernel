@@ -128,7 +128,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
         }));
-        runtime.insert_background_coroutine("inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
+        runtime.insert_background_coroutine("bgc::inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
         Ok(me)
     }
 

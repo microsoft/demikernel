@@ -39,6 +39,7 @@ use crate::{
         SharedDemiRuntime,
         SharedObject,
     },
+    timer,
 };
 use ::futures::FutureExt;
 use ::slab::Slab;
@@ -117,7 +118,7 @@ impl SharedCatnapTransport {
         }));
         let mut me2: Self = me.clone();
         runtime.insert_background_coroutine(
-            "catnap::transport::epoll",
+            "bgc::catnap::transport::epoll",
             Box::pin(async move { me2.poll().await }.fuse()),
         )?;
         Ok(me)
@@ -281,6 +282,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Creates a new socket on the underlying network transport. We only support IPv4 and UDP and TCP sockets for now.
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
+        timer!("catnap::linux::transport::socket");
         // Select protocol.
         let protocol: Protocol = match typ {
             Type::STREAM => Protocol::TCP,
@@ -456,6 +458,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Binds a socket to [local] on the underlying network transport.
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
+        timer!("catnap::linux::transport::bind");
         trace!("Bind to {:?}", local);
         let socket: &mut Socket = self.socket_from_sd(sd);
 
@@ -490,6 +493,7 @@ impl NetworkTransport for SharedCatnapTransport {
     /// Sets a socket to passive listening on the underlying transport and registers it to accept incoming connections
     /// with epoll.
     fn listen(&mut self, sd: &mut Self::SocketDescriptor, backlog: usize) -> Result<(), Fail> {
+        timer!("catnap::linux::transport::listen");
         trace!("Listen to");
         if let Err(e) = self.socket_from_sd(sd).listen(backlog as i32) {
             let cause: String = format!("failed to listen on socket: {:?}", e);
@@ -507,6 +511,7 @@ impl NetworkTransport for SharedCatnapTransport {
     /// Accept the next incoming connection. This function blocks until a new connection arrives from the underlying
     /// transport.
     async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
+        timer!("catnap::linux::transport::accept");
         let (new_socket, addr) = self.data_from_sd(sd).accept().await?;
         // Set socket options.
         if let Err(e) = new_socket.set_reuse_address(true) {
@@ -537,6 +542,7 @@ impl NetworkTransport for SharedCatnapTransport {
     /// Connect to [remote] through the underlying transport. This function blocks until the connect succeeds or fails
     /// with an error.
     async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
+        timer!("catnap::linux::transport::connect");
         self.data_from_sd(sd).move_socket_to_active();
         self.register_epoll(&sd, (libc::EPOLLIN | libc::EPOLLOUT) as u32)?;
 
@@ -560,6 +566,7 @@ impl NetworkTransport for SharedCatnapTransport {
 
     /// Close the socket and block until close completes.
     async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
+        timer!("catnap::linux::transport::close");
         let data: &mut SharedSocketData = self.data_from_sd(sd);
         loop {
             // Close the socket.
@@ -598,6 +605,7 @@ impl NetworkTransport for SharedCatnapTransport {
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
     ) -> Result<(), Fail> {
+        timer!("catnap::linux::transport::push");
         {
             self.data_from_sd(sd).push(addr, buf.clone()).await?;
             // Clear out the original buffer.
@@ -614,6 +622,7 @@ impl NetworkTransport for SharedCatnapTransport {
         sd: &mut Self::SocketDescriptor,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+        timer!("catnap::linux::transport::pop");
         self.data_from_sd(sd).pop(size).await
     }
 

@@ -533,7 +533,7 @@ mod tests {
         })
         .fuse();
 
-        let server_task: QToken = runtime.insert_io_coroutine("server", Box::pin(server)).unwrap();
+        let server_task: QToken = runtime.insert_io_coroutine("ioc_server", Box::pin(server)).unwrap();
         ensure!(runtime.run_any(&[server_task], Duration::ZERO).is_none());
         post_completion(&iocp, overlapped.as_mut().marshal(), COMPLETION_KEY)?;
 
@@ -643,7 +643,7 @@ mod tests {
         );
 
         let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
-        let server_task: QToken = runtime.insert_io_coroutine("server", server).unwrap();
+        let server_task: QToken = runtime.insert_io_coroutine("ioc_server", server).unwrap();
 
         let mut wait_for_state = |state| -> Result<(), Fail> {
             while server_state_view.load(Ordering::Relaxed) < state {
@@ -749,7 +749,7 @@ mod tests {
         .fuse();
 
         let mut runtime: SharedDemiRuntime = SharedDemiRuntime::default();
-        let server_task: QToken = runtime.insert_io_coroutine("server", Box::pin(server)).unwrap();
+        let server_task: QToken = runtime.insert_io_coroutine("ioc_server", Box::pin(server)).unwrap();
 
         ensure!(
             server_state_view.load(Ordering::Relaxed) < 1,
