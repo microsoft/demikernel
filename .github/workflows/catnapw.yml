@@ -17,7 +17,7 @@ on:
       - dev
 
 env:
-  LIBOS: catnapw
+  LIBOS: catnap
   SERVER: ${{ secrets.CATNAPW_HOSTNAME_A }}
   CLIENT: ${{ secrets.CATNAPW_HOSTNAME_B }}
   SERVER_ADDR: 10.3.1.60
@@ -54,6 +54,7 @@ jobs:
           branch_name="${{ github.ref_name }}"
         fi
         python3 tools/demikernel_ci.py \
+          --platform windows \
           --server $SERVER \
           --client $CLIENT \
           --repository 'c:\demikernel' \
@@ -104,6 +105,7 @@ jobs:
           branch_name="${{ github.ref_name }}"
         fi
         python3 tools/demikernel_ci.py \
+          --platform windows \
           --server $SERVER \
           --client $CLIENT \
           --repository 'c:\demikernel' \
