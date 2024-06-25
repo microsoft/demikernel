@@ -127,8 +127,8 @@ class SystemTestJobOnWindows(EndToEndTestJobOnWindows):
         super().__init__(config, f"system-test-{config['test_alias']}")
 
     def execute(self) -> bool:
-        server_cmd: str = f"test-system-rust LIBOS={super().libos()} TEST={self.test_name} ARGS=\\'{self.server_args}\\'"
-        client_cmd: str = f"test-system-rust LIBOS={super().libos()} TEST={self.test_name} ARGS=\\'{self.client_args}\\'"
+        server_cmd: str = f"test-system-rust LIBOS={super().libos()} TEST={self.test_name} ARGS=\'{self.server_args}\'"
+        client_cmd: str = f"test-system-rust LIBOS={super().libos()} TEST={self.test_name} ARGS=\'{self.client_args}\'"
         return super().execute(server_cmd, client_cmd)
 
 
