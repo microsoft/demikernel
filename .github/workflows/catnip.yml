@@ -143,6 +143,9 @@ jobs:
       with:
         name: release-pipeline-logs
         path: ./release_pipeline_logs
+    - name: Setup FlameGraph Repository
+      run: |
+        git clone https://github.com/brendangregg/FlameGraph.git ~/FlameGraph
     - name: Parse Statistics
       id: parse-stats
       run: |
@@ -155,13 +158,19 @@ jobs:
         echo "MESSAGE<<$EOF" >> $GITHUB_OUTPUT
         echo "$stats" >> $GITHUB_OUTPUT
         echo "$EOF" >> $GITHUB_OUTPUT
+    - name: Archive Performance Data
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-data
+        path: |
+          **/perf_data.csv
+          **/flamegraph.svg
     - name: Report Statistics
       uses: actions/github-script@v7
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
           const message = `${{ steps.parse-stats.outputs.MESSAGE }}`
-          console.log(message)
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
