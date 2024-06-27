@@ -17,6 +17,7 @@ import ci.git as git
 
 # Runs the CI pipeline.
 def run_pipeline(
+        platform: str,
         log_directory: str, repository: str, branch: str, libos: str, is_debug:
         bool, server: str, client: str, test_unit: bool, test_integration: bool,
         test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
@@ -31,7 +32,7 @@ def run_pipeline(
         "client_name": client,
         "repository": repository,
         "branch": branch,
-        "libos": libos if libos != "catnapw" else "catnap",
+        "libos": libos,
         "is_debug": is_debug,
         "test_unit": test_unit,
         "test_system": test_system,
@@ -45,7 +46,7 @@ def run_pipeline(
         "enable_nfs": enable_nfs,
         "log_directory": log_directory,
         "is_sudo": is_sudo,
-        "platform": "linux" if libos != "catnapw" else "windows",
+        "platform": platform,
         "install_prefix": install_prefix,
     }
 
@@ -71,7 +72,7 @@ def run_pipeline(
     # STEP 4: Run integration tests.
     if test_integration:
         if status["checkout"] and status["compile"]:
-            if libos == "catnap" or libos == "catnapw" or libos == "catloop" or libos == "catnip" or libos == "catpowder":
+            if libos in ["catnap", "catloop", "catnip", "catpowder"]:
                 status["integration_tests"] = factory.integration_test().execute()
             elif libos == "catmem":
                 status["integration_tests"] = factory.integration_test("standalone").execute()
@@ -83,7 +84,7 @@ def run_pipeline(
     # STEP 5: Run system tests.
     if test_system and config["platform"]:
         if status["checkout"] and status["compile"]:
-            ci_map = read_yaml(libos)
+            ci_map = read_yaml(platform, libos)
             # Run pipe-open test.
             if __should_run(ci_map[libos], "pipe_open", test_system):
                 scenario = ci_map[libos]['pipe_open']
@@ -144,16 +145,18 @@ def run_pipeline(
 
 
 # Runs the CI pipeline.
-def run_redis_pipeline(log_directory: str, branch: str, libos: str, server: str,
-                       client: str, server_addr: str, client_addr: str, delay: float, output_dir: str,
-                       libshim_path: str, ld_library_path: str, config_path: str) -> int:
+def run_redis_pipeline(
+        platform: str,
+        log_directory: str, branch: str, libos: str, server: str,
+        client: str, server_addr: str, client_addr: str, delay: float, output_dir: str,
+        libshim_path: str, ld_library_path: str, config_path: str) -> int:
     status: dict[str, bool] = {}
 
     config: dict = {
         "server": server,
         "server_name": server,
         "client": client,
-        "libos": libos if libos != "catnapw" else "catnap",
+        "libos": libos,
         "path": "\$HOME",
         "client_name": client,
         "repository": "https://github.com/redis/redis.git",
@@ -163,7 +166,7 @@ def run_redis_pipeline(log_directory: str, branch: str, libos: str, server: str,
         "delay": delay,
         "output_dir": output_dir,
         "log_directory": log_directory,
-        "platform": "linux" if libos != "catnapw" else "windows",
+        "platform": platform,
         "libshim_path": libshim_path,
         "ld_library_path": ld_library_path,
         "config_path": config_path,
@@ -202,8 +205,8 @@ def __should_run(ci_map, test_name: str, test_system: str) -> bool:
     return test_name in ci_map and (test_system == "all" or test_system == test_name)
 
 
-def read_yaml(libos: str):
-    path: str = f"tools/ci/config/test/{libos}.yaml"
+def read_yaml(platform: str, libos: str):
+    path: str = f"tools/ci/config/test/{platform}/{libos}.yaml"
     yaml_str = ""
     with open(path) as f:
         yaml_str = f.read()
@@ -222,6 +225,7 @@ def read_args() -> argparse.Namespace:
         prog="demikernel_ci.py", description=description)
 
     # Host options.
+    parser.add_argument("--platform", required=True, help="set platform")
     parser.add_argument("--server", required=True, help="set server host name")
     parser.add_argument("--client", required=True, help="set client host name")
 
@@ -270,6 +274,7 @@ def main():
     args: argparse.Namespace = read_args()
 
     # Extract host options.
+    platform: str = args.platform
     server: str = args.server
     client: str = args.client
 
@@ -309,14 +314,19 @@ def main():
         move(log_directory, old_dir)
     mkdir(log_directory)
 
-    status: dict = run_pipeline(log_directory, repository, branch, libos, is_debug, server,
+    # Check if (platform, libos) combination is invalid.
+    if platform == "windows" and libos not in ["catnap"]:
+        print("Invalid (platform, libos) combination.")
+        sys.exit(-1)
+
+    status: dict = run_pipeline(platform, log_directory, repository, branch, libos, is_debug, server,
                                 client, test_unit, test_integration, test_system, server_addr,
                                 client_addr, delay, config_path, output_dir, enable_nfs, install_prefix)
 
     if test_redis:
         libshim_path: str = f"{install_prefix}/lib/libshim.so"
         ld_library_path: str = f"{install_prefix}/lib"
-        status |= run_redis_pipeline(log_directory, branch, libos, server,
+        status |= run_redis_pipeline(platform, log_directory, branch, libos, server,
                                      client, server_addr,
                                      client_addr, delay, output_dir, libshim_path, ld_library_path, config_path)
 
