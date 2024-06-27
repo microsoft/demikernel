@@ -9,7 +9,7 @@ mod tests;
 //======================================================================================================================
 
 use crate::{
-    inetstack::collections::HashTtlCache,
+    collections::hashttlcache::HashTtlCache,
     runtime::network::types::MacAddress,
 };
 use ::std::{
