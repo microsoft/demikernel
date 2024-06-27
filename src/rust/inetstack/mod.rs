@@ -71,7 +71,6 @@ use crate::timer;
 #[cfg(test)]
 pub mod test_helpers;
 
-pub mod collections;
 pub mod options;
 pub mod protocols;
 
