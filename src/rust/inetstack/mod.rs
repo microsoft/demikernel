@@ -8,16 +8,16 @@
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    expect_some,
     inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
             EtherType2,
             Ethernet2Header,
         },
-        tcp::socket::SharedTcpSocket,
-        udp::socket::SharedUdpSocket,
-        Peer,
+        peer::{
+            Peer,
+            Socket,
+        },
     },
     runtime::{
         fail::Fail,
@@ -29,7 +29,6 @@ use crate::{
             socket::option::SocketOption,
             transport::NetworkTransport,
             types::MacAddress,
-            unwrap_socketaddr,
             NetworkRuntime,
         },
         poll_yield,
@@ -83,13 +82,6 @@ const MAX_RECV_ITERS: usize = 2;
 //======================================================================================================================
 // Structures
 //======================================================================================================================
-
-/// Socket Representation.
-#[derive(Clone)]
-pub enum Socket<N: NetworkRuntime> {
-    Tcp(SharedTcpSocket<N>),
-    Udp(SharedUdpSocket<N>),
-}
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
 pub struct InetStack<N: NetworkRuntime> {
@@ -255,27 +247,12 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// socket is returned. Upon failure, `Fail` is returned instead.
     ///
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
-        // TODO: Remove this once we support Ipv6.
-        if domain != Domain::IPV4 {
-            return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
-        }
-        match typ {
-            Type::STREAM => Ok(Socket::Tcp(self.ipv4.tcp.socket()?)),
-            Type::DGRAM => Ok(Socket::Udp(self.ipv4.udp.socket()?)),
-            _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
-        }
+        self.ipv4.socket(domain, typ)
     }
 
     /// Set an SO_* option on the socket.
     fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.set_socket_option(socket, option),
-            Socket::Udp(_) => {
-                let cause: String = format!("Socket options are not supported on UDP sockets");
-                error!("get_socket_option(): {}", cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
-            },
-        }
+        self.ipv4.set_socket_option(sd, option)
     }
 
     /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
@@ -285,25 +262,11 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         option: SocketOption,
     ) -> Result<SocketOption, Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.get_socket_option(socket, option),
-            Socket::Udp(_) => {
-                let cause: String = format!("Socket options are not supported on UDP sockets");
-                error!("get_socket_option(): {}", cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
-            },
-        }
+        self.ipv4.get_socket_option(sd, option)
     }
 
     fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.getpeername(socket),
-            Socket::Udp(_) => {
-                let cause: String = format!("Getting peer address is not supported on UDP sockets");
-                error!("getpeername(): {}", cause);
-                Err(Fail::new(libc::ENOTSUP, &cause))
-            },
-        }
+        self.ipv4.getpeername(sd)
     }
 
     ///
@@ -318,13 +281,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
-
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.bind(socket, local),
-            Socket::Udp(socket) => self.ipv4.udp.bind(socket, local),
-        }
+        self.ipv4.bind(sd, local)
     }
 
     ///
@@ -344,17 +301,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     fn listen(&mut self, sd: &mut Self::SocketDescriptor, backlog: usize) -> Result<(), Fail> {
-        trace!("listen() backlog={:?}", backlog);
-
-        // FIXME: https://github.com/demikernel/demikernel/issues/584
-        if backlog == 0 {
-            return Err(Fail::new(libc::EINVAL, "invalid backlog length"));
-        }
-
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.listen(socket, backlog),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }
+        self.ipv4.listen(sd, backlog)
     }
 
     ///
@@ -370,18 +317,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
-        trace!("accept()");
-
-        // Search for target queue descriptor.
-        match sd {
-            Socket::Tcp(socket) => {
-                let socket = self.ipv4.tcp.accept(socket).await?;
-                let addr = expect_some!(socket.remote(), "accepted socket must have an endpoint");
-                Ok((Socket::Tcp(socket), addr.into()))
-            },
-            // This queue descriptor does not concern a TCP socket.
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }
+        self.ipv4.accept(sd).await
     }
 
     ///
@@ -397,15 +333,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
-        trace!("connect(): remote={:?}", remote);
-
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
-
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.connect(socket, remote).await,
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
-        }
+        self.ipv4.connect(sd, remote).await
     }
 
     ///
@@ -419,18 +347,12 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
     async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.close(socket).await,
-            Socket::Udp(socket) => self.ipv4.udp.close(socket).await,
-        }
+        self.ipv4.close(sd).await
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
     fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.hard_close(socket),
-            Socket::Udp(socket) => self.ipv4.udp.hard_close(socket),
-        }
+        self.ipv4.hard_close(sd)
     }
 
     /// Pushes a buffer to a TCP socket.
@@ -440,10 +362,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
     ) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.push(socket, buf).await,
-            Socket::Udp(socket) => self.ipv4.udp.push(socket, buf, addr).await,
-        }
+        self.ipv4.push(sd, buf, addr).await
     }
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
@@ -453,10 +372,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.ipv4.tcp.pop(socket, size).await,
-            Socket::Udp(socket) => self.ipv4.udp.pop(socket, size).await,
-        }
+        self.ipv4.pop(sd, size).await
     }
 
     fn get_runtime(&self) -> &SharedDemiRuntime {
