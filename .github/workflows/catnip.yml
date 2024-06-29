@@ -126,7 +126,6 @@ jobs:
   report-performance:
     name: Report Performance
     needs: release-pipeline
-    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
