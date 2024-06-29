@@ -54,9 +54,9 @@
 
 #define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)           \
     {                                                         \
-        bool reentrant = is_reentrant_demi_call();            \
-                                                              \
         init_libc();                                          \
+                                                              \
+        bool reentrant = is_reentrant_demi_call();            \
                                                               \
         if ((!initialized) || (reentrant))                    \
             return (fn_libc(__VA_ARGS__));                    \
@@ -138,6 +138,7 @@ static void init_libc(void)
             assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
             assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
 
+            init_reent_guards();
             __sync_fetch_and_sub(&in_init_libc, 1);
             MEM_BARRIER();
             initialized_libc = 1;
@@ -201,10 +202,11 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 static int vfcntl(int sockfd, int cmd, va_list val)
 {
     int ret = -1;
-    bool reentrant = is_reentrant_demi_call();
-
+    
     if (!initialized_libc)
         init_libc();
+    
+    bool reentrant = is_reentrant_demi_call();
 
     // Variadic functions cannot be easily interposed.
     // We need to parse the command and call the underlying function accordingly.
@@ -410,10 +412,10 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    bool reentrant = is_reentrant_demi_call();
-
     if (!initialized_libc)
         init_libc();
+    
+    bool reentrant = is_reentrant_demi_call();
 
     if ((!initialized) || (reentrant))
         return (libc_epoll_ctl(epfd, op, fd, event));
@@ -447,10 +449,10 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    bool reentrant = is_reentrant_demi_call();
-
     if (!initialized_libc)
         init_libc();
+
+    bool reentrant = is_reentrant_demi_call();
 
     if ((!initialized) || (reentrant))
     {
@@ -491,10 +493,10 @@ int socket(int domain, int type, int protocol)
 
 int epoll_create(int size)
 {
-    bool reentrant = is_reentrant_demi_call();
-
     if (!initialized_libc)
         init_libc();
+
+    bool reentrant = is_reentrant_demi_call();
 
     if (reentrant)
     {

@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 extern int is_reentrant_demi_call();
+extern void init_reent_guards();
 
 extern int __demi_init(const struct demi_args *args);
 extern int __demi_create_pipe(int *memqd_out, const char *name);
