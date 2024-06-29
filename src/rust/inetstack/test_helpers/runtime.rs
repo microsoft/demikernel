@@ -8,8 +8,13 @@
 use crate::{
     demi_sgarray_t,
     demi_sgaseg_t,
-    demikernel::config::Config,
-    inetstack::protocols::MAX_HEADER_SIZE,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        MAX_HEADER_SIZE,
+    },
     runtime::{
         fail::Fail,
         logging,
@@ -17,18 +22,16 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         SharedDemiRuntime,
         SharedObject,
     },
+    MacAddress,
 };
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::std::{
+    any::Any,
     collections::VecDeque,
     mem,
     ops::{
@@ -56,7 +59,7 @@ pub struct SharedTestRuntime(SharedObject<TestRuntime>);
 //======================================================================================================================
 
 impl SharedTestRuntime {
-    pub fn new_test(now: Instant) -> Self {
+    pub fn new(now: Instant) -> Self {
         logging::initialize();
         Self(SharedObject::<TestRuntime>::new(TestRuntime {
             incoming: VecDeque::new(),
@@ -80,6 +83,11 @@ impl SharedTestRuntime {
         self.pop_frames(1).pop_front().expect("should be at least one frame")
     }
 
+    /// Insert a single frame into the runtime's incoming queue.
+    pub fn push_frame(&mut self, frame: DemiBuffer) {
+        self.incoming.push_back(frame)
+    }
+
     /// Get the underlying DemiRuntime.
     pub fn get_runtime(&self) -> SharedDemiRuntime {
         self.runtime.clone()
@@ -90,17 +98,8 @@ impl SharedTestRuntime {
 // Trait Implementations
 //==============================================================================
 
-impl NetworkRuntime for SharedTestRuntime {
-    fn new(_config: &Config) -> Result<Self, Fail> {
-        logging::initialize();
-        Ok(Self(SharedObject::<TestRuntime>::new(TestRuntime {
-            incoming: VecDeque::new(),
-            outgoing: VecDeque::new(),
-            runtime: SharedDemiRuntime::new(Instant::now()),
-        })))
-    }
-
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
+impl PhysicalLayer for SharedTestRuntime {
+    fn transmit(&mut self, pkt: &dyn PacketBuf) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         debug!("transmit frame: {:?} body: {:?}", self.outgoing.len(), body_size);
@@ -127,6 +126,14 @@ impl NetworkRuntime for SharedTestRuntime {
             out.push(buf);
         }
         out
+    }
+
+    fn get_link_addr(&self) -> MacAddress {
+        MacAddress::new([0; 6])
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

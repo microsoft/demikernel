@@ -8,17 +8,7 @@
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::{
-        arp::SharedArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
-        peer::{
-            Peer,
-            Socket,
-        },
-    },
+    inetstack::protocols::layer4::Layer4Endpoint,
     runtime::{
         fail::Fail,
         memory::{
@@ -29,29 +19,38 @@ use crate::{
             socket::option::SocketOption,
             transport::NetworkTransport,
             types::MacAddress,
-            NetworkRuntime,
         },
         poll_yield,
         SharedDemiRuntime,
         SharedObject,
     },
+    timer,
 };
 use ::socket2::{
     Domain,
     Type,
 };
+use protocols::{
+    layer1::PhysicalLayer,
+    layer2::SharedLayer2Endpoint,
+    layer3::{
+        SharedArpPeer,
+        SharedLayer3Endpoint,
+    },
+    layer4::Socket,
+};
+
+use ::futures::FutureExt;
 #[cfg(test)]
 use ::std::{
     collections::HashMap,
     hash::RandomState,
+    net::Ipv4Addr,
     time::Duration,
 };
-
-use ::futures::FutureExt;
 use ::std::{
     fmt::Debug,
     net::{
-        Ipv4Addr,
         SocketAddr,
         SocketAddrV4,
     },
@@ -60,8 +59,6 @@ use ::std::{
         DerefMut,
     },
 };
-
-use crate::timer;
 
 //======================================================================================================================
 // Exports
@@ -84,40 +81,53 @@ const MAX_RECV_ITERS: usize = 2;
 //======================================================================================================================
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
-pub struct InetStack<N: NetworkRuntime> {
-    arp: SharedArpPeer<N>,
-    ipv4: Peer<N>,
+pub struct InetStack {
+    #[cfg(test)]
+    layer2_endpoint: SharedLayer2Endpoint,
+    #[cfg(test)]
+    layer3_endpoint: SharedLayer3Endpoint,
+    // Layer 4 endpoint. This layer include our network protocols: UDP and TCP.
+    layer4_endpoint: Layer4Endpoint,
+    // Routing table. This table holds the rules for routing incoming packets.
+    // TODO: Implement routing table
     runtime: SharedDemiRuntime,
-    network: N,
-    local_link_addr: MacAddress,
-    // Keeping this here for now in case we want to use it.
-    #[allow(unused)]
-    local_ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
+pub struct SharedInetStack(SharedObject<InetStack>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedInetStack<N> {
-    pub fn new(config: &Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
-        SharedInetStack::<N>::new_test(config, runtime, network)
+impl SharedInetStack {
+    pub fn new(
+        config: &Config,
+        runtime: SharedDemiRuntime,
+        layer1_endpoint: Box<dyn PhysicalLayer>,
+    ) -> Result<Self, Fail> {
+        SharedInetStack::new_test(config, runtime, layer1_endpoint)
     }
 
-    pub fn new_test(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+    pub fn new_test(
+        config: &Config,
+        mut runtime: SharedDemiRuntime,
+        layer1_endpoint: Box<dyn PhysicalLayer>,
+    ) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: SharedArpPeer<N> = SharedArpPeer::new(config, runtime.clone(), network.clone())?;
-        let ipv4: Peer<N> = Peer::new(config, runtime.clone(), network.clone(), arp.clone(), rng_seed)?;
-        let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack::<N> {
-            arp,
-            ipv4,
+        let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
+        let arp: SharedArpPeer = SharedArpPeer::new(&config, runtime.clone(), layer2_endpoint.clone())?;
+        let layer3_endpoint: SharedLayer3Endpoint =
+            SharedLayer3Endpoint::new(config, runtime.clone(), arp.clone(), layer2_endpoint.clone(), rng_seed)?;
+        let layer4_endpoint: Layer4Endpoint =
+            Layer4Endpoint::new(config, runtime.clone(), arp.clone(), layer3_endpoint.clone(), rng_seed)?;
+        let me: Self = Self(SharedObject::new(InetStack {
+            #[cfg(test)]
+            layer2_endpoint,
+            #[cfg(test)]
+            layer3_endpoint,
+            layer4_endpoint,
             runtime: runtime.clone(),
-            network,
-            local_link_addr: config.local_link_addr()?,
-            local_ipv4_addr: config.local_ipv4_addr()?,
         }));
         runtime.insert_background_coroutine("bgc::inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
         Ok(me)
@@ -130,24 +140,11 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
-                let batch = {
-                    timer!("inetstack::poll_bg_work::for::receive");
+                timer!("inetstack::poll_bg_work::for::receive");
 
-                    self.network.receive()
-                };
-
-                {
-                    timer!("inetstack::poll_bg_work::for::for");
-
-                    if batch.is_empty() {
-                        break;
-                    }
-
-                    for pkt in batch {
-                        if let Err(e) = self.receive(pkt) {
-                            warn!("incorrectly formatted packet: {:?}", e);
-                        }
-                    }
+                // TODO: Log dropped and processed packets.
+                if let Err(e) = self.layer4_endpoint.receive() {
+                    warn!("Error while receiving packet: {:?}", e);
                 }
             }
             poll_yield().await;
@@ -156,52 +153,33 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
 
     /// Generally these functions are for testing.
     #[cfg(test)]
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.local_link_addr
-    }
-
-    #[cfg(test)]
     pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4.get_local_addr()
+        self.layer3_endpoint.get_local_addr()
     }
 
     #[cfg(test)]
-    pub fn get_network(&self) -> N {
-        self.network.clone()
+    pub fn get_physical_layer<P: PhysicalLayer>(&mut self) -> &mut P {
+        self.layer2_endpoint.get_physical_layer()
     }
 
     #[cfg(test)]
     /// Schedule a ping.
     pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        self.ipv4.ping(addr, timeout).await
+        self.layer4_endpoint.ping(addr, timeout).await
     }
 
     #[cfg(test)]
     pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
-        self.arp.query(addr).await
+        self.layer4_endpoint.arp_query(addr).await
     }
 
     #[cfg(test)]
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
-        self.arp.export_cache()
+        self.layer4_endpoint.export_arp_cache()
     }
 
-    pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
-        let (header, payload) = Ethernet2Header::parse(pkt)?;
-        debug!("Engine received {:?}", header);
-        if self.local_link_addr != header.dst_addr()
-            && !header.dst_addr().is_broadcast()
-            && !header.dst_addr().is_multicast()
-        {
-            warn!("dropping packet");
-            return Ok(());
-        }
-        match header.ether_type() {
-            EtherType2::Arp => self.arp.receive(payload),
-            EtherType2::Ipv4 => self.ipv4.receive(payload),
-            EtherType2::Ipv6 => (), // Ignore for now.
-        };
-        Ok(())
+    pub fn receive(&mut self) -> Result<(), Fail> {
+        self.layer4_endpoint.receive()
     }
 }
 
@@ -209,23 +187,47 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
 // Trait Implementation
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedInetStack<N> {
-    type Target = InetStack<N>;
+impl Deref for SharedInetStack {
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedInetStack<N> {
+impl DerefMut for SharedInetStack {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
+/// Memory Runtime Trait Implementation for Inetstack. This implementation dispatches to each lower level and finally
+/// to the physical layer implementation.
+impl MemoryRuntime for SharedInetStack {
+    /// Casts a [DPDKBuf] into an [demi_sgarray_t].
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.layer4_endpoint.into_sgarray(buf)
+    }
+
+    /// Allocates a [demi_sgarray_t].
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.layer4_endpoint.sgaalloc(size)
+    }
+
+    /// Releases a [demi_sgarray_t].
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.layer4_endpoint.sgafree(sga)
+    }
+
+    /// Clones a [demi_sgarray_t].
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.layer4_endpoint.clone_sgarray(sga)
+    }
+}
+
+impl NetworkTransport for SharedInetStack {
     // Socket data structure used by upper level libOS to identify this socket.
-    type SocketDescriptor = Socket<N>;
+    type SocketDescriptor = Socket;
 
     ///
     /// **Brief**
@@ -247,12 +249,12 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// socket is returned. Upon failure, `Fail` is returned instead.
     ///
     fn socket(&mut self, domain: Domain, typ: Type) -> Result<Self::SocketDescriptor, Fail> {
-        self.ipv4.socket(domain, typ)
+        self.layer4_endpoint.socket(domain, typ)
     }
 
     /// Set an SO_* option on the socket.
     fn set_socket_option(&mut self, sd: &mut Self::SocketDescriptor, option: SocketOption) -> Result<(), Fail> {
-        self.ipv4.set_socket_option(sd, option)
+        self.layer4_endpoint.set_socket_option(sd, option)
     }
 
     /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
@@ -262,11 +264,11 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         option: SocketOption,
     ) -> Result<SocketOption, Fail> {
-        self.ipv4.get_socket_option(sd, option)
+        self.layer4_endpoint.get_socket_option(sd, option)
     }
 
     fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
-        self.ipv4.getpeername(sd)
+        self.layer4_endpoint.getpeername(sd)
     }
 
     ///
@@ -281,7 +283,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     fn bind(&mut self, sd: &mut Self::SocketDescriptor, local: SocketAddr) -> Result<(), Fail> {
-        self.ipv4.bind(sd, local)
+        self.layer4_endpoint.bind(sd, local)
     }
 
     ///
@@ -301,7 +303,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     fn listen(&mut self, sd: &mut Self::SocketDescriptor, backlog: usize) -> Result<(), Fail> {
-        self.ipv4.listen(sd, backlog)
+        self.layer4_endpoint.listen(sd, backlog)
     }
 
     ///
@@ -317,7 +319,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     async fn accept(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(Self::SocketDescriptor, SocketAddr), Fail> {
-        self.ipv4.accept(sd).await
+        self.layer4_endpoint.accept(sd).await
     }
 
     ///
@@ -333,7 +335,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// returned instead.
     ///
     async fn connect(&mut self, sd: &mut Self::SocketDescriptor, remote: SocketAddr) -> Result<(), Fail> {
-        self.ipv4.connect(sd, remote).await
+        self.layer4_endpoint.connect(sd, remote).await
     }
 
     ///
@@ -347,12 +349,12 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
     async fn close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        self.ipv4.close(sd).await
+        self.layer4_endpoint.close(sd).await
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
     fn hard_close(&mut self, sd: &mut Self::SocketDescriptor) -> Result<(), Fail> {
-        self.ipv4.hard_close(sd)
+        self.layer4_endpoint.hard_close(sd)
     }
 
     /// Pushes a buffer to a TCP socket.
@@ -362,7 +364,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
     ) -> Result<(), Fail> {
-        self.ipv4.push(sd, buf, addr).await
+        self.layer4_endpoint.push(sd, buf, addr).await
     }
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
@@ -372,7 +374,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         sd: &mut Self::SocketDescriptor,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
-        self.ipv4.pop(sd, size).await
+        self.layer4_endpoint.pop(sd, size).await
     }
 
     fn get_runtime(&self) -> &SharedDemiRuntime {
@@ -380,27 +382,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
     }
 }
 
-/// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
-/// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<N: NetworkRuntime + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.network.clone_sgarray(sga)
-    }
-
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.network.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.network.sgaalloc(size)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.network.sgafree(sga)
-    }
-}
-
-impl<N: NetworkRuntime> Debug for Socket<N> {
+impl Debug for Socket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Socket::Tcp(socket) => socket.fmt(f),

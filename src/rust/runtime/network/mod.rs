@@ -17,22 +17,11 @@ pub mod types;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    demikernel::config::Config,
-    runtime::{
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            socket::SocketId,
-        },
-        Fail,
-        QDesc,
-    },
+use crate::runtime::{
+    network::socket::SocketId,
+    Fail,
+    QDesc,
 };
-use ::arrayvec::ArrayVec;
 use ::std::{
     collections::HashMap,
     net::{
@@ -107,28 +96,4 @@ pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
         SocketAddr::V4(addr) => Ok(addr),
         _ => Err(Fail::new(libc::EINVAL, "bad address family")),
     }
-}
-
-/// Packet Buffer
-pub trait PacketBuf {
-    /// Returns the header size of the target [PacketBuf].
-    fn header_size(&self) -> usize;
-    /// Writes the header of the target [PacketBuf] into a slice.
-    fn write_header(&self, buf: &mut [u8]);
-    /// Returns the body size of the target [PacketBuf].
-    fn body_size(&self) -> usize;
-    /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&self) -> Option<DemiBuffer>;
-}
-
-/// Network Runtime
-pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
-    /// Creates a new NetworkRuntime with the [config] parameters.
-    fn new(config: &Config) -> Result<Self, Fail>;
-
-    /// Transmits a single [PacketBuf].
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>);
-
-    /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
 }

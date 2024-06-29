@@ -7,21 +7,22 @@
 
 use ::arrayvec::ArrayVec;
 use ::demikernel::{
-    demikernel::config::Config,
+    inetstack::protocols::layer1::{
+        PacketBuf,
+        PhysicalLayer,
+    },
     runtime::{
-        fail::Fail,
         memory::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         SharedObject,
     },
+    MacAddress,
 };
+#[cfg(test)]
+use ::std::any::Any;
 use ::std::ops::{
     Deref,
     DerefMut,
@@ -66,16 +67,8 @@ impl SharedDummyRuntime {
 //==============================================================================
 
 /// Network Runtime Trait Implementation for Dummy Runtime
-impl NetworkRuntime for SharedDummyRuntime {
-    /// Creates a Dummy Runtime.
-    fn new(_config: &Config) -> Result<Self, Fail> {
-        Err(Fail::new(
-            libc::ENOTSUP,
-            "this function is not supported for the dummy runtime",
-        ))
-    }
-
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
+impl PhysicalLayer for SharedDummyRuntime {
+    fn transmit(&mut self, pkt: &dyn PacketBuf) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -97,6 +90,14 @@ impl NetworkRuntime for SharedDummyRuntime {
             out.push(buf);
         }
         out
+    }
+
+    fn get_link_addr(&self) -> MacAddress {
+        MacAddress::new([0; 6])
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

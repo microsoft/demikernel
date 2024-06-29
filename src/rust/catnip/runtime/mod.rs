@@ -11,7 +11,13 @@ use self::memory::MemoryManager;
 use crate::{
     demikernel::config::Config,
     expect_some,
-    inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        layer2::MIN_PAYLOAD_SIZE,
+    },
     runtime::{
         fail::Fail,
         libdpdk::{
@@ -57,26 +63,23 @@ use crate::{
         network::{
             consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
-            NetworkRuntime,
-            PacketBuf,
         },
         SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
-use ::std::mem;
-use memory::consts::DEFAULT_MAX_BODY_SIZE;
-
 use ::std::{
+    any::Any,
     ffi::CString,
+    mem,
     mem::MaybeUninit,
-    net::Ipv4Addr,
     ops::{
         Deref,
         DerefMut,
     },
     time::Duration,
 };
+use memory::consts::DEFAULT_MAX_BODY_SIZE;
 
 //======================================================================================================================
 // Structures
@@ -87,7 +90,6 @@ pub struct DPDKRuntime {
     mm: MemoryManager,
     port_id: u16,
     link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
@@ -99,6 +101,38 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for TCP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for UDP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
+            &config.eal_init_args()?,
+            config.enable_jumbo_frames()?,
+            config.mtu()?,
+            tcp_offload.unwrap_or(false),
+            udp_offload.unwrap_or(false),
+        )?;
+
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+            mm,
+            port_id,
+            link_addr,
+        })))
+    }
+
     /// Initializes DPDK.
     fn initialize_dpdk(
         eal_init_args: &[CString],
@@ -333,14 +367,6 @@ impl SharedDPDKRuntime {
 
         Ok(())
     }
-
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
-    }
 }
 
 //======================================================================================================================
@@ -362,41 +388,8 @@ impl DerefMut for SharedDPDKRuntime {
 }
 
 /// Network Runtime Trait Implementation for DPDK Runtime
-impl NetworkRuntime for SharedDPDKRuntime {
-    fn new(config: &Config) -> Result<Self, Fail> {
-        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for TCP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for UDP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
-            &config.eal_init_args()?,
-            config.enable_jumbo_frames()?,
-            config.mtu()?,
-            tcp_offload.unwrap_or(false),
-            udp_offload.unwrap_or(false),
-        )?;
-
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
-            mm,
-            port_id,
-            link_addr,
-            ipv4_addr: config.local_ipv4_addr()?,
-        })))
-    }
-
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
+impl PhysicalLayer for SharedDPDKRuntime {
+    fn transmit(&mut self, pkt: &dyn PacketBuf) {
         let headers_size: usize = pkt.header_size();
         debug_assert!(headers_size < u16::MAX as usize);
 
@@ -447,5 +440,13 @@ impl NetworkRuntime for SharedDPDKRuntime {
         }
 
         out
+    }
+
+    fn get_link_addr(&self) -> MacAddress {
+        self.link_addr
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
