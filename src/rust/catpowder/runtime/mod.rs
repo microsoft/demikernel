@@ -14,7 +14,7 @@ use crate::{
     },
     demikernel::config::Config,
     expect_ok,
-    inetstack::protocols::ethernet2::Ethernet2Header,
+    inetstack::protocols::layer2::Ethernet2Header,
     runtime::{
         fail::Fail,
         limits,
