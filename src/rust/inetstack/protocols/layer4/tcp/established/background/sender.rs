@@ -16,7 +16,6 @@ use crate::{
         conditional_yield_until,
         fail::Fail,
         memory::DemiBuffer,
-        network::NetworkRuntime,
     },
 };
 use ::futures::{
@@ -31,7 +30,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
+pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.

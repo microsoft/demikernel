@@ -20,6 +20,7 @@ use crate::{
             arp::SharedArpPeer,
             ip::IpProtocol,
             ipv4::Ipv4Header,
+            SharedLayer3Endpoint,
         },
         layer4::tcp::{
             constants::{
@@ -49,7 +50,6 @@ use crate::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -82,52 +82,52 @@ enum State {
     Closed,
 }
 
-pub struct ActiveOpenSocket<N: NetworkRuntime> {
+pub struct ActiveOpenSocket {
     local_isn: SeqNumber,
     local: SocketAddrV4,
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    transport: N,
+    layer3_endpoint: SharedLayer3Endpoint,
     recv_queue: ReceiveQueue,
     ack_queue: SharedAsyncQueue<usize>,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     state: SharedAsyncValue<State>,
 }
 
 #[derive(Clone)]
-pub struct SharedActiveOpenSocket<N: NetworkRuntime>(SharedObject<ActiveOpenSocket<N>>);
+pub struct SharedActiveOpenSocket(SharedObject<ActiveOpenSocket>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
+impl SharedActiveOpenSocket {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        transport: N,
+        layer3_endpoint: SharedLayer3Endpoint,
         recv_queue: ReceiveQueue,
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         local_link_addr: MacAddress,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
 
-        Ok(Self(SharedObject::<ActiveOpenSocket<N>>::new(ActiveOpenSocket::<N> {
+        Ok(Self(SharedObject::<ActiveOpenSocket>::new(ActiveOpenSocket {
             local_isn,
             local,
             remote,
             runtime: runtime.clone(),
-            transport,
+            layer3_endpoint,
             recv_queue,
             ack_queue,
             local_link_addr,
@@ -139,7 +139,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         })))
     }
 
-    fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket<N>, Fail> {
+    fn process_ack(&mut self, header: TcpHeader) -> Result<EstablishedSocket, Fail> {
         let expected_seq: SeqNumber = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
@@ -189,7 +189,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.transport.transmit(Box::new(segment));
+        self.layer3_endpoint.transmit(&segment);
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -246,7 +246,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             self.local,
             self.remote,
             self.runtime.clone(),
-            self.transport.clone(),
+            self.layer3_endpoint.clone(),
             self.recv_queue.clone(),
             self.ack_queue.clone(),
             self.local_link_addr,
@@ -268,7 +268,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         )?)
     }
 
-    pub async fn connect(mut self) -> Result<EstablishedSocket<N>, Fail> {
+    pub async fn connect(mut self) -> Result<EstablishedSocket, Fail> {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
@@ -323,7 +323,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             // Send SYN.
-            self.transport.transmit(Box::new(segment));
+            self.layer3_endpoint.transmit(&segment);
 
             // Wait for either a response or timeout.
             let mut recv_queue: ReceiveQueue = self.recv_queue.clone();
@@ -371,15 +371,15 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedActiveOpenSocket<N> {
-    type Target = ActiveOpenSocket<N>;
+impl Deref for SharedActiveOpenSocket {
+    type Target = ActiveOpenSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedActiveOpenSocket<N> {
+impl DerefMut for SharedActiveOpenSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

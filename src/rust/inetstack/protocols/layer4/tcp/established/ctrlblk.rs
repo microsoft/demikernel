@@ -23,6 +23,7 @@ use crate::{
             arp::SharedArpPeer,
             ip::IpProtocol,
             ipv4::Ipv4Header,
+            SharedLayer3Endpoint,
         },
         layer4::tcp::{
             constants::MSL,
@@ -53,7 +54,6 @@ use crate::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         yield_with_timeout,
         SharedDemiRuntime,
@@ -178,11 +178,11 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // TODO: Make all public fields in this structure private.
-pub struct ControlBlock<N: NetworkRuntime> {
+pub struct ControlBlock {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    transport: N,
+    layer3_endpoint: SharedLayer3Endpoint,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
     local_link_addr: MacAddress,
@@ -191,7 +191,7 @@ pub struct ControlBlock<N: NetworkRuntime> {
 
     // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
     // this along with other remote IP information (such as routing, path MTU, etc).
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
 
     // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
     sender: Sender,
@@ -246,19 +246,19 @@ pub struct ControlBlock<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedControlBlock<N: NetworkRuntime>(SharedObject<ControlBlock<N>>);
+pub struct SharedControlBlock(SharedObject<ControlBlock>);
 //==============================================================================
 
-impl<N: NetworkRuntime> SharedControlBlock<N> {
+impl SharedControlBlock {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        transport: N,
+        layer3_endpoint: SharedLayer3Endpoint,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -274,11 +274,11 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
     ) -> Self {
         let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
-        Self(SharedObject::<ControlBlock<N>>::new(ControlBlock {
+        Self(SharedObject::<ControlBlock>::new(ControlBlock {
             local,
             remote,
             runtime,
-            transport,
+            layer3_endpoint,
             local_link_addr,
             tcp_config,
             socket_options: default_socket_options,
@@ -310,7 +310,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     // TODO: Remove this.  ARP doesn't belong at this layer.
-    pub fn arp(&self) -> SharedArpPeer<N> {
+    pub fn arp(&self) -> SharedArpPeer {
         self.arp.clone()
     }
 
@@ -855,7 +855,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         };
 
         // Call the runtime to send the segment.
-        self.transport.transmit(Box::new(segment));
+        self.layer3_endpoint.transmit(&segment);
 
         // Post-send operations follow.
         // Review: We perform these after the send, in order to keep send latency as low as possible.
@@ -1231,15 +1231,15 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedControlBlock<N> {
-    type Target = ControlBlock<N>;
+impl Deref for SharedControlBlock {
+    type Target = ControlBlock;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedControlBlock<N> {
+impl DerefMut for SharedControlBlock {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

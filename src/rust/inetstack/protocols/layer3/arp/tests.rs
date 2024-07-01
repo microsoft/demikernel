@@ -8,6 +8,7 @@
 use crate::{
     inetstack::{
         protocols::{
+            layer1::PacketBuf,
             layer2::{
                 EtherType2,
                 Ethernet2Header,
@@ -26,10 +27,7 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            PacketBuf,
-        },
+        network::types::MacAddress,
     },
 };
 use ::anyhow::Result;
@@ -245,6 +243,6 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
 
 /// Creates a new engine.
 fn new_engine(now: Instant, config_path: &str) -> Result<SharedEngine> {
-    let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
+    let test_rig: SharedTestRuntime = SharedTestRuntime::new(now);
     Ok(SharedEngine::new(config_path, test_rig, now)?)
 }

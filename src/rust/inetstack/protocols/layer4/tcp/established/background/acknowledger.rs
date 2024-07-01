@@ -4,15 +4,12 @@
 use crate::{
     collections::async_value::SharedAsyncValue,
     inetstack::protocols::layer4::tcp::established::background::SharedControlBlock,
-    runtime::{
-        fail::Fail,
-        network::NetworkRuntime,
-    },
+    runtime::fail::Fail,
 };
 use ::futures::never::Never;
 use ::std::time::Instant;
 
-pub async fn acknowledger<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
+pub async fn acknowledger(mut cb: SharedControlBlock) -> Result<Never, Fail> {
     let mut ack_deadline: SharedAsyncValue<Option<Instant>> = cb.get_ack_deadline();
     let mut deadline: Option<Instant> = ack_deadline.get();
     loop {

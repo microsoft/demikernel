@@ -7,16 +7,14 @@
 
 use crate::{
     inetstack::protocols::{
+        layer1::PacketBuf,
         layer2::Ethernet2Header,
         layer3::{
             icmpv4::datagram::Icmpv4Header,
             ipv4::Ipv4Header,
         },
     },
-    runtime::{
-        memory::DemiBuffer,
-        network::PacketBuf,
-    },
+    runtime::memory::DemiBuffer,
 };
 
 //======================================================================================================================

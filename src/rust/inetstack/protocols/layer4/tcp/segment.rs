@@ -4,6 +4,7 @@
 use crate::{
     expect_ok,
     inetstack::protocols::{
+        layer1::PacketBuf,
         layer2::Ethernet2Header,
         layer3::{
             ip::IpProtocol,
@@ -14,7 +15,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::PacketBuf,
     },
 };
 use ::libc::EBADMSG;

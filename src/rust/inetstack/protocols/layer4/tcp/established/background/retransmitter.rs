@@ -7,7 +7,6 @@ use crate::{
     runtime::{
         conditional_yield_until,
         fail::Fail,
-        network::NetworkRuntime,
     },
 };
 use ::futures::{
@@ -21,7 +20,7 @@ use ::std::time::{
     Instant,
 };
 
-pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
+pub async fn retransmitter(mut cb: SharedControlBlock) -> Result<Never, Fail> {
     // Watch the retransmission deadline.
     let mut rtx_deadline_watched: SharedAsyncValue<Option<Instant>> = cb.watch_retransmit_deadline();
     // Watch the fast retransmit flag.

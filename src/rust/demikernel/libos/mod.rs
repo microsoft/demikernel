@@ -33,10 +33,13 @@ use crate::demikernel::libos::network::{
     libos::SharedNetworkLibOS,
     NetworkLibOSWrapper,
 };
+#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
+use crate::inetstack::SharedInetStack;
 #[cfg(feature = "profiler")]
 use crate::perftools::profiler::set_callback;
 use crate::{
     demikernel::config::Config,
+    inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
         limits,
@@ -52,11 +55,6 @@ use crate::{
         SharedDemiRuntime,
     },
     timer,
-};
-#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::{
-    inetstack::SharedInetStack,
-    runtime::network::NetworkRuntime,
 };
 use ::std::{
     env,
@@ -142,28 +140,20 @@ impl LibOS {
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: LinuxRuntime = LinuxRuntime::new(&config)?;
+                let transport: Box<dyn PhysicalLayer> = Box::new(LinuxRuntime::new(&config)?);
                 // This is our transport for Catpowder.
-                let inetstack: SharedInetStack<LinuxRuntime> =
-                    SharedInetStack::<LinuxRuntime>::new(&config, runtime.clone(), transport).unwrap();
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
-                    SharedInetStack<LinuxRuntime>,
-                >::new(
-                    config.local_ipv4_addr()?,
-                    runtime.clone(),
-                    inetstack,
-                )))
+                let inetstack: SharedInetStack = SharedInetStack::new(&config, runtime.clone(), transport).unwrap();
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(
+                    SharedNetworkLibOS::<SharedInetStack>::new(config.local_ipv4_addr()?, runtime.clone(), inetstack),
+                ))
             },
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: SharedDPDKRuntime = SharedDPDKRuntime::new(&config)?;
-                let inetstack: SharedInetStack<SharedDPDKRuntime> =
-                    SharedInetStack::<SharedDPDKRuntime>::new(&config, runtime.clone(), transport).unwrap();
+                let transport: Box<dyn PhysicalLayer> = Box::new(SharedDPDKRuntime::new(&config)?);
+                let inetstack: SharedInetStack = SharedInetStack::new(&config, runtime.clone(), transport).unwrap();
 
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
-                    SharedInetStack<SharedDPDKRuntime>,
-                >::new(
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<SharedInetStack>::new(
                     config.local_ipv4_addr()?,
                     runtime.clone(),
                     inetstack,

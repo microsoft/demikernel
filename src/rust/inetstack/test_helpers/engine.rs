@@ -52,7 +52,7 @@ use ::std::{
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone)]
-pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>);
+pub struct SharedEngine(SharedNetworkLibOS<SharedInetStack>);
 
 impl SharedEngine {
     pub fn new(config_path: &str, test_rig: SharedTestRuntime, now: Instant) -> Result<Self, Fail> {
@@ -61,10 +61,10 @@ impl SharedEngine {
         // Shared Demikernel runtime.
         let runtime: SharedDemiRuntime = SharedDemiRuntime::new(now);
 
-        let transport: SharedInetStack<SharedTestRuntime> =
-            SharedInetStack::new_test(&config, runtime.clone(), test_rig.clone())?;
+        let transport: SharedInetStack =
+            SharedInetStack::new_test(&config, runtime.clone(), Box::new(test_rig.clone()))?;
 
-        Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedTestRuntime>>::new(
+        Ok(Self(SharedNetworkLibOS::<SharedInetStack>::new(
             config.local_ipv4_addr()?,
             runtime,
             transport,
@@ -72,20 +72,26 @@ impl SharedEngine {
     }
 
     pub fn pop_frame(&mut self) -> DemiBuffer {
-        self.get_transport().get_network().pop_frame()
+        self.get_transport()
+            .get_physical_layer::<SharedTestRuntime>()
+            .pop_frame()
     }
 
     pub fn pop_all_frames(&mut self) -> VecDeque<DemiBuffer> {
-        self.get_transport().get_network().pop_all_frames()
+        self.get_transport()
+            .get_physical_layer::<SharedTestRuntime>()
+            .pop_all_frames()
     }
 
     pub fn advance_clock(&mut self, now: Instant) {
         self.get_runtime().advance_clock(now)
     }
 
-    pub fn receive(&mut self, bytes: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, frame: DemiBuffer) -> Result<(), Fail> {
         // We no longer do processing in this function, so we will not know if the packet is dropped or not.
-        self.get_transport().receive(bytes)?;
+        self.get_transport()
+            .get_physical_layer::<SharedTestRuntime>()
+            .push_frame(frame);
         // So poll the scheduler to do the processing.
         self.get_runtime().poll();
         self.get_runtime().poll();
@@ -200,7 +206,7 @@ impl SharedEngine {
 }
 
 impl Deref for SharedEngine {
-    type Target = SharedNetworkLibOS<SharedInetStack<SharedTestRuntime>>;
+    type Target = SharedNetworkLibOS<SharedInetStack>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

@@ -7,13 +7,11 @@
 
 use crate::{
     inetstack::protocols::{
+        layer1::PacketBuf,
         layer2::Ethernet2Header,
         layer3::arp::packet::ArpHeader,
     },
-    runtime::{
-        memory::DemiBuffer,
-        network::PacketBuf,
-    },
+    runtime::memory::DemiBuffer,
 };
 
 //======================================================================================================================

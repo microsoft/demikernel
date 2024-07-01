@@ -13,10 +13,7 @@ use self::{
 use crate::{
     async_timer,
     inetstack::protocols::layer4::tcp::established::ctrlblk::SharedControlBlock,
-    runtime::{
-        network::NetworkRuntime,
-        QDesc,
-    },
+    runtime::QDesc,
 };
 use ::futures::{
     channel::mpsc,
@@ -24,7 +21,7 @@ use ::futures::{
     FutureExt,
 };
 
-pub async fn background<N: NetworkRuntime>(cb: SharedControlBlock<N>, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
+pub async fn background(cb: SharedControlBlock, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
     let acknowledger = async_timer!("tcp::established::background::acknowledger", acknowledger(cb.clone())).fuse();
     pin_mut!(acknowledger);
 
@@ -34,7 +31,7 @@ pub async fn background<N: NetworkRuntime>(cb: SharedControlBlock<N>, _dead_sock
     let sender = async_timer!("tcp::established::background::sender", sender(cb.clone())).fuse();
     pin_mut!(sender);
 
-    let mut cb2: SharedControlBlock<N> = cb.clone();
+    let mut cb2: SharedControlBlock = cb.clone();
     let receiver = async_timer!("tcp::established::background::receiver", cb2.poll()).fuse();
     pin_mut!(receiver);
 

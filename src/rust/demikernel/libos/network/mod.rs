@@ -41,10 +41,6 @@ use crate::inetstack::SharedInetStack;
 use crate::catloop::transport::SharedCatloopTransport;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::transport::SharedCatnapTransport;
-#[cfg(feature = "catnip-libos")]
-use crate::catnip::runtime::SharedDPDKRuntime;
-#[cfg(feature = "catpowder-libos")]
-use crate::catpowder::runtime::LinuxRuntime;
 
 //======================================================================================================================
 // Structures
@@ -53,11 +49,11 @@ use crate::catpowder::runtime::LinuxRuntime;
 /// Network LIBOS.
 pub enum NetworkLibOSWrapper {
     #[cfg(feature = "catpowder-libos")]
-    Catpowder(SharedNetworkLibOS<SharedInetStack<LinuxRuntime>>),
+    Catpowder(SharedNetworkLibOS<SharedInetStack>),
     #[cfg(all(feature = "catnap-libos"))]
     Catnap(SharedNetworkLibOS<SharedCatnapTransport>),
     #[cfg(feature = "catnip-libos")]
-    Catnip(SharedNetworkLibOS<SharedInetStack<SharedDPDKRuntime>>),
+    Catnip(SharedNetworkLibOS<SharedInetStack>),
     #[cfg(feature = "catloop-libos")]
     Catloop(SharedNetworkLibOS<SharedCatloopTransport>),
 }

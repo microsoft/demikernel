@@ -11,7 +11,10 @@ use crate::{
     collections::async_queue::SharedAsyncQueue,
     inetstack::{
         protocols::{
-            layer3::SharedArpPeer,
+            layer3::{
+                SharedArpPeer,
+                SharedLayer3Endpoint,
+            },
             layer4::tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::ctrlblk::SharedControlBlock,
@@ -27,7 +30,6 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -44,8 +46,8 @@ use ::std::{
 };
 
 #[derive(Clone)]
-pub struct EstablishedSocket<N: NetworkRuntime> {
-    pub cb: SharedControlBlock<N>,
+pub struct EstablishedSocket {
+    pub cb: SharedControlBlock,
     recv_queue: ReceiveQueue,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
@@ -56,18 +58,18 @@ pub struct EstablishedSocket<N: NetworkRuntime> {
     background_task_qt: QToken,
 }
 
-impl<N: NetworkRuntime> EstablishedSocket<N> {
+impl EstablishedSocket {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        transport: N,
+        layer3_endpoint: SharedLayer3Endpoint,
         recv_queue: ReceiveQueue,
         ack_queue: SharedAsyncQueue<usize>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -86,7 +88,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
             local,
             remote,
             runtime.clone(),
-            transport,
+            layer3_endpoint,
             local_link_addr,
             tcp_config,
             default_socket_options,

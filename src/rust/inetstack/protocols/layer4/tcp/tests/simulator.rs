@@ -8,6 +8,7 @@
 use crate::{
     inetstack::{
         protocols::{
+            layer1::PacketBuf,
             layer2::{
                 EtherType2,
                 Ethernet2Header,
@@ -34,7 +35,6 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::PacketBuf,
         OperationResult,
     },
     MacAddress,
@@ -205,7 +205,7 @@ impl Simulation {
     ) -> Result<Simulation> {
         let now: Instant = Instant::now();
 
-        let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
+        let test_rig: SharedTestRuntime = SharedTestRuntime::new(now);
         let local: SharedEngine = SharedEngine::new(test_helpers::ALICE_CONFIG_PATH, test_rig, now)?;
 
         info!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);

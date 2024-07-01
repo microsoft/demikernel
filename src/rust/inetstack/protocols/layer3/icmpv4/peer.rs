@@ -8,6 +8,7 @@ use crate::{
         layer2::{
             EtherType2,
             Ethernet2Header,
+            SharedLayer2Endpoint,
         },
         layer3::{
             arp::SharedArpPeer,
@@ -25,10 +26,7 @@ use crate::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            NetworkRuntime,
-        },
+        network::types::MacAddress,
         SharedConditionVariable,
         SharedDemiRuntime,
         SharedObject,
@@ -77,16 +75,17 @@ enum InflightRequest {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<N: NetworkRuntime> {
+pub struct Icmpv4Peer {
     /// Shared DemiRuntime.
     runtime: SharedDemiRuntime,
-    /// Underlying Network Transport
-    transport: N,
+    /// Lower layer network interface.
+    layer2_endpoint: SharedLayer2Endpoint,
+
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
 
     /// Incoming packets
     recv_queue: AsyncQueue<(Ipv4Header, DemiBuffer)>,
@@ -102,20 +101,19 @@ pub struct Icmpv4Peer<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedIcmpv4Peer<N: NetworkRuntime>(SharedObject<Icmpv4Peer<N>>);
+pub struct SharedIcmpv4Peer(SharedObject<Icmpv4Peer>);
 
-impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
+impl SharedIcmpv4Peer {
     pub fn new(
         config: &Config,
         mut runtime: SharedDemiRuntime,
-        transport: N,
-        arp: SharedArpPeer<N>,
+        layer2_endpoint: SharedLayer2Endpoint,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
+        let peer: SharedIcmpv4Peer = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
-            transport: transport.clone(),
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             arp: arp.clone(),
@@ -123,6 +121,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             seq: Wrapping(0),
             rng,
             inflight: HashMap::<(u16, u16), InflightRequest>::new(),
+            layer2_endpoint,
         }));
         runtime
             .insert_background_coroutine("bgc::inetstack::icmp::background", Box::pin(peer.clone().poll().fuse()))?;
@@ -173,12 +172,13 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             // Send reply message.
             let local_link_addr: MacAddress = self.local_link_addr;
             let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
-            self.transport.transmit(Box::new(Icmpv4Message::new(
+            let pkt: Icmpv4Message = Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
                 data,
-            )));
+            );
+            self.layer2_endpoint.transmit(&pkt);
         }
     }
 
@@ -234,7 +234,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             Icmpv4Header::new(echo_request, 0),
             data,
         );
-        self.transport.transmit(Box::new(msg));
+        self.layer2_endpoint.transmit(&msg);
         let condition_variable: SharedConditionVariable = SharedConditionVariable::default();
         self.inflight
             .insert((id, seq_num), InflightRequest::Inflight(condition_variable));
@@ -270,15 +270,15 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
-    type Target = Icmpv4Peer<N>;
+impl Deref for SharedIcmpv4Peer {
+    type Target = Icmpv4Peer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedIcmpv4Peer<N> {
+impl DerefMut for SharedIcmpv4Peer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

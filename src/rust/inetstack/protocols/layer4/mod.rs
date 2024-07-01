@@ -24,22 +24,30 @@ pub use self::{
 // Imports
 //======================================================================================================================
 
+#[cfg(test)]
+use crate::MacAddress;
+#[cfg(test)]
+use ::std::{
+    collections::HashMap,
+    hash::RandomState,
+};
+
 use crate::{
+    demi_sgarray_t,
     demikernel::config::Config,
     expect_some,
     inetstack::protocols::layer3::{
         arp::SharedArpPeer,
-        icmpv4::SharedIcmpv4Peer,
         ip::IpProtocol,
-        ipv4::Ipv4Header,
+        SharedLayer3Endpoint,
     },
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
-        network::{
-            unwrap_socketaddr,
-            NetworkRuntime,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
         },
+        network::unwrap_socketaddr,
         SharedDemiRuntime,
     },
     SocketOption,
@@ -64,44 +72,40 @@ use tcp::segment::TcpHeader;
 //======================================================================================================================
 
 // This data structur represents a layer 4
-pub struct Layer4Endpoint<N: NetworkRuntime> {
+pub struct Layer4Endpoint {
+    layer3_endpoint: SharedLayer3Endpoint,
     local_ipv4_addr: Ipv4Addr,
-    icmpv4: SharedIcmpv4Peer<N>,
-    tcp: SharedTcpPeer<N>,
-    udp: SharedUdpPeer<N>,
+    tcp: SharedTcpPeer,
+    udp: SharedUdpPeer,
     tcp_checksum_offload: bool,
     udp_checksum_offload: bool,
 }
 
 /// Socket Representation. Our Network layer transport currently supports two types of sockets: UDP and TCP.
 #[derive(Clone)]
-pub enum Socket<N: NetworkRuntime> {
-    Tcp(SharedTcpSocket<N>),
-    Udp(SharedUdpSocket<N>),
+pub enum Socket {
+    Tcp(SharedTcpSocket),
+    Udp(SharedUdpSocket),
 }
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Layer4Endpoint<N> {
+impl Layer4Endpoint {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        arp: SharedArpPeer<N>,
-        layer1_endpoint: N,
+        arp: SharedArpPeer,
+        layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let udp: SharedUdpPeer<N> =
-            SharedUdpPeer::<N>::new(config, runtime.clone(), layer1_endpoint.clone(), arp.clone())?;
-        let icmpv4: SharedIcmpv4Peer<N> =
-            SharedIcmpv4Peer::<N>::new(config, runtime.clone(), layer1_endpoint.clone(), arp.clone(), rng_seed)?;
-        let tcp: SharedTcpPeer<N> =
-            SharedTcpPeer::<N>::new(config, runtime.clone(), layer1_endpoint.clone(), arp, rng_seed)?;
+        let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), arp.clone())?;
+        let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), arp, rng_seed)?;
 
         Ok(Layer4Endpoint {
+            layer3_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
-            icmpv4,
             tcp,
             udp,
             tcp_checksum_offload: config.tcp_checksum_offload()?,
@@ -109,43 +113,55 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
         })
     }
 
-    pub fn receive(&mut self, ip_hdr: Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
-        match ip_hdr.get_protocol() {
-            IpProtocol::TCP => {
-                let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
-                    match TcpHeader::parse(&ip_hdr, buf, self.tcp_checksum_offload) {
-                        Ok(result) => result,
-                        Err(e) => {
-                            let cause: String = format!("invalid tcp header: {:?}", e);
-                            error!("receive(): {}", &cause);
-                            return Err(Fail::new(libc::EINVAL, &cause));
-                        },
-                    };
-                self.tcp
-                    .receive(ip_hdr.get_src_addr(), ip_hdr.get_dest_addr(), tcp_hdr, data);
-            },
-            IpProtocol::UDP => {
-                // Parse datagram.
-                let (udp_hdr, data): (UdpHeader, DemiBuffer) =
-                    match UdpHeader::parse(&ip_hdr, buf, self.udp_checksum_offload) {
-                        Ok(result) => result,
-                        Err(e) => {
-                            let cause: String = format!("dropping packet: unable to parse UDP header");
-                            warn!("{}: {:?}", cause, e);
-                            return Err(Fail::new(libc::EINVAL, &cause));
-                        },
-                    };
-                debug!("UDP received {:?}", udp_hdr);
-                self.udp
-                    .receive(ip_hdr.get_src_addr(), ip_hdr.get_dest_addr(), udp_hdr, data)
-            },
-            _ => unreachable!("Any other protocols should have been processed at the lower layer"),
+    pub fn receive(&mut self) -> Result<(), Fail> {
+        for (ip_hdr, buf) in self.layer3_endpoint.receive() {
+            match ip_hdr.get_protocol() {
+                IpProtocol::TCP => {
+                    let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
+                        match TcpHeader::parse(&ip_hdr, buf, self.tcp_checksum_offload) {
+                            Ok(result) => result,
+                            Err(e) => {
+                                let cause: String = format!("invalid tcp header: {:?}", e);
+                                error!("receive(): {}", &cause);
+                                return Err(Fail::new(libc::EINVAL, &cause));
+                            },
+                        };
+                    self.tcp
+                        .receive(ip_hdr.get_src_addr(), ip_hdr.get_dest_addr(), tcp_hdr, data);
+                },
+                IpProtocol::UDP => {
+                    // Parse datagram.
+                    let (udp_hdr, data): (UdpHeader, DemiBuffer) =
+                        match UdpHeader::parse(&ip_hdr, buf, self.udp_checksum_offload) {
+                            Ok(result) => result,
+                            Err(e) => {
+                                let cause: String = format!("dropping packet: unable to parse UDP header");
+                                warn!("{}: {:?}", cause, e);
+                                return Err(Fail::new(libc::EINVAL, &cause));
+                            },
+                        };
+                    debug!("UDP received {:?}", udp_hdr);
+                    self.udp
+                        .receive(ip_hdr.get_src_addr(), ip_hdr.get_dest_addr(), udp_hdr, data)
+                },
+                _ => unreachable!("Any other protocols should have been processed at the lower layer"),
+            }
         }
         Ok(())
     }
 
     pub async fn ping(&mut self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        self.icmpv4.ping(dest_ipv4_addr, timeout).await
+        self.layer3_endpoint.ping(dest_ipv4_addr, timeout).await
+    }
+
+    #[cfg(test)]
+    pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+        self.layer3_endpoint.arp_query(addr).await
+    }
+
+    #[cfg(test)]
+    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
+        self.layer3_endpoint.export_arp_cache()
     }
 
     /// This function is only used for testing for now.
@@ -154,7 +170,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
         self.local_ipv4_addr
     }
 
-    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket<N>, Fail> {
+    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
         // TODO: Remove this once we support Ipv6.
         if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
@@ -167,7 +183,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     }
 
     /// Set an SO_* option on the socket.
-    pub fn set_socket_option(&mut self, sd: &mut Socket<N>, option: SocketOption) -> Result<(), Fail> {
+    pub fn set_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.set_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -180,7 +196,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
 
     /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
     /// [option].
-    pub fn get_socket_option(&mut self, sd: &mut Socket<N>, option: SocketOption) -> Result<SocketOption, Fail> {
+    pub fn get_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<SocketOption, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.get_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -191,7 +207,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
         }
     }
 
-    pub fn getpeername(&mut self, sd: &mut Socket<N>) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, sd: &mut Socket) -> Result<SocketAddrV4, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.getpeername(socket),
             Socket::Udp(_) => {
@@ -213,7 +229,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, sd: &mut Socket<N>, local: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, sd: &mut Socket, local: SocketAddr) -> Result<(), Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
@@ -239,7 +255,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn listen(&mut self, sd: &mut Socket<N>, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sd: &mut Socket, backlog: usize) -> Result<(), Fail> {
         trace!("listen() backlog={:?}", backlog);
 
         // FIXME: https://github.com/demikernel/demikernel/issues/584
@@ -265,7 +281,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn accept(&mut self, sd: &mut Socket<N>) -> Result<(Socket<N>, SocketAddr), Fail> {
+    pub async fn accept(&mut self, sd: &mut Socket) -> Result<(Socket, SocketAddr), Fail> {
         trace!("accept()");
 
         // Search for target queue descriptor.
@@ -292,7 +308,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn connect(&mut self, sd: &mut Socket<N>, remote: SocketAddr) -> Result<(), Fail> {
+    pub async fn connect(&mut self, sd: &mut Socket, remote: SocketAddr) -> Result<(), Fail> {
         trace!("connect(): remote={:?}", remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -314,7 +330,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
-    pub async fn close(&mut self, sd: &mut Socket<N>) -> Result<(), Fail> {
+    pub async fn close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.close(socket).await,
             Socket::Udp(socket) => self.udp.close(socket).await,
@@ -322,7 +338,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
-    pub fn hard_close(&mut self, sd: &mut Socket<N>) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.hard_close(socket),
             Socket::Udp(socket) => self.udp.hard_close(socket),
@@ -330,12 +346,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     }
 
     /// Pushes a buffer to a TCP socket.
-    pub async fn push(
-        &mut self,
-        sd: &mut Socket<N>,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-    ) -> Result<(), Fail> {
+    pub async fn push(&mut self, sd: &mut Socket, buf: &mut DemiBuffer, addr: Option<SocketAddr>) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.push(socket, buf).await,
             Socket::Udp(socket) => self.udp.push(socket, buf, addr).await,
@@ -344,7 +355,7 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
     /// allocated by the application.
-    pub async fn pop(&mut self, sd: &mut Socket<N>, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+    pub async fn pop(&mut self, sd: &mut Socket, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.pop(socket, size).await,
             Socket::Udp(socket) => self.udp.pop(socket, size).await,
@@ -352,15 +363,19 @@ impl<N: NetworkRuntime> Layer4Endpoint<N> {
     }
 
     #[cfg(test)]
-    pub fn tcp_mss(&self, socket: &SharedTcpSocket<N>) -> Result<usize, Fail> {
+    pub fn tcp_mss(&self, socket: &SharedTcpSocket) -> Result<usize, Fail> {
         socket.remote_mss()
     }
 
     #[cfg(test)]
-    pub fn tcp_rto(&self, socket: &SharedTcpSocket<N>) -> Result<Duration, Fail> {
+    pub fn tcp_rto(&self, socket: &SharedTcpSocket) -> Result<Duration, Fail> {
         socket.current_rto()
     }
 }
+
+//======================================================================================================================
+// Standalone Functions
+//======================================================================================================================
 
 /// Computes the generic checksum of a bytes array.
 ///
@@ -393,4 +408,31 @@ pub fn fold16(mut state: u32) -> u16 {
         state -= 0xFFFF;
     }
     !state as u16
+}
+
+//======================================================================================================================
+// Trait Implementation
+//======================================================================================================================
+
+/// Memory Runtime Trait Implementation for the network stack.
+impl MemoryRuntime for Layer4Endpoint {
+    /// Casts a [DPDKBuf] into an [demi_sgarray_t].
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.layer3_endpoint.into_sgarray(buf)
+    }
+
+    /// Allocates a [demi_sgarray_t].
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.layer3_endpoint.sgaalloc(size)
+    }
+
+    /// Releases a [demi_sgarray_t].
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.layer3_endpoint.sgafree(sga)
+    }
+
+    /// Clones a [demi_sgarray_t].
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.layer3_endpoint.clone_sgarray(sga)
+    }
 }

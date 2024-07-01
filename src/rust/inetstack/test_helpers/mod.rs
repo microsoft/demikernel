@@ -31,11 +31,11 @@ pub const CARRIE_CONFIG_PATH: &str = "./src/rust/inetstack/test_helpers/carrie.y
 //==============================================================================
 
 pub fn new_bob(now: Instant) -> SharedEngine {
-    let network: SharedTestRuntime = SharedTestRuntime::new_test(now);
+    let network: SharedTestRuntime = SharedTestRuntime::new(now);
     SharedEngine::new(BOB_CONFIG_PATH, network, now).unwrap()
 }
 
 pub fn new_carrie(now: Instant) -> SharedEngine {
-    let network = SharedTestRuntime::new_test(now);
+    let network = SharedTestRuntime::new(now);
     SharedEngine::new(CARRIE_CONFIG_PATH, network, now).unwrap()
 }

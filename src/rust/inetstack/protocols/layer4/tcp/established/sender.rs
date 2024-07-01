@@ -12,7 +12,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::NetworkRuntime,
     },
 };
 use ::libc::{
@@ -152,7 +151,7 @@ impl Sender {
 
     // This is the main TCP send routine.
     //
-    pub fn send<N: NetworkRuntime>(&mut self, buf: DemiBuffer, mut cb: SharedControlBlock<N>) -> Result<(), Fail> {
+    pub fn send(&mut self, buf: DemiBuffer, mut cb: SharedControlBlock) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
 
         // Our API supports send buffers up to usize (variable, depends upon architecture) in size.  While we could
@@ -266,7 +265,7 @@ impl Sender {
     }
 
     /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
-    pub fn retransmit<N: NetworkRuntime>(&self, mut cb: SharedControlBlock<N>) {
+    pub fn retransmit(&self, mut cb: SharedControlBlock) {
         // Check that we have an unacknowledged segment.
         if let Some(segment) = self.unacked_queue.borrow_mut().front_mut() {
             // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
@@ -300,12 +299,7 @@ impl Sender {
 
     // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
     //
-    pub fn remove_acknowledged_data<N: NetworkRuntime>(
-        &self,
-        mut cb: SharedControlBlock<N>,
-        bytes_acknowledged: u32,
-        now: Instant,
-    ) {
+    pub fn remove_acknowledged_data(&self, mut cb: SharedControlBlock, bytes_acknowledged: u32, now: Instant) {
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
 
         while bytes_remaining != 0 {

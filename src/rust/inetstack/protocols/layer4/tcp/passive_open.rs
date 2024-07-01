@@ -23,6 +23,7 @@ use crate::{
             arp::SharedArpPeer,
             ip::IpProtocol,
             ipv4::Ipv4Header,
+            SharedLayer3Endpoint,
         },
         layer4::tcp::{
             constants::FALLBACK_MSS,
@@ -51,7 +52,6 @@ use crate::{
             consts::MAX_WINDOW_SCALE,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -90,22 +90,22 @@ enum State {
     Closed,
 }
 
-pub struct PassiveSocket<N: NetworkRuntime> {
+pub struct PassiveSocket {
     // TCP Connection State.
     state: SharedAsyncValue<State>,
     connections: HashMap<SocketAddrV4, ReceiveQueue>,
     recv_queue: ReceiveQueue,
-    ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
+    ready: AsyncQueue<Result<EstablishedSocket, Fail>>,
     max_backlog: usize,
     isn_generator: IsnGenerator,
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    transport: N,
+    layer3_endpoint: SharedLayer3Endpoint,
     tcp_config: TcpConfig,
     // We do not use these right now, but will in the future.
     socket_options: TcpSocketOptions,
     local_link_addr: MacAddress,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 
     background_task_qt: Option<QToken>,
@@ -113,38 +113,38 @@ pub struct PassiveSocket<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedPassiveSocket<N: NetworkRuntime>(SharedObject<PassiveSocket<N>>);
+pub struct SharedPassiveSocket(SharedObject<PassiveSocket>);
 
 //======================================================================================================================
 // Associated Function
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedPassiveSocket<N> {
+impl SharedPassiveSocket {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
         mut runtime: SharedDemiRuntime,
         recv_queue: ReceiveQueue,
-        transport: N,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         local_link_addr: MacAddress,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
         let socket_queue: SharedAsyncQueue<SocketAddrV4> = SharedAsyncQueue::<SocketAddrV4>::default();
-        let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
+        let mut me: Self = Self(SharedObject::<PassiveSocket>::new(PassiveSocket {
             state: SharedAsyncValue::new(State::Listening),
             connections: HashMap::<SocketAddrV4, ReceiveQueue>::new(),
             recv_queue,
-            ready: AsyncQueue::<Result<EstablishedSocket<N>, Fail>>::default(),
+            ready: AsyncQueue::<Result<EstablishedSocket, Fail>>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
             local_link_addr,
             runtime: runtime.clone(),
-            transport,
+            layer3_endpoint,
             tcp_config,
             socket_options: default_socket_options,
             arp,
@@ -164,7 +164,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
     }
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
-    pub async fn do_accept(&mut self) -> Result<EstablishedSocket<N>, Fail> {
+    pub async fn do_accept(&mut self) -> Result<EstablishedSocket, Fail> {
         self.ready.pop(None).await?
     }
 
@@ -330,8 +330,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         };
 
         // Send it.
-        let pkt: Box<TcpSegment> = Box::new(segment);
-        self.transport.transmit(pkt);
+        self.layer3_endpoint.transmit(&segment);
     }
 
     async fn send_syn_ack_and_wait_for_ack(
@@ -437,7 +436,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.transport.transmit(Box::new(segment));
+        self.layer3_endpoint.transmit(&segment);
         Ok(())
     }
 
@@ -451,7 +450,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         header_window_size: u16,
         remote_window_scale: Option<u8>,
         mss: usize,
-    ) -> Result<EstablishedSocket<N>, Fail> {
+    ) -> Result<EstablishedSocket, Fail> {
         let incoming = recv_queue.pop(None).await?;
         debug!("Received ACK: {:?}", incoming.tcp_hdr);
 
@@ -503,11 +502,11 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             recv_queue.push(incoming);
         }
 
-        let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::new(
+        let new_socket: EstablishedSocket = EstablishedSocket::new(
             self.local,
             remote,
             self.runtime.clone(),
-            self.transport.clone(),
+            self.layer3_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
             self.local_link_addr,
@@ -536,15 +535,15 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
-    type Target = PassiveSocket<N>;
+impl Deref for SharedPassiveSocket {
+    type Target = PassiveSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedPassiveSocket<N> {
+impl DerefMut for SharedPassiveSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

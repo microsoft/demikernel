@@ -14,7 +14,13 @@ use crate::{
     },
     demikernel::config::Config,
     expect_ok,
-    inetstack::protocols::layer2::Ethernet2Header,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        layer2::Ethernet2Header,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -22,24 +28,20 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            types::MacAddress,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         Runtime,
         SharedObject,
     },
+    MacAddress,
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
+    any::Any,
     fs,
     mem::{
         self,
         MaybeUninit,
     },
-    net::Ipv4Addr,
     num::ParseIntError,
 };
 
@@ -50,10 +52,9 @@ use ::std::{
 /// Linux Runtime
 #[derive(Clone)]
 pub struct LinuxRuntime {
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
     ifindex: i32,
     socket: SharedObject<RawSocket>,
+    link_addr: MacAddress,
 }
 
 //======================================================================================================================
@@ -62,20 +63,30 @@ pub struct LinuxRuntime {
 
 /// Associate Functions for Linux Runtime
 impl LinuxRuntime {
+    /// Instantiates a Linux Runtime.
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        let mac_addr: [u8; 6] = [0; 6];
+        let ifindex: i32 = match Self::get_ifindex(&config.local_interface_name()?) {
+            Ok(ifindex) => ifindex,
+            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse ifindex")),
+        };
+        let socket: RawSocket = RawSocket::new()?;
+        let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
+        socket.bind(&sockaddr)?;
+
+        Ok(Self {
+            ifindex,
+            socket: SharedObject::<RawSocket>::new(socket),
+            link_addr: MacAddress::new(mac_addr),
+        })
+    }
+
     /// Gets the interface index of the network interface named `ifname`.
     fn get_ifindex(ifname: &str) -> Result<i32, ParseIntError> {
         let path: String = format!("/sys/class/net/{}/ifindex", ifname);
         expect_ok!(fs::read_to_string(path), "could not read ifname")
             .trim()
             .parse()
-    }
-
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
     }
 }
 
@@ -90,28 +101,9 @@ impl MemoryRuntime for LinuxRuntime {}
 impl Runtime for LinuxRuntime {}
 
 /// Network Runtime Trait Implementation for Linux Runtime
-impl NetworkRuntime for LinuxRuntime {
-    /// Instantiates a Linux Runtime.
-    fn new(config: &Config) -> Result<Self, Fail> {
-        let mac_addr: [u8; 6] = [0; 6];
-        let ifindex: i32 = match Self::get_ifindex(&config.local_interface_name()?) {
-            Ok(ifindex) => ifindex,
-            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse ifindex")),
-        };
-        let socket: RawSocket = RawSocket::new()?;
-        let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
-        socket.bind(&sockaddr)?;
-
-        Ok(Self {
-            link_addr: config.local_link_addr()?,
-            ipv4_addr: config.local_ipv4_addr()?,
-            ifindex,
-            socket: SharedObject::<RawSocket>::new(socket),
-        })
-    }
-
+impl PhysicalLayer for LinuxRuntime {
     /// Transmits a single [PacketBuf].
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
+    fn transmit(&mut self, pkt: &dyn PacketBuf) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -162,5 +154,13 @@ impl NetworkRuntime for LinuxRuntime {
         } else {
             ArrayVec::new()
         }
+    }
+
+    fn get_link_addr(&self) -> MacAddress {
+        self.link_addr
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

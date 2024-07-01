@@ -9,6 +9,7 @@ use crate::{
         layer2::{
             EtherType2,
             Ethernet2Header,
+            SharedLayer2Endpoint,
         },
         layer3::arp::{
             cache::ArpCache,
@@ -26,7 +27,6 @@ use crate::{
         network::{
             config::ArpConfig,
             types::MacAddress,
-            NetworkRuntime,
         },
         SharedDemiRuntime,
         SharedObject,
@@ -65,28 +65,32 @@ use ::std::{
 ///
 /// Arp Peer
 ///
-pub struct ArpPeer<N: NetworkRuntime> {
-    network: N,
+pub struct ArpPeer {
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
     waiters: HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>,
     arp_config: ArpConfig,
     recv_queue: AsyncQueue<DemiBuffer>,
+    layer2_endpoint: SharedLayer2Endpoint,
 }
 
 #[derive(Clone)]
-pub struct SharedArpPeer<N: NetworkRuntime>(SharedObject<ArpPeer<N>>);
+pub struct SharedArpPeer(SharedObject<ArpPeer>);
 
 //==============================================================================
 // Associate Functions
 //==============================================================================
 
-impl<N: NetworkRuntime> SharedArpPeer<N> {
+impl SharedArpPeer {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
-    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+    pub fn new(
+        config: &Config,
+        mut runtime: SharedDemiRuntime,
+        layer2_endpoint: SharedLayer2Endpoint,
+    ) -> Result<Self, Fail> {
         let arp_config: ArpConfig = ArpConfig::new(config)?;
         let cache: ArpCache = ArpCache::new(
             runtime.get_now(),
@@ -95,14 +99,14 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
             arp_config.get_disable_arp(),
         );
 
-        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer {
-            network,
+        let peer: SharedArpPeer = Self(SharedObject::<ArpPeer>::new(ArpPeer {
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             cache,
             waiters: HashMap::default(),
             arp_config,
             recv_queue: AsyncQueue::<DemiBuffer>::default(),
+            layer2_endpoint,
         }));
         // This is a future returned by the async function.
         runtime.insert_background_coroutine("bgc::inetstack::arp::background", Box::pin(peer.clone().poll().fuse()))?;
@@ -234,7 +238,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                         ),
                     );
                     debug!("Responding {:?}", reply);
-                    self.network.transmit(Box::new(reply));
+                    self.layer2_endpoint.transmit(&reply);
                 },
                 ArpOperation::Reply => {
                     debug!(
@@ -267,13 +271,13 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                 ipv4_addr,
             ),
         );
-        let mut peer: SharedArpPeer<N> = self.clone();
+        let mut peer: SharedArpPeer = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                self.network.transmit(Box::new(msg.clone()));
+                self.layer2_endpoint.transmit(&msg);
                 let arp_response = peer.do_wait_link_addr(ipv4_addr);
 
                 match conditional_yield_with_timeout(arp_response, self.arp_config.get_request_timeout()).await {
@@ -306,15 +310,15 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedArpPeer<N> {
-    type Target = ArpPeer<N>;
+impl Deref for SharedArpPeer {
+    type Target = ArpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedArpPeer<N> {
+impl DerefMut for SharedArpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
