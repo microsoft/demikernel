@@ -198,9 +198,14 @@ jobs:
     - name: Parse Statistics
       id: parse-stats
       run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          branch_name="${{ github.head_ref }}"
+        else
+          branch_name="${{ github.ref_name }}"
+        fi
         pip install pandas tabulate
         stats=$(python3 tools/perf.py \
-          --branch origin/${{ github.head_ref }} \
+          --branch origin/$branch_name \
           --libos $LIBOS \
           --log-dir ./release_pipeline_logs)
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
