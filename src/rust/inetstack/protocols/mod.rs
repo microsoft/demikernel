@@ -6,11 +6,9 @@ pub mod ethernet2;
 pub mod icmpv4;
 pub mod ip;
 pub mod ipv4;
-mod peer;
+pub mod peer;
 pub mod tcp;
 pub mod udp;
-
-pub use peer::Peer;
 
 use ::std::slice::ChunksExact;
 
