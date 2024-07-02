@@ -28,12 +28,16 @@ use crate::{
 //======================================================================================================================
 
 pub struct RxRing {
-    program: XdpProgram,
     mem: UmemReg,
-    socket: XdpSocket,
     rx_ring: XdpRing,
     rx_fill_ring: XdpRing,
+    _program: XdpProgram,
+    _socket: XdpSocket,
 }
+
+//======================================================================================================================
+// Implementations
+//======================================================================================================================
 
 impl RxRing {
     pub fn new(api: &mut XdpApi, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
@@ -90,7 +94,7 @@ impl RxRing {
         let mut ring_index: u32 = 0;
         rx_fill_ring.ring_producer_reserve(RING_SIZE, &mut ring_index);
 
-        let b = rx_fill_ring.ring_get_element(ring_index) as *mut u64;
+        let b: *mut u64 = rx_fill_ring.ring_get_element(ring_index) as *mut u64;
         unsafe { *b = 0 };
 
         trace!("Submitting RX ring buffer.");
@@ -99,22 +103,19 @@ impl RxRing {
         trace!("Setting RX Fill ring.");
 
         // Create XDP program.
+        trace!("Creating XDP program...");
         const XDP_INSPECT_RX: xdp_rs::XDP_HOOK_ID = xdp_rs::XDP_HOOK_ID {
             Layer: xdp_rs::_XDP_HOOK_LAYER_XDP_HOOK_L2,
             Direction: xdp_rs::_XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_RX,
             SubLayer: xdp_rs::_XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
         };
-
         let rules: Vec<XdpRule> = vec![XdpRule::new(&socket)];
-
-        trace!("Creating XDP program.");
         let program: XdpProgram = XdpProgram::new(api, &rules, ifindex, &XDP_INSPECT_RX, queueid, 0)?;
 
-        trace!("XDP program created.");
         Ok(Self {
-            program,
+            _program: program,
             mem,
-            socket,
+            _socket: socket,
             rx_ring,
             rx_fill_ring,
         })

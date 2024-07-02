@@ -5,9 +5,9 @@
 // Imports
 //======================================================================================================================
 
-use super::api::XdpApi;
 use crate::{
     catpowder::win::{
+        api::XdpApi,
         buffer::XdpBuffer,
         socket::{
             XdpRing,
@@ -25,16 +25,15 @@ use crate::{
 // Structures
 //======================================================================================================================
 
-#[allow(dead_code)]
 pub struct TxRing {
     mem: UmemReg,
     socket: XdpSocket,
     tx_ring: XdpRing,
-    pub tx_completion_ring: XdpRing,
+    tx_completion_ring: XdpRing,
 }
 
 impl TxRing {
-    pub fn new(api: &mut XdpApi, index: u32, queueid: u32) -> Result<Self, Fail> {
+    pub fn new(api: &mut XdpApi, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
         trace!("Creating XDP socket.");
         let mut socket: XdpSocket = XdpSocket::create(api)?;
 
@@ -66,7 +65,7 @@ impl TxRing {
         )?;
 
         trace!("Binding TX queue.");
-        socket.bind(api, index, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX)?;
+        socket.bind(api, ifindex, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX)?;
 
         trace!("Activating XDP socket.");
         socket.activate(api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;

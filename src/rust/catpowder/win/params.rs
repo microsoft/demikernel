@@ -12,6 +12,7 @@ use ::std::mem;
 // Structures
 //======================================================================================================================
 
+#[repr(C)]
 pub struct XdpRedirectParams {
     redirect: xdp_rs::XDP_REDIRECT_PARAMS,
 }
@@ -25,7 +26,7 @@ impl XdpRedirectParams {
         let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
             let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
             redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
-            redirect.Target = socket.socket;
+            redirect.Target = socket.get_socket();
             redirect
         };
         Self { redirect }

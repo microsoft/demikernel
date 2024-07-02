@@ -40,6 +40,7 @@ use ::std::borrow::{
 //======================================================================================================================
 
 struct CatpowderRuntimeInner {
+    api: XdpApi,
     tx: TxRing,
     rx: RxRing,
 }
@@ -47,43 +48,55 @@ struct CatpowderRuntimeInner {
 /// A LibOS built on top of Windows XDP.
 #[derive(Clone)]
 pub struct CatpowderRuntime {
-    api: XdpApi,
     inner: SharedObject<CatpowderRuntimeInner>,
 }
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
+
+impl CatpowderRuntimeInner {
+    fn notify_socket(&mut self, flags: i32, timeout: u32, outflags: &mut i32) -> Result<(), Fail> {
+        self.tx.notify_socket(&mut self.api, flags, timeout, outflags)
+    }
+}
+
 impl CatpowderRuntime {}
 
 impl NetworkRuntime for CatpowderRuntime {
     fn new(config: &Config) -> Result<Self, Fail> {
-        // TODO: read the following from the config file.
-        let index: u32 = config.local_interface_index()?;
-        let queueid: u32 = 0;
+        let ifindex: u32 = config.local_interface_index()?;
+        const QUEUEID: u32 = 0; // We do no use RSS, thus `queueid` is always 0.
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
-        let rx: RxRing = RxRing::new(&mut api, index, queueid)?;
-        let tx: TxRing = TxRing::new(&mut api, index, queueid)?;
+        // Open TX and RX rings
+        let rx: RxRing = RxRing::new(&mut api, ifindex, QUEUEID)?;
+        let tx: TxRing = TxRing::new(&mut api, ifindex, QUEUEID)?;
 
         Ok(Self {
-            api,
-            inner: SharedObject::new(CatpowderRuntimeInner { rx, tx }),
+            inner: SharedObject::new(CatpowderRuntimeInner { api, rx, tx }),
         })
     }
 
     fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
-        assert!(header_size + body_size < u16::MAX as usize);
-        trace!("header_size={:?}, body_size={:?}", header_size, body_size);
+        trace!("transmit(): header_size={:?}, body_size={:?}", header_size, body_size);
+
+        if header_size + body_size >= u16::MAX as usize {
+            warn!("packet is too large: {:?}", header_size + body_size);
+            return;
+        }
 
         const COUNT: u32 = 1;
         let mut idx: u32 = 0;
 
-        assert!(self.inner.borrow_mut().tx.producer_reserve(COUNT, &mut idx) == COUNT);
+        if self.inner.borrow_mut().tx.producer_reserve(COUNT, &mut idx) != COUNT {
+            warn!("failed to reserve producer space for packet");
+            return;
+        }
 
         let mut buf: XdpBuffer = self.inner.borrow_mut().tx.get_element(idx);
         buf.set_len(header_size + body_size);
@@ -96,24 +109,21 @@ impl NetworkRuntime for CatpowderRuntime {
         self.inner.borrow_mut().tx.producer_submit(COUNT);
 
         // Notify socket.
-        let mut outflags = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
-        self.inner
-            .borrow()
-            .tx
-            .notify_socket(
-                &mut self.api,
-                xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX,
-                u32::MAX,
-                &mut outflags,
-            )
-            .unwrap();
+        let mut outflags: i32 = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
+        let flags: i32 =
+            xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX;
 
-        if self.inner.borrow_mut().tx.consumer_reserve(COUNT, &mut idx) == COUNT {
-            self.inner.borrow_mut().tx.consumer_release(COUNT);
+        if let Err(e) = self.inner.borrow_mut().notify_socket(flags, u32::MAX, &mut outflags) {
+            warn!("failed to notify socket: {:?}", e);
             return;
         }
 
-        warn!("failed to send packet");
+        if self.inner.borrow_mut().tx.consumer_reserve(COUNT, &mut idx) != COUNT {
+            warn!("failed to send packet");
+            return;
+        }
+
+        self.inner.borrow_mut().tx.consumer_release(COUNT);
     }
 
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
