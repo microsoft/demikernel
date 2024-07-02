@@ -101,7 +101,7 @@ static volatile uint8_t in_init_libc = 0;
 static volatile uint8_t initialized = 0;
 static volatile uint8_t in_init = 0;
 
-static void init_libc(void)
+static inline void init_libc(void)
 {
     if (initialized_libc == 0)
     {
@@ -154,7 +154,7 @@ static void init_libc(void)
     }
 }
 
-static void init(void)
+static inline void init(void)
 {
     if (initialized == 0)
     {

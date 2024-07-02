@@ -16,6 +16,9 @@
 
 static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
 {
+    int i;
+    struct demi_event *ev, *tail, *head;
+
     uint32_t event_mask = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLERR | EPOLLHUP | EPOLLET | EPOLLONESHOT;
     TRACE("epfd=%d, fd=%d, event=%p", epfd, fd, (void *)event);
 
@@ -38,18 +41,35 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
     for (int i = 0; i < MAX_EVENTS; i++)
     {
         // Found.
-        struct demi_event *ev = epoll_get_event(epfd, i);
+        ev = epoll_get_event(epfd, i);
         if (ev->used == 0)
         {
             memcpy(&ev->ev, event, sizeof(struct epoll_event));
             ev->used = 1;
             ev->qt = -1;
             ev->sockqd = fd;
+            ev->next_ev = INVALID_EV;
+            ev->prev_ev = INVALID_EV;
+
+            head = epoll_get_head(epfd);
+            tail = epoll_get_tail(epfd);
+
+            if (head == NULL)
+            {
+                assert(tail == NULL);
+                epoll_set_head(epfd, ev->id);
+                epoll_set_tail(epfd, ev->id);
+            }
+            else
+            {
+                ev->prev_ev = tail->id;
+                tail->next_ev = ev->id;
+                epoll_set_tail(epfd, ev->id);
+            }
 
             // Check if read was requested.
             if (ev->ev.events & EPOLLIN)
             {
-
                 demi_qtoken_t qt = -1;
 
                 if (queue_man_is_listen_fd(fd))
@@ -60,7 +80,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
                 {
                     assert(__demi_pop(&qt, fd) == 0);
                 }
-                
+
                 queue_man_link_fd_epfd(fd, epfd);
                 ev->qt = qt;
             }
@@ -126,39 +146,55 @@ static int __do_demi_epoll_ctl_mod(int epfd, int fd, struct epoll_event *event)
 
 static int __do_demi_epoll_ctl_del(int epfd, int fd)
 {
+    struct demi_event *ev, *prev, *next, *head, *tail;
     int ret = -1;
 
     TRACE("epfd=%d, fd=%d", epfd, fd);
 
     // Look for file descriptor
-    for (int i = 0; i < MAX_EVENTS; i++)
+    ev = epoll_get_head(epfd);
+    while (ev != NULL)
     {
-        struct demi_event *ev = epoll_get_event(epfd, i);
-
         // Found.
         if ((ev->used) && (ev->sockqd == fd))
         {
-            // Might now want to have this assert here. Maybe the
-            // qtoken is not -1 because a new push or pop got readded
-            // assert(ev->qt == (demi_qtoken_t)-1);
-            
-            // Might also not want to close the fd here in case
-            // the calling program still wants to use it or readd
-            // it at some point.
-            // ret = demi_close(fd);
-            
-            // Don't remove the fd
-            // queue_man_remove_fd(fd);
-            
+            // Not tail
+            next = epoll_get_next(epfd, ev);
+            if (next != NULL)
+                next->prev_ev = ev->prev_ev;
+
+            // Not head
+            prev = epoll_get_prev(epfd, ev);
+            if (prev != NULL)
+                prev->next_ev = ev->next_ev;
+
+            head = epoll_get_head(epfd);
+            tail = epoll_get_tail(epfd);
+            if (ev->id == head->id && ev->id == tail->id)
+            {
+                epoll_set_head(epfd, INVALID_EV);
+                epoll_set_tail(epfd, INVALID_EV);
+            }
+            else if (ev->id == head->id)
+            {
+                epoll_set_head(epfd, next->id);
+            }
+            else if (ev->id == tail->id)
+            {
+                epoll_set_tail(epfd, prev->id);
+            }
+
             queue_man_unlink_fd_epfd(fd);
-            memset(ev, 0, sizeof(struct demi_event));
             ev->used = 0;
             ev->sockqd = -1;
             ev->qt = (demi_qtoken_t)-1;
+            ev->next_ev = INVALID_EV;
+            ev->prev_ev = INVALID_EV;
 
-            TRACE("epfd=%d, fd=%d, ret=%d errno=%s", epfd, fd, ret, strerror(errno));
             return (0);
         }
+
+        ev = epoll_get_next(epfd, ev);
     }
 
     // Entry not found.

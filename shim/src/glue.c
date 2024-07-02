@@ -14,7 +14,6 @@
 #include "log.h"
 
 static struct hashset *__demi_reent_guards;
-static int __demi_reent_guard = 0;
 
 #define DEMI_CALL(type, fn, ...)                        \
     {                                                   \

@@ -51,13 +51,12 @@ int hashtable_insert(struct hashtable *h, int key, uint64_t val)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
-    const int mask = (length - 1);
 
     assert(h != NULL);
     assert(key != HASHTABLE_NULL);
     assert(val != (uint64_t)HASHTABLE_NULL);
 
-    hash = key & mask;
+    hash = key % length;
 
     do
     {
@@ -68,7 +67,7 @@ int hashtable_insert(struct hashtable *h, int key, uint64_t val)
             return (hash);
         }
 
-        hash = (hash + 1) & mask;
+        hash = (hash + 1);
     } while (++skip == length);
 
     PANIC("overflow h=%p, key=%d, val=%" PRIu64 "", (void *)h, key, val);
@@ -81,19 +80,18 @@ uint64_t hashtable_get(struct hashtable *h, int key)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
-    const int mask = (length - 1);
 
     assert(h != NULL);
     assert(key != HASHTABLE_NULL);
 
-    hash = key & mask;
+    hash = key % length;
 
     do
     {
         if (h->keys[hash] == key)
             return (h->values[hash]);
 
-        hash = (hash + 1) & mask;
+        hash = hash + 1;
     } while (++skip == length);
 
     return ((uint64_t)HASHTABLE_NULL);
@@ -104,12 +102,11 @@ void hashtable_remove(struct hashtable *h, int key)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
-    const int mask = (length - 1);
 
     assert(h != NULL);
     assert(key != HASHTABLE_NULL);
 
-    hash = key & mask;
+    hash = key % length;
 
     do
     {
@@ -120,7 +117,7 @@ void hashtable_remove(struct hashtable *h, int key)
             return;
         }
 
-        hash = (hash + 1) & mask;
+        hash = hash + 1;
     } while (++skip == length);
 
     PANIC("overflow h=%p, key=%d", (void *)h, key);
