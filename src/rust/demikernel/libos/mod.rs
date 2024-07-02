@@ -34,12 +34,14 @@ use crate::demikernel::libos::network::{
     NetworkLibOSWrapper,
 };
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::inetstack::SharedInetStack;
+use crate::inetstack::{
+    protocols::layer1::PhysicalLayer,
+    SharedInetStack,
+};
 #[cfg(feature = "profiler")]
 use crate::perftools::profiler::set_callback;
 use crate::{
     demikernel::config::Config,
-    inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
         limits,
