@@ -74,7 +74,10 @@ mod dpdk_config {
 #[cfg(feature = "catpowder-libos")]
 mod raw_socket_config {
     pub const SECTION_NAME: &str = "raw_socket";
+    #[cfg(target_os = "linux")]
     pub const LOCAL_INTERFACE_NAME: &str = "interface_name";
+    #[cfg(target_os = "windows")]
+    pub const LOCAL_INTERFACE_INDEX: &str = "interface_index";
 }
 
 //======================================================================================================================
@@ -282,7 +285,7 @@ impl Config {
         Ok(retries)
     }
 
-    #[cfg(feature = "catpowder-libos")]
+    #[cfg(all(feature = "catpowder-libos", target_os = "linux"))]
     /// Global config: Reads the "local interface name" parameter from the environment variable and then the underlying
     /// configuration file.
     pub fn local_interface_name(&self) -> Result<String, Fail> {
@@ -295,6 +298,18 @@ impl Config {
                 raw_socket_config::LOCAL_INTERFACE_NAME,
                 |val: &str| Some(val.to_string()),
             )
+        }
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    /// Global config: Reads the "local interface index" parameter from the environment variable and then the underlying
+    /// configuration file.
+    pub fn local_interface_index(&self) -> Result<u32, Fail> {
+        // Parse local MAC address.
+        if let Some(addr) = Self::get_typed_env_option(raw_socket_config::LOCAL_INTERFACE_INDEX)? {
+            Ok(addr)
+        } else {
+            Self::get_int_option(self.get_raw_socket_config()?, raw_socket_config::LOCAL_INTERFACE_INDEX)
         }
     }
 

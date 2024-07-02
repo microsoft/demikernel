@@ -17,6 +17,10 @@ INSTALL_PREFIX = $(USERPROFILE)
 LD_LIBRARY_PATH = $(USERPROFILE)/lib
 !endif
 
+!ifndef XDP_PATH
+XDP_PATH = $(USERPROFILE)\xdp
+!endif
+
 #=======================================================================================================================
 # Build Configuration
 #=======================================================================================================================
@@ -88,6 +92,11 @@ DRIVER = mlx5	# defaults to mlx5, set the DRIVER env var if you want to change t
 CARGO_FEATURES = $(CARGO_FEATURES) --features=$(DRIVER)
 !endif
 
+# Switch for XDP
+!if "$(LIBOS)" == "catpowder"
+CARGO_FEATURES = $(CARGO_FEATURES) --features=libxdp
+!endif
+
 # Switch for profiler.
 !if "$(PROFILER)" == "yes"
 CARGO_FEATURES = $(CARGO_FEATURES) --features=profiler
@@ -118,7 +127,9 @@ install:
 # Builds all libraries.
 all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
+	@echo "XDP_PATH: $(XDP_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	set XDP_PATH=$(XDP_PATH)
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 	IF NOT EXIST $(BINDIR) mkdir $(BINDIR)
 	$(RECURSIVE_COPY_FORCE_NO_PROMPT) $(DEMIKERNEL_DLL) $(BINDIR)

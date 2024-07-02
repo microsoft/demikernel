@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catpowder::runtime::RawSocketAddr,
+    catpowder::linux::RawSocketAddr,
     pal::data_structures::{
         SockAddr,
         SockAddrIn,
