@@ -5,44 +5,35 @@
 // Imports
 //======================================================================================================================
 
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use crate::catpowder::win::socket::XdpSocket;
+use ::std::mem;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-#[derive(Clone)]
-pub struct UmemReg {
-    mem: Rc<RefCell<xdp_rs::XSK_UMEM_REG>>,
-}
+/// A wrapper structure for a XDP redirect parameters.
+#[repr(C)]
+pub struct XdpRedirectParams(xdp_rs::XDP_REDIRECT_PARAMS);
 
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
 
-impl UmemReg {
-    pub fn new(count: u32, chunk_size: u32) -> Self {
-        let total_size: u64 = count as u64 * chunk_size as u64;
-        let mut buffer: Vec<u8> = Vec::<u8>::with_capacity(total_size as usize);
-
-        let mem: Rc<RefCell<xdp_rs::XSK_UMEM_REG>> = Rc::new(RefCell::new(xdp_rs::XSK_UMEM_REG {
-            TotalSize: total_size,
-            ChunkSize: chunk_size,
-            Headroom: 0,
-            Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
-        }));
-
-        Self { mem }
+impl XdpRedirectParams {
+    /// Creates a new XDP redirect parameters for the target socket.
+    pub fn new(socket: &XdpSocket) -> Self {
+        let redirect: xdp_rs::XDP_REDIRECT_PARAMS = {
+            let mut redirect: xdp_rs::_XDP_REDIRECT_PARAMS = unsafe { mem::zeroed() };
+            redirect.TargetType = xdp_rs::_XDP_REDIRECT_TARGET_TYPE_XDP_REDIRECT_TARGET_TYPE_XSK;
+            redirect.Target = socket.into_raw();
+            redirect
+        };
+        Self(redirect)
     }
 
-    pub fn as_ptr(&self) -> *mut xdp_rs::XSK_UMEM_REG {
-        self.mem.as_ptr()
-    }
-
-    pub fn get_address(&self) -> *mut core::ffi::c_void {
-        self.mem.borrow().Address
+    /// Gets a reference to the underlying XDP redirect parameters.
+    pub fn as_ref(&self) -> &xdp_rs::XDP_REDIRECT_PARAMS {
+        &self.0
     }
 }

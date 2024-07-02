@@ -5,10 +5,10 @@
 mod win;
 
 #[cfg(target_os = "windows")]
-pub use win::runtime::CatpowderRuntime;
+pub use win::runtime::SharedCatpowderRuntime;
 
 #[cfg(target_os = "linux")]
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub use linux::LinuxRuntime as CatpowderRuntime;
+pub use linux::LinuxRuntime as SharedCatpowderRuntime;

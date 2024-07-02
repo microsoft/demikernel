@@ -8,25 +8,27 @@
 use crate::{
     catpowder::win::{
         api::XdpApi,
-        rule::XdpRule,
+        ring::rule::rule::XdpRule,
     },
     runtime::fail::Fail,
 };
 use ::windows::{
-    core::HRESULT,
+    core::{
+        Error,
+        HRESULT,
+    },
     Win32::{
         Foundation,
         Foundation::HANDLE,
     },
 };
-use ::xdp_rs;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
+/// A wrapper structure for a XDP program.
 #[repr(C)]
-#[derive(Default)]
 pub struct XdpProgram(HANDLE);
 
 //======================================================================================================================
@@ -45,15 +47,24 @@ impl XdpProgram {
     ) -> Result<XdpProgram, Fail> {
         let rule: *const xdp_rs::XDP_RULE = rules.as_ptr() as *const xdp_rs::XDP_RULE;
         let rule_count: u32 = rules.len() as u32;
-        let mut program: XdpProgram = XdpProgram::default();
+        let mut handle: HANDLE = HANDLE::default();
 
         // Attempt to create the XDP program.
-        if let Some(create_program) = api.endpoint().XdpCreateProgram {
-            let result: HRESULT =
-                unsafe { create_program(ifindex, hookid, queueid, flags, rule, rule_count, program.as_ptr()) };
-            let error: windows::core::Error = windows::core::Error::from_hresult(result);
+        if let Some(create_program) = api.get().XdpCreateProgram {
+            let result: HRESULT = unsafe {
+                create_program(
+                    ifindex,
+                    hookid,
+                    queueid,
+                    flags,
+                    rule,
+                    rule_count,
+                    &mut handle as *mut HANDLE,
+                )
+            };
+            let error: Error = Error::from_hresult(result);
             match error.code().is_ok() {
-                true => Ok(program),
+                true => Ok(Self(handle)),
                 false => Err(Fail::from(&error)),
             }
         } else {
@@ -61,11 +72,6 @@ impl XdpProgram {
             error!("new(): {:?}", &cause);
             Err(Fail::new(libc::ENOSYS, &cause))
         }
-    }
-
-    /// Casts the target XDP program to a raw pointer.
-    pub fn as_ptr(&mut self) -> *mut HANDLE {
-        &mut self.0 as *mut HANDLE
     }
 }
 
@@ -75,6 +81,8 @@ impl XdpProgram {
 
 impl Drop for XdpProgram {
     fn drop(&mut self) {
-        let _ = unsafe { Foundation::CloseHandle(self.0) };
+        if let Err(_) = unsafe { Foundation::CloseHandle(self.0) } {
+            error!("drop(): Failed to close xdp program handle");
+        }
     }
 }

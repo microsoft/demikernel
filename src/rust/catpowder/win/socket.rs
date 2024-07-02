@@ -5,41 +5,44 @@
 // Imports
 //======================================================================================================================
 
-use super::api::XdpApi;
-use crate::runtime::fail::Fail;
+use crate::{
+    catpowder::win::api::XdpApi,
+    runtime::fail::Fail,
+};
 use ::windows::{
     core::{
         Error,
         HRESULT,
     },
-    Win32::Foundation::HANDLE,
+    Win32::{
+        Foundation,
+        Foundation::HANDLE,
+    },
 };
-use ::xdp_rs;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
 /// A XDP socket.
-pub struct XdpSocket {
-    pub socket: HANDLE,
-}
+#[repr(C)]
+pub struct XdpSocket(HANDLE);
 
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
 
-/// Associated functions for XDP sockets.
 impl XdpSocket {
+    /// Creates a XDP socket.
     pub fn create(api: &mut XdpApi) -> Result<Self, Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         let mut socket: HANDLE = HANDLE::default();
         if let Some(create) = api.XskCreate {
             let result: HRESULT = unsafe { create(&mut socket) };
             let error: windows::core::Error = Error::from_hresult(result);
             match error.code().is_ok() {
-                true => Ok(Self { socket }),
+                true => Ok(Self(socket)),
                 false => Err(Fail::from(&error)),
             }
         } else {
@@ -49,11 +52,12 @@ impl XdpSocket {
         }
     }
 
+    /// Binds the target socket to a network interface and queue.
     pub fn bind(&self, api: &mut XdpApi, ifindex: u32, queueid: u32, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         if let Some(bind) = api.XskBind {
-            let result: HRESULT = unsafe { bind(self.socket, ifindex, queueid, flags) };
+            let result: HRESULT = unsafe { bind(self.0, ifindex, queueid, flags) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -69,6 +73,7 @@ impl XdpSocket {
         }
     }
 
+    /// Set options in the target socket.
     pub fn setsockopt(
         &mut self,
         api: &mut XdpApi,
@@ -76,10 +81,10 @@ impl XdpSocket {
         val: *const std::ffi::c_void,
         len: u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         if let Some(setsocket) = api.XskSetSockopt {
-            let result: HRESULT = unsafe { setsocket(self.socket, opt, val, len) };
+            let result: HRESULT = unsafe { setsocket(self.0, opt, val, len) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -92,6 +97,7 @@ impl XdpSocket {
         }
     }
 
+    /// Get options from the target socket.
     pub fn getsockopt(
         &self,
         api: &mut XdpApi,
@@ -99,10 +105,10 @@ impl XdpSocket {
         val: *mut std::ffi::c_void,
         len: *mut u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         if let Some(getsockopt) = api.XskGetSockopt {
-            let result: HRESULT = unsafe { getsockopt(self.socket, opt, val, len) };
+            let result: HRESULT = unsafe { getsockopt(self.0, opt, val, len) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -115,11 +121,12 @@ impl XdpSocket {
         }
     }
 
+    /// Activate the target socket.
     pub fn activate(&self, api: &mut XdpApi, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         if let Some(activate) = api.XskActivate {
-            let result: HRESULT = unsafe { activate(self.socket, flags) };
+            let result: HRESULT = unsafe { activate(self.0, flags) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -132,17 +139,18 @@ impl XdpSocket {
         }
     }
 
-    pub fn notify_socket(
+    /// Notifies the target socket about something.
+    pub fn notify(
         &self,
         api: &mut XdpApi,
         flags: xdp_rs::XSK_NOTIFY_FLAGS,
         timeout: u32,
         result: *mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.endpoint();
+        let api: xdp_rs::XDP_API_TABLE = api.get();
 
         if let Some(notify) = api.XskNotifySocket {
-            let result: HRESULT = unsafe { notify(self.socket, flags, timeout, result) };
+            let result: HRESULT = unsafe { notify(self.0, flags, timeout, result) };
             let error: windows::core::Error = windows::core::Error::from_hresult(result);
             match error.code().is_ok() {
                 true => Ok(()),
@@ -154,39 +162,21 @@ impl XdpSocket {
             Err(Fail::new(libc::ENOSYS, &cause))
         }
     }
+
+    /// Converts the target socket into a raw handle.
+    pub fn into_raw(&self) -> HANDLE {
+        self.0
+    }
 }
 
-pub struct XdpRing {
-    ring: xdp_rs::XSK_RING,
-}
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
 
-impl XdpRing {
-    pub fn ring_initialize(info: &xdp_rs::XSK_RING_INFO) -> Self {
-        let ring = unsafe {
-            let mut ring: xdp_rs::XSK_RING = std::mem::zeroed();
-            xdp_rs::_XskRingInitialize(&mut ring, info);
-            ring
-        };
-        Self { ring }
-    }
-
-    pub fn ring_consumer_reserve(&mut self, count: u32, idx: *mut u32) -> u32 {
-        unsafe { xdp_rs::_XskRingConsumerReserve(&mut self.ring, count, idx) }
-    }
-
-    pub fn ring_consumer_release(&mut self, count: u32) {
-        unsafe { xdp_rs::_XskRingConsumerRelease(&mut self.ring, count) }
-    }
-
-    pub fn ring_producer_reserve(&mut self, count: u32, idx: *mut u32) -> u32 {
-        unsafe { xdp_rs::_XskRingProducerReserve(&mut self.ring, count, idx) }
-    }
-
-    pub fn ring_producer_submit(&mut self, count: u32) {
-        unsafe { xdp_rs::_XskRingProducerSubmit(&mut self.ring, count) }
-    }
-
-    pub fn ring_get_element(&self, idx: u32) -> *mut std::ffi::c_void {
-        unsafe { xdp_rs::_XskRingGetElement(&self.ring, idx) }
+impl Drop for XdpSocket {
+    fn drop(&mut self) {
+        if let Err(_) = unsafe { Foundation::CloseHandle(self.0) } {
+            error!("drop(): failed to close socket");
+        }
     }
 }
