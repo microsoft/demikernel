@@ -14,7 +14,7 @@ use self::memory::{
 use crate::{
     demikernel::config::Config,
     expect_some,
-    inetstack::protocols::ethernet2::MIN_PAYLOAD_SIZE,
+    inetstack::protocols::layer2::MIN_PAYLOAD_SIZE,
     runtime::{
         fail::Fail,
         libdpdk::{

@@ -8,9 +8,9 @@
 use crate::{
     catnip::runtime::memory::mempool::MemoryPool,
     inetstack::protocols::{
-        ethernet2::ETHERNET2_HEADER_SIZE,
-        ipv4::IPV4_HEADER_MAX_SIZE,
-        tcp::MAX_TCP_HEADER_SIZE,
+        layer2::ETHERNET2_HEADER_SIZE,
+        layer3::ipv4::IPV4_HEADER_MAX_SIZE,
+        layer4::tcp::MAX_TCP_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
