@@ -17,7 +17,6 @@
 int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
     int nevents = 0;
-    struct demi_event *ev;
 
     // Check if epoll descriptor is managed by Demikernel.
     if (epfd < EPOLL_MAX_FDS)
@@ -52,7 +51,7 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
     struct timespec abstime = {timeout / 1000, timeout * 1000 * 1000};
 
     // Traverse events
-    ev = epoll_get_head(demikernel_epfd);
+    struct demi_event *ev = epoll_get_head(demikernel_epfd);
     while (ev != NULL)
     {
         if ((ev->used) && (ev->qt != (demi_qtoken_t)-1))

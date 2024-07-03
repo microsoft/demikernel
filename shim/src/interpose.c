@@ -54,7 +54,7 @@
 
 #define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)           \
     {                                                         \
-        init_libc();                                          \
+        preinit();                                          \
                                                               \
         bool reentrant = is_reentrant_demi_call();            \
                                                               \
@@ -95,19 +95,20 @@ static int (*libc_epoll_create1)(int) = NULL;
 static int (*libc_epoll_ctl)(int, int, int, struct epoll_event *) = NULL;
 static int (*libc_epoll_wait)(int, struct epoll_event *, int, int) = NULL;
 
-static volatile uint8_t initialized_libc = 0;
-static volatile uint8_t in_init_libc = 0;
+static volatile uint8_t intialized_preinit = 0;
+static volatile uint8_t in_preinit = 0;
 
 static volatile uint8_t initialized = 0;
 static volatile uint8_t in_init = 0;
 
-static inline void init_libc(void)
+static inline void preinit(void)
 {
-    if (initialized_libc == 0)
+    if (intialized_preinit == 0)
     {
 
-        if (__sync_fetch_and_add(&in_init_libc, 1) == 0)
+        if (__sync_fetch_and_add(&in_preinit, 1) == 0)
         {
+            // Initialize libc functions
             assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
             assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
             assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
@@ -138,14 +139,16 @@ static inline void init_libc(void)
             assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
             assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
 
+            // Initialize this here so that we can use the reentrancy guard
             init_reent_guards();
-            __sync_fetch_and_sub(&in_init_libc, 1);
+
+            __sync_fetch_and_sub(&in_preinit, 1);
             MEM_BARRIER();
-            initialized_libc = 1;
+            intialized_preinit = 1;
         }
         else
         {
-            while (initialized_libc == 0)
+            while (intialized_preinit == 0)
             {
                 sched_yield();
             }
@@ -202,10 +205,10 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 static int vfcntl(int sockfd, int cmd, va_list val)
 {
     int ret = -1;
-    
-    if (!initialized_libc)
-        init_libc();
-    
+
+    if (!intialized_preinit)
+        preinit();
+
     bool reentrant = is_reentrant_demi_call();
 
     // Variadic functions cannot be easily interposed.
@@ -412,9 +415,9 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    if (!initialized_libc)
-        init_libc();
-    
+    if (!intialized_preinit)
+        preinit();
+
     bool reentrant = is_reentrant_demi_call();
 
     if ((!initialized) || (reentrant))
@@ -449,8 +452,8 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    if (!initialized_libc)
-        init_libc();
+    if (!intialized_preinit)
+        preinit();
 
     bool reentrant = is_reentrant_demi_call();
 
@@ -493,8 +496,8 @@ int socket(int domain, int type, int protocol)
 
 int epoll_create(int size)
 {
-    if (!initialized_libc)
-        init_libc();
+    if (!intialized_preinit)
+        preinit();
 
     bool reentrant = is_reentrant_demi_call();
 

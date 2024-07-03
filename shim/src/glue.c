@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-#define __GNU_SOURCE
+#define _GNU_SOURCE
 #include <demi/libos.h>
 #include <demi/sga.h>
 #include <demi/wait.h>
@@ -17,7 +17,7 @@ static struct hashset *__demi_reent_guards;
 
 #define DEMI_CALL(type, fn, ...)                        \
     {                                                   \
-        pid_t tid = getpid();                           \
+        pid_t tid = gettid();                           \
         hashset_insert(__demi_reent_guards, tid);       \
         type ret = fn(__VA_ARGS__);                     \
         hashset_remove(__demi_reent_guards, tid);       \
@@ -26,7 +26,7 @@ static struct hashset *__demi_reent_guards;
 
 int is_reentrant_demi_call()
 {
-    pid_t tid = getpid();
+    pid_t tid = gettid();
     return hashset_contains(__demi_reent_guards, tid);
 }
 

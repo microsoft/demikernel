@@ -2,10 +2,7 @@
 // Licensed under the MIT license.
 
 #include "../epoll.h"
-#include "../log.h"
 #include <assert.h>
-
-#include <stdio.h>
 
 struct epoll_table
 {
@@ -36,11 +33,18 @@ void epoll_table_init(void)
     for (int i = 0; i < EPOLL_MAX_FDS; i++)
     {
         epoll_table[i].used = 0;
-        epoll_table[i].head = INVALID_EV;
-        epoll_table[i].tail = INVALID_EV;
+        epoll_table[i].head = 0;
+        epoll_table[i].tail = 0;
         for (int j = 0; j < MAX_EVENTS; j++)
         {
-            epoll_table[i].events[j].used = 0;
+            /* We use an empty element in the start of the list, to
+               make the checks for insertion and deletion simpler, thus
+               mark the first element as being used. */
+            if (j == 0)
+                epoll_table[i].events[j].used = 1;
+            else
+                epoll_table[i].events[j].used = 0;
+
             epoll_table[i].events[j].id = j;
             epoll_table[i].events[j].next_ev = INVALID_EV;
             epoll_table[i].events[j].prev_ev = INVALID_EV;
@@ -90,24 +94,20 @@ void epoll_set_tail(int epfd, int i)
 
 struct demi_event *epoll_get_next(int epfd, struct demi_event *ev)
 {
-    int i;
-
     if (ev == NULL || ev->next_ev == INVALID_EV)
         return NULL;
 
-    i = ev->next_ev;
+    int i = ev->next_ev;
 
     return (epoll_get_event(epfd, i));
 }
 
 struct demi_event *epoll_get_prev(int epfd, struct demi_event *ev)
 {
-    int i;
-
     if (ev == NULL || ev->prev_ev == INVALID_EV)
         return NULL;
 
-    i = ev->prev_ev;
+    int i = ev->prev_ev;
 
     return (epoll_get_event(epfd, i));
 }

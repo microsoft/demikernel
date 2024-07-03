@@ -41,11 +41,12 @@ int hashset_insert(struct hashset *h, int val)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
+    const int mask = (length - 1);
 
     assert(h != NULL);
     assert(val != HASHSET_NULL);
 
-    hash = ((int)val) % length;
+    hash = ((int)val) & mask;
 
     do
     {
@@ -55,7 +56,7 @@ int hashset_insert(struct hashset *h, int val)
             return (hash);
         }
 
-        hash = (hash + 1);
+        hash = (hash + 1) & mask;
     } while (++skip == length);
 
     PANIC("overflow h=%p, val=%d", (void *)h, val);
@@ -68,18 +69,19 @@ int hashset_contains(struct hashset *h, int val)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
+    const int mask = (length - 1);
 
     assert(val != HASHSET_NULL);
     assert(h != NULL);
 
-    hash = ((int)val) % length;
+    hash = ((int)val) & mask;
 
     do
     {
         if (h->table[hash] == val)
             return (1);
 
-        hash = (hash + 1);
+        hash = (hash + 1) & mask;
     } while (++skip == length);
 
     return (0);
@@ -90,11 +92,12 @@ void hashset_remove(struct hashset *h, int val)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
+    const int mask = (length - 1);
 
     assert(h != NULL);
     assert(val != HASHSET_NULL);
 
-    hash = ((int)val) % length;
+    hash = ((int)val) & mask;
 
     do
     {
@@ -104,6 +107,6 @@ void hashset_remove(struct hashset *h, int val)
             return;
         }
 
-        hash = (hash + 1);
+        hash = (hash + 1) & mask;
     } while (++skip == length);
 }

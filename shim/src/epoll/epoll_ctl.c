@@ -16,9 +16,6 @@
 
 static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
 {
-    int i;
-    struct demi_event *ev, *tail, *head;
-
     uint32_t event_mask = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLERR | EPOLLHUP | EPOLLET | EPOLLONESHOT;
     TRACE("epfd=%d, fd=%d, event=%p", epfd, fd, (void *)event);
 
@@ -41,7 +38,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
     for (int i = 0; i < MAX_EVENTS; i++)
     {
         // Found.
-        ev = epoll_get_event(epfd, i);
+        struct demi_event *ev = epoll_get_event(epfd, i);
         if (ev->used == 0)
         {
             memcpy(&ev->ev, event, sizeof(struct epoll_event));
@@ -51,21 +48,10 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
             ev->next_ev = INVALID_EV;
             ev->prev_ev = INVALID_EV;
 
-            head = epoll_get_head(epfd);
-            tail = epoll_get_tail(epfd);
-
-            if (head == NULL)
-            {
-                assert(tail == NULL);
-                epoll_set_head(epfd, ev->id);
-                epoll_set_tail(epfd, ev->id);
-            }
-            else
-            {
-                ev->prev_ev = tail->id;
-                tail->next_ev = ev->id;
-                epoll_set_tail(epfd, ev->id);
-            }
+            struct demi_event *tail = epoll_get_tail(epfd);
+            ev->prev_ev = tail->id;
+            tail->next_ev = ev->id;
+            epoll_set_tail(epfd, ev->id);
 
             // Check if read was requested.
             if (ev->ev.events & EPOLLIN)
@@ -158,31 +144,14 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
         // Found.
         if ((ev->used) && (ev->sockqd == fd))
         {
-            // Not tail
-            next = epoll_get_next(epfd, ev);
-            if (next != NULL)
-                next->prev_ev = ev->prev_ev;
-
-            // Not head
             prev = epoll_get_prev(epfd, ev);
-            if (prev != NULL)
-                prev->next_ev = ev->next_ev;
+            prev->next_ev = ev->next_ev;
 
-            head = epoll_get_head(epfd);
-            tail = epoll_get_tail(epfd);
-            if (ev->id == head->id && ev->id == tail->id)
-            {
-                epoll_set_head(epfd, INVALID_EV);
-                epoll_set_tail(epfd, INVALID_EV);
-            }
-            else if (ev->id == head->id)
-            {
-                epoll_set_head(epfd, next->id);
-            }
-            else if (ev->id == tail->id)
-            {
+            next = epoll_get_next(epfd, ev);
+            if (next == NULL)
                 epoll_set_tail(epfd, prev->id);
-            }
+            else
+                next->prev_ev = ev->prev_ev;
 
             queue_man_unlink_fd_epfd(fd);
             ev->used = 0;

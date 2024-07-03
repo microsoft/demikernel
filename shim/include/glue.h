@@ -70,8 +70,6 @@ extern int __epoll_create(int size);
 extern int __epoll_create1(int flags);
 extern int __epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
 extern int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout);
-extern void print_table(void);
-
 
 //======================================================================================================================
 
