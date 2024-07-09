@@ -22,7 +22,7 @@ use self::name::LibOSName;
 #[cfg(feature = "catnip-libos")]
 use crate::catnip::runtime::SharedDPDKRuntime;
 #[cfg(feature = "catpowder-libos")]
-use crate::catpowder::runtime::LinuxRuntime;
+use crate::catpowder::SharedCatpowderRuntime;
 #[cfg(any(
     feature = "catnap-libos",
     feature = "catnip-libos",
@@ -142,12 +142,12 @@ impl LibOS {
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
-                let transport: LinuxRuntime = LinuxRuntime::new(&config)?;
+                let transport: SharedCatpowderRuntime = SharedCatpowderRuntime::new(&config)?;
                 // This is our transport for Catpowder.
-                let inetstack: SharedInetStack<LinuxRuntime> =
-                    SharedInetStack::<LinuxRuntime>::new(&config, runtime.clone(), transport).unwrap();
+                let inetstack: SharedInetStack<SharedCatpowderRuntime> =
+                    SharedInetStack::<SharedCatpowderRuntime>::new(&config, runtime.clone(), transport).unwrap();
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
-                    SharedInetStack<LinuxRuntime>,
+                    SharedInetStack<SharedCatpowderRuntime>,
                 >::new(
                     config.local_ipv4_addr()?,
                     runtime.clone(),

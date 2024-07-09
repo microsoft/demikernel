@@ -315,7 +315,7 @@ def main():
     mkdir(log_directory)
 
     # Check if (platform, libos) combination is invalid.
-    if platform == "windows" and libos not in ["catnap"]:
+    if platform == "windows" and libos not in ["catnap", "catpowder"]:
         print("Invalid (platform, libos) combination.")
         sys.exit(-1)
 
