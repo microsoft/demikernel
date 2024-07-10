@@ -7,7 +7,7 @@
 //!
 //! - https://datatracker.ietf.org/doc/html/rfc768.
 
-mod datagram;
+pub mod datagram;
 pub mod peer;
 pub mod socket;
 

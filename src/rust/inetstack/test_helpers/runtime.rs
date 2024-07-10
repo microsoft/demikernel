@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 use crate::{
+    demi_sgarray_t,
+    demi_sgaseg_t,
     demikernel::config::Config,
+    inetstack::protocols::MAX_HEADER_SIZE,
     runtime::{
         fail::Fail,
         logging,
@@ -24,8 +27,10 @@ use crate::{
     },
 };
 use ::arrayvec::ArrayVec;
+use ::libc::c_void;
 use ::std::{
     collections::VecDeque,
+    mem,
     ops::{
         Deref,
         DerefMut,
@@ -104,11 +109,15 @@ impl NetworkRuntime for SharedTestRuntime {
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
         assert!(header_size + body_size < u16::MAX as usize);
 
-        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
+        let mut buf: DemiBuffer = if let Some(body) = pkt.take_body() {
+            body
+        } else {
+            DemiBuffer::new_with_headroom(0, header_size as u16)
+        };
+        // TODO: Remove this once we return a value.
+        buf.prepend(header_size).expect("insufficient headroom");
         pkt.write_header(&mut buf[..header_size]);
-        if let Some(body) = pkt.take_body() {
-            buf[header_size..].copy_from_slice(&body[..]);
-        }
+
         self.outgoing.push_back(buf);
     }
 
@@ -139,4 +148,39 @@ impl DerefMut for SharedTestRuntime {
     }
 }
 
-impl MemoryRuntime for SharedTestRuntime {}
+impl MemoryRuntime for SharedTestRuntime {
+    /// Allocates a scatter-gather array.
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
+
+        // We can't allocate a zero-sized buffer.
+        if size == 0 {
+            let cause: String = format!("cannot allocate a zero-sized buffer");
+            error!("sgaalloc(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // We can't allocate more than a single buffer.
+        if size > u16::MAX as usize {
+            return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
+        }
+
+        // First allocate the underlying DemiBuffer.
+        let buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
+
+        // Create a scatter-gather segment to expose the DemiBuffer to the user.
+        let data: *const u8 = buf.as_ptr();
+        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
+            sgaseg_buf: data as *mut c_void,
+            sgaseg_len: size as u32,
+        };
+
+        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
+        Ok(demi_sgarray_t {
+            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
+            sga_numsegs: 1,
+            sga_segs: [sga_seg],
+            sga_addr: unsafe { mem::zeroed() },
+        })
+    }
+}

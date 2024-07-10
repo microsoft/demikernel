@@ -9,6 +9,7 @@ use crate::{
     inetstack::protocols::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -104,7 +105,7 @@ impl UdpHeader {
     /// Parses a buffer into a UDP header.
     pub fn parse(ipv4_hdr: &Ipv4Header, buf: DemiBuffer, checksum_offload: bool) -> Result<(Self, DemiBuffer), Fail> {
         match Self::parse_from_slice(ipv4_hdr, &buf[..], checksum_offload) {
-            Ok((udp_hdr, bytes)) => Ok((udp_hdr, DemiBuffer::from_slice(bytes)?)),
+            Ok((udp_hdr, bytes)) => Ok((udp_hdr, DemiBuffer::from_slice_with_headroom(bytes, MAX_HEADER_SIZE)?)),
             Err(e) => Err(e),
         }
     }

@@ -629,6 +629,13 @@ impl DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
+                let metadata: &mut MetaData = self.as_metadata();
+                trace!(
+                    "meta data space: {:?}, {:?}, {:?}",
+                    metadata.buf_addr,
+                    metadata.data_off,
+                    metadata.data_len
+                );
                 let mbuf: *mut rte_mbuf = unsafe {
                     // Safety: rte_pktmbuf_prepend does both sanity and headroom space checks.
                     rte_pktmbuf_prepend(self.as_mbuf(), nbytes as u16) as *mut rte_mbuf
@@ -637,6 +644,12 @@ impl DemiBuffer {
                 if mbuf.is_null() {
                     return Err(Fail::new(libc::EINVAL, "tried to prepend more bytes than are allowed"));
                 }
+                trace!(
+                    "meta data space: {:?}, {:?}, {:?}",
+                    metadata.buf_addr,
+                    metadata.data_off,
+                    metadata.data_len
+                );
             },
         }
         Ok(())

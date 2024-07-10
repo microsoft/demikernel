@@ -2,11 +2,18 @@
 // // Licensed under the MIT license.
 
 use crate::{
-    inetstack::test_helpers::{
-        self,
-        engine::{
-            SharedEngine,
-            DEFAULT_TIMEOUT,
+    inetstack::{
+        protocols::{
+            ethernet2::ETHERNET2_HEADER_SIZE,
+            ipv4::IPV4_HEADER_MAX_SIZE,
+            udp::datagram::UDP_HEADER_SIZE,
+        },
+        test_helpers::{
+            self,
+            engine::{
+                SharedEngine,
+                DEFAULT_TIMEOUT,
+            },
         },
     },
     runtime::{
@@ -33,6 +40,8 @@ use ::std::{
         Instant,
     },
 };
+
+const HEADER_SIZE: usize = UDP_HEADER_SIZE + IPV4_HEADER_MAX_SIZE as usize + ETHERNET2_HEADER_SIZE;
 
 //==============================================================================
 // Bind & Close
@@ -94,7 +103,8 @@ fn udp_push_pop() -> Result<()> {
     carrie.udp_bind(carrie_fd, carrie_addr)?;
 
     // Send data to Carrie.
-    let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
     match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
@@ -144,7 +154,8 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     carrie.udp_bind(carrie_fd, SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, carrie_port))?;
 
     // Send data to Carrie.
-    let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     let qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
     match bob.wait(qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
@@ -193,7 +204,8 @@ fn udp_ping_pong() -> Result<()> {
     carrie.udp_bind(carrie_fd, carrie_addr)?;
 
     // Send data to Carrie.
-    let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf_a: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf_a.clone(), carrie_addr)?;
     match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
@@ -217,7 +229,8 @@ fn udp_ping_pong() -> Result<()> {
     now += Duration::from_micros(1);
 
     // Send data to Bob.
-    let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf_b: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     let carrie_qt2: QToken = carrie.udp_pushto(carrie_fd, buf_b.clone(), bob_addr)?;
     match carrie.wait(carrie_qt2, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
@@ -325,7 +338,8 @@ fn udp_loop2_push_pop() -> Result<()> {
     // Loop.
     for b in 0..1000 {
         // Send data to Carrie.
-        let buf: DemiBuffer = DemiBuffer::from_slice(&vec![(b % 256) as u8; 32][..]).expect("slice should fit");
+        let buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![(b % 256) as u8; 32][..], HEADER_SIZE)
+            .expect("slice should fit");
         let bob_qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
         match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
@@ -389,7 +403,8 @@ fn udp_loop2_ping_pong() -> Result<()> {
     // Loop.
     for _ in 0..1000 {
         // Send data to Carrie.
-        let buf_a: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+        let buf_a: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE)
+            .expect("slice should fit in DemiBuffer");
         let bob_qt: QToken = bob.udp_pushto(bob_fd, buf_a.clone(), carrie_addr)?;
         match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
@@ -413,7 +428,8 @@ fn udp_loop2_ping_pong() -> Result<()> {
         now += Duration::from_micros(1);
 
         // Send data to Bob.
-        let buf_b: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+        let buf_b: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE)
+            .expect("slice should fit in DemiBuffer");
         let carrie_qt: QToken = carrie.udp_pushto(carrie_fd, buf_b.clone(), bob_addr)?;
         match carrie.wait(carrie_qt, DEFAULT_TIMEOUT)? {
             (_, OperationResult::Push) => {},
@@ -540,7 +556,8 @@ fn udp_pop_not_bound() -> Result<()> {
     // Carrie does not create a socket.
 
     // Send data to Carrie.
-    let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf, carrie_addr)?;
     match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Push) => {},
@@ -584,7 +601,8 @@ fn udp_push_bad_file_descriptor() -> Result<()> {
     carrie.udp_bind(carrie_fd, carrie_addr)?;
 
     // Send data to Carrie.
-    let buf: DemiBuffer = DemiBuffer::from_slice(&vec![0x5a; 32][..]).expect("slice should fit in DemiBuffer");
+    let buf: DemiBuffer =
+        DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], HEADER_SIZE).expect("slice should fit in DemiBuffer");
     match bob.udp_pushto(QDesc::try_from(u32::MAX)?, buf.clone(), carrie_addr) {
         Err(e) if e.errno == EBADF => {},
         _ => anyhow::bail!("pushto should have failed"),
