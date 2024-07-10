@@ -41,6 +41,7 @@ use crate::{
             },
             SeqNumber,
         },
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -1132,7 +1133,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     /// Send a fin by pushing a zero-length DemiBuffer to the sender function.
     fn send_fin(&mut self) {
         // Construct FIN.
-        let fin_buf: DemiBuffer = DemiBuffer::new(0);
+        // TODO: Remove this allocation.
+        let fin_buf: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
         // Send.
         if let Err(e) = self.send(fin_buf) {
             warn!("send_fin(): failed to send fin ({:?})", e);

@@ -11,6 +11,7 @@ use crate::{
         ethernet2::ETHERNET2_HEADER_SIZE,
         ipv4::IPV4_HEADER_MAX_SIZE,
         tcp::MAX_TCP_HEADER_SIZE,
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -121,13 +122,6 @@ impl MemoryManager {
         Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
-    /// Allocates a body mbuf.
-    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_body_mbuf(&self) -> Result<DemiBuffer, Fail> {
-        let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(None)?;
-        Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
-    }
-
     /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
@@ -151,8 +145,9 @@ impl MemoryManager {
             // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
             unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
         } else {
-            // Allocate a heap-managed buffer.
-            DemiBuffer::new(size as u16)
+            // Allocate a heap-managed buffer. We need some headspace here as DPDK has not automatically allocated it
+            // for us.
+            DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16)
         };
 
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
