@@ -24,6 +24,7 @@ use crate::{
                 UdpDatagram,
                 UdpHeader,
             },
+            MAX_HEADER_SIZE,
         },
         test_helpers::{
             self,
@@ -1088,7 +1089,7 @@ impl Simulation {
     /// Cooks a buffer.
     fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
         assert!(size < u16::MAX as usize);
-        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
+        let mut buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
         for i in 0..size {
             buf[i] = stamp.unwrap_or(i as u8);
         }
