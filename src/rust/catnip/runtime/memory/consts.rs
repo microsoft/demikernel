@@ -14,12 +14,6 @@ use crate::runtime::libdpdk::{
 // Constants
 //==============================================================================
 
-/// Default size for inline body buffers.
-pub const DEFAULT_INLINE_BODY_SIZE: usize = 1024;
-
-/// Default number of buffers in the header pool.
-pub const DEFAULT_HEADER_POOL_SIZE: usize = 8192 - 1;
-
 /// Default number of buffers in the body pool.
 pub const DEFAULT_BODY_POOL_SIZE: usize = 8192 - 1;
 
