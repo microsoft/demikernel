@@ -166,7 +166,7 @@ def __create_flame_graph(libos, commit_id, perf_df) -> None:
         'flamegraph_input.txt', index=False, sep=' ', header=False)
 
     # Render flame graph
-    subprocess.run(['/home/runner/FlameGraph/flamegraph.pl', 'flamegraph_input.txt',
+    subprocess.run(['/tmp/FlameGraph/flamegraph.pl', 'flamegraph_input.txt',
                     '--countname', 'percent_time',
                     '--title', "libos = " + libos,
                     '--subtitle', "commit id = " + commit_id],

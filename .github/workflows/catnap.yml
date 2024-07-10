@@ -194,7 +194,7 @@ jobs:
         path: ./release_pipeline_logs
     - name: Setup FlameGraph Repository
       run: |
-        git clone https://github.com/brendangregg/FlameGraph.git ~/FlameGraph
+        git clone https://github.com/brendangregg/FlameGraph.git /tmp/FlameGraph
     - name: Parse Statistics
       id: parse-stats
       run: |
