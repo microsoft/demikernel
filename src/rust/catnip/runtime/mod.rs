@@ -7,10 +7,7 @@ pub mod memory;
 // Imports
 //======================================================================================================================
 
-use self::memory::{
-    consts::DEFAULT_MAX_BODY_SIZE,
-    MemoryManager,
-};
+use self::memory::MemoryManager;
 use crate::{
     demikernel::config::Config,
     expect_some,
@@ -68,6 +65,7 @@ use crate::{
 };
 use ::arrayvec::ArrayVec;
 use ::std::mem;
+use memory::consts::DEFAULT_MAX_BODY_SIZE;
 
 use ::std::{
     ffi::CString,
@@ -406,7 +404,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
             // If this is a data-carrying packet.
             Some(body) if body.is_dpdk_allocated() => body,
             body => {
-                let mut mbuf: DemiBuffer = self.mm.alloc_header_mbuf().expect("should be able to allocate mbuf");
+                let mut mbuf: DemiBuffer = self.mm.alloc_mbuf().expect("should be able to allocate mbuf");
 
                 // Move the data.
                 match body {
