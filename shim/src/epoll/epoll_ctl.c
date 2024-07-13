@@ -132,22 +132,21 @@ static int __do_demi_epoll_ctl_mod(int epfd, int fd, struct epoll_event *event)
 
 static int __do_demi_epoll_ctl_del(int epfd, int fd)
 {
-    struct demi_event *ev, *prev, *next, *head, *tail;
     int ret = -1;
 
     TRACE("epfd=%d, fd=%d", epfd, fd);
 
     // Look for file descriptor
-    ev = epoll_get_head(epfd);
+    struct demi_event *ev = epoll_get_head(epfd);
     while (ev != NULL)
     {
         // Found.
         if ((ev->used) && (ev->sockqd == fd))
         {
-            prev = epoll_get_prev(epfd, ev);
+            struct demi_event *prev = epoll_get_prev(epfd, ev);
             prev->next_ev = ev->next_ev;
 
-            next = epoll_get_next(epfd, ev);
+            struct demi_event *next = epoll_get_next(epfd, ev);
             if (next == NULL)
                 epoll_set_tail(epfd, prev->id);
             else

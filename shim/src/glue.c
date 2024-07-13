@@ -5,7 +5,6 @@
 #include <demi/sga.h>
 #include <demi/wait.h>
 
-#include <string.h>
 #include <unistd.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -14,6 +13,8 @@
 #include "log.h"
 
 static struct hashset *__demi_reent_guards;
+
+#define MAX_THREADS_LOG2 10
 
 #define DEMI_CALL(type, fn, ...)                        \
     {                                                   \
@@ -31,7 +32,7 @@ int is_reentrant_demi_call()
 }
 
 void init_reent_guards() {
-    __demi_reent_guards = hashset_create(10);
+    __demi_reent_guards = hashset_create(MAX_THREADS_LOG2);
     assert(__demi_reent_guards != NULL);
 }
 
