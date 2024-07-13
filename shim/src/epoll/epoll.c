@@ -40,10 +40,7 @@ void epoll_table_init(void)
             /* We use an empty element in the start of the list, to
                make the checks for insertion and deletion simpler, thus
                mark the first element as being used. */
-            if (j == 0)
-                epoll_table[i].events[j].used = 1;
-            else
-                epoll_table[i].events[j].used = 0;
+            epoll_table[i].events[j].used = j == 0? 1 : 0;
 
             epoll_table[i].events[j].id = j;
             epoll_table[i].events[j].next_ev = INVALID_EV;
