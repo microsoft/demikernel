@@ -31,6 +31,10 @@
 #else
 #define ATTR_NONNULL(...)
 #define ATTR_NODISCARD _Check_return_
+
+// Force inline
+#define inline __attribute__((always_inline))
 #endif
+
 
 #endif /* DEMI_CC_H_ */

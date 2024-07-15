@@ -45,11 +45,17 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
             ev->used = 1;
             ev->qt = -1;
             ev->sockqd = fd;
+            ev->next_ev = INVALID_EV;
+            ev->prev_ev = INVALID_EV;
+
+            struct demi_event *tail = epoll_get_tail(epfd);
+            ev->prev_ev = tail->id;
+            tail->next_ev = ev->id;
+            epoll_set_tail(epfd, ev->id);
 
             // Check if read was requested.
             if (ev->ev.events & EPOLLIN)
             {
-
                 demi_qtoken_t qt = -1;
 
                 if (queue_man_is_listen_fd(fd))
@@ -60,7 +66,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
                 {
                     assert(__demi_pop(&qt, fd) == 0);
                 }
-                
+
                 queue_man_link_fd_epfd(fd, epfd);
                 ev->qt = qt;
             }
@@ -131,34 +137,32 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
     TRACE("epfd=%d, fd=%d", epfd, fd);
 
     // Look for file descriptor
-    for (int i = 0; i < MAX_EVENTS; i++)
+    struct demi_event *ev = epoll_get_head(epfd);
+    while (ev != NULL)
     {
-        struct demi_event *ev = epoll_get_event(epfd, i);
-
         // Found.
         if ((ev->used) && (ev->sockqd == fd))
         {
-            // Might now want to have this assert here. Maybe the
-            // qtoken is not -1 because a new push or pop got readded
-            // assert(ev->qt == (demi_qtoken_t)-1);
-            
-            // Might also not want to close the fd here in case
-            // the calling program still wants to use it or readd
-            // it at some point.
-            // ret = demi_close(fd);
-            
-            // Don't remove the fd
-            // queue_man_remove_fd(fd);
-            
+            struct demi_event *prev = epoll_get_prev(epfd, ev);
+            prev->next_ev = ev->next_ev;
+
+            struct demi_event *next = epoll_get_next(epfd, ev);
+            if (next == NULL)
+                epoll_set_tail(epfd, prev->id);
+            else
+                next->prev_ev = ev->prev_ev;
+
             queue_man_unlink_fd_epfd(fd);
-            memset(ev, 0, sizeof(struct demi_event));
             ev->used = 0;
             ev->sockqd = -1;
             ev->qt = (demi_qtoken_t)-1;
+            ev->next_ev = INVALID_EV;
+            ev->prev_ev = INVALID_EV;
 
-            TRACE("epfd=%d, fd=%d, ret=%d errno=%s", epfd, fd, ret, strerror(errno));
             return (0);
         }
+
+        ev = epoll_get_next(epfd, ev);
     }
 
     // Entry not found.

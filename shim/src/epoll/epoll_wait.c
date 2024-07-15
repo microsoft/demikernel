@@ -50,22 +50,26 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
 
     struct timespec abstime = {timeout / 1000, timeout * 1000 * 1000};
 
-    // Traverse events.
-    for (int i = 0; i < MAX_EVENTS && i < maxevents; i++)
+    // Traverse events
+    struct demi_event *ev = epoll_get_head(demikernel_epfd);
+    while (ev != NULL)
     {
-        struct demi_event *ev = epoll_get_event(demikernel_epfd, i);
         if ((ev->used) && (ev->qt != (demi_qtoken_t)-1))
         {
             int ret = __demi_wait(&ev->qr, ev->qt, &abstime);
 
             if (ret == ETIMEDOUT)
+            {
+                ev = epoll_get_next(demikernel_epfd, ev);
                 continue;
+            }
 
             ev->qt = (demi_qtoken_t)-1;
 
             if (ret != 0)
             {
                 ERROR("demi_timedwait() failed - %s", strerror(ret));
+                ev = epoll_get_next(demikernel_epfd, ev);
                 continue;
             }
 
@@ -152,6 +156,8 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
             break;
             }
         }
+
+        ev = epoll_get_next(demikernel_epfd, ev);
     }
 
     return (nevents);

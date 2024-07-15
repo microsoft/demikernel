@@ -69,7 +69,7 @@ int hashset_contains(struct hashset *h, int val)
     int skip = 0;
     int hash = 0;
     const int length = (1 << h->length_log2);
-    const int mask = ((1 << h->length_log2) - 1);
+    const int mask = (length - 1);
 
     assert(val != HASHSET_NULL);
     assert(h != NULL);
@@ -87,13 +87,26 @@ int hashset_contains(struct hashset *h, int val)
     return (0);
 }
 
-void hashset_remove(struct hashset *h, int key)
+void hashset_remove(struct hashset *h, int val)
 {
+    int skip = 0;
+    int hash = 0;
     const int length = (1 << h->length_log2);
+    const int mask = (length - 1);
 
     assert(h != NULL);
-    assert((key >= 0) && (key < length));
-    assert(h->table[key] != HASHSET_NULL);
+    assert(val != HASHSET_NULL);
 
-    h->table[key] = HASHSET_NULL;
+    hash = ((int)val) & mask;
+
+    do
+    {
+        if (h->table[hash] == val)
+        {
+            h->table[hash] = HASHSET_NULL;
+            return;
+        }
+
+        hash = (hash + 1) & mask;
+    } while (++skip == length);
 }
