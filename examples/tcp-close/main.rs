@@ -20,12 +20,13 @@ use crate::{
     client::TcpClient,
     server::TcpServer,
 };
-use ::std::time::Duration;
-use anyhow::Result;
-use demikernel::{
+use ::anyhow::Result;
+use ::demikernel::{
+    timer,
     LibOS,
     LibOSName,
 };
+use ::std::time::Duration;
 
 //======================================================================================================================
 // Constants
@@ -38,6 +39,8 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 //======================================================================================================================
 
 fn main() -> Result<()> {
+    timer!("tcp-close::main");
+
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-close",
         "Pedro Henrique Penna <ppenna@microsoft.com>",

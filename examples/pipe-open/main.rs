@@ -14,6 +14,7 @@ use anyhow::Result;
 use args::ProgramArguments;
 use client::PipeClient;
 use demikernel::{
+    timer,
     LibOS,
     LibOSName,
 };
@@ -24,6 +25,8 @@ mod client;
 mod server;
 
 fn main() -> Result<()> {
+    timer!("pipe-open::main");
+
     let args: ProgramArguments = ProgramArguments::new(
         "pipe-open",
         "Pedro Henrique Penna <ppenna@microsoft.com>",

@@ -17,6 +17,7 @@ use ::clap::{
 use ::demikernel::{
     demi_sgarray_t,
     runtime::types::demi_opcode_t,
+    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -353,6 +354,8 @@ impl Drop for Application {
 
 /// Drives the application.
 fn main() -> Result<()> {
+    timer!("tcp-pktgen::main");
+
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-pktgen",
         "Pedro Henrique Penna <ppenna@microsoft.com>",

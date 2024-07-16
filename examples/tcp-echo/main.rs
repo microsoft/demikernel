@@ -271,7 +271,8 @@ fn start_client_thread(
 //======================================================================================================================
 
 fn main() -> Result<()> {
-    timer!("main");
+    timer!("tcp-echo::main");
+
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-echo",
         "Pedro Henrique Penna <ppenna@microsoft.com>",
