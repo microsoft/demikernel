@@ -382,7 +382,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_bind_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -423,7 +423,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_listen_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -454,7 +454,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_accept_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -482,7 +482,7 @@ impl Simulation {
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_connect_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -532,7 +532,7 @@ impl Simulation {
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
             None => {
-                anyhow::bail!("remote queue descriptor musth have been previously assigned");
+                anyhow::bail!("remote queue descriptor must have been previously assigned");
             },
         };
 
