@@ -12,6 +12,7 @@ use ::demikernel::{
         demi_opcode_t,
         demi_qresult_t,
     },
+    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -334,6 +335,8 @@ fn usage(program_name: &String) {
 //======================================================================================================================
 
 pub fn main() -> Result<()> {
+    timer!("udp-ping-pong::main");
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 4 {

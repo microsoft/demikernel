@@ -25,6 +25,7 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::demikernel::{
+    timer,
     LibOS,
     LibOSName,
 };
@@ -41,6 +42,8 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 //======================================================================================================================
 
 fn main() -> Result<()> {
+    timer!("tcp-wait::main");
+
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-wait",
         "Anand Bonde <anand.bonde@gmail.com>",
