@@ -7,11 +7,11 @@
 +.2 accept(500, ..., ...) = 0
 
 // Receive a data-carrying SYN segment.
-+.2 < S seq 0(1000) win 65535 <mss 1450,wscale 0>
++.2 TCP < S seq 0(1000) win 65535 <mss 1450,wscale 0>
 // Send SYN-ACK segment, that does not ack the received data.
-+.0 > S. seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
++.0 TCP > S. seq 0(0) ack 1 win 65535 <mss 1450,wscale 0>
 // Receive ACK on SYN-ACK segment.
-+.2 < . seq 1(0) ack 1 win 65535 <nop>
++.2 TCP < . seq 1(0) ack 1 win 65535 <nop>
 
 // Succeed to accept connection.
 +.0 wait(500, ...) = 0
