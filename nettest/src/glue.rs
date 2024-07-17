@@ -40,7 +40,7 @@ pub enum DemikernelSyscall {
     Accept(AcceptArgs, i32),
     Connect(ConnectArgs, i32),
     Push(PushArgs, i32),
-    Pop(i32),
+    Pop(PopArgs, i32),
     Close(CloseArgs, i32),
     Wait(WaitArgs, i32),
     Unsupported,
@@ -55,7 +55,7 @@ impl Debug for DemikernelSyscall {
             DemikernelSyscall::Accept(args, _qd) => write!(f, "demi_accept({:?})", args),
             DemikernelSyscall::Connect(args, _ok) => write!(f, "demi_connect({:?})", args),
             DemikernelSyscall::Push(args, _ret) => write!(f, "demi_push({:?})", args),
-            DemikernelSyscall::Pop(_ret) => write!(f, "demi_pop"),
+            DemikernelSyscall::Pop(args, _ret) => write!(f, "demi_pop({:?})", args),
             DemikernelSyscall::Close(args, _ret) => write!(f, "demi_close({:?})", args),
             DemikernelSyscall::Wait(args, _ret) => write!(f, "demi_wait({:?})", args),
             DemikernelSyscall::Unsupported => write!(f, "Unsupported"),
@@ -115,6 +115,12 @@ pub struct ConnectArgs {
 pub struct PushArgs {
     pub qd: Option<u32>,
     pub buf: Option<Vec<u8>>,
+    pub len: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PopArgs {
+    pub qd: u32,
     pub len: Option<u32>,
 }
 

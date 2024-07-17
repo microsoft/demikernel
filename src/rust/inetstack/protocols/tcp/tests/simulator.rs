@@ -294,7 +294,7 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall(ret.clone())?,
+            nettest::glue::DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
@@ -558,24 +558,26 @@ impl Simulation {
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self, ret: i32) -> Result<()> {
+    fn run_pop_syscall(&mut self, args: &nettest::glue::PopArgs, ret: i32) -> Result<()> {
         // Extract remote queue descriptor.
-        let remote_qd: QDesc = match self.remote_qd {
-            Some((_, qd)) => qd.unwrap(),
-            None => {
-                anyhow::bail!("remote queue descriptor musth have been previously assigned");
-            },
-        };
+        let remote_qd: QDesc = args.qd.into();
 
-        match self.engine.tcp_pop(remote_qd) {
-            Ok(pop_qt) => {
-                self.inflight = Some(pop_qt);
-                Ok(())
+        match self.protocol {
+            Some(IpProtocol::TCP) => match self.engine.tcp_pop(remote_qd) {
+                Ok(pop_qt) => {
+                    self.inflight = Some(pop_qt);
+                    Ok(())
+                },
+                Err(err) if ret as i32 == err.errno => Ok(()),
+                _ => {
+                    let cause: String = format!("unexpected return for pop syscall");
+                    info!("run_pop_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
             },
-            Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
-                let cause: String = format!("unexpected return for pop syscall");
-                info!("run_pop_syscall(): ret={:?}", ret);
+                let cause: String = format!("protocol must have been previously assigned");
+                info!("run_pop_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         }

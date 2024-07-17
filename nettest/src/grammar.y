@@ -91,9 +91,9 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
-      | 'RECV' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
+      | 'RECV' 'LPAREN' ReadArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
-            DemikernelSyscall::Pop(ret)
+            DemikernelSyscall::Pop($3, ret)
       }
       | 'CLOSE' 'LPAREN' CloseArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
@@ -103,9 +103,9 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
-      | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
+      | 'READ' 'LPAREN' ReadArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
-            DemikernelSyscall::Pop(ret)
+            DemikernelSyscall::Pop($3, ret)
       }
       | 'WAIT' 'LPAREN' WaitArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
@@ -197,6 +197,24 @@ WriteArgs -> glue::PushArgs
             glue::PushArgs {
                   qd: Some(qd),
                   buf: None,
+                  len: Some(len),
+            }
+      }
+      ;
+
+
+ReadArgs -> glue::PopArgs
+      : 'INTEGER' 'COMMA' 'ELLIPSIS' 'COMMA' 'INTEGER' {
+            let qd = {
+                  let v = $1.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            let len = {
+                  let v = $5.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            glue::PopArgs {
+                  qd: qd,
                   len: Some(len),
             }
       }
