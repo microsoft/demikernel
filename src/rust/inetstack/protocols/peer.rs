@@ -216,7 +216,11 @@ impl<N: NetworkRuntime> Peer<N> {
 
         match sd {
             Socket::Tcp(socket) => self.tcp.listen(socket, backlog),
-            _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
+            _ => {
+                let cause: String = format!("opperation not supported");
+                error!("listen(): {}", cause);
+                Err(Fail::new(libc::ENOTSUP, &cause))
+            },
         }
     }
 
