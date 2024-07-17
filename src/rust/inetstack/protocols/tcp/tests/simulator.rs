@@ -618,7 +618,7 @@ impl Simulation {
                     info!("close completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Failed(e) if e.errno == -ret as i32 => {
+                crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
                     info!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
                 },
