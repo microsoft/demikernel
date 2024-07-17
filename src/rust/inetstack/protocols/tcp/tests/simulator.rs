@@ -174,6 +174,7 @@ fn collect_tests(test_path: &str) -> Result<Vec<String>> {
 
 /// A simulation of the network stack.
 struct Simulation {
+    protocol: Option<IpProtocol>,
     local_mac: MacAddress,
     local_sockaddr: SocketAddrV4,
     local_port: u16,
@@ -211,6 +212,7 @@ impl Simulation {
 
         let steps: Vec<String> = Self::read_input_file(&filename)?;
         Ok(Simulation {
+            protocol: None,
             local_mac: local_mac.clone(),
             remote_mac: remote_mac.clone(),
             engine: local,
@@ -325,31 +327,31 @@ impl Simulation {
             anyhow::bail!(cause);
         }
 
-        // Check for unsupported socket type.
-        if args.typ != nettest::glue::SocketType::SOCK_STREAM {
-            let cause: String = format!("unsupported socket type (type={:?})", args.typ);
-            info!("run_socket_syscall(): {:?}", cause);
-            anyhow::bail!(cause);
-        }
-
-        // Check for unsupported socket protocol.
-        if args.protocol != nettest::glue::SocketProtocol::IPPROTO_TCP {
-            let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
-            info!("run_socket_syscall(): {:?}", cause);
-            anyhow::bail!(cause);
-        }
-
         // Issue demi_socket().
-        match self.engine.tcp_socket() {
-            Ok(qd) => {
-                self.local_qd = Some((ret as u32, qd));
-                Ok(())
-            },
-            Err(err) if ret as i32 == err.errno => Ok(()),
-            _ => {
-                let cause: String = format!("unexpected return for socket syscall");
-                info!("run_socket_syscall(): ret={:?}", ret);
-                anyhow::bail!(cause);
+        match args.typ {
+            // TCP Socket.
+            nettest::glue::SocketType::SOCK_STREAM => {
+                // Check for unsupported socket protocol.
+                if args.protocol != nettest::glue::SocketProtocol::IPPROTO_TCP {
+                    let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
+                    info!("run_socket_syscall(): {:?}", cause);
+                    anyhow::bail!(cause);
+                }
+
+                // Issue demi_socket().
+                match self.engine.tcp_socket() {
+                    Ok(qd) => {
+                        self.local_qd = Some((ret as u32, qd));
+                        self.protocol = Some(IpProtocol::TCP);
+                        Ok(())
+                    },
+                    Err(err) if ret as i32 == err.errno => Ok(()),
+                    _ => {
+                        let cause: String = format!("unexpected return for socket syscall");
+                        info!("run_socket_syscall(): ret={:?}", ret);
+                        anyhow::bail!(cause);
+                    },
+                }
             },
         }
     }
@@ -382,7 +384,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_bind_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -423,7 +425,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_listen_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -454,7 +456,7 @@ impl Simulation {
                 },
             },
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_accept_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -482,7 +484,7 @@ impl Simulation {
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
             None => {
-                let cause: String = format!("local queue descriptor musth have been previously assigned");
+                let cause: String = format!("local queue descriptor must have been previously assigned");
                 info!("run_connect_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
@@ -532,7 +534,7 @@ impl Simulation {
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
             None => {
-                anyhow::bail!("remote queue descriptor musth have been previously assigned");
+                anyhow::bail!("remote queue descriptor must have been previously assigned");
             },
         };
 
@@ -683,7 +685,7 @@ impl Simulation {
     }
 
     /// Builds an IPv4 header.
-    fn build_ipv4_header(&self) -> Ipv4Header {
+    fn build_ipv4_header(&self, protocol: IpProtocol) -> Ipv4Header {
         let (src_addr, dst_addr) = {
             (
                 self.remote_sockaddr.ip().to_owned(),
@@ -691,7 +693,7 @@ impl Simulation {
             )
         };
 
-        Ipv4Header::new(src_addr, dst_addr, IpProtocol::TCP)
+        Ipv4Header::new(src_addr, dst_addr, protocol)
     }
 
     /// Builds a TCP header.
@@ -731,7 +733,7 @@ impl Simulation {
     fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> TcpSegment {
         // Create headers.
         let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
-        let ipv4_hdr: Ipv4Header = self.build_ipv4_header();
+        let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::TCP);
         let tcp_hdr: TcpHeader = self.build_tcp_header(&tcp_packet);
         let data: Option<DemiBuffer> = if tcp_packet.seqnum.win > 0 {
             Some(Self::cook_buffer(tcp_packet.seqnum.win as usize, None))
@@ -769,10 +771,10 @@ impl Simulation {
     }
 
     /// Checks an IPv4 header.
-    fn check_ipv4_header(&self, ipv4_header: &Ipv4Header) -> Result<()> {
+    fn check_ipv4_header(&self, ipv4_header: &Ipv4Header, protocol: IpProtocol) -> Result<()> {
         crate::ensure_eq!(ipv4_header.get_src_addr(), self.local_sockaddr.ip().to_owned());
         crate::ensure_eq!(ipv4_header.get_dest_addr(), self.remote_sockaddr.ip().to_owned());
-        crate::ensure_eq!(ipv4_header.get_protocol(), IpProtocol::TCP);
+        crate::ensure_eq!(ipv4_header.get_protocol(), protocol);
 
         Ok(())
     }
@@ -846,7 +848,7 @@ impl Simulation {
         }
     }
 
-    /// Runs an outgoing packet.
+    /// Runs an outgoing TCP packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         let mut n = 0;
         let frames = loop {
@@ -869,7 +871,7 @@ impl Simulation {
         self.check_ethernet2_header(&eth2_header)?;
 
         let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
-        self.check_ipv4_header(&ipv4_header)?;
+        self.check_ipv4_header(&ipv4_header, IpProtocol::TCP)?;
 
         let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
         crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());

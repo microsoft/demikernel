@@ -22,3 +22,7 @@ pub use self::{
     datagram::UdpHeader,
     peer::SharedUdpPeer,
 };
+
+/// Expose this when building tests, as the network simulator uses it.
+#[cfg(test)]
+pub use self::datagram::UdpDatagram;
