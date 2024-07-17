@@ -19,6 +19,9 @@ mod tests;
 //==============================================================================
 
 pub use self::{
-    datagram::UdpHeader,
+    datagram::{
+        UdpDatagram,
+        UdpHeader,
+    },
     peer::SharedUdpPeer,
 };
