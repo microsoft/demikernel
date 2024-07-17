@@ -40,6 +40,7 @@ pub enum DemikernelSyscall {
     Accept(AcceptArgs, i32),
     Connect(ConnectArgs, i32),
     Push(PushArgs, i32),
+    PushTo(PushToArgs, i32),
     Pop(PopArgs, i32),
     Close(CloseArgs, i32),
     Wait(WaitArgs, i32),
@@ -55,6 +56,7 @@ impl Debug for DemikernelSyscall {
             DemikernelSyscall::Accept(args, _qd) => write!(f, "demi_accept({:?})", args),
             DemikernelSyscall::Connect(args, _ok) => write!(f, "demi_connect({:?})", args),
             DemikernelSyscall::Push(args, _ret) => write!(f, "demi_push({:?})", args),
+            DemikernelSyscall::PushTo(args, _ret) => write!(f, "demi_pushto({:?})", args),
             DemikernelSyscall::Pop(args, _ret) => write!(f, "demi_pop({:?})", args),
             DemikernelSyscall::Close(args, _ret) => write!(f, "demi_close({:?})", args),
             DemikernelSyscall::Wait(args, _ret) => write!(f, "demi_wait({:?})", args),
@@ -73,12 +75,14 @@ pub enum SocketDomain {
 #[allow(non_camel_case_types)]
 pub enum SocketType {
     SOCK_STREAM,
+    SOCK_DGRAM,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum SocketProtocol {
     IPPROTO_TCP,
+    IPPROTO_UDP,
 }
 
 #[derive(Clone, Debug)]
@@ -119,6 +123,14 @@ pub struct PushArgs {
 }
 
 #[derive(Clone, Debug)]
+pub struct PushToArgs {
+    pub qd: Option<u32>,
+    pub buf: Option<Vec<u8>>,
+    pub len: Option<u32>,
+    pub addr: Option<SocketAddr>,
+}
+
+#[derive(Clone, Debug)]
 pub struct PopArgs {
     pub qd: u32,
     pub len: Option<u32>,
@@ -138,6 +150,7 @@ pub struct CloseArgs {
 #[derive(Clone, Debug)]
 pub enum PacketEvent {
     Tcp(PacketDirection, TcpPacket),
+    Udp(PacketDirection, UdpPacket),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -154,6 +167,12 @@ pub struct TcpPacket {
     pub win: Option<u32>,
     pub options: Vec<TcpOption>,
 }
+
+#[derive(Clone, Debug)]
+pub struct UdpPacket {
+    pub len: u32,
+}
+
 #[derive(Clone)]
 pub struct TcpFlags {
     pub syn: bool,
