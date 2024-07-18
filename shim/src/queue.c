@@ -3,6 +3,7 @@
 
 #include "epoll.h"
 #include "utils.h"
+#include "log.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
