@@ -10,6 +10,8 @@
 #include "utils.h"
 #include <assert.h>
 #include <demi/types.h>
+#include <demi/sga.h>
+#include <demi/wait.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <glue.h>
@@ -50,17 +52,18 @@
         return ret;                                  \
     }
 
-#define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)           \
-    {                                                         \
-        init_libc();                                          \
-        bool reentrant = is_reentrant_demi_call();            \
-                                                              \
-        if ((in_init) || (reentrant))                         \
-            return (fn_libc(__VA_ARGS__));                    \
-                                                              \
-        init();                                               \
-                                                              \
-        INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__); \
+#define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)     \
+    {                                                                    \
+        init_libc();                                                     \
+                                                                         \
+        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))     \
+        {                                                                \
+            return (fn_libc(__VA_ARGS__));                               \
+        }                                                                \
+                                                                         \
+        init();                                                          \
+                                                                         \
+        INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__);            \
     }
 
 // System calls that we interpose.
@@ -102,7 +105,7 @@ static volatile uint8_t in_init = 0;
 
 static inline void init_libc(void)
 {
-    if (initialized_libc == 0)
+    if (UNLIKELY(initialized_libc == 0))
     {
 
         if (__sync_val_compare_and_swap(&in_init_libc, 0, 1) == 0)
@@ -158,7 +161,7 @@ static inline void init_libc(void)
 
 static inline void init(void)
 {
-    if (initialized == 0)
+    if (UNLIKELY(initialized == 0))
     {
         if (__sync_val_compare_and_swap(&in_init, 0, 1) == 0)
         {
@@ -205,7 +208,6 @@ static int vfcntl(int sockfd, int cmd, va_list val)
 {
     int ret = -1;
 
-    bool reentrant = is_reentrant_demi_call();
     init_libc();
 
     // Variadic functions cannot be easily interposed.
@@ -223,7 +225,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     case F_GET_SEALS:
 #endif
     {
-        if (in_init || reentrant)
+        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd));
         }
@@ -250,7 +252,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         int arg_i = va_arg(val, int);
 
-        if (in_init || reentrant)
+        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_i));
         }
@@ -281,7 +283,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         void *arg_p = va_arg(val, void *);
 
-        if (in_init || reentrant)
+        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_p));
         }
@@ -418,10 +420,9 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    bool reentrant = is_reentrant_demi_call();
     init_libc();
 
-    if (in_init || reentrant)
+    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_ctl(epfd, op, fd, event));
     }
@@ -455,10 +456,9 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    bool reentrant = is_reentrant_demi_call();
     init_libc();
 
-    if (in_init || reentrant)
+    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
@@ -500,9 +500,7 @@ int epoll_create(int size)
 {
     init_libc();
 
-    bool reentrant = is_reentrant_demi_call();
-
-    if (in_init || reentrant)
+    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_create(size));
     }
