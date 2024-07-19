@@ -10,6 +10,8 @@
 #include "utils.h"
 #include <assert.h>
 #include <demi/types.h>
+#include <demi/sga.h>
+#include <demi/wait.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <glue.h>
