@@ -18,7 +18,6 @@ use clap::{
 };
 use client::TcpEchoClient;
 use demikernel::{
-    timer,
     LibOS,
     LibOSName,
 };
@@ -271,8 +270,6 @@ fn start_client_thread(
 //======================================================================================================================
 
 fn main() -> Result<()> {
-    timer!("tcp-echo::main");
-
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-echo",
         "Pedro Henrique Penna <ppenna@microsoft.com>",

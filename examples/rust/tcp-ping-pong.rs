@@ -9,7 +9,6 @@ use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
     runtime::types::demi_opcode_t,
-    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -417,8 +416,6 @@ fn usage(program_name: &String) {
 //======================================================================================================================
 
 pub fn main() -> Result<()> {
-    timer!("tcp-ping-pong::main");
-
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {
