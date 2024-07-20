@@ -20,7 +20,6 @@ use ::demikernel::{
         demi_opcode_t,
         demi_qresult_t,
     },
-    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -258,8 +257,6 @@ impl Drop for Application {
 //==============================================================================
 
 fn main() -> Result<()> {
-    timer!("tcp-dump::main");
-
     let args: ProgramArguments = ProgramArguments::new(
         "tcp-dump",
         "Pedro Henrique Penna <ppenna@microsoft.com>",

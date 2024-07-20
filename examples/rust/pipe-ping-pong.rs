@@ -9,7 +9,6 @@ use ::core::slice;
 use ::demikernel::{
     demi_sgarray_t,
     runtime::types::demi_opcode_t,
-    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -278,8 +277,6 @@ fn usage(program_name: &String) {
 //======================================================================================================================
 
 pub fn main() -> Result<()> {
-    timer!("pipe-ping-pong::main");
-
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 3 {

@@ -17,7 +17,6 @@ use ::clap::{
 use ::demikernel::{
     demi_sgarray_t,
     runtime::types::demi_opcode_t,
-    timer,
     LibOS,
     LibOSName,
     QDesc,
@@ -263,8 +262,6 @@ impl Drop for Application {
 //==============================================================================
 
 fn main() -> Result<()> {
-    timer!("udp-relay::main");
-
     let args: ProgramArguments = ProgramArguments::new(
         "udp-relay",
         "Pedro Henrique Penna <ppenna@microsoft.com>",
