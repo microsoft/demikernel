@@ -84,6 +84,14 @@ use std::{
 };
 
 //======================================================================================================================
+// Constants
+//======================================================================================================================
+
+/// Maximum number of retries for a pop operation.
+/// This value was empirically chosen so as to have operations to successfully complete.
+const MAX_POP_RETRIES: usize = 5;
+
+//======================================================================================================================
 // Standalone Functions
 //======================================================================================================================
 
@@ -995,8 +1003,8 @@ impl Simulation {
         let frames = loop {
             let frames = self.engine.pop_all_frames();
             if frames.is_empty() {
-                if n > 5 {
-                    anyhow::bail!("did not emit a frame after 5 loops");
+                if n > MAX_POP_RETRIES {
+                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
                 } else {
                     self.engine.poll();
                     n += 1;
@@ -1027,8 +1035,8 @@ impl Simulation {
         let frames = loop {
             let frames = self.engine.pop_all_frames();
             if frames.is_empty() {
-                if n > 5 {
-                    anyhow::bail!("did not emit a frame after 5 loops");
+                if n > MAX_POP_RETRIES {
+                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
                 } else {
                     self.engine.poll();
                     n += 1;
