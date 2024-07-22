@@ -91,9 +91,13 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
-      | 'RECV' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
+      | 'SENDTO' 'LPAREN' SendToArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
-            DemikernelSyscall::Pop(ret)
+            DemikernelSyscall::PushTo($3, ret)
+      }
+      | 'RECV' 'LPAREN' ReadArgs 'RPAREN' 'EQUALS' Expression {
+            let ret = glue::parse_ret_code(&$6).unwrap();
+            DemikernelSyscall::Pop($3, ret)
       }
       | 'CLOSE' 'LPAREN' CloseArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
@@ -103,9 +107,9 @@ Syscall -> DemikernelSyscall
             let ret = glue::parse_ret_code(&$6).unwrap();
             DemikernelSyscall::Push($3, ret)
       }
-      | 'READ' 'LPAREN' SyscallArgs 'RPAREN' 'EQUALS' Expression {
+      | 'READ' 'LPAREN' ReadArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
-            DemikernelSyscall::Pop(ret)
+            DemikernelSyscall::Pop($3, ret)
       }
       | 'WAIT' 'LPAREN' WaitArgs 'RPAREN' 'EQUALS' Expression {
             let ret = glue::parse_ret_code(&$6).unwrap();
@@ -125,6 +129,13 @@ SocketArgs -> glue::SocketArgs
                   domain: glue::SocketDomain::AF_INET,
                   typ: glue::SocketType::SOCK_STREAM,
                   protocol: glue::SocketProtocol::IPPROTO_TCP,
+            }
+      }
+      | 'ELLIPSIS' 'COMMA' 'SOCK_DGRAM' 'COMMA' 'IPPROTO_UDP' {
+            glue::SocketArgs {
+                  domain: glue::SocketDomain::AF_INET,
+                  typ: glue::SocketType::SOCK_DGRAM,
+                  protocol: glue::SocketProtocol::IPPROTO_UDP,
             }
       }
       ;
@@ -197,6 +208,42 @@ WriteArgs -> glue::PushArgs
             glue::PushArgs {
                   qd: Some(qd),
                   buf: None,
+                  len: Some(len),
+            }
+      }
+      ;
+
+SendToArgs -> glue::PushToArgs
+      : 'INTEGER' 'COMMA' 'ELLIPSIS' 'COMMA' 'INTEGER' {
+            let qd = {
+                  let v = $1.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            let len = {
+                  let v = $5.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            glue::PushToArgs {
+                  qd: Some(qd),
+                  buf: None,
+                  len: Some(len),
+                  addr: None,
+            }
+      }
+      ;
+
+ReadArgs -> glue::PopArgs
+      : 'INTEGER' 'COMMA' 'ELLIPSIS' 'COMMA' 'INTEGER' {
+            let qd = {
+                  let v = $1.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            let len = {
+                  let v = $5.map_err(|_| ()).unwrap();
+                  glue::parse_int($lexer.span_str(v.span())).unwrap()
+            };
+            glue::PopArgs {
+                  qd: qd,
                   len: Some(len),
             }
       }
@@ -280,6 +327,9 @@ Array -> ()
 PacketEvent -> glue::PacketEvent
       : Direction TcpPacket {
             glue::PacketEvent::Tcp($1, $2)
+      }
+      | 'UDP' Direction UdpPacket {
+            glue::PacketEvent::Udp($2, $3)
       }
       ;
 
@@ -432,6 +482,16 @@ TcpOption -> glue::TcpOption
             let v = $5.map_err(|_| ()).unwrap();
             let tsecr = glue::parse_int($lexer.span_str(v.span())).unwrap();
             glue::TcpOption::Timestamp(tsval, tsecr)
+      }
+      ;
+
+UdpPacket -> glue::UdpPacket
+      : 'LEN' 'INTEGER' {
+            let v = $2.map_err(|_| ()).unwrap();
+            let len = glue::parse_int($lexer.span_str(v.span())).unwrap();
+            glue::UdpPacket {
+                  len,
+            }
       }
       ;
 

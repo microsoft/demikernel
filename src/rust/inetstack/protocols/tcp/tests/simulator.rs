@@ -20,6 +20,10 @@ use crate::{
                 TcpSegment,
                 MAX_TCP_OPTIONS,
             },
+            udp::{
+                UdpDatagram,
+                UdpHeader,
+            },
         },
         test_helpers::{
             self,
@@ -50,9 +54,11 @@ use nettest::glue::{
     PacketDirection,
     PacketEvent,
     PushArgs,
+    PushToArgs,
     SocketArgs,
     SyscallEvent,
     TcpPacket,
+    UdpPacket,
 };
 use std::{
     collections::VecDeque,
@@ -76,6 +82,14 @@ use std::{
     },
     time::Instant,
 };
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+/// Maximum number of retries for a pop operation.
+/// This value was empirically chosen so as to have operations to successfully complete.
+const MAX_POP_RETRIES: usize = 5;
 
 //======================================================================================================================
 // Standalone Functions
@@ -294,7 +308,8 @@ impl Simulation {
             nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
             nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Pop(ret) => self.run_pop_syscall(ret.clone())?,
+            nettest::glue::DemikernelSyscall::PushTo(args, ret) => self.run_pushto_syscall(args, ret.clone())?,
+            nettest::glue::DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
             nettest::glue::DemikernelSyscall::Unsupported => {
@@ -312,6 +327,10 @@ impl Simulation {
             nettest::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_packet(tcp_packet)?,
                 PacketDirection::Outgoing => self.run_outgoing_packet(tcp_packet)?,
+            },
+            nettest::glue::PacketEvent::Udp(direction, udp_packet) => match direction {
+                PacketDirection::Incoming => self.run_incoming_udp_packet(udp_packet)?,
+                PacketDirection::Outgoing => self.run_outgoing_udp_packet(udp_packet)?,
             },
         }
 
@@ -343,6 +362,31 @@ impl Simulation {
                     Ok(qd) => {
                         self.local_qd = Some((ret as u32, qd));
                         self.protocol = Some(IpProtocol::TCP);
+                        Ok(())
+                    },
+                    Err(err) if ret as i32 == err.errno => Ok(()),
+                    _ => {
+                        let cause: String = format!("unexpected return for socket syscall");
+                        info!("run_socket_syscall(): ret={:?}", ret);
+                        anyhow::bail!(cause);
+                    },
+                }
+            },
+            // UDP Socket.
+            nettest::glue::SocketType::SOCK_DGRAM => {
+                // Check for unsupported socket protocol.
+                if args.protocol != nettest::glue::SocketProtocol::IPPROTO_UDP {
+                    let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
+                    info!("run_socket_syscall(): {:?}", cause);
+                    anyhow::bail!(cause);
+                }
+
+                // Issue demi_socket().
+                match self.engine.udp_socket() {
+                    Ok(qd) => {
+                        self.local_qd = Some((ret as u32, qd));
+                        self.remote_qd = Some((ret as u32, None));
+                        self.protocol = Some(IpProtocol::UDP);
                         Ok(())
                     },
                     Err(err) if ret as i32 == err.errno => Ok(()),
@@ -558,24 +602,38 @@ impl Simulation {
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self, ret: i32) -> Result<()> {
+    fn run_pop_syscall(&mut self, args: &nettest::glue::PopArgs, ret: i32) -> Result<()> {
         // Extract remote queue descriptor.
-        let remote_qd: QDesc = match self.remote_qd {
-            Some((_, qd)) => qd.unwrap(),
-            None => {
-                anyhow::bail!("remote queue descriptor musth have been previously assigned");
-            },
-        };
+        let remote_qd: QDesc = args.qd.into();
 
-        match self.engine.tcp_pop(remote_qd) {
-            Ok(pop_qt) => {
-                self.inflight = Some(pop_qt);
-                Ok(())
+        match self.protocol {
+            Some(IpProtocol::TCP) => match self.engine.tcp_pop(remote_qd) {
+                Ok(pop_qt) => {
+                    self.inflight = Some(pop_qt);
+                    Ok(())
+                },
+                Err(err) if ret as i32 == err.errno => Ok(()),
+                _ => {
+                    let cause: String = format!("unexpected return for pop syscall");
+                    info!("run_pop_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
             },
-            Err(err) if ret as i32 == err.errno => Ok(()),
+            Some(IpProtocol::UDP) => match self.engine.udp_pop(remote_qd) {
+                Ok(pop_qt) => {
+                    self.inflight = Some(pop_qt);
+                    Ok(())
+                },
+                Err(err) if ret as i32 == err.errno => Ok(()),
+                _ => {
+                    let cause: String = format!("unexpected return for pop syscall");
+                    info!("run_pop_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
             _ => {
-                let cause: String = format!("unexpected return for pop syscall");
-                info!("run_pop_syscall(): ret={:?}", ret);
+                let cause: String = format!("protocol must have been previously assigned");
+                info!("run_pop_syscall(): {:?}", cause);
                 anyhow::bail!(cause);
             },
         }
@@ -616,7 +674,7 @@ impl Simulation {
                     info!("close completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Failed(e) if e.errno == -ret as i32 => {
+                crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
                     info!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
                 },
@@ -626,6 +684,58 @@ impl Simulation {
                 _ => unreachable!("unexpected operation has completed coroutine has completed"),
             },
             _ => unreachable!("no operation has completed coroutine has completed, but it should"),
+        }
+    }
+
+    /// Runs a pushto system call.
+    fn run_pushto_syscall(&mut self, args: &PushToArgs, ret: i32) -> Result<()> {
+        // Extract buffer length.
+        let buf_len: u16 = match args.len {
+            Some(len) => len.try_into()?,
+            None => {
+                let cause: String = format!("buffer length must be informed");
+                info!("run_pushto_syscall(): {:?}", cause);
+                anyhow::bail!(cause);
+            },
+        };
+
+        // Extract remote address.
+        let remote_addr: SocketAddrV4 = match args.addr {
+            None => {
+                self.remote_sockaddr = SocketAddrV4::new(self.remote_sockaddr.ip().clone(), self.remote_port);
+                self.remote_sockaddr
+            },
+            Some(addr) => {
+                // Unsupported remote address.
+                let cause: String = format!("unsupported remote address (addr={:?})", addr);
+                info!("run_pushto_syscall(): {:?}", cause);
+                anyhow::bail!(cause);
+            },
+        };
+
+        // Extract remote queue descriptor.
+        let remote_qd: QDesc = match args.qd {
+            Some(qd) => qd.into(),
+            None => {
+                anyhow::bail!("remote queue descriptor must have been previously assigned");
+            },
+        };
+
+        let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
+        match self.engine.udp_pushto(remote_qd, buf, remote_addr) {
+            Ok(push_qt) => {
+                self.inflight = Some(push_qt);
+                // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
+                // TODO: Remove this once we separate the poll and advance clock functions.
+                self.engine.poll();
+
+                Ok(())
+            },
+            _ => {
+                let cause: String = format!("unexpected return for pushto syscall");
+                info!("run_pushto_syscall(): ret={:?}", ret);
+                anyhow::bail!(cause);
+            },
         }
     }
 
@@ -729,6 +839,13 @@ impl Simulation {
         }
     }
 
+    /// Builds a UDP header.
+    fn build_udp_header(&self, _udp_packet: &UdpPacket) -> UdpHeader {
+        let (src_port, dest_port): (u16, u16) = { (self.remote_port, self.local_sockaddr.port()) };
+
+        UdpHeader::new(src_port, dest_port)
+    }
+
     /// Builds a TCP segment.
     fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> TcpSegment {
         // Create headers.
@@ -750,11 +867,33 @@ impl Simulation {
         }
     }
 
+    /// Builds a UDP datagram.
+    fn build_udp_datagram(&self, udp_packet: &UdpPacket) -> UdpDatagram {
+        // Create headers.
+        let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
+        let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::UDP);
+        let udp_hdr: UdpHeader = self.build_udp_header(&udp_packet);
+        let data: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
+
+        UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, false)
+    }
+
     /// Runs an incoming packet.
     fn run_incoming_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         let segment: TcpSegment = self.build_tcp_segment(&tcp_packet);
 
         let buf: DemiBuffer = Self::serialize_segment(segment);
+        self.engine.receive(buf)?;
+
+        self.engine.poll();
+        Ok(())
+    }
+
+    /// Runs an incoming packet.
+    fn run_incoming_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
+        let datagram: UdpDatagram = self.build_udp_datagram(&udp_packet);
+
+        let buf: DemiBuffer = Self::serialize_datagram(datagram);
         self.engine.receive(buf)?;
 
         self.engine.poll();
@@ -840,6 +979,16 @@ impl Simulation {
         Ok(())
     }
 
+    /// Checks a UDP header.
+    fn check_udp_header(&self, udp_header: &UdpHeader, _udp_packet: &UdpPacket) -> Result<()> {
+        // Check if source port number matches what we expect.
+        crate::ensure_eq!(udp_header.src_port(), self.local_sockaddr.port());
+        // Check if destination port number matches what we expect.
+        crate::ensure_eq!(udp_header.dest_port(), self.remote_port);
+
+        Ok(())
+    }
+
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<(QDesc, OperationResult)> {
         match self.inflight.take() {
@@ -850,12 +999,12 @@ impl Simulation {
 
     /// Runs an outgoing TCP packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let mut n = 0;
-        let frames = loop {
-            let frames = self.engine.pop_all_frames();
+        let mut n: usize = 0;
+        let frames: VecDeque<DemiBuffer> = loop {
+            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
             if frames.is_empty() {
-                if n > 5 {
-                    anyhow::bail!("did not emit a frame after 5 loops");
+                if n > MAX_POP_RETRIES {
+                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
                 } else {
                     self.engine.poll();
                     n += 1;
@@ -866,22 +1015,66 @@ impl Simulation {
                 break frames;
             }
         };
-        let bytes = &frames[0];
-        let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
+        let bytes: &DemiBuffer = &frames[0];
+        let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(bytes.clone())?;
         self.check_ethernet2_header(&eth2_header)?;
 
-        let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
+        let (ipv4_header, ipv4_payload): (Ipv4Header, DemiBuffer) = Ipv4Header::parse(eth2_payload)?;
         self.check_ipv4_header(&ipv4_header, IpProtocol::TCP)?;
 
-        let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+        let (tcp_header, tcp_payload): (TcpHeader, DemiBuffer) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
         crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());
         self.check_tcp_header(&tcp_header, &tcp_packet)?;
 
         Ok(())
     }
 
+    /// Runs an outgoing UDP packet.
+    fn run_outgoing_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
+        let mut n: usize = 0;
+        let frames: VecDeque<DemiBuffer> = loop {
+            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
+            if frames.is_empty() {
+                if n > MAX_POP_RETRIES {
+                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
+                } else {
+                    self.engine.poll();
+                    n += 1;
+                }
+            } else {
+                // FIXME: We currently do not support multi-frame segments.
+                crate::ensure_eq!(frames.len(), 1);
+                break frames;
+            }
+        };
+        let bytes: &DemiBuffer = &frames[0];
+        let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(bytes.clone())?;
+        self.check_ethernet2_header(&eth2_header)?;
+
+        let (ipv4_header, ipv4_payload): (Ipv4Header, DemiBuffer) = Ipv4Header::parse(eth2_payload)?;
+        self.check_ipv4_header(&ipv4_header, IpProtocol::UDP)?;
+
+        let (udp_header, udp_payload): (UdpHeader, DemiBuffer) = UdpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+        crate::ensure_eq!(udp_packet.len as usize, udp_payload.len());
+        self.check_udp_header(&udp_header, &udp_packet)?;
+
+        Ok(())
+    }
+
     /// Serializes a TCP segment.
     fn serialize_segment(pkt: TcpSegment) -> DemiBuffer {
+        let header_size: usize = pkt.header_size();
+        let body_size: usize = pkt.body_size();
+        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
+        pkt.write_header(&mut buf[..header_size]);
+        if let Some(body) = pkt.take_body() {
+            buf[header_size..].copy_from_slice(&body[..]);
+        }
+        buf
+    }
+
+    /// Serializes a UDP datagram.
+    fn serialize_datagram(pkt: UdpDatagram) -> DemiBuffer {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
