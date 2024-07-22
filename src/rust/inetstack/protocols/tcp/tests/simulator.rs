@@ -999,9 +999,9 @@ impl Simulation {
 
     /// Runs an outgoing TCP packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let mut n = 0;
-        let frames = loop {
-            let frames = self.engine.pop_all_frames();
+        let mut n: usize = 0;
+        let frames: VecDeque<DemiBuffer> = loop {
+            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
             if frames.is_empty() {
                 if n > MAX_POP_RETRIES {
                     anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
@@ -1015,14 +1015,14 @@ impl Simulation {
                 break frames;
             }
         };
-        let bytes = &frames[0];
-        let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
+        let bytes: &DemiBuffer = &frames[0];
+        let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(bytes.clone())?;
         self.check_ethernet2_header(&eth2_header)?;
 
-        let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
+        let (ipv4_header, ipv4_payload): (Ipv4Header, DemiBuffer) = Ipv4Header::parse(eth2_payload)?;
         self.check_ipv4_header(&ipv4_header, IpProtocol::TCP)?;
 
-        let (tcp_header, tcp_payload) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+        let (tcp_header, tcp_payload): (TcpHeader, DemiBuffer) = TcpHeader::parse(&ipv4_header, ipv4_payload, true)?;
         crate::ensure_eq!(tcp_packet.seqnum.win as usize, tcp_payload.len());
         self.check_tcp_header(&tcp_header, &tcp_packet)?;
 
@@ -1031,9 +1031,9 @@ impl Simulation {
 
     /// Runs an outgoing UDP packet.
     fn run_outgoing_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
-        let mut n = 0;
-        let frames = loop {
-            let frames = self.engine.pop_all_frames();
+        let mut n: usize = 0;
+        let frames: VecDeque<DemiBuffer> = loop {
+            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
             if frames.is_empty() {
                 if n > MAX_POP_RETRIES {
                     anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
@@ -1047,14 +1047,14 @@ impl Simulation {
                 break frames;
             }
         };
-        let bytes = &frames[0];
-        let (eth2_header, eth2_payload) = Ethernet2Header::parse(bytes.clone())?;
+        let bytes: &DemiBuffer = &frames[0];
+        let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(bytes.clone())?;
         self.check_ethernet2_header(&eth2_header)?;
 
-        let (ipv4_header, ipv4_payload) = Ipv4Header::parse(eth2_payload)?;
+        let (ipv4_header, ipv4_payload): (Ipv4Header, DemiBuffer) = Ipv4Header::parse(eth2_payload)?;
         self.check_ipv4_header(&ipv4_header, IpProtocol::UDP)?;
 
-        let (udp_header, udp_payload) = UdpHeader::parse(&ipv4_header, ipv4_payload, true)?;
+        let (udp_header, udp_payload): (UdpHeader, DemiBuffer) = UdpHeader::parse(&ipv4_header, ipv4_payload, true)?;
         crate::ensure_eq!(udp_packet.len as usize, udp_payload.len());
         self.check_udp_header(&udp_header, &udp_packet)?;
 
