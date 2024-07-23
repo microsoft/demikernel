@@ -46,6 +46,28 @@ jobs:
         echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
         echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
         echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Bootstrap VMs
+      shell: bash
+      run: |
+        echo "Running azure.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/azure.sh"
+
+        echo "Running hugepages.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+
+        echo "Running ip addr flush on SERVER"
+        ssh $SERVER "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
+                     sudo ip addr flush dev eth1"
+
+        echo "Running azure.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/azure.sh"
+
+        echo "Running hugepages.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+
+        echo "Running ip addr flush on CLIENT"
+        ssh $CLIENT "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
+                     sudo ip addr flush dev eth1"
     - name: Run
       run: |
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -96,6 +118,28 @@ jobs:
         echo -e "\tPasswordAuthentication no" >> $HOME/.ssh/config
         echo -e "\tUser ${{ secrets.USERNAME }}" >> $HOME/.ssh/config
         echo -e "\tPort ${{ secrets.PORTNUM }}" >> $HOME/.ssh/config
+    - name: Bootstrap VMs
+      shell: bash
+      run: |
+        echo "Running azure.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/azure.sh"
+
+        echo "Running hugepages.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+
+        echo "Running ip addr flush on SERVER"
+        ssh $SERVER "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
+                     sudo ip addr flush dev eth1"
+
+        echo "Running azure.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/azure.sh"
+
+        echo "Running hugepages.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+
+        echo "Running ip addr flush on CLIENT"
+        ssh $CLIENT "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
+                     sudo ip addr flush dev eth1"
     - name: Run
       run: |
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
