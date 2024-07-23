@@ -1,0 +1,23 @@
+// Test for blocking push-pop.
+
+// Accept a connection.
+ +.0 socket(..., SOCK_DGRAM, IPPROTO_UDP) = 500
++.0 bind(500, ..., ...) = 0
+
+// Send data.
++.1 sendto(500, ..., 1000) = 1000
+
+// Send data packet.
++.0 UDP > len 1000
+
+// Data sent.
++.0 wait(500, ...) = 0
+
+// Receive data.
++.1 read(500, ..., 1000) = 1000
+
+// Receive data packet.
++.0 UDP < len 1000
+
+// Data received.
++.0 wait(500, ...) = 0

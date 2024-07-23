@@ -325,8 +325,8 @@ Array -> ()
       ;
 
 PacketEvent -> glue::PacketEvent
-      : Direction TcpPacket {
-            glue::PacketEvent::Tcp($1, $2)
+      : 'TCP' Direction TcpPacket {
+            glue::PacketEvent::Tcp($2, $3)
       }
       | 'UDP' Direction UdpPacket {
             glue::PacketEvent::Udp($2, $3)
