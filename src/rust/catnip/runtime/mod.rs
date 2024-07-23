@@ -66,6 +66,7 @@ use crate::{
         },
         SharedObject,
     },
+    timer,
 };
 use ::arrayvec::ArrayVec;
 use ::std::mem;
@@ -502,10 +503,12 @@ impl NetworkRuntime for SharedDPDKRuntime {
     }
 
     fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
-        let mut out = ArrayVec::new();
+        timer!("catnip::runtime::receive");
 
+        let mut out = ArrayVec::new();
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
         let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
+
         assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 
         {
