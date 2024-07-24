@@ -162,8 +162,17 @@ impl Scheduler {
         assert!(self.current_running_task.is_some());
         let result: Option<Box<dyn Task>> = group.poll_notified_task_and_remove_if_ready(self.current_task_id);
         assert!(self.current_running_task.is_some());
-        *self.current_running_task = None;
+        // Expect is safe here because we just looked up the external id.
+        let task_id: TaskId = self
+            .current_running_task
+            .take()
+            .expect("must have a current running task");
         assert!(self.current_running_task.is_none());
+        if result.is_some() {
+            self.ids
+                .remove(&task_id)
+                .expect("should find the current running task id");
+        }
         result
     }
 
