@@ -58,7 +58,7 @@
                                                               \
         bool reentrant = is_reentrant_demi_call();            \
                                                               \
-        if ((!initialized) || (reentrant))                    \
+        if (reentrant)                                        \
             return (fn_libc(__VA_ARGS__));                    \
                                                               \
         INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__); \
