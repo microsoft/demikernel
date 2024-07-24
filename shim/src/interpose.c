@@ -498,8 +498,7 @@ int socket(int domain, int type, int protocol)
 
 int epoll_create(int size)
 {
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
