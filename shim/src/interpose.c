@@ -509,9 +509,8 @@ int epoll_create(int size)
 
     init();
 
+    // Create epoll on kernel side.
     int ret = libc_epoll_create(size);
-
-    // First, create epoll on kernel side.
     if (ret == -1)
     {
         ERROR("epoll_create() failed - %s", strerror(errno));
@@ -522,7 +521,9 @@ int epoll_create(int size)
 
     int last_errno = errno;
     errno = 0;
-    if ((ret = __epoll_create(size)) == -1 && errno == EBADF)
+
+    // Create epoll on demikernel side.
+    if ((ret = __epoll_create(size) == -1) && (errno == EBADF))
     {
         errno = last_errno;
         return linux_epfd;
