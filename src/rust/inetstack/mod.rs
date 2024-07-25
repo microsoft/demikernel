@@ -364,6 +364,8 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
     ) -> Result<(), Fail> {
+        timer!("inetstack::push");
+
         self.ipv4.push(sd, buf, addr).await
     }
 

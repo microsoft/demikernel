@@ -401,6 +401,8 @@ impl NetworkRuntime for SharedDPDKRuntime {
     }
 
     fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
+        timer!("catnip::runtime::transmit");
+
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
         // that data is in a DPDK-owned mbuf, and there is "headroom" in that mbuf to hold the packet headers, just
         // prepend the headers into that mbuf and save the extra header mbuf allocation that we currently always do.
@@ -508,7 +510,6 @@ impl NetworkRuntime for SharedDPDKRuntime {
         let mut out = ArrayVec::new();
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
         let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
-
         assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 
         {
