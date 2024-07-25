@@ -12,6 +12,8 @@ pub mod udp;
 
 use ::std::slice::ChunksExact;
 
+#[cfg(feature = "tcp-migration")]
+pub mod tcpmig;
 pub enum Protocol {
     Tcp,
     Udp,

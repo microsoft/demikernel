@@ -7,6 +7,13 @@ mod ctrlblk;
 mod rto;
 mod sender;
 
+pub use self::{
+    sender::{
+        Sender,
+        UnackedSegment,
+    },
+};
+
 use crate::{
     collections::async_queue::SharedAsyncQueue,
     inetstack::{
@@ -43,6 +50,18 @@ use ::std::{
     net::SocketAddrV4,
     time::Duration,
 };
+
+#[cfg(feature = "tcp-migration")]
+pub use ctrlblk::state::ControlBlockState;
+
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::peer::state::TcpState;
+
+
+use crate::{capy_log, capy_log_mig};
+// #[cfg(all(feature = "tcp-migration", test))]
+// pub use ctrlblk::state::test::get_state as test_get_control_block_state;
+
 
 #[derive(Clone)]
 pub struct EstablishedSocket<N: NetworkRuntime> {
@@ -82,6 +101,7 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
     ) -> Result<Self, Fail> {
+        capy_log!("Creating new EstablishedSocket with {} (CONN recv_queue len: {})", remote, recv_queue.len());
         // TODO: Maybe add the queue descriptor here.
         let cb = SharedControlBlock::new(
             local,
@@ -148,5 +168,43 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
         (self.cb.get_local(), self.cb.get_remote())
+    }
+
+    #[cfg(feature = "tcp-migration")]
+    pub fn from_state(
+        mut runtime: SharedDemiRuntime,
+        transport: N,
+        local_link_addr: MacAddress,
+        tcp_config: TcpConfig,
+        default_socket_options: TcpSocketOptions,
+        arp: SharedArpPeer<N>,
+        ack_delay_timeout: Duration,
+        dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+        socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
+        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        state: TcpState
+    ) -> Result<Self, Fail> {
+        let cb = SharedControlBlock::<N>::from_state(
+            runtime.clone(),
+            transport,
+            local_link_addr,
+            tcp_config,
+            default_socket_options,
+            arp,
+            ack_delay_timeout,
+            socket_queue,
+            recv_queue.clone(),
+            state.cb,
+        );
+        let qt: QToken = runtime.insert_background_coroutine(
+            "bgc::inetstack::tcp::established::background",
+            Box::pin(background::background(cb.clone(), dead_socket_tx).fuse()),
+        )?;
+        Ok(Self {
+            cb,
+            recv_queue,
+            background_task_qt: qt.clone(),
+            runtime: runtime.clone(),
+        })
     }
 }

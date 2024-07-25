@@ -52,6 +52,11 @@ use ::std::{
     time::Duration,
 };
 
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::peer::state::TcpState;
+
+use crate::{capy_log, capy_log_mig};
+
 //======================================================================================================================
 // Enumerations
 //======================================================================================================================
@@ -123,6 +128,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
+        capy_log!("Created a new Established socket with CONN {} recv_queue ({})", socket.endpoints().1, recv_queue.len());
         Self(SharedObject::<TcpSocket<N>>::new(TcpSocket::<N> {
             state: SocketState::Established(socket),
             recv_queue: Some(recv_queue),
@@ -181,6 +187,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
     pub fn listen(&mut self, backlog: usize, nonce: u32) -> Result<(), Fail> {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        capy_log!("[LISTEN] created recv_queue for {:#?}", self);
         self.state = SocketState::Listening(SharedPassiveSocket::new(
             expect_some!(
                 self.local(),
@@ -208,7 +215,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
         let new_socket: EstablishedSocket<N> = listening_socket.do_accept().await?;
+        
         // Insert queue into queue table and get new queue descriptor.
+        capy_log!("\n\n[ACCEPT]");
         let new_queue = Self::new_established(
             new_socket,
             self.runtime.clone(),
@@ -350,6 +359,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         // If this queue has an allocated receive queue, then direct the packet there.
         if let Some(recv_queue) = self.recv_queue.as_mut() {
             recv_queue.push((ip_hdr, tcp_hdr, buf));
+            capy_log!("push to socket recv queue ({})", recv_queue.len());
             return;
         }
     }
@@ -406,5 +416,44 @@ impl<N: NetworkRuntime> Clone for SharedTcpSocket<N> {
 impl<N: NetworkRuntime> Debug for SharedTcpSocket<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TCP socket local={:?} remote={:?}", self.local(), self.remote())
+    }
+}
+
+
+//==========================================================================================================================
+// TCP Migration
+//==========================================================================================================================
+
+//==============================================================================
+//  Implementations
+//==============================================================================
+
+#[cfg(feature = "tcp-migration")]
+impl<N: NetworkRuntime> SharedTcpSocket<N> {
+    // Method to return a reference to the state
+    pub fn get_tcp_state(&mut self) -> Result<TcpState, Fail> {
+        let cb = match self.state {
+            SocketState::Established(ref mut socket) => &mut socket.cb,
+            _ => {
+                panic!("migrating socket is not in established state")
+            },
+        };
+        cb.flush_recv_queue();
+        // send event to the 5th bg
+        // poll ctrlblk::poll()
+        Ok(TcpState::new(cb.into()))
+    }
+
+    pub fn migrate_in_connection(&mut self, state: TcpState) -> Result<(), Fail> {
+        eprintln!("socket.migrate_in_connection()");
+        match self.state {
+            SocketState::Listening(ref mut socket) => {
+                socket.migrate_in_connection(state);
+                // Ok(Some(SocketId::Passive(socket.endpoint())))
+            },
+            _ => unreachable!("Only Listening socket can migrate in connections"),
+        }
+        
+        Ok(())
     }
 }

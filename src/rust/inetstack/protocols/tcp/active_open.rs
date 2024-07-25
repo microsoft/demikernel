@@ -67,6 +67,8 @@ use ::std::{
     },
 };
 
+use crate::capy_log;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -165,7 +167,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         }
 
         debug!("Received SYN+ACK: {:?}", header);
-
+        capy_log!("SYN+ACK");
         // Acknowledge the SYN+ACK segment.
         let remote_link_addr = match self.arp.try_query(self.remote.ip().clone()) {
             Some(r) => r,

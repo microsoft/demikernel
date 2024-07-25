@@ -324,3 +324,61 @@ impl Ipv4Header {
         !state as u16
     }
 }
+
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::peer::state::Deserialize;
+
+#[cfg(feature = "tcp-migration")]
+    impl Deserialize for Ipv4Header {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {   
+            // IP version number.
+            let version: u8 = buf[0] >> 4;
+            // Internet header length.
+            let ihl: u8 = buf[0] & 0xF;
+            let hdr_size: u16 = (ihl as u16) << 2;
+            let hdr_buf: &[u8] = &buf[..hdr_size as usize];
+            // Differentiated services code point.
+            let dscp: u8 = hdr_buf[1] >> 2;
+            // Explicit congestion notification.
+            let ecn: u8 = hdr_buf[1] & 3;
+            // Total length.
+            let total_length: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
+            // Identification (Id).
+            let identification: u16 = u16::from_be_bytes([hdr_buf[4], hdr_buf[5]]);
+            // Control flags.
+            let flags: u8 = hdr_buf[6] >> 5;
+            // Fragment offset.
+            let fragment_offset: u16 = u16::from_be_bytes([hdr_buf[6], hdr_buf[7]]) & 0x1fff;
+            // Time to live.
+            let time_to_live: u8 = hdr_buf[8];
+            // Protocol.
+            let protocol: IpProtocol = IpProtocol::try_from(hdr_buf[9]).unwrap();
+            // Header checksum.
+            let header_checksum: u16 = u16::from_be_bytes([hdr_buf[10], hdr_buf[11]]);
+            // Source address.
+            let src_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[12], hdr_buf[13], hdr_buf[14], hdr_buf[15]);
+
+            // Destination address.
+            let dst_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[16], hdr_buf[17], hdr_buf[18], hdr_buf[19]);
+
+            // Truncate datagram.
+            buf.adjust(hdr_size as usize);
+            let header: Ipv4Header = Self {
+                version,
+                ihl,
+                dscp,
+                ecn,
+                total_length,
+                identification,
+                flags,
+                fragment_offset,
+                ttl: time_to_live,
+                protocol,
+                header_checksum,
+                src_addr,
+                dst_addr,
+            };
+
+            header
+        }
+    }

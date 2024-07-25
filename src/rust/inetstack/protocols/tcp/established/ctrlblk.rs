@@ -6,15 +6,13 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
+    capy_log_mig, collections::{
         async_queue::{
             AsyncQueue,
             SharedAsyncQueue,
         },
         async_value::SharedAsyncValue,
-    },
-    expect_ok,
-    inetstack::protocols::{
+    }, expect_ok, inetstack::protocols::{
         arp::SharedArpPeer,
         ethernet2::{
             EtherType2,
@@ -41,8 +39,7 @@ use crate::{
             },
             SeqNumber,
         },
-    },
-    runtime::{
+    }, runtime::{
         fail::Fail,
         memory::DemiBuffer,
         network::{
@@ -54,7 +51,7 @@ use crate::{
         yield_with_timeout,
         SharedDemiRuntime,
         SharedObject,
-    },
+    }
 };
 use ::std::{
     collections::VecDeque,
@@ -69,6 +66,11 @@ use ::std::{
     },
 };
 use futures::never::Never;
+
+use crate::capy_log;
+
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::stats::StatsHandle;
 
 //======================================================================================================================
 // Constants
@@ -132,20 +134,34 @@ struct Receiver {
 
     // Receive queue.  Contains in-order received (and acknowledged) data ready for the application to read.
     recv_queue: AsyncQueue<DemiBuffer>,
+
+    #[cfg(feature = "tcp-migration")]
+    recv_queue_stats: StatsHandle,
+    #[cfg(feature = "tcp-migration")]
+    rps_stats: StatsHandle,
 }
 
 impl Receiver {
-    pub fn new(reader_next: SeqNumber, receive_next: SeqNumber) -> Self {
+        pub fn new(reader_next: SeqNumber, receive_next: SeqNumber, 
+        #[cfg(feature = "tcp-migration")] recv_queue_stats: StatsHandle,
+        #[cfg(feature = "tcp-migration")] rps_stats: StatsHandle,
+    ) -> Self {
         Self {
             reader_next,
             receive_next,
             recv_queue: AsyncQueue::with_capacity(RECV_QUEUE_SZ),
+            #[cfg(feature = "tcp-migration")]
+            recv_queue_stats,
+            #[cfg(feature = "tcp-migration")]
+            rps_stats,
         }
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
+            capy_log!("receiver.recv_queue.pop() is scheduled");
             let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
+            capy_log!("receiver.recv_queue.pop() is polled");
             // Split the buffer if it's too big.
             if buf.len() > size {
                 buf.split_front(size)?
@@ -157,13 +173,14 @@ impl Receiver {
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);
-
+        capy_log!("pop {} bytes from receiver's recv queue ({} remains)", buf.len(), self.recv_queue.len());
         Ok(buf)
     }
 
     pub fn push(&mut self, buf: DemiBuffer) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.push(buf);
+        capy_log!("push to receiver recv queue ({})", self.recv_queue.len());
         self.receive_next = self.receive_next + SeqNumber::from(buf_len as u32);
     }
 }
@@ -270,6 +287,13 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
     ) -> Self {
         let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
+        
+        #[cfg(feature = "tcp-migration")]
+        let recv_queue_stats = StatsHandle::new((local, remote));
+        #[cfg(feature = "tcp-migration")]
+        let rps_stats = StatsHandle::new((local, remote));
+
+        
         Self(SharedObject::<ControlBlock<N>>::new(ControlBlock {
             local,
             remote,
@@ -287,7 +311,11 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             window_scale: receiver_window_scale,
             out_of_order: VecDeque::new(),
             out_of_order_fin: Option::None,
-            receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
+            receiver: Receiver::new(
+                receiver_seq_no, receiver_seq_no, 
+                #[cfg(feature = "tcp-migration")] recv_queue_stats,
+                #[cfg(feature = "tcp-migration")] rps_stats,
+            ),
             cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
             retransmit_deadline: SharedAsyncValue::new(None),
             rto_calculator: RtoCalculator::new(),
@@ -417,6 +445,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
     pub fn receive(&mut self, ipv4_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         self.recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+        capy_log!("push to ctrlblk recv queue ({})", self.recv_queue.len());
+
     }
 
     // This is the main TCP processing routine.
@@ -424,9 +454,13 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // Normal data processing in the Established state.
         loop {
             let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(None).await {
-                Ok((_, header, data)) if self.state == State::Established => (header, data),
+                Ok((_, header, data)) if self.state == State::Established => {
+                    capy_log!("===== receiver.poll() START ====");
+                    (header, data)
+                },
                 Ok(result) => {
                     self.recv_queue.push_front(result);
+                    capy_log!("push_front to ctrlblk recv queue ({})", self.recv_queue.len());
                     let cause: String = format!(
                         "ending receive polling loop for non-established connection (local={:?}, remote={:?})",
                         self.local, self.remote
@@ -443,7 +477,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     return Err(e);
                 },
             };
-
+            capy_log!("pop conn(ctrlblk) recv queue ({})", self.recv_queue.len());
             debug!(
                 "{:?} Connection Receiving {} bytes + {:?}",
                 self.state,
@@ -452,7 +486,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             );
 
             match self.process_packet(header, data) {
-                Ok(()) => (),
+                Ok(()) => {
+                    capy_log!("===== receiver.poll() FINISH ====");
+                    ()
+                },
                 Err(e) if e.errno == libc::ECONNRESET => {
                     if let Some(mut socket_tx) = self.socket_queue.take() {
                         socket_tx.push(self.remote);
@@ -478,7 +515,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
         let mut seg_end: SeqNumber = seg_start;
         let mut seg_len: u32 = data.len() as u32;
-
+        capy_log!("CTRLBLK procesing packet seq_num {} (len {})", seg_start, seg_len);
+        
         // Check if the segment is in the receive window and trim off everything else.
         self.check_segment_in_window(&mut header, &mut data, &mut seg_start, &mut seg_end, &mut seg_len)?;
         self.check_rst(&header)?;
@@ -489,8 +527,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         if header.urg {
             warn!("Got packet with URG bit set!");
         }
-
         if data.len() > 0 {
+            capy_log!("CTRLBLK procesing data");
             self.process_data(&mut header, data, seg_start, seg_end, seg_len)?;
         }
         self.process_remote_close(&header)?;
@@ -502,11 +540,13 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             // Getting the current time is extremely cheap as it is just a variable lookup.
             let now: Instant = self.get_now();
             self.ack_deadline.set(Some(now + timeout));
+            capy_log!("Scheduled ACK");
         } else {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
             self.ack_deadline.set(None);
             trace!("process_packet(): sending ack on deadline expiration");
             self.send_ack();
+            capy_log!("Sent ACK");
         }
 
         Ok(())
@@ -568,6 +608,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                 if *seg_end < receive_next {
                     // This is an entirely duplicate (i.e. old) segment.  ACK (if not RST) and drop.
                     //
+                    capy_log!("Duplicate pkt, ACK and DROP");
                     if !header.rst {
                         trace!("check_segment_in_window(): send ack on duplicate segment");
                         self.send_ack();
@@ -642,6 +683,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     // Check the RST bit.
     fn check_rst(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         if header.rst {
+            capy_log!("RECV RST");
             // TODO: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new
             // segment doesn't start precisely on RCV.NXT.
 
@@ -839,7 +881,6 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         debug_assert!(header.ack);
 
         let sent_fin: bool = header.fin;
-
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let segment = TcpSegment {
@@ -1107,6 +1148,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     fn process_remote_close(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         if header.fin {
             trace!("Received FIN");
+            capy_log!("FIN");
             // 2. Push empty buffer to indicate EOF.
             // TODO: set err bit and wake.
             self.receiver.push(DemiBuffer::new(0));
@@ -1237,5 +1279,470 @@ impl<N: NetworkRuntime> Deref for SharedControlBlock<N> {
 impl<N: NetworkRuntime> DerefMut for SharedControlBlock<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+//==========================================================================================================================
+// TCP Migration
+//==========================================================================================================================
+
+//==============================================================================
+//  Implementations
+//==============================================================================
+
+#[cfg(feature = "tcp-migration")]
+impl<N: NetworkRuntime> SharedControlBlock<N> {
+    pub fn get_inner(&self) -> &ControlBlock<N> {
+        self.0.deref()
+    }
+
+    pub fn flush_recv_queue(&mut self)  {
+        capy_log_mig!("Flushing ctrlblk::recv_queue before mig");
+        loop {
+            let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.try_pop() {
+                Some((_, header, data)) if self.state == State::Established => {
+                    (header, data)
+                },
+                Some(result) => {
+                    panic!("Only Established packet can be migrated");
+                },
+                None => break,
+            };
+            
+            match self.process_packet(header, data) {
+                Ok(()) => {},
+                Err(e) if e.errno == libc::ECONNRESET => todo!("Connection is closed during migration"),
+                Err(e) => panic!("Dropped packet: {:?}", e),
+            }
+        }
+    }
+}
+#[cfg(feature = "tcp-migration")]
+pub mod state {
+    use std::{
+        net::{SocketAddrV4, Ipv4Addr},
+        collections::VecDeque,
+        time::Duration,
+    };
+    use byteorder::{BigEndian, ByteOrder};
+    use crate::{
+        collections::{
+            async_queue::{AsyncQueue, SharedAsyncQueue},
+            async_value::SharedAsyncValue,
+        }, 
+        inetstack::protocols::{
+            ipv4::Ipv4Header,
+            tcp::{
+                established::{
+                    rto::RtoCalculator, sender::state::SenderState, Sender
+                }, peer::state::{Deserialize, Serialize}, 
+                segment::TcpHeader, 
+                stats::StatsHandle, SeqNumber,
+                congestion_control::{self, CongestionControl},
+            }, 
+            arp::SharedArpPeer,
+        },
+        runtime::{
+            memory::DemiBuffer,
+            network::{
+                config::TcpConfig,
+                socket::option::TcpSocketOptions,
+                types::MacAddress,
+                NetworkRuntime,
+            },
+            SharedObject,
+            SharedDemiRuntime,
+        }, 
+    };
+
+    use super::{Receiver, SharedControlBlock, ControlBlock, State};
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct ReceiverState {
+        reader_next: SeqNumber, // 0..4
+        receive_next: SeqNumber, // 4..8
+        recv_queue: VecDeque<DemiBuffer>, // 8..
+    }
+
+
+    #[derive(Debug)]
+    pub struct ControlBlockState {
+        local: SocketAddrV4, // 0..6
+        remote: SocketAddrV4, // 6..12
+        receive_buffer_size: u32, // 12..16
+        window_scale: u32, // 16..20
+        out_of_order_fin: Option<SeqNumber>, // 20..
+        out_of_order_queue: VecDeque<(SeqNumber, DemiBuffer)>,
+        // recv_queue: VecDeque<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        ack_queue: VecDeque<usize>,
+        receiver: ReceiverState,
+        sender: SenderState,
+    }
+
+    //===================================================================
+    //  Standard Library Trait Implementations
+    //===================================================================
+    impl From<&Receiver> for ReceiverState {
+        fn from(Receiver {
+            reader_next,
+            receive_next,
+            recv_queue,
+            ..
+        }: &Receiver) -> Self {
+            Self {
+                reader_next: *reader_next,
+                receive_next: *receive_next,
+                recv_queue: recv_queue.queue().clone()
+            }
+        }
+    }
+
+    impl<N: NetworkRuntime> From<&mut SharedControlBlock<N>> for ControlBlockState {
+        fn from(shared_cb: &mut SharedControlBlock<N>) -> Self {
+            let cb = shared_cb.get_inner();
+
+            Self {
+                local: cb.local,
+                remote: cb.remote,
+                receive_buffer_size: cb.receive_buffer_size,
+                window_scale: cb.window_scale,
+                out_of_order_fin: cb.out_of_order_fin,
+                out_of_order_queue: cb.out_of_order.clone(),
+                // recv_queue: cb.recv_queue.queue().clone(),
+                ack_queue: cb.ack_queue.queue().clone(),
+                receiver: (&cb.receiver).into(),
+                sender: (&cb.sender).into(),
+            }
+        }
+    }
+    //===================================================================
+    //  Trait Implementations
+    //===================================================================
+
+    //==============================
+    //  Serialization
+    //==============================
+    impl Serialize for ReceiverState {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::from(self.reader_next).to_be_bytes());
+            buf[4..8].copy_from_slice(&u32::from(self.receive_next).to_be_bytes());
+            let buf = &mut buf[8..];
+            self.recv_queue.serialize_into(buf)
+        }
+    }
+
+    impl Serialize for ControlBlockState {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&self.local.ip().octets());
+            buf[4..6].copy_from_slice(&self.local.port().to_be_bytes());
+            buf[6..10].copy_from_slice(&self.remote.ip().octets());
+            buf[10..12].copy_from_slice(&self.remote.port().to_be_bytes());
+
+            buf[12..16].copy_from_slice(&self.receive_buffer_size.to_be_bytes());
+            buf[16..20].copy_from_slice(&self.window_scale.to_be_bytes());
+            
+            let buf = &mut buf[20..];
+            let buf = self.out_of_order_fin.serialize_into(buf);
+            let buf = self.out_of_order_queue.serialize_into(buf);
+            let buf = self.ack_queue.serialize_into(buf);
+            let buf = self.receiver.serialize_into(buf);
+            self.sender.serialize_into(buf)
+        }
+    }
+    
+    impl<T: Serialize> Serialize for VecDeque<T> {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::try_from(self.len()).expect("deque len too big").to_be_bytes());
+            let mut buf = &mut buf[4..];
+            for e in self {
+                buf = e.serialize_into(buf);
+            }
+            buf
+        }
+    }
+
+    impl<T: Serialize> Serialize for Option<T> {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            if let Some(e) = self {
+                buf[0] = 1;
+                e.serialize_into(&mut buf[1..])
+            } else {
+                buf[0] = 0;
+                &mut buf[1..]
+            }
+        }
+    }
+
+    impl Serialize for (SeqNumber, DemiBuffer) {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::from(self.0).to_be_bytes());
+            self.1.serialize_into(&mut buf[4..])
+        }
+    }
+    
+    impl Serialize for DemiBuffer {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::try_from(self.len()).expect("buffer len too big").to_be_bytes());
+            buf[4..4 + self.len()].copy_from_slice(&self);
+            &mut buf[4 + self.len()..]
+        }
+    }
+
+    impl Serialize for SeqNumber {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::from(*self).to_be_bytes());
+            &mut buf[4..]
+        }
+    }
+
+    impl Serialize for usize {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&(*self as u32).to_be_bytes());
+            &mut buf[4..]
+        }
+    }
+
+    //==============================
+    //  Deserialization
+    //==============================
+    impl Deserialize for ReceiverState {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let reader_next = SeqNumber::from(BigEndian::read_u32(&buf[0..4]));
+            let receive_next = SeqNumber::from(BigEndian::read_u32(&buf[4..8]));
+
+            buf.adjust(8);
+            let recv_queue = VecDeque::<DemiBuffer>::deserialize_from(buf);
+
+            Self { reader_next, receive_next, recv_queue }
+        }
+    }
+    
+    impl Deserialize for ControlBlockState {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let local = SocketAddrV4::new(
+                Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]),
+                BigEndian::read_u16(&buf[4..6])
+            );
+            let remote = SocketAddrV4::new(
+                Ipv4Addr::new(buf[6], buf[7], buf[8], buf[9]),
+                BigEndian::read_u16(&buf[10..12])
+            );
+
+            let receive_buffer_size = BigEndian::read_u32(&buf[12..16]);
+            let window_scale = BigEndian::read_u32(&buf[16..20]);
+            
+            buf.adjust(20);
+            let out_of_order_fin = Option::<SeqNumber>::deserialize_from(buf);
+            let out_of_order_queue = VecDeque::<(SeqNumber, DemiBuffer)>::deserialize_from(buf);
+            // let recv_queue = VecDeque::<(Ipv4Header, TcpHeader, DemiBuffer)>::deserialize_from(buf);
+            let ack_queue = VecDeque::<usize>::deserialize_from(buf);
+            let receiver = ReceiverState::deserialize_from(buf);
+            let sender = SenderState::deserialize_from(buf);
+
+            Self { local, remote, receive_buffer_size, window_scale,
+                out_of_order_fin, out_of_order_queue, /* recv_queue, */ ack_queue, receiver, sender }
+        }
+    }
+
+    impl<T: Deserialize> Deserialize for VecDeque<T> {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {    
+            let size = usize::try_from(BigEndian::read_u32(&buf[0..4])).unwrap();
+            let mut deque = VecDeque::<T>::with_capacity(size);
+            buf.adjust(4);
+    
+            for _ in 0..size {
+                let deserialized = T::deserialize_from(buf);
+                deque.push_back(deserialized);
+            }
+            deque
+        }
+    }
+
+    impl<T: Deserialize> Deserialize for Option<T> {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let discriminant = buf[0];
+            buf.adjust(1);
+            match discriminant {
+                0 => None,
+                1 => {
+                    let val = T::deserialize_from(buf);
+                    Some(val)
+                },
+                _ => panic!("invalid Option discriminant"),
+            }
+        }
+    }
+
+    impl Deserialize for (Ipv4Header, TcpHeader, DemiBuffer) {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {   
+            let ip_hdr = Ipv4Header::deserialize_from(buf);
+            let tcp_hdr = TcpHeader::deserialize_from(buf);
+            let buffer = DemiBuffer::deserialize_from(buf);
+            (ip_hdr, tcp_hdr, buffer)
+        }
+    }
+
+    impl Deserialize for (SeqNumber, DemiBuffer) {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {    
+            let seq = SeqNumber::from(BigEndian::read_u32(&buf[0..4]));
+            buf.adjust(4);
+            let buffer = DemiBuffer::deserialize_from(buf);
+            (seq, buffer)
+        }
+    }
+    
+    impl Deserialize for DemiBuffer {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {    
+            let len = usize::try_from(BigEndian::read_u32(&buf[0..4])).unwrap();
+            buf.adjust(4);
+    
+            let mut buffer = buf.clone();
+            buffer.trim(buf.len() - len);
+            buf.adjust(len);
+    
+            buffer
+        }
+    }
+
+    impl Deserialize for SeqNumber {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let seq = SeqNumber::from(BigEndian::read_u32(&buf[0..4]));
+            buf.adjust(4);
+            seq
+        }
+    }
+
+    impl Deserialize for usize {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let val = BigEndian::read_u32(&buf[0..4]);
+            buf.adjust(4);
+            val.try_into().unwrap()
+        }
+    }
+    
+    //===================================================================
+    //  Implementations
+    //===================================================================
+    impl Receiver {
+        fn from_state(
+            ReceiverState {
+                reader_next,
+                receive_next,
+                recv_queue
+            }: ReceiverState,
+            #[cfg(feature = "tcp-migration")]
+            recv_queue_stats: StatsHandle,
+            #[cfg(feature = "tcp-migration")]
+            rps_stats: StatsHandle,
+        ) -> Self {
+            Self {
+                reader_next: reader_next,
+                receive_next: receive_next,
+                recv_queue: AsyncQueue::from_vecdeque(recv_queue),
+                recv_queue_stats,
+                rps_stats,
+            }
+        }
+    }
+
+
+    impl<N: NetworkRuntime> SharedControlBlock<N> {
+        pub fn from_state(
+            runtime: SharedDemiRuntime,
+            transport: N,
+            local_link_addr: MacAddress,
+            tcp_config: TcpConfig,
+            default_socket_options: TcpSocketOptions,
+            arp: SharedArpPeer<N>,
+            ack_delay_timeout: Duration,
+            socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
+            recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+            ControlBlockState {
+                local,
+                remote,
+                receive_buffer_size,
+                window_scale,
+                out_of_order_fin,
+                out_of_order_queue,
+                // recv_queue,
+                ack_queue, 
+                receiver,
+                sender
+            }: ControlBlockState,
+        ) -> Self {
+            let sender: Sender = sender.into();
+            let sender_mss = sender.get_mss();
+            let sender_seq_no = sender.get_send_unacked().get();
+            
+            Self(SharedObject::<ControlBlock<N>>::new(ControlBlock {
+                local,
+                remote,
+                runtime,
+                transport,
+                local_link_addr,
+                tcp_config,
+                socket_options: default_socket_options,
+                arp,
+                sender,
+                state: State::Established,
+                ack_delay_timeout,
+                ack_deadline: SharedAsyncValue::new(None),
+                receive_buffer_size,
+                window_scale,
+                out_of_order: VecDeque::new(),
+                out_of_order_fin: Option::None,
+                receiver: Receiver::from_state(
+                    receiver,
+                    StatsHandle::new((local, remote)), 
+                    StatsHandle::new((local, remote)),
+                ),
+                cc: congestion_control::None::new(sender_mss, sender_seq_no, None),
+                retransmit_deadline: SharedAsyncValue::new(None),
+                rto_calculator: RtoCalculator::new(),
+                recv_queue,
+                ack_queue: SharedAsyncQueue::<usize>::from_vecdeque(ack_queue),
+                socket_queue,
+            }))
+        }
+        
+        pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> {
+            self.recv_queue.clone()
+        }
+    }
+    
+    
+    
+    impl ReceiverState {
+        pub fn serialized_size(&self) -> usize {
+            8 // Fixed
+            + 4 + self.recv_queue.iter().fold(0, |acc, e| acc + 4 + e.len()) // recv_queue
+        }
+    }
+    
+    impl ControlBlockState {
+        pub fn serialized_size(&self) -> usize {
+            20 // Fixed
+            + 1 + if self.out_of_order_fin.is_some() { 4 } else { 0 } // out_of_order_fin
+            + 4 + self.out_of_order_queue.iter().fold(0, |acc, (_seq, buf)| acc + 4 + 4 + buf.len()) // out_of_order_queue
+            + 4 + (self.ack_queue.len() * 4) // ack_queue
+            + self.receiver.serialized_size()
+            + self.sender.serialized_size()
+        }
+
+        pub fn local(&self) -> SocketAddrV4 {
+            self.local
+        }
+
+        pub fn remote(&self) -> SocketAddrV4 {
+            self.remote
+        }
+
+        pub fn set_local(&mut self, local: SocketAddrV4) {
+            self.local = local;
+        }
+
+        pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
+            (self.local, self.remote)
+        }
     }
 }

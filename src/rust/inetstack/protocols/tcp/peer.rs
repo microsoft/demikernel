@@ -57,6 +57,14 @@ use ::std::{
     },
 };
 
+#[cfg(feature = "tcp-migration")]
+use state::TcpState;
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcpmig::TcpMigPeer;
+
+use crate::{capy_log, capy_log_mig};
+
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -73,6 +81,9 @@ pub struct TcpPeer<N: NetworkRuntime> {
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     addresses: HashMap<SocketId, SharedTcpSocket<N>>,
+
+    #[cfg(feature = "tcp-migration")]
+    tcpmig: TcpMigPeer<N>,
 }
 
 #[derive(Clone)]
@@ -93,6 +104,10 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
         let (tx, _) = mpsc::unbounded();
+
+        #[cfg(feature = "tcp-migration")]
+        let tcpmig = TcpMigPeer::new(transport.clone(), config.local_link_addr()?, config.local_ipv4_addr()?, arp.clone());
+
         Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
@@ -105,6 +120,8 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             rng,
             dead_socket_tx: tx,
             addresses: HashMap::<SocketId, SharedTcpSocket<N>>::new(),
+            #[cfg(feature = "tcp-migration")]
+            tcpmig,
         })))
     }
 
@@ -149,7 +166,9 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
         // Issue operation.
         socket.bind(local)?;
+        capy_log!("[BIND]");
         self.addresses.insert(SocketId::Passive(local), socket.clone());
+        capy_log!("addresses: {:#?}", self.addresses);
         Ok(())
     }
 
@@ -165,11 +184,16 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub async fn accept(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<SharedTcpSocket<N>, Fail> {
         // Wait for accept to complete.
         match socket.accept().await {
+            //HERE: maybe take in the buffer right after the accept? 
             Ok(socket) => {
+                capy_log!("CONN_ACCEPTED,({})", socket.remote().unwrap());
                 self.addresses.insert(
                     SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()),
                     socket.clone(),
                 );
+                capy_log!("addresses: {:#?}", self.addresses);
+                #[cfg(feature = "tcp-migration")]
+                self.close_active_migration(socket.local().unwrap(), socket.remote().unwrap());
                 Ok(socket)
             },
             Err(e) => Err(e),
@@ -273,6 +297,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
     /// Processes an incoming TCP segment.
     pub fn receive(&mut self, ip_hdr: Ipv4Header, buf: DemiBuffer) {
+        
         let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
             match TcpHeader::parse(&ip_hdr, buf, self.tcp_config.get_rx_checksum_offload()) {
                 Ok(result) => result,
@@ -285,28 +310,50 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         debug!("TCP received {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
-
+        
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             let cause: String = format!("invalid remote address (remote={})", remote.ip());
             error!("receive(): {}", &cause);
             return;
         }
+        #[cfg(feature = "tcp-migration")]
+        let should_migrate = self.tcpmig.should_migrate();
 
         // Retrieve the queue descriptor based on the incoming segment.
         let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
             Some(socket) => socket,
-            None => match self.addresses.get_mut(&SocketId::Passive(local)) {
-                Some(socket) => socket,
-                None => {
-                    let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
-                    error!("receive(): {}", &cause);
-                    return;
-                },
-            },
-        };
+            None => {
 
+                #[cfg(feature = "tcp-migration")]
+                // Check if migrating queue exists. If yes, push buffer to queue and return, else continue normally.
+                match self.tcpmig.try_buffer_packet(remote, ip_hdr, tcp_hdr.clone(), data.clone()) {
+                    Ok(()) => return,
+                    Err(()) => {},
+                };
+
+                match self.addresses.get_mut(&SocketId::Passive(local)) {
+                    Some(socket) => socket,
+                    None => {
+                        let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
+                        error!("receive(): {}", &cause);
+                        return;
+                    },
+                }
+            },
+
+        };
+        capy_log!("TCP msg {} to socket {:#?}", tcp_hdr.seq_num, socket);
         // Dispatch to further processing depending on the socket state.
-        socket.receive(ip_hdr, tcp_hdr, data)
+        socket.receive(ip_hdr, tcp_hdr, data);
+
+
+        #[cfg(feature = "tcp-migration")]
+        if should_migrate {
+            // Clone the socket and initiate migration
+            let socket_clone = socket.clone();
+            self.tcpmig.initiate_migration(socket_clone);
+
+        }
     }
 }
 
@@ -325,5 +372,156 @@ impl<N: NetworkRuntime> Deref for SharedTcpPeer<N> {
 impl<N: NetworkRuntime> DerefMut for SharedTcpPeer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+
+//==========================================================================================================================
+// TCP Migration
+//==========================================================================================================================
+
+//==============================================================================
+//  Implementations
+//==============================================================================
+
+#[cfg(feature = "tcp-migration")]
+impl<N: NetworkRuntime> SharedTcpPeer<N> {
+    pub fn receive_tcpmig(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
+        use super::super::tcpmig::TcpmigReceiveStatus;
+        match self.tcpmig.receive(ip_hdr, buf)? {
+            TcpmigReceiveStatus::Ok | TcpmigReceiveStatus::SentReject => {},
+
+            TcpmigReceiveStatus::Rejected(local, remote) => {
+                capy_log_mig!("MIGRATION REJECTED");
+            },
+
+            TcpmigReceiveStatus::ReturnedBySwitch(local, remote) => {
+                // #[cfg(not(feature = "manual-tcp-migration"))]
+                // match self.established.get(&(local, remote)) {
+                //     Some(s) => s.cb.enable_stats(&mut self.recv_queue_stats, &mut self.rps_stats),
+                //     None => panic!("migration rejected for non-existent connection: {:?}", (local, remote)),
+                // }
+    
+                // // Re-initiate another migration if manual migration returned by switch.
+                // #[cfg(feature = "manual-tcp-migration")]
+                // self.initiate_migration_by_addr((local, remote));
+                panic!("PREPARE_MIG is returned by the switch");
+                
+            },
+
+            TcpmigReceiveStatus::PrepareMigrationAcked(local, remote) => {
+                let mut socket: SharedTcpSocket<N> = match self.addresses.remove(&SocketId::Active(local, remote)) {
+                    Some(socket) => socket,
+                    None => panic!("PrepareMigrationAcked for non-existing socket: {:?}", (local, remote)),
+                };
+                let state = socket.get_tcp_state()?;
+                // let state = socket.get_tcp_state();
+                capy_log_mig!("PrepareMigrationAcked for {:#?}", socket);
+                capy_log_mig!("TcpState: {:#?}", state.cb);
+                
+                self.tcpmig.send_tcp_state(state);
+            },
+            TcpmigReceiveStatus::StateReceived(state) => {
+                self.migrate_in_connection(state);
+            },
+        }
+        Ok(())
+    }
+
+    fn migrate_in_connection(&mut self, state: TcpState) -> Result<(), Fail> {
+        // Create EstablishedSocket
+        // 1. take the passive socket using the local address
+        let local = state.cb.local();
+        let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Passive(local)) {
+            Some(socket) => socket,
+            None => panic!("Passive socket binding {:?} doesn't exist.", state.cb.local()),
+        };
+        socket.migrate_in_connection(state);
+        Ok(())
+    }
+
+
+    #[cfg(feature = "tcp-migration")]
+    fn close_active_migration(&mut self, local: SocketAddrV4, remote: SocketAddrV4) {    
+        if let Some(buffered) = self.tcpmig.close_active_migration(remote) {
+            // Process buffered packets.
+            match self.addresses.get_mut(&SocketId::Active(local, remote)) {
+                Some(socket) => {
+                    capy_log_mig!("start receiving target-buffered packets into the CB");
+                    for (ip_hdr, tcp_hdr, data) in buffered {
+                        socket.receive(ip_hdr, tcp_hdr, data);
+                    }
+                },
+                None => panic!("Migrated socket does not exist."), 
+            };
+        }
+        
+    }
+}
+
+
+//==============================================================================
+// TCP State
+//==============================================================================
+#[cfg(feature = "tcp-migration")]
+pub mod state {
+    use std::{net::SocketAddrV4};
+
+    use crate::{
+        capy_log_mig, capy_profile, 
+        inetstack::protocols::{
+            tcp::established::ControlBlockState, 
+        },
+        runtime::memory::DemiBuffer,
+    };
+
+    pub trait Serialize {
+        /// Serializes into the buffer and returns its unused part.
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8];
+    }
+
+    pub trait Deserialize: Sized {
+        /// Deserializes and removes the deserialised part from the buffer.
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self;
+    }
+
+    pub struct TcpState {
+        pub cb: ControlBlockState,
+    }
+    
+
+    impl TcpState {
+        pub fn new(cb: ControlBlockState) -> Self {
+            Self { cb }
+        }
+
+        pub fn remote(&self) -> SocketAddrV4 {
+            self.cb.remote()
+        }
+
+        pub fn serialize(&self) -> DemiBuffer {
+            // capy_profile!("PROF_SERIALIZE");
+            let mut buf = DemiBuffer::new(self.serialized_size() as u16);
+            let remaining = self.cb.serialize_into(&mut buf);
+            buf
+        }
+
+        fn serialized_size(&self) -> usize {
+            self.cb.serialized_size()
+        }
+
+        pub fn deserialize(mut buf: DemiBuffer) -> Self {
+            // capy_profile!("PROF_DESERIALIZE");
+            let cb: ControlBlockState = ControlBlockState::deserialize_from(&mut buf);
+            Self { cb }
+        }
+
+        pub fn set_local(&mut self, local: SocketAddrV4) {
+            self.cb.set_local(local)
+        }
+
+        pub fn connection(&self) -> (SocketAddrV4, SocketAddrV4) {
+            self.cb.endpoints()
+        }
     }
 }

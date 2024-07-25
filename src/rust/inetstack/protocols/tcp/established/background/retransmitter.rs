@@ -20,6 +20,7 @@ use ::std::time::{
     Duration,
     Instant,
 };
+use crate::{capy_log, capy_log_mig};
 
 pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
     // Watch the retransmission deadline.
@@ -47,8 +48,12 @@ pub async fn retransmitter<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> 
         };
         pin_mut!(something_changed);
         match conditional_yield_until(something_changed, rtx_deadline).await {
-            Ok(()) => continue,
+            Ok(()) => {
+                capy_log!("\nRETRANSMITTER POLLED");
+                continue
+            },
             Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                capy_log!("\nRETRANSMITTER TIMEDOUT");
                 // Retransmit timeout.
 
                 // Notify congestion control about RTO.

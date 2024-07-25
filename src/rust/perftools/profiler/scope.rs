@@ -157,11 +157,12 @@ impl Scope {
         }
         writeln!(
             out,
-            "{},{},{},{}",
+            "{},{},{},{},{}",
             format!("{},{:?},{}", markers, thread_id, self.name),
             percent_time,
             duration_sum_secs / (self.num_calls as f64),
             duration_sum_secs / (self.num_calls as f64) * ns_per_cycle,
+            self.num_calls,
         )?;
 
         // Write children

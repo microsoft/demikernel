@@ -32,10 +32,13 @@ use ::std::{
     },
 };
 
+use crate::capy_log;
+
 // Structure of entries on our unacknowledged queue.
 // TODO: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
 // buffer structure that held everything we need directly, thus avoiding this extra wrapper.
 //
+#[derive(Debug, Clone)]
 pub struct UnackedSegment {
     pub bytes: DemiBuffer,
     // Set to `None` on retransmission to implement Karn's algorithm.
@@ -223,6 +226,7 @@ impl Sender {
                         header.psh = true;
                     }
                     trace!("Send immediate");
+                    capy_log!("Send immediate {} bytes, seq_num: {}", buf_len, header.seq_num);
                     cb.emit(header, Some(buf.clone()), remote_link_addr);
 
                     // Update SND.NXT.
@@ -259,6 +263,7 @@ impl Sender {
 
         // Slow path: Delegating sending the data to background processing.
         trace!("Queueing Send for background processing");
+        capy_log!("Queueing Send for background processing");
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
@@ -418,5 +423,182 @@ impl Sender {
 
     pub fn remote_mss(&self) -> usize {
         self.mss
+    }
+}
+
+//==============================================================================
+// TCP Migration
+//==============================================================================
+
+#[cfg(feature = "tcp-migration")]
+pub mod state {
+    use std::{collections::VecDeque, cell::{RefCell, Cell}};
+    use byteorder::{BigEndian, ByteOrder};
+
+    use crate::{
+        collections::async_value::SharedAsyncValue,
+        inetstack::protocols::tcp::{
+            SeqNumber,
+            peer::state::{Serialize, Deserialize},
+        },
+        runtime::{memory::DemiBuffer},
+    };
+    use super::{UnackedSegment, Sender};
+    
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct SenderState {
+        unsent_seq_no: SeqNumber, // 0..4
+        send_unacked: SeqNumber, // 4..8
+        send_next: SeqNumber, // 8..12
+        send_window: u32, // 12..16
+        send_window_last_update_seq: SeqNumber, // 16..20
+        send_window_last_update_ack: SeqNumber, // 20..24
+        mss: u32, // 24..28
+        window_scale: u8, // 28
+        unacked_queue: VecDeque<UnackedSegment>, // 29..
+        unsent_queue: VecDeque<DemiBuffer>,
+    }
+
+    //===================================================================
+    //  Standard Library Trait Implementations
+    //===================================================================
+    impl From<&Sender> for SenderState {
+        fn from(Sender {
+            send_unacked,
+            unacked_queue,
+            send_next,
+            unsent_queue,
+            unsent_seq_no,
+
+            send_window,
+            send_window_last_update_seq,
+            send_window_last_update_ack,
+
+            window_scale,
+            mss,
+        }: &Sender) -> Self {
+            Self {
+                unsent_seq_no: unsent_seq_no.get(),
+                send_unacked: send_unacked.get(),
+                send_next: send_next.get(),
+                send_window: send_window.get(),
+                send_window_last_update_seq: send_window_last_update_seq.get(),
+                send_window_last_update_ack: send_window_last_update_ack.get(),
+                mss: (*mss).try_into().expect("MSS too big"),
+                window_scale: *window_scale,
+                unacked_queue: unacked_queue.take(),
+                unsent_queue: unsent_queue.take(),
+            }
+        }
+    }
+
+    impl From<SenderState> for Sender {
+        fn from(SenderState {
+            unsent_seq_no,
+            send_unacked,
+            send_next,
+            send_window,
+            send_window_last_update_seq,
+            send_window_last_update_ack,
+            mss,
+            window_scale,
+            unacked_queue,
+            unsent_queue
+        }: SenderState) -> Self {
+            Self {
+                send_unacked: SharedAsyncValue::new(send_unacked),
+                unacked_queue: RefCell::new(unacked_queue),
+                send_next: SharedAsyncValue::new(send_next),
+                unsent_queue: RefCell::new(unsent_queue),
+                unsent_seq_no: SharedAsyncValue::new(unsent_seq_no),
+                send_window: SharedAsyncValue::new(send_window),
+                send_window_last_update_seq: Cell::new(send_window_last_update_seq),
+                send_window_last_update_ack: Cell::new(send_window_last_update_ack),
+                window_scale,
+                mss: mss.try_into().unwrap(),
+            }
+        }
+    }
+
+    impl PartialEq for UnackedSegment {
+        fn eq(&self, other: &Self) -> bool {
+            self.bytes == other.bytes
+        }
+    }
+
+    impl Eq for UnackedSegment {}
+
+    //===================================================================
+    //  Trait Implementations
+    //===================================================================
+
+    //==============================
+    //  Serialization
+    //==============================
+
+    impl Serialize for SenderState {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            buf[0..4].copy_from_slice(&u32::from(self.unsent_seq_no).to_be_bytes());
+            buf[4..8].copy_from_slice(&u32::from(self.send_unacked).to_be_bytes());
+            buf[8..12].copy_from_slice(&u32::from(self.send_next).to_be_bytes());
+            buf[12..16].copy_from_slice(&self.send_window.to_be_bytes());
+            buf[16..20].copy_from_slice(&u32::from(self.send_window_last_update_seq).to_be_bytes());
+            buf[20..24].copy_from_slice(&u32::from(self.send_window_last_update_ack).to_be_bytes());
+            buf[24..28].copy_from_slice(&self.mss.to_be_bytes());
+            buf[28] = self.window_scale;
+
+            let buf = &mut buf[29..];
+            let buf = self.unacked_queue.serialize_into(buf);
+            self.unsent_queue.serialize_into(buf)
+        }
+    }
+    
+    impl Serialize for UnackedSegment {
+        fn serialize_into<'buf>(&self, buf: &'buf mut [u8]) -> &'buf mut [u8] {
+            self.bytes.serialize_into(buf)
+        }
+    }
+
+    //==============================
+    //  Deserialization
+    //==============================
+
+    impl Deserialize for SenderState {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let unsent_seq_no = SeqNumber::from(BigEndian::read_u32(&buf[0..4]));
+            let send_unacked = SeqNumber::from(BigEndian::read_u32(&buf[4..8]));
+            let send_next = SeqNumber::from(BigEndian::read_u32(&buf[8..12]));
+            let send_window = BigEndian::read_u32(&buf[12..16]);
+            let send_window_last_update_seq = SeqNumber::from(BigEndian::read_u32(&buf[16..20]));
+            let send_window_last_update_ack = SeqNumber::from(BigEndian::read_u32(&buf[20..24]));
+            let mss = BigEndian::read_u32(&buf[24..28]);
+            let window_scale = buf[28];
+
+            buf.adjust(29);
+            let unacked_queue = VecDeque::<UnackedSegment>::deserialize_from(buf);
+            let unsent_queue = VecDeque::<DemiBuffer>::deserialize_from(buf);
+
+            Self { unsent_seq_no, send_unacked, send_next, send_window, send_window_last_update_seq,
+                send_window_last_update_ack, mss, window_scale, unacked_queue, unsent_queue }
+        }
+    }
+
+    impl Deserialize for UnackedSegment {
+        fn deserialize_from(buf: &mut DemiBuffer) -> Self {
+            let bytes = DemiBuffer::deserialize_from(buf);
+            Self { bytes, initial_tx: None }
+        }
+    }
+
+    //===================================================================
+    //  Implementations
+    //===================================================================
+
+    impl SenderState {
+        pub fn serialized_size(&self) -> usize {
+            29 // Fixed
+            + 4 + self.unacked_queue.iter().fold(0, |acc, e| acc + 4 + e.bytes.len()) // unacked_queue
+            + 4 + self.unsent_queue.iter().fold(0, |acc, e| acc + 4 + e.len()) // unsent_queue
+        }
     }
 }

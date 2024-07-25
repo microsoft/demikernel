@@ -300,6 +300,11 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
     pub fn export_cache(&self) -> HashMap<Ipv4Addr, MacAddress> {
         self.cache.export()
     }
+
+    #[cfg(feature = "tcp-migration")]
+    pub fn query_cache(&self, ipv4_addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+        return Ok(*self.cache.get(ipv4_addr).unwrap());
+    }
 }
 
 //======================================================================================================================

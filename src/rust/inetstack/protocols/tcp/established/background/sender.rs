@@ -30,6 +30,7 @@ use ::std::{
     pin::pin,
     time::Duration,
 };
+use crate::{capy_log, capy_log_mig};
 
 pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
     'top: loop {
@@ -50,7 +51,10 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
             };
             pin_mut!(something_changed);
             match conditional_yield_until(something_changed, None).await {
-                Ok(()) => continue 'top,
+                Ok(()) => {
+                    capy_log!("\nSENDER POLLED");
+                    continue 'top;
+                }
                 Err(_) => {
                     unreachable!("either the sent or unsent sequence number changed, no other errors are possible!")
                 },

@@ -75,6 +75,11 @@ use ::std::{
     time::Duration,
 };
 
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::peer::state::TcpState;
+
+use crate::capy_log;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -187,17 +192,20 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
                     Err(_) => continue,
                 },
                 result = recv_queue.pop(None).fuse() => {
+                    capy_log!("pop socket recv queue ({})", recv_queue.len());
                     match result {
                         Ok((ipv4_hdr, tcp_hdr, buf)) =>  {
                                     let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
                                     if let Some(recv_queue) = self.connections.get_mut(&remote) {
                                         // Packet is either for an inflight request or established connection.
                                         recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+                                        capy_log!("Push to CONN {} recv queue ({})", remote, recv_queue.len());
                                         continue;
                                     }
 
                                     // If not a SYN, then this packet is not for a new connection and we throw it away.
                                     if !tcp_hdr.syn || tcp_hdr.ack || tcp_hdr.rst {
+                                        capy_log!("throw it away");
                                         let cause: String = format!(
                                             "invalid TCP flags (syn={}, ack={}, rst={})",
                                             tcp_hdr.syn, tcp_hdr.ack, tcp_hdr.rst
@@ -209,6 +217,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
                                     // Check if this SYN segment carries any data.
                                     if !buf.is_empty() {
+                                        capy_log!("Received SYN with data");
                                         // RFC 793 allows connections to be established with data-carrying segments, but we do not support this.
                                         // We simply drop the data and and proceed with the three-way handshake protocol, on the hope that the
                                         // remote will retransmit the data after the connection is established.
@@ -234,6 +243,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
     fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) {
         debug!("Received SYN: {:?}", tcp_hdr);
+        capy_log!("SYN");
         let inflight_len: usize = self.connections.len();
         // Check backlog. Since we might receive data even on connections that have completed their handshake, all
         // ready sockets are also in the inflight table.
@@ -257,6 +267,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         // Allocate a new coroutine to send the SYN+ACK and retry if necessary.
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        capy_log!("created recv_queue for CONN {}", remote);
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         let future = self
             .clone()
@@ -329,6 +340,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
         // Send it.
         let pkt: Box<TcpSegment> = Box::new(segment);
+        capy_log!("SEND RST to {}", remote);
         self.transport.transmit(pkt);
     }
 
@@ -386,6 +398,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             match conditional_yield_with_timeout(ack, handshake_timeout).await {
                 // Got an ack
                 Ok(result) => {
+                    capy_log!("This socket is ready");
                     self.ready.push(result);
                     return;
                 },
@@ -451,8 +464,9 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         mss: usize,
     ) -> Result<EstablishedSocket<N>, Fail> {
         let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(None).await?;
+        capy_log!("Pop CONN {} recv queue ({})", remote, recv_queue.len());
         debug!("Received ACK: {:?}", tcp_hdr);
-
+        capy_log!("ACK");
         // Check the ack sequence number.
         if tcp_hdr.ack_num != local_isn + SeqNumber::from(1) {
             return Err(Fail::new(EBADMSG, "invalid SYN+ACK seq num"));
@@ -499,8 +513,9 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         // If there is data with the SYN+ACK, deliver it.
         if !buf.is_empty() {
             recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+            capy_log!("push to CONN {} recv queue ({})", remote, recv_queue.len());
         }
-
+        
         let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::new(
             self.local,
             remote,
@@ -545,5 +560,39 @@ impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
 impl<N: NetworkRuntime> DerefMut for SharedPassiveSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
+    }
+}
+
+//==========================================================================================================================
+// TCP Migration
+//==========================================================================================================================
+
+//==============================================================================
+//  Implementations
+//==============================================================================
+
+#[cfg(feature = "tcp-migration")]
+impl<N: NetworkRuntime> SharedPassiveSocket<N> {
+    pub fn migrate_in_connection(&mut self, state: TcpState) -> Result<(), Fail> {
+        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let remote = state.remote();
+        let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::from_state(
+            self.runtime.clone(),
+            self.transport.clone(),
+            self.local_link_addr,
+            self.tcp_config.clone(),
+            self.socket_options,
+            self.arp.clone(),
+            self.tcp_config.get_ack_delay_timeout(),
+            self.dead_socket_tx.clone(),
+            Some(self.socket_queue.clone()),
+            recv_queue.clone(),
+            state,
+        )?;
+
+        self.connections.insert(remote, recv_queue);
+        self.ready.push(Ok(new_socket));
+        return Ok(())
     }
 }

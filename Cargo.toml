@@ -27,7 +27,9 @@ arrayvec = "0.7.4"
 async-trait = "0.1.80"
 anyhow = "1.0.86"
 bit-iter = "1.2.0"
+byteorder = "1.4.3"
 cfg-if = "1.0.0"
+chrono = "0.4.3"
 crc = "3.2.1"
 clap = "4.5.7"
 crossbeam-channel = "0.5.13"
@@ -159,6 +161,9 @@ libxdp = ["xdp-rs"]
 mlx4 = ["dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs/mlx5"]
 profiler = []
+tcp-migration = [ ]
+capy-log = [ ]
+
 
 #=======================================================================================================================
 # Profile

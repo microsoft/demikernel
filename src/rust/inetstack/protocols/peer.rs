@@ -46,6 +46,10 @@ use ::std::{
     time::Duration,
 };
 
+use crate::capy_log;
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcpmig::{segment::TcpMigHeader};
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -90,6 +94,7 @@ impl<N: NetworkRuntime> Peer<N> {
     }
 
     pub fn receive(&mut self, buf: DemiBuffer) {
+        capy_log!("\n\n===== [RX] ipv4 START =====");
         let (header, payload) = match Ipv4Header::parse(buf) {
             Ok(result) => result,
             Err(e) => {
@@ -107,8 +112,19 @@ impl<N: NetworkRuntime> Peer<N> {
         match header.get_protocol() {
             IpProtocol::ICMPv4 => self.icmpv4.receive(header, payload),
             IpProtocol::TCP => self.tcp.receive(header, payload),
-            IpProtocol::UDP => self.udp.receive(header, payload),
+            IpProtocol::UDP => {
+                #[cfg(feature = "tcp-migration")]
+                if TcpMigHeader::is_tcpmig(&payload) {
+                    capy_log!("\n\nTCPMIG");
+                    self.tcp.receive_tcpmig(&header, payload).expect("receive_tcpmig fails")
+                }
+                else {
+                    capy_log!("\n\nUDP");
+                    self.udp.receive(header, payload)
+                }
+            }
         }
+        capy_log!("===== [RX] ipv4 FINISH =====\n\n");
     }
 
     pub async fn ping(&mut self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {

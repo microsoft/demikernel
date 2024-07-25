@@ -107,6 +107,8 @@ impl LibOS {
         timer!("demikernel::new");
 
         logging::initialize();
+        #[cfg(feature = "capy-log")]
+        crate::capylog::init();
 
         // Read in configuration file.
         let config_path: String = match env::var("CONFIG_PATH") {

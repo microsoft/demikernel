@@ -59,6 +59,7 @@ use ::std::{
         Deref,
         DerefMut,
     },
+    thread,
 };
 
 use crate::timer;
@@ -187,6 +188,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
     }
 
     pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        timer!("inetstack::receive");
         let (header, payload) = Ethernet2Header::parse(pkt)?;
         debug!("Engine received {:?}", header);
         if self.local_link_addr != header.dst_addr()

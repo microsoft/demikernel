@@ -11,6 +11,9 @@ pub mod segment;
 mod sequence_number;
 pub mod socket;
 
+#[cfg(feature = "tcp-migration")]
+mod stats;
+
 #[cfg(test)]
 mod tests;
 

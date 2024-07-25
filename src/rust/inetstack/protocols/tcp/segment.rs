@@ -167,7 +167,40 @@ impl TcpOptions2 {
         }
     }
 }
+#[cfg(feature = "tcp-migration")]
+#[derive(Debug, Clone)]
+pub struct TcpHeader {
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub seq_num: SeqNumber,
+    pub ack_num: SeqNumber,
 
+    // Octet 12: [ data offset in u32s (4 bits) ][ reserved zeros (3 bits) ] [ NS flag ]
+    // The data offset is computed on the fly on serialization based on options.
+    // data_offset: u8,
+    pub ns: bool,
+
+    // Octet 13: [ CWR ] [ ECE ] [ URG ] [ ACK ] [ PSH ] [ RST ] [ SYN ] [ FIN ]
+    pub cwr: bool,
+    pub ece: bool,
+    pub urg: bool,
+    pub ack: bool,
+    pub psh: bool,
+    pub rst: bool,
+    pub syn: bool,
+    pub fin: bool,
+
+    pub window_size: u16,
+
+    // We omit the checksum since it's checked when parsing and computed when serializing.
+    // checksum: u16
+    pub urgent_pointer: u16,
+
+    pub num_options: usize,
+    pub option_list: [TcpOptions2; MAX_TCP_OPTIONS],
+}
+
+#[cfg(not(feature = "tcp-migration"))]
 #[derive(Debug)]
 pub struct TcpHeader {
     pub src_port: u16,
@@ -562,4 +595,143 @@ fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
         state -= 0xFFFF;
     }
     !state as u16
+}
+
+
+#[cfg(feature = "tcp-migration")]
+use crate::inetstack::protocols::tcp::peer::state::Deserialize;
+
+#[cfg(feature = "tcp-migration")]
+impl Deserialize for TcpHeader {
+    fn deserialize_from(buf: &mut DemiBuffer) -> Self {   
+        let data_offset: usize = (buf[12] >> 4) as usize * 4;
+        
+        let (hdr_buf, data_buf): (&[u8], &[u8]) = buf[..].split_at(data_offset);
+
+        let src_port: u16 = u16::from_be_bytes([hdr_buf[0], hdr_buf[1]]);
+        let dst_port: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
+
+        let seq_num: SeqNumber = SeqNumber::from(u32::from_be_bytes([hdr_buf[4], hdr_buf[5], hdr_buf[6], hdr_buf[7]]));
+        let ack_num: SeqNumber =
+            SeqNumber::from(u32::from_be_bytes([hdr_buf[8], hdr_buf[9], hdr_buf[10], hdr_buf[11]]));
+
+        let ns: bool = (hdr_buf[12] & 1) != 0;
+
+        let cwr: bool = (hdr_buf[13] & (1 << 7)) != 0;
+        let ece: bool = (hdr_buf[13] & (1 << 6)) != 0;
+        let urg: bool = (hdr_buf[13] & (1 << 5)) != 0;
+        let ack: bool = (hdr_buf[13] & (1 << 4)) != 0;
+        let psh: bool = (hdr_buf[13] & (1 << 3)) != 0;
+        let rst: bool = (hdr_buf[13] & (1 << 2)) != 0;
+        let syn: bool = (hdr_buf[13] & (1 << 1)) != 0;
+        let fin: bool = (hdr_buf[13] & (1 << 0)) != 0;
+
+        let window_size: u16 = u16::from_be_bytes([hdr_buf[14], hdr_buf[15]]);
+
+
+        let urgent_pointer: u16 = u16::from_be_bytes([hdr_buf[18], hdr_buf[19]]);
+
+        let mut num_options: usize = 0;
+        let mut option_list: [TcpOptions2; MAX_TCP_OPTIONS] = [TcpOptions2::NoOperation; MAX_TCP_OPTIONS];
+
+        if data_offset > MIN_TCP_HEADER_SIZE {
+            let mut option_rdr: Cursor<&[u8]> = Cursor::new(&hdr_buf[MIN_TCP_HEADER_SIZE..data_offset]);
+            while (option_rdr.position() as usize) < data_offset - MIN_TCP_HEADER_SIZE {
+                let mut temp: [u8; 1] = [0; 1];
+                option_rdr.read_exact(&mut temp).unwrap();
+                let option_kind: u8 = temp[0];
+                let option: TcpOptions2 = match option_kind {
+                    0 => break,
+                    1 => continue,
+                    2 => {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let option_length: u8 = temp[0];
+                        let mut temp: [u8; 2] = [0; 2];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let mss: u16 = u16::from_be_bytes([temp[0], temp[1]]);
+                        TcpOptions2::MaximumSegmentSize(mss)
+                    },
+                    3 => {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let option_length: u8 = temp[0];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let window_scale: u8 = temp[0];
+                        TcpOptions2::WindowScale(window_scale)
+                    },
+                    4 => {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let option_length: u8 = temp[0];
+                        TcpOptions2::SelectiveAcknowlegementPermitted
+                    },
+                    5 => {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let option_length: u8 = temp[0];
+                        let num_sacks: usize = match option_length {
+                            10 | 18 | 26 | 34 => (option_length as usize - 2) / 8,
+                            _ => panic!("invalid SACK size"),
+                        };
+                        let mut sacks: [SelectiveAcknowlegement; 4] = [SelectiveAcknowlegement {
+                            begin: SeqNumber::from(0),
+                            end: SeqNumber::from(0),
+                        }; 4];
+                        for s in sacks.iter_mut().take(num_sacks) {
+                            let mut temp: [u8; 4] = [0; 4];
+                            option_rdr.read_exact(&mut temp).unwrap();
+                            s.begin = SeqNumber::from(u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]));
+                            option_rdr.read_exact(&mut temp).unwrap();
+                            s.end = SeqNumber::from(u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]));
+                        }
+                        TcpOptions2::SelectiveAcknowlegement { num_sacks, sacks }
+                    },
+                    8 => {
+                        let mut temp: [u8; 1] = [0; 1];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let option_length: u8 = temp[0];
+                        let mut temp: [u8; 4] = [0; 4];
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let sender_timestamp: u32 = u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]);
+                        option_rdr.read_exact(&mut temp).unwrap();
+                        let echo_timestamp: u32 = u32::from_be_bytes([temp[0], temp[1], temp[2], temp[3]]);
+                        TcpOptions2::Timestamp {
+                            sender_timestamp,
+                            echo_timestamp,
+                        }
+                    },
+                    _ => panic!("invalid TCP option"),
+                };
+                option_list[num_options] = option;
+                num_options += 1;
+            }
+        }
+
+        let header: TcpHeader = Self {
+            src_port,
+            dst_port,
+            seq_num,
+            ack_num,
+            ns,
+            cwr,
+            ece,
+            urg,
+            ack,
+            psh,
+            rst,
+            syn,
+            fin,
+            window_size,
+            urgent_pointer,
+
+            num_options,
+            option_list,
+        };
+        expect_ok!(
+            buf.adjust(data_offset),
+            "buf should contain at least 'data_offset' bytes"
+        );
+        header
+    }
 }
