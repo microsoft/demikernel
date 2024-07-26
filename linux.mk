@@ -52,8 +52,9 @@ endif
 # Libraries
 #=======================================================================================================================
 
-export DEMIKERNEL_LIB := libdemikernel.so
-export LIBS := $(BUILD_DIR)/$(DEMIKERNEL_LIB)
+export DEMIKERNEL_ALIB := libdemikernel.a
+export DEMIKERNEL_SOLIB := libdemikernel.so
+export LIBS := $(BUILD_DIR)/$(DEMIKERNEL_SOLIB)
 
 #=======================================================================================================================
 # Build Parameters
@@ -107,7 +108,8 @@ all-libs-demikernel:
 	@echo "PKG_CONFIG_PATH: $(PKG_CONFIG_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
-	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
+	cp -f $(BUILD_DIR)/$(DEMIKERNEL_ALIB) $(LIBDIR)/$(DEMIKERNEL_ALIB)
+	cp -f $(BUILD_DIR)/$(DEMIKERNEL_SOLIB) $(LIBDIR)/$(DEMIKERNEL_SOLIB)
 
 all-shim: all-libs-demikernel
 	$(MAKE) -C shim all
@@ -115,7 +117,8 @@ all-shim: all-libs-demikernel
 clean-libs: clean-libs-demikernel
 
 clean-libs-demikernel:
-	rm -f $(LIBDIR)/$(DEMIKERNEL_LIB)
+	rm -f $(LIBDIR)/$(DEMIKERNEL_ALIB)
+	rm -f $(LIBDIR)/$(DEMIKERNEL_SOLIB)
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean

@@ -70,7 +70,7 @@ windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }
 #=======================================================================================================================
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
 path = "src/rust/lib.rs"
 
 [[test]]
