@@ -187,6 +187,8 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
     }
 
     pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        timer!("inetstack::receive");
+
         let (header, payload) = Ethernet2Header::parse(pkt)?;
         debug!("Engine received {:?}", header);
         if self.local_link_addr != header.dst_addr()
@@ -362,6 +364,8 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
         buf: &mut DemiBuffer,
         addr: Option<SocketAddr>,
     ) -> Result<(), Fail> {
+        timer!("inetstack::push");
+
         self.ipv4.push(sd, buf, addr).await
     }
 
