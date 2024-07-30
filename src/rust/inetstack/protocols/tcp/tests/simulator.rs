@@ -102,10 +102,12 @@ fn test_simulation() -> Result<()> {
     let local_mac: MacAddress = test_helpers::ALICE_MAC;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
     let local_port: u16 = 12345;
-    let local_ephemeral_port: u16 = 49152;
+    // let local_ephemeral_port: u16 = 49152;
+    let local_ephemeral_port: u16 = 65535;
     let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
     let remote_port: u16 = 23456;
-    let remote_ephemeral_port: u16 = 49152;
+    // let remote_ephemeral_port: u16 = 49152;
+    let remote_ephemeral_port: u16 = 65535;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
 
     let input_path: String = match env::var("INPUT") {
