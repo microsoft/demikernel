@@ -112,7 +112,7 @@ all-libs-demikernel:
 all-shim: all-libs-demikernel
 	$(MAKE) -C shim all
 
-clean-libs: clean-libs-demikernel
+clean-libs: clean-shim clean-libs-demikernel
 
 clean-libs-demikernel:
 	rm -f $(LIBDIR)/$(DEMIKERNEL_LIB)
