@@ -523,7 +523,7 @@ int epoll_create(int size)
     errno = 0;
 
     // Create epoll on demikernel side.
-    if ((ret = __epoll_create(size) == -1) && (errno == EBADF))
+    if (((ret = __epoll_create(size)) == -1) && (errno == EBADF))
     {
         errno = last_errno;
         return linux_epfd;
