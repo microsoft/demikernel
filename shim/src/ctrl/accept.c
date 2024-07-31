@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <glue.h>
+#include <string.h>
 
 /**
  * @brief Invokes demi_accept().
@@ -33,6 +34,13 @@ int __accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
 
     TRACE("sockfd=%d, addr=%p, addrlen=%p", sockfd, (void *)addr, (void *)addrlen);
 
+    // Check if addrlen is invalid.
+    if (addr != NULL && addrlen == NULL)
+    {
+        errno = EINVAL;
+        return (-1);
+    }
+
     // Check if socket descriptor is registered on an epoll instance.
     if (queue_man_query_fd_pollable(sockfd))
     {
@@ -51,6 +59,12 @@ int __accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
             // and registers it as one managed by Demikernel.
             newqd = ev->qr.qr_value.ares.qd;
             newqd = queue_man_register_fd(newqd);
+
+            if (addr != NULL)
+            {
+                memcpy(addr, &ev->qr.qr_value.ares.addr, sizeof(struct sockaddr_in));
+                *addrlen = sizeof(struct sockaddr_in);
+            }
 
             // Re-issue accept operation.
             assert(__demi_accept(&ev->qt, ev->sockqd) == 0);
