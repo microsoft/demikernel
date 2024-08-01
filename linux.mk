@@ -46,6 +46,8 @@ export CARGO_FLAGS += --profile $(BUILD)
 export CFLAGS := -I $(INCDIR)
 ifeq ($(DEBUG),yes)
 export CFLAGS += -O0
+else
+export CFLAGS += -O3
 endif
 
 #=======================================================================================================================
