@@ -8,7 +8,7 @@
 export PREFIX ?= $(HOME)
 export INSTALL_PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
-export LD_LIBRARY_PATH ?= $(HOME)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
+export LD_LIBRARY_PATH ?= $(CURDIR)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
 
 #=======================================================================================================================
 # Build Configuration
@@ -46,6 +46,8 @@ export CARGO_FLAGS += --profile $(BUILD)
 export CFLAGS := -I $(INCDIR)
 ifeq ($(DEBUG),yes)
 export CFLAGS += -O0
+else
+export CFLAGS += -O3
 endif
 
 #=======================================================================================================================
@@ -110,9 +112,9 @@ all-libs-demikernel:
 	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
 
 all-shim: all-libs-demikernel
-	$(MAKE) -C shim all
+	$(MAKE) -C shim all BINDIR=$(BINDIR)/shim
 
-clean-libs: clean-libs-demikernel
+clean-libs: clean-shim clean-libs-demikernel
 
 clean-libs-demikernel:
 	rm -f $(LIBDIR)/$(DEMIKERNEL_LIB)
@@ -121,7 +123,7 @@ clean-libs-demikernel:
 	$(CARGO) clean
 
 clean-shim:
-	$(MAKE) -C shim clean
+	$(MAKE) -C shim clean BINDIR=$(BINDIR)/shim
 
 #=======================================================================================================================
 # Tests
