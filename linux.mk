@@ -76,6 +76,14 @@ ifeq ($(PROFILER),yes)
 CARGO_FEATURES += --features=profiler
 endif
 
+ifeq ($(TCP_MIG),1)
+CARGO_FEATURES += --features=tcp-migration
+endif
+
+ifeq ($(CAPY_LOG),1)
+CARGO_FEATURES += --features=capy-log
+endif
+
 CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
@@ -309,3 +317,22 @@ tcp-ping-pong-client:
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	taskset --cpu-list 0 numactl -m0 \
 	$(ELF_DIR)/tcp-ping-pong.elf --client 10.0.1.8:10000
+
+redis-server-node8:
+	cd ../capybara-redis/src && \
+	sudo -E \
+	$(ENV) \
+	CONFIG_PATH=$(CONFIG_DIR)/node8_config.yaml \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	LD_PRELOAD=$(LIBDIR)/libshim.so \
+	./redis-server ../config/node8.conf
+
+redis-server-node9:
+	cd ../capybara-redis/src && \
+	sudo -E \
+	MIG_OFF=1 \
+	$(ENV) \
+	CONFIG_PATH=$(CONFIG_DIR)/node9_config.yaml \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	LD_PRELOAD=$(LIBDIR)/libshim.so \
+	./redis-server ../config/node9.conf

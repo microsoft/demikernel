@@ -67,7 +67,7 @@ pub enum TcpmigReceiveStatus {
     ReturnedBySwitch(SocketAddrV4, SocketAddrV4),
     PrepareMigrationAcked(SocketAddrV4, SocketAddrV4),
     StateReceived(TcpState),
-    // MigrationCompleted,
+    MigrationCompleted,
 
     // Heartbeat protocol.
     // HeartbeatResponse(usize),
@@ -151,7 +151,7 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
     {
         // capy_profile!("additional_delay");
         let (local, remote) = (socket.local().unwrap(), socket.remote().unwrap());
-        eprintln!("initiate_migration ({}, {})", local, remote);
+        // eprintln!("initiate_migration ({}, {})", local, remote);
 
 
         let active = ActiveMigration::new(
@@ -228,6 +228,16 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
             TcpmigReceiveStatus::StateReceived(ref mut state) => {
                 let conn = state.connection();
                 capy_log_mig!("======= MIGRATING IN STATE ({}, {}) =======", conn.0, conn.1);
+            },
+            TcpmigReceiveStatus::MigrationCompleted => {
+                // Remove active migration.
+                entry.remove();
+
+                // capy_log_mig!("1");
+                // capy_log_mig!("2, active_migrations: {:?}, removing {}", 
+                //     self.active_migrations.keys().collect::<Vec<_>>(), remote);
+                //self.is_currently_migrating = false;
+                capy_log_mig!("CONN_STATE_ACK ({})\n=======  MIGRATION COMPLETE! =======\n\n", remote);
             },
             TcpmigReceiveStatus::Rejected(..) | TcpmigReceiveStatus::SentReject => {
                 // Remove active migration.

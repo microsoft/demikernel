@@ -445,7 +445,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
     }
 
     pub fn migrate_in_connection(&mut self, state: TcpState) -> Result<(), Fail> {
-        eprintln!("socket.migrate_in_connection()");
+        // eprintln!("socket.migrate_in_connection()");
         match self.state {
             SocketState::Listening(ref mut socket) => {
                 socket.migrate_in_connection(state);

@@ -188,7 +188,7 @@ impl TcpMigHeader {
         let flag_next_fragment = (flags & (1 << FLAG_NEXT_FRAGMENT)) != 0;
 
         let stage = (flags & 0xF0) >> STAGE_BIT_SHIFT;
-        println!("Received stage value: {}", stage);
+        // eprintln!("Received stage value: {}", stage);
         let stage: MigrationStage = match stage.try_into() {
             Ok(stage) => stage,
             Err(e) => return Err(Fail::new(EBADMSG, &format!("Invalid TCPMig stage: {}", e))),

@@ -253,6 +253,15 @@ impl<N: NetworkRuntime> ActiveMigration<N> {
 
             // Expect ACK and send FIN.
             MigrationStage::ConnectionState => {
+                match hdr.stage {
+                    MigrationStage::ConnectionStateAck => {
+                        // capy_time_log!("RECV_STATE_ACK,({})", self.client);
+                        capy_log_mig!("CONN_STATE_ACK for ({}, {})", self.origin, self.client);
+                        // TODO: Start closing the active migration.
+                        return Ok(TcpmigReceiveStatus::MigrationCompleted);
+                    },
+                    _ => return Err(Fail::new(libc::EBADMSG, "expected CONNECTION_STATE_ACK"))
+                }
             },
 
             MigrationStage::ConnectionStateAck => {

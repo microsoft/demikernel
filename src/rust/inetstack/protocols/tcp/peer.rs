@@ -389,7 +389,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     pub fn receive_tcpmig(&mut self, ip_hdr: &Ipv4Header, buf: DemiBuffer) -> Result<(), Fail> {
         use super::super::tcpmig::TcpmigReceiveStatus;
         match self.tcpmig.receive(ip_hdr, buf)? {
-            TcpmigReceiveStatus::Ok | TcpmigReceiveStatus::SentReject => {},
+            TcpmigReceiveStatus::Ok | TcpmigReceiveStatus::MigrationCompleted | TcpmigReceiveStatus::SentReject => {},
 
             TcpmigReceiveStatus::Rejected(local, remote) => {
                 capy_log_mig!("MIGRATION REJECTED");
