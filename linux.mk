@@ -110,7 +110,7 @@ all-libs-demikernel:
 	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
 
 all-shim: all-libs-demikernel
-	$(MAKE) -C shim all
+	$(MAKE) -C shim all BINDIR=$(BINDIR)/shim
 
 clean-libs: clean-shim clean-libs-demikernel
 
@@ -121,7 +121,7 @@ clean-libs-demikernel:
 	$(CARGO) clean
 
 clean-shim:
-	$(MAKE) -C shim clean
+	$(MAKE) -C shim clean BINDIR=$(BINDIR)/shim
 
 #=======================================================================================================================
 # Tests

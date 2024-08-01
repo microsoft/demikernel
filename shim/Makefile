@@ -25,8 +25,19 @@ export SHIM_LIB := libshim.so
 #=======================================================================================================================
 
 # Builds all artifacts.
-all:
+all: init | all-shim all-tests
+
+init:
+	mkdir -p $(LIBDIR)
+	mkdir -p $(BINDIR)
+
+# Builds the shim library.
+all-shim:
 	$(MAKE) -C $(SRCDIR) all
+
+# Builds all tests.
+all-tests: all-shim
+	$(MAKE) -C test/hello all
 
 # Copies build artifacts to the INSTALL_PREFIX directory.
 install: all
@@ -39,5 +50,12 @@ check-fmt:
 	@exit $(.SHELLSTATUS)
 
 # Cleans up all build artifacts.
-clean:
+clean: clean-shim clean-tests
+
+# Cleans up the shim library.
+clean-shim:
 	$(MAKE) -C $(SRCDIR) clean
+
+# Cleans up all tests.
+clean-tests:
+	$(MAKE) -C test/hello clean
