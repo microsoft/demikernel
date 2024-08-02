@@ -25,6 +25,7 @@ static struct hashset *__demi_reent_guards;
         return (ret);                                   \
     }
 
+
 int is_reentrant_demi_call()
 {
     pid_t tid = gettid();
