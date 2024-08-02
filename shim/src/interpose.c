@@ -106,7 +106,7 @@ static inline void init_libc(void)
     if (initialized_libc == 0)
     {
 
-        if (__sync_fetch_and_add(&in_init_libc, 1) == 0)
+        if (__sync_val_compare_and_swap(&in_init_libc, 0, 1) == 0)
         {
             // Initialize libc functions
             assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
@@ -142,18 +142,17 @@ static inline void init_libc(void)
             // Initialize this here so that we can use the reentrancy guard
             init_reent_guards();
 
-            __sync_fetch_and_sub(&in_init_libc, 1);
-            MEM_BARRIER();
             initialized_libc = 1;
+            assert(__sync_val_compare_and_swap(&in_init_libc, 1, 0) == 1);
+            MEM_BARRIER();
         }
         else
         {
             while (initialized_libc == 0)
             {
                 sched_yield();
+                MEM_BARRIER();
             }
-            __sync_fetch_and_sub(&in_init_libc, 1);
-            MEM_BARRIER();
         }
     }
 }
@@ -162,24 +161,23 @@ static inline void init(void)
 {
     if (initialized == 0)
     {
-        if (__sync_fetch_and_add(&in_init, 1) == 0)
+        if (__sync_val_compare_and_swap(&in_init, 0, 1) == 0)
         {
             int ret = __init();
             if (ret != 0 && ret != EEXIST)
                 abort();
 
-            __sync_fetch_and_sub(&in_init, 1);
-            MEM_BARRIER();
             initialized = 1;
+            assert(__sync_val_compare_and_swap(&in_init, 1, 0) == 1);
+            MEM_BARRIER();
         }
         else
         {
             while (initialized == 0)
             {
                 sched_yield();
+                MEM_BARRIER();
             }
-            __sync_fetch_and_sub(&in_init, 1);
-            MEM_BARRIER();
         }
     }
 }
