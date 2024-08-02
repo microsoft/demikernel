@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![cfg_attr(feature = "strict", deny(clippy:all))]
+#![deny(clippy::all)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use ::std::os::raw::{c_char, c_int};
+use ::std::os::raw::{
+    c_char,
+    c_int,
+};
 
 #[link(name = "inlined")]
 extern "C" {
