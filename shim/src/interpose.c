@@ -143,7 +143,7 @@ static inline void init_libc(void)
             init_reent_guards();
 
             initialized_libc = 1;
-            assert(__sync_val_compare_and_swap(&in_init_libc, 1, 0) == 0);
+            assert(__sync_val_compare_and_swap(&in_init_libc, 1, 0) == 1);
             MEM_BARRIER();
         }
         else
@@ -168,7 +168,7 @@ static inline void init(void)
                 abort();
 
             initialized = 1;
-            __sync_val_compare_and_swap(&in_init, 1, 0);
+            assert(__sync_val_compare_and_swap(&in_init, 1, 0) == 1);
             MEM_BARRIER();
         }
         else
