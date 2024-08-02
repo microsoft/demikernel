@@ -28,6 +28,7 @@ use std::{
         Instant,
     },
 };
+use x86::time::rdtscp;
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -97,6 +98,7 @@ impl TcpEchoServer {
     /// Runs the target TCP echo server.
     pub fn run(&mut self, log_interval: Option<u64>) -> Result<()> {
         let mut last_log: Instant = Instant::now();
+        let (start_cycles, _): (u64, u32) = unsafe { rdtscp() };
 
         // Accept first connection.
         {
@@ -141,6 +143,10 @@ impl TcpEchoServer {
                 demi_opcode_t::DEMI_OPC_CONNECT => self.handle_unexpected("connect", &qr)?,
             }
         }
+
+        let (end_cycles, _): (u64, u32) = unsafe { rdtscp() };
+
+        println!("total_cycles:{:?}", end_cycles - start_cycles);
 
         Ok(())
     }

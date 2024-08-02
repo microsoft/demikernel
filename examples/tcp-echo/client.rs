@@ -27,6 +27,7 @@ use std::{
         Instant,
     },
 };
+use x86::time::rdtscp;
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -100,6 +101,7 @@ impl TcpEchoClient {
         nrequests: Option<usize>,
     ) -> Result<()> {
         let mut last_log: Instant = Instant::now();
+        let (start_cycles, _): (u64, u32) = unsafe { rdtscp() };
 
         // Open all connections.
         for _ in 0..nclients {
@@ -176,6 +178,10 @@ impl TcpEchoClient {
         for (qd, _) in self.clients.drain().collect::<Vec<_>>() {
             self.handle_close(qd)?;
         }
+
+        let (end_cycles, _): (u64, u32) = unsafe { rdtscp() };
+
+        println!("total_cycles:{:?}", end_cycles - start_cycles);
 
         Ok(())
     }
