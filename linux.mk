@@ -10,7 +10,6 @@ export INSTALL_PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
 export LD_LIBRARY_PATH ?= $(CURDIR)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
 
-#=======================================================================================================================
 # Build Configuration
 #=======================================================================================================================
 
@@ -336,3 +335,51 @@ redis-server-node9:
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	LD_PRELOAD=$(LIBDIR)/libshim.so \
 	./redis-server ../config/node9.conf
+
+
+prometheus-ping-pong-client:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/p40_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/tcp-ping-pong.elf --client 198.19.201.34:10000
+
+prometheus-ping-pong-p41:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/p41_config.yaml \
+	$(ENV) \
+	MIG_OFF=0 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/tcp-ping-pong.elf --server 198.19.200.41:10000
+
+prometheus-ping-pong-p42:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/p42_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/tcp-ping-pong.elf --server 198.19.200.42:10000
+
+
+redis-server-p41:
+	cd ../capybara-redis/src && \
+	sudo -E \
+	$(ENV) \
+	CONFIG_PATH=$(CONFIG_DIR)/p41_config.yaml \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	LD_PRELOAD=$(LIBDIR)/libshim.so \
+	./redis-server ../config/p41.conf
+
+redis-server-p42:
+	cd ../capybara-redis/src && \
+	sudo -E \
+	MIG_OFF=1 \
+	$(ENV) \
+	CONFIG_PATH=$(CONFIG_DIR)/p42_config.yaml \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	LD_PRELOAD=$(LIBDIR)/libshim.so \
+	./redis-server ../config/p42.conf

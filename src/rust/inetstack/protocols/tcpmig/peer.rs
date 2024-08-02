@@ -196,8 +196,8 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
                 self.transport.clone(),
                 self.local_ipv4_addr,
                 self.local_link_addr,
-                *hdr.origin.ip(),
-                self.arp.query_cache(*hdr.origin.ip())?, // Need to go through the switch 
+                ORIGIN_IP,
+                ORIGIN_MAC, // Need to go through the switch 
                 hdr.dest_udp_port,
                 hdr.origin.port(), 
                 hdr.origin,

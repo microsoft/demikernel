@@ -231,7 +231,7 @@ impl Config {
         ) {
             let mut result: HashMap<Ipv4Addr, MacAddress> =
                 HashMap::<Ipv4Addr, MacAddress>::with_capacity(arp_table.len());
-            for (k, v) in arp_table {
+            for (v, k) in arp_table {
                 let link_addr: MacAddress = match k.as_str() {
                     Some(link_string) => MacAddress::parse_str(link_string)?,
                     None => {
