@@ -519,8 +519,11 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         
         // Check if the segment is in the receive window and trim off everything else.
         self.check_segment_in_window(&mut header, &mut data, &mut seg_start, &mut seg_end, &mut seg_len)?;
+        capy_log!("1");
         self.check_rst(&header)?;
+        capy_log!("2");
         self.check_syn(&header)?;
+        capy_log!("3");
         self.process_ack(&header)?;
 
         // TODO: Check the URG bit.  If we decide to support this, how should we do it?

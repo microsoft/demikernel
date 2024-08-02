@@ -8,8 +8,9 @@
 export PREFIX ?= $(HOME)
 export INSTALL_PREFIX ?= $(HOME)
 export PKG_CONFIG_PATH ?= $(shell find $(PREFIX)/lib/ -name '*pkgconfig*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
-export LD_LIBRARY_PATH ?= $(CURDIR)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
+export LD_LIBRARY_PATH = $(CURDIR)/lib:$(shell find $(PREFIX)/lib/ -name '*x86_64-linux-gnu*' -type d 2> /dev/null | xargs | sed -e 's/\s/:/g')
 
+#=======================================================================================================================
 # Build Configuration
 #=======================================================================================================================
 
@@ -287,7 +288,7 @@ test-clean:
 run-benchmarks-c: all-benchmarks-c $(BINDIR)/syscalls.elf
 	timeout $(TIMEOUT) $(BINDIR)/benchmarks.elf
 
-ENV += CAPY_LOG=no 
+ENV += CAPY_LOG=all 
 ENV += LIBOS=catnip
  
 tcp-ping-pong-server8:
