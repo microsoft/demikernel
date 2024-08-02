@@ -493,6 +493,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 
 int socket(int domain, int type, int protocol)
 {
+    TRACE("socket(%d, %d, %d)", domain, type, protocol);
     INTERPOSE_CALL(int, libc_socket, __socket, domain, type, protocol);
 }
 
