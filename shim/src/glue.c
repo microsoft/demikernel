@@ -12,21 +12,29 @@
 #include "utils.h"
 #include "log.h"
 
-static int __demi_reent_guard;
+static struct hashset *__demi_reent_guards;
 
 #define MAX_THREADS_LOG2 10
 
 #define DEMI_CALL(type, fn, ...)                        \
     {                                                   \
-        __demi_reent_guard = 1;                         \
+        pid_t tid = gettid();                           \
+        hashset_insert(__demi_reent_guards, tid);       \
         type ret = fn(__VA_ARGS__);                     \
-        __demi_reent_guard = 0;                         \
+        hashset_remove(__demi_reent_guards, tid);       \
         return (ret);                                   \
     }
 
+
 int is_reentrant_demi_call()
 {
-    __demi_reent_guard;
+    pid_t tid = gettid();
+    return hashset_contains(__demi_reent_guards, tid);
+}
+
+void init_reent_guards() {
+    __demi_reent_guards = hashset_create(MAX_THREADS_LOG2);
+    assert(__demi_reent_guards != NULL);
 }
 
 int __demi_init(const struct demi_args *args)
