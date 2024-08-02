@@ -7,7 +7,7 @@ demikernel:
 raw_socket:
   interface_name: "abcde"
 dpdk:
-  eal_init: ["-c", "0xff", "-n", "4", "-a", "YY:YY:.Y","--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=abcde"]
+  eal_init: ["-c", "0xff", "-n", "4", "-a", "WW:WW.W", "--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=abcde"]
 tcp_socket_options:
   keepalive:
     enabled: false
