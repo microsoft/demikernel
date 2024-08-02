@@ -491,7 +491,6 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 
 int socket(int domain, int type, int protocol)
 {
-    TRACE("socket(): domain=%d, type=%d, protocol=%d, in_init=%d, reentrant=%d", domain, type, protocol, in_init, is_reentrant_demi_call());
     INTERPOSE_CALL(int, libc_socket, __socket, domain, type, protocol);
 }
 
