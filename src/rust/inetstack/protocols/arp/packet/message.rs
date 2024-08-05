@@ -65,7 +65,7 @@ impl PacketBuf for ArpMessage {
         self.header.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
     }
 
-    fn take_body(&self) -> Option<DemiBuffer> {
+    fn take_body(&mut self) -> Option<DemiBuffer> {
         None
     }
 }

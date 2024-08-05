@@ -38,7 +38,7 @@ pub struct UdpDatagram {
     /// UDP header.
     udp_hdr: UdpHeader,
     /// Payload
-    data: DemiBuffer,
+    data: Option<DemiBuffer>,
     /// Offload checksum to hardware?
     checksum_offload: bool,
 }
@@ -61,7 +61,7 @@ impl UdpDatagram {
             ethernet2_hdr,
             ipv4_hdr,
             udp_hdr,
-            data,
+            data: Some(data),
             checksum_offload,
         }
     }
@@ -80,7 +80,10 @@ impl PacketBuf for UdpDatagram {
 
     /// Computes the payload size of the target UDP datagram.
     fn body_size(&self) -> usize {
-        self.data.len()
+        match &self.data {
+            Some(data) => data.len(),
+            _ => panic!("UDP packet must have payload"),
+        }
     }
 
     /// Serializes the header of the target UDP datagram.
@@ -88,7 +91,10 @@ impl PacketBuf for UdpDatagram {
         let mut cur_pos: usize = 0;
         let eth_hdr_size: usize = self.ethernet2_hdr.compute_size();
         let udp_hdr_size: usize = self.udp_hdr.size();
-        let ipv4_payload_len: usize = udp_hdr_size + self.data.len();
+        let ipv4_payload_len: usize = match &self.data {
+            Some(data) => udp_hdr_size + data.len(),
+            _ => panic!("UDP message must have payload"),
+        };
 
         // Ethernet header.
         self.ethernet2_hdr
@@ -102,17 +108,20 @@ impl PacketBuf for UdpDatagram {
         cur_pos += ipv4_hdr_size;
 
         // UDP header.
-        self.udp_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + udp_hdr_size)],
-            &self.ipv4_hdr,
-            &self.data[..],
-            self.checksum_offload,
-        );
+        match &self.data {
+            Some(data) => self.udp_hdr.serialize(
+                &mut buf[cur_pos..(cur_pos + udp_hdr_size)],
+                &self.ipv4_hdr,
+                &data[..],
+                self.checksum_offload,
+            ),
+            _ => panic!("UDP message must have payload"),
+        };
     }
 
     /// Returns the payload of the target UDP datagram.
-    fn take_body(&self) -> Option<DemiBuffer> {
-        Some(self.data.clone())
+    fn take_body(&mut self) -> Option<DemiBuffer> {
+        self.data.take()
     }
 }
 

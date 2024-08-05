@@ -328,8 +328,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         };
 
         // Send it.
-        let pkt: Box<TcpSegment> = Box::new(segment);
-        self.transport.transmit(pkt);
+        self.transport.transmit(segment);
     }
 
     async fn send_syn_ack_and_wait_for_ack(
@@ -435,7 +434,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.transport.transmit(Box::new(segment));
+        self.transport.transmit(segment);
         Ok(())
     }
 
