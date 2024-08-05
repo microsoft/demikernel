@@ -26,7 +26,7 @@ pub struct Icmpv4Message {
     ethernet2_hdr: Ethernet2Header,
     ipv4_hdr: Ipv4Header,
     icmpv4_hdr: Icmpv4Header,
-    data: DemiBuffer,
+    data: Option<DemiBuffer>,
 }
 
 //======================================================================================================================
@@ -45,7 +45,7 @@ impl Icmpv4Message {
             ethernet2_hdr,
             ipv4_hdr,
             icmpv4_hdr,
-            data,
+            data: Some(data),
         }
     }
 }
@@ -61,7 +61,10 @@ impl PacketBuf for Icmpv4Message {
     }
 
     fn body_size(&self) -> usize {
-        self.data.len()
+        match &self.data {
+            Some(data) => data.len(),
+            _ => panic!("ICMP packet should have a body"),
+        }
     }
 
     fn write_header(&self, buf: &mut [u8]) {
@@ -79,11 +82,15 @@ impl PacketBuf for Icmpv4Message {
             .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
         cur_pos += ipv4_hdr_size;
 
-        self.icmpv4_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)], &self.data);
+        match &self.data {
+            Some(data) => self
+                .icmpv4_hdr
+                .serialize(&mut buf[cur_pos..(cur_pos + icmpv4_hdr_size)], &data[..]),
+            _ => panic!("must have a payload to serialize"),
+        };
     }
 
-    fn take_body(&self) -> Option<DemiBuffer> {
-        Some(self.data.clone())
+    fn take_body(&mut self) -> Option<DemiBuffer> {
+        self.data.take()
     }
 }
