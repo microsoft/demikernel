@@ -420,13 +420,14 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
-    if ((!initialized) || (reentrant))
+    if (in_init || reentrant)
+    {
         return (libc_epoll_ctl(epfd, op, fd, event));
+    }
 
     init();
 
