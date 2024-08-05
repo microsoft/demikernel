@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::runtime::fail::Fail;
+use ::std::collections::VecDeque;
 #[cfg(not(debug_assertions))]
 use ::rand::prelude::{
     SeedableRng,
@@ -30,7 +31,7 @@ const EPHEMERAL_PORT_SEED: u64 = 12345;
 //======================================================================================================================
 
 pub struct EphemeralPorts {
-    ports: Vec<u16>,
+    ports: VecDeque<u16>,
 }
 
 //======================================================================================================================
@@ -45,7 +46,7 @@ impl EphemeralPorts {
 
     /// Allocates any ephemeral port from the pool.
     pub fn alloc(&mut self) -> Result<u16, Fail> {
-        self.ports.pop().ok_or(Fail::new(
+        self.ports.pop_front().ok_or(Fail::new(
             libc::EADDRINUSE,
             "all port numbers in the ephemeral port range are currently in use",
         ))
@@ -80,7 +81,7 @@ impl EphemeralPorts {
             return Err(Fail::new(libc::EFAULT, &cause));
         }
 
-        self.ports.push(port);
+        self.ports.push_back(port);
 
         Ok(())
     }
@@ -102,7 +103,7 @@ impl Default for EphemeralPorts {
             let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
             ports.shuffle(&mut rng);
         }
-        Self { ports }
+        Self { ports: VecDeque::from(ports) }
     }
 }
 
