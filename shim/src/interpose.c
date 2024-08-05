@@ -506,7 +506,7 @@ int epoll_create(int size)
 
     bool reentrant = is_reentrant_demi_call();
 
-    if (reentrant)
+    if (in_init || reentrant)
     {
         return (libc_epoll_create(size));
     }
