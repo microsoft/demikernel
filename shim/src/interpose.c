@@ -27,8 +27,6 @@
 
 #define INTERPOSE_CALL2(type, fn_libc, fn_demi, ...) \
     {                                                \
-        init();                                      \
-                                                     \
         int last_errno = errno;                      \
         errno = 0;                                   \
                                                      \
@@ -60,6 +58,8 @@
                                                               \
         if ((in_init) || (reentrant))                         \
             return (fn_libc(__VA_ARGS__));                    \
+                                                              \
+        init();                                               \
                                                               \
         INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__); \
     }
@@ -206,8 +206,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
 {
     int ret = -1;
 
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
@@ -226,10 +225,12 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     case F_GET_SEALS:
 #endif
     {
-        if ((!initialized) || (reentrant))
+        if (in_init || reentrant)
         {
             return (libc_fcntl(sockfd, cmd));
         }
+
+        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd);
     }
@@ -251,10 +252,12 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         int arg_i = va_arg(val, int);
 
-        if ((!initialized) || (reentrant))
+        if (in_init || reentrant)
         {
             return (libc_fcntl(sockfd, cmd, arg_i));
         }
+
+        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_i);
     }
@@ -280,10 +283,12 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         void *arg_p = va_arg(val, void *);
 
-        if ((!initialized) || (reentrant))
+        if (in_init || reentrant)
         {
             return (libc_fcntl(sockfd, cmd, arg_p));
         }
+
+        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_p);
     }
@@ -415,13 +420,14 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
-    if ((!initialized) || (reentrant))
+    if (in_init || reentrant)
+    {
         return (libc_epoll_ctl(epfd, op, fd, event));
+    }
 
     init();
 
@@ -452,12 +458,11 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
-    if ((!initialized) || (reentrant))
+    if (in_init || reentrant)
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
@@ -476,6 +481,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
             errno = last_errno;
             if (epfd >= EPOLL_MAX_FDS)
                 epfd -= EPOLL_MAX_FDS;
+
             return (libc_epoll_wait(epfd, events, maxevents, timeout));
         }
         else
@@ -500,7 +506,7 @@ int epoll_create(int size)
 
     bool reentrant = is_reentrant_demi_call();
 
-    if (reentrant)
+    if (in_init || reentrant)
     {
         return (libc_epoll_create(size));
     }
