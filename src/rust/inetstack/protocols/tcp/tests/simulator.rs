@@ -1062,7 +1062,7 @@ impl Simulation {
     }
 
     /// Serializes a TCP segment.
-    fn serialize_segment(pkt: TcpSegment) -> DemiBuffer {
+    fn serialize_segment(mut pkt: TcpSegment) -> DemiBuffer {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
@@ -1074,7 +1074,7 @@ impl Simulation {
     }
 
     /// Serializes a UDP datagram.
-    fn serialize_datagram(pkt: UdpDatagram) -> DemiBuffer {
+    fn serialize_datagram(mut pkt: UdpDatagram) -> DemiBuffer {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);

@@ -234,7 +234,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                         ),
                     );
                     debug!("Responding {:?}", reply);
-                    self.network.transmit(Box::new(reply));
+                    self.network.transmit(reply);
                 },
                 ArpOperation::Reply => {
                     debug!(
@@ -273,7 +273,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                self.network.transmit(Box::new(msg.clone()));
+                self.network.transmit(msg.clone());
                 let arp_response = peer.do_wait_link_addr(ipv4_addr);
 
                 match conditional_yield_with_timeout(arp_response, self.arp_config.get_request_timeout()).await {

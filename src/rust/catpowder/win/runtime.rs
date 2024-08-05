@@ -81,7 +81,7 @@ impl NetworkRuntime for SharedCatpowderRuntime {
     }
 
     /// Transmits a packet.
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         trace!("transmit(): header_size={:?}, body_size={:?}", header_size, body_size);

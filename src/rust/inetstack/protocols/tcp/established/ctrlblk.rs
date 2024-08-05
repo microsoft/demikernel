@@ -851,7 +851,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         };
 
         // Call the runtime to send the segment.
-        self.transport.transmit(Box::new(segment));
+        self.transport.transmit(segment);
 
         // Post-send operations follow.
         // Review: We perform these after the send, in order to keep send latency as low as possible.

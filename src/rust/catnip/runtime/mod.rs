@@ -400,7 +400,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
         })))
     }
 
-    fn transmit(&mut self, buf: Box<dyn PacketBuf>) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
         timer!("catnip::runtime::transmit");
 
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
@@ -425,11 +425,11 @@ impl NetworkRuntime for SharedDPDKRuntime {
             Ok(mbuf) => mbuf,
             Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
         };
-        let header_size = buf.header_size();
+        let header_size = pkt.header_size();
         assert!(header_size <= header_mbuf.len());
-        buf.write_header(&mut header_mbuf[..header_size]);
+        pkt.write_header(&mut header_mbuf[..header_size]);
 
-        if let Some(body) = buf.take_body() {
+        if let Some(body) = pkt.take_body() {
             // Next, see how much space we have remaining and inline the body if we have room.
             let inline_space = header_mbuf.len() - header_size;
 

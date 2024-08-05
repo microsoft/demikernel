@@ -130,7 +130,7 @@ impl<N: NetworkRuntime> SharedUdpSocket<N> {
             buf,
             self.checksum_offload,
         );
-        self.network.transmit(Box::new(datagram));
+        self.network.transmit(datagram);
         Ok(())
     }
 

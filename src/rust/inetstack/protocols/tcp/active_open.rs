@@ -187,7 +187,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.transport.transmit(Box::new(segment));
+        self.transport.transmit(segment);
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -321,7 +321,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
                 tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
             };
             // Send SYN.
-            self.transport.transmit(Box::new(segment));
+            self.transport.transmit(segment);
 
             // Wait for either a response or timeout.
             let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();

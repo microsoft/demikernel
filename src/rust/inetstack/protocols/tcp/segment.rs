@@ -75,11 +75,8 @@ impl PacketBuf for TcpSegment {
         );
     }
 
-    fn take_body(&self) -> Option<DemiBuffer> {
-        match &self.data {
-            Some(body) => Some(body.clone()),
-            None => None,
-        }
+    fn take_body(&mut self) -> Option<DemiBuffer> {
+        self.data.take()
     }
 }
 
