@@ -458,12 +458,11 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    if (!initialized_libc)
-        init_libc();
+    init_libc();
 
     bool reentrant = is_reentrant_demi_call();
 
-    if ((!initialized) || (reentrant))
+    if (in_init || reentrant)
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
@@ -482,6 +481,7 @@ int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
             errno = last_errno;
             if (epfd >= EPOLL_MAX_FDS)
                 epfd -= EPOLL_MAX_FDS;
+
             return (libc_epoll_wait(epfd, events, maxevents, timeout));
         }
         else
