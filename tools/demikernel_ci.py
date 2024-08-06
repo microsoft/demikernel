@@ -180,7 +180,8 @@ def run_redis_pipeline(
     status["make-redis"] = factory.make_redis().execute()
     status["run-redis"] = factory.run_redis_server().execute()
     status["run-redis-benchmark"] = factory.run_redis_benchmark().execute()
-    status["stop-redis"] = factory.stop_redis_server().execute()
+    factory.stop_redis_server().execute()
+    # NOTE: we do not report status od stopping redis server.
     status["cleanup-redis"] = factory.cleanup_redis().execute()
 
     return status
