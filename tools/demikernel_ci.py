@@ -329,6 +329,8 @@ def main():
     if test_redis:
         libshim_path: str = f"{install_prefix}/lib/libshim.so"
         ld_library_path: str = f"{install_prefix}/lib"
+        if libos == "catnip":
+            ld_library_path = f"\$HOME/lib/x86_64-linux-gnu:{install_prefix}/lib"
         status |= run_redis_pipeline(platform, log_directory, branch, libos, server,
                                      client, server_addr,
                                      client_addr, delay, output_dir, libshim_path, ld_library_path, config_path)
