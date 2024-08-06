@@ -69,8 +69,8 @@ class RunRedisBenchmarkOnLinux(BaseLinuxTask):
 
 
 class StopRedisServerOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, params: str):
-        cmd: str = f"cd {redis_path} && ./src/redis-cli {params} shutdown"
+    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 10):
+        cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-cli {params} shutdown"
         super().__init__(host, cmd)
 
 
