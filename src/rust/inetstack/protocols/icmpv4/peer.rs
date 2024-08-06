@@ -171,12 +171,14 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             // Send reply message.
             let local_link_addr: MacAddress = self.local_link_addr;
             let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
-            self.transport.transmit(Icmpv4Message::new(
+            if let Err(e) = self.transport.transmit(Icmpv4Message::new(
                 Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
                 data,
-            ));
+            )) {
+                warn!("Could not send packet: {:?}", e);
+            }
         }
     }
 
@@ -232,7 +234,16 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
             Icmpv4Header::new(echo_request, 0),
             data,
         );
-        self.transport.transmit(msg);
+
+        if let Err(e) = self.transport.transmit(msg) {
+            // Ignore for now because the other end will retry.
+            // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
+            // FIXME: https://github.com/microsoft/demikernel/issues/1365
+            let cause = format!("Could not send response to ping: {:?}", e);
+            warn!("{}", cause);
+            return Err(Fail::new(libc::EAGAIN, &cause));
+        }
+
         let condition_variable: SharedConditionVariable = SharedConditionVariable::default();
         self.inflight
             .insert((id, seq_num), InflightRequest::Inflight(condition_variable));

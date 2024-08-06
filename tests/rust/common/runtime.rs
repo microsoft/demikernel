@@ -75,7 +75,7 @@ impl NetworkRuntime for SharedDummyRuntime {
         ))
     }
 
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -88,15 +88,21 @@ impl NetworkRuntime for SharedDummyRuntime {
         if let Some(body) = pkt.take_body() {
             buf[header_size..].copy_from_slice(&body[..]);
         }
-        self.outgoing.try_send(buf).unwrap();
+        match self.outgoing.try_send(buf) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Fail::new(
+                libc::EAGAIN,
+                "Could not push outgoing packet to the shared channel",
+            )),
+        }
     }
 
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.try_recv().ok() {
             out.push(buf);
         }
-        out
+        Ok(out)
     }
 }
 
