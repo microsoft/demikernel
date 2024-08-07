@@ -77,7 +77,8 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
 
             // Update SND.NXT.
             cb.modify_send_next(|s| s + SeqNumber::from(1));
-
+            capy_log!("Sending a window probe => send_next: {}", cb.get_send_next().get());
+            
             // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
             let unacked_segment = UnackedSegment {
                 bytes: buf.clone(),
@@ -172,7 +173,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
 
         // Update SND.NXT.
         cb.modify_send_next(|s| s + SeqNumber::from(segment_data_len));
-
+        capy_log!("Sent pkt => send_next: {}", cb.get_send_next().get());
         // Put this segment on the unacknowledged list.
         let unacked_segment = UnackedSegment {
             bytes: segment_data,

@@ -171,6 +171,11 @@ impl<N: NetworkRuntime> EstablishedSocket<N> {
     }
 
     #[cfg(feature = "tcp-migration")]
+    pub fn remove_background_task(&mut self) {
+        self.runtime.remove_coroutine(self.background_task_qt.into());
+    }
+
+    #[cfg(feature = "tcp-migration")]
     pub fn from_state(
         mut runtime: SharedDemiRuntime,
         transport: N,

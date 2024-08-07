@@ -139,6 +139,8 @@ struct Receiver {
     recv_queue_stats: StatsHandle,
     #[cfg(feature = "tcp-migration")]
     rps_stats: StatsHandle,
+    #[cfg(feature = "tcp-migration")]
+    mig_lock: bool,
 }
 
 impl Receiver {
@@ -154,6 +156,8 @@ impl Receiver {
             recv_queue_stats,
             #[cfg(feature = "tcp-migration")]
             rps_stats,
+            #[cfg(feature = "tcp-migration")]
+            mig_lock: false,
         }
     }
 
@@ -173,7 +177,12 @@ impl Receiver {
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);
-        capy_log!("pop {} bytes from receiver's recv queue ({} remains)", buf.len(), self.recv_queue.len());
+        capy_log!("pop {} bytes from receiver's recv queue ({} remains)\nMIG LOCK", buf.len(), self.recv_queue.len());
+        
+        #[cfg(feature = "tcp-migration")]{
+            self.mig_lock = true;
+        }
+        
         Ok(buf)
     }
 
@@ -339,6 +348,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
+        self.receiver.mig_unlock();
         let self_: Self = self.clone();
         self.sender.send(buf, self_)
     }
@@ -477,7 +487,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     return Err(e);
                 },
             };
-            capy_log!("pop conn(ctrlblk) recv queue ({})", self.recv_queue.len());
+            capy_log!("pop conn(ctrlblk) {} recv queue ({})", header.src_port, self.recv_queue.len());
             debug!(
                 "{:?} Connection Receiving {} bytes + {:?}",
                 self.state,
@@ -519,13 +529,13 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         
         // Check if the segment is in the receive window and trim off everything else.
         self.check_segment_in_window(&mut header, &mut data, &mut seg_start, &mut seg_end, &mut seg_len)?;
-        capy_log!("1");
+        // capy_log!("1");
         self.check_rst(&header)?;
-        capy_log!("2");
+        // capy_log!("2");
         self.check_syn(&header)?;
-        capy_log!("3");
+        // capy_log!("3");
         self.process_ack(&header)?;
-
+        // capy_log!("4");
         // TODO: Check the URG bit.  If we decide to support this, how should we do it?
         if header.urg {
             warn!("Got packet with URG bit set!");
@@ -746,7 +756,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         let rto: Duration = self.rto_calculator.rto();
         self.cc
             .on_ack_received(rto, send_unacknowledged, send_next, header.ack_num);
-
+        capy_log!("ack_num: {}, send_next: {}", header.ack_num, send_next);
         if send_unacknowledged < header.ack_num {
             if header.ack_num <= send_next {
                 // Does not matter when we get this since the clock will not move between the beginning of packet
@@ -882,7 +892,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
         // This routine should only ever be called to send TCP segments that contain a valid ACK value.
         debug_assert!(header.ack);
-
+        capy_log!("sending {}", header.seq_num);
         let sent_fin: bool = header.fin;
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
@@ -1319,6 +1329,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
             }
         }
     }
+    
+    pub fn get_mig_lock(&mut self) ->bool {
+        self.receiver.get_mig_lock()
+    }
 }
 #[cfg(feature = "tcp-migration")]
 pub mod state {
@@ -1644,7 +1658,16 @@ pub mod state {
                 recv_queue: AsyncQueue::from_vecdeque(recv_queue),
                 recv_queue_stats,
                 rps_stats,
+                mig_lock: false,
             }
+        }
+
+        pub fn mig_unlock(&mut self) {
+            self.mig_lock = false;
+        }
+
+        pub fn get_mig_lock(&mut self) -> bool {
+            self.mig_lock
         }
     }
 

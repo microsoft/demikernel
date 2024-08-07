@@ -85,6 +85,10 @@ pub struct TcpSocket<N: NetworkRuntime> {
     socket_options: TcpSocketOptions,
     arp: SharedArpPeer<N>,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
+    #[cfg(feature = "tcp-migration")]
+    pub is_migrated: bool,
+    #[cfg(feature = "tcp-migration")]
+    pub is_mig_prepared: bool,
 }
 
 pub struct SharedTcpSocket<N: NetworkRuntime>(SharedObject<TcpSocket<N>>);
@@ -114,6 +118,10 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             socket_options: default_socket_options,
             arp,
             dead_socket_tx,
+            #[cfg(feature = "tcp-migration")]
+            is_migrated: false,
+            #[cfg(feature = "tcp-migration")]
+            is_mig_prepared: false,
         }))
     }
 
@@ -139,6 +147,10 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             socket_options: default_socket_options,
             arp,
             dead_socket_tx,
+            #[cfg(feature = "tcp-migration")]
+            is_migrated: false,
+            #[cfg(feature = "tcp-migration")]
+            is_mig_prepared: false,
         }))
     }
 
@@ -310,6 +322,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             // Closing an active socket.
             SocketState::Established(ref mut socket) => {
                 // TODO: Send a RST or something?
+                socket.remove_background_task();
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.
@@ -330,6 +343,13 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             },
             SocketState::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
             SocketState::Unbound => Ok(None),
+        }
+    }
+    
+    pub fn get_mig_lock(&mut self) -> bool {
+        match self.state {
+            SocketState::Established(ref mut socket) => socket.cb.get_mig_lock(),
+            _ => true, // Only Estbalished sockets can be migrated
         }
     }
 

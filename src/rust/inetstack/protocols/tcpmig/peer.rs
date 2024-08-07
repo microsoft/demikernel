@@ -141,7 +141,7 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
             // }
             FLAG += 1;
             // eprintln!("FLAG: {}", FLAG);
-            FLAG == 5
+            FLAG >= 10000
         }
     }
 
@@ -168,7 +168,7 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
         );
 
         let active = match self.active_migrations.entry(remote) {
-            Entry::Occupied(..) => panic!("duplicate initiate migration"),
+            Entry::Occupied(..) => return, // this connection is already being migrated
             Entry::Vacant(entry) => entry.insert(active),
         };
         active.initiate_migration();

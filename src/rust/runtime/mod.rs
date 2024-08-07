@@ -535,6 +535,12 @@ impl SharedDemiRuntime {
         trace!("Check address in use: {:?}", local);
         self.network_table.addr_in_use(local)
     }
+
+    #[cfg(feature = "tcp-migration")]
+    pub fn remove_coroutine(&mut self, task_id: TaskId)
+    {
+        self.scheduler.remove_task(task_id);
+    }
 }
 
 impl<T> SharedObject<T> {
