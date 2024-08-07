@@ -95,7 +95,7 @@ impl NetworkRuntime for SharedTestRuntime {
         })))
     }
 
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
         debug!("transmit frame: {:?} body: {:?}", self.outgoing.len(), body_size);
@@ -110,14 +110,15 @@ impl NetworkRuntime for SharedTestRuntime {
             buf[header_size..].copy_from_slice(&body[..]);
         }
         self.outgoing.push_back(buf);
+        Ok(())
     }
 
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.pop_front() {
             out.push(buf);
         }
-        out
+        Ok(out)
     }
 }
 

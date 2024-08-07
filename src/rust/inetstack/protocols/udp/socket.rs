@@ -130,8 +130,7 @@ impl<N: NetworkRuntime> SharedUdpSocket<N> {
             buf,
             self.checksum_offload,
         );
-        self.network.transmit(datagram);
-        Ok(())
+        self.network.transmit(datagram)
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {

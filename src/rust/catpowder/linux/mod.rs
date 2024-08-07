@@ -111,7 +111,7 @@ impl NetworkRuntime for LinuxRuntime {
     }
 
     /// Transmits a single [PacketBuf].
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
         let header_size: usize = pkt.header_size();
         let body_size: usize = pkt.body_size();
 
@@ -130,15 +130,15 @@ impl NetworkRuntime for LinuxRuntime {
         // Send packet.
         match self.socket.sendto(&buf, &dest_sockaddr) {
             // Operation succeeded.
-            Ok(_) => (),
+            Ok(_) => Ok(()),
             // Operation failed, drop packet.
-            Err(e) => warn!("dropping packet: {:?}", e),
-        };
+            Err(e) => Err(e),
+        }
     }
 
     /// Receives a batch of [DemiBuffer].
     // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
 
         // TODO: change this function to operate directly on DemiBuffer rather than on MaybeUninit<u8>.
@@ -151,16 +151,13 @@ impl NetworkRuntime for LinuxRuntime {
             unsafe {
                 let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
                     mem::transmute::<[MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX], [u8; limits::RECVBUF_SIZE_MAX]>(out);
-                let mut dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&bytes), "'bytes' should fit");
-                expect_ok!(
-                    dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes),
-                    "'bytes' <= RECVBUF_SIZE_MAX"
-                );
+                let mut dbuf: DemiBuffer = DemiBuffer::from_slice(&bytes)?;
+                dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes)?;
                 ret.push(dbuf);
             }
-            ret
+            Ok(ret)
         } else {
-            ArrayVec::new()
+            Ok(ArrayVec::new())
         }
     }
 }

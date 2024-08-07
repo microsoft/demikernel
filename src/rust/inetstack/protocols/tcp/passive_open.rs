@@ -328,7 +328,9 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         };
 
         // Send it.
-        self.transport.transmit(segment);
+        if let Err(e) = self.transport.transmit(segment) {
+            warn!("Could not send RST: {:?}", e);
+        }
     }
 
     async fn send_syn_ack_and_wait_for_ack(
@@ -434,8 +436,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
             data: None,
             tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
         };
-        self.transport.transmit(segment);
-        Ok(())
+        self.transport.transmit(segment)
     }
 
     async fn wait_for_ack(

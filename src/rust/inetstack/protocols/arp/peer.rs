@@ -234,7 +234,12 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                         ),
                     );
                     debug!("Responding {:?}", reply);
-                    self.network.transmit(reply);
+                    if let Err(e) = self.network.transmit(reply) {
+                        // Ignore for now because the other end will retry.
+                        // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
+                        // FIXME: https://github.com/microsoft/demikernel/issues/1365
+                        warn!("Could not transmit message: {:?}", e);
+                    }
                 },
                 ArpOperation::Reply => {
                     debug!(
@@ -273,7 +278,10 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                self.network.transmit(msg.clone());
+                if let Err(e) = self.network.transmit(msg.clone()) {
+                    warn!("Could not send packet: {:?}", e);
+                    continue;
+                }
                 let arp_response = peer.do_wait_link_addr(ipv4_addr);
 
                 match conditional_yield_with_timeout(arp_response, self.arp_config.get_request_timeout()).await {

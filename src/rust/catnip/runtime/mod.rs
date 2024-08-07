@@ -400,7 +400,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
         })))
     }
 
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) {
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
         timer!("catnip::runtime::transmit");
 
         // TODO: Consider an important optimization here: If there is data in this packet (i.e. not just headers), and
@@ -421,10 +421,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
         // Chain body buffer.
 
         // First, allocate a header mbuf and write the header into it.
-        let mut header_mbuf: DemiBuffer = match self.mm.alloc_header_mbuf() {
-            Ok(mbuf) => mbuf,
-            Err(e) => panic!("failed to allocate header mbuf: {:?}", e.cause),
-        };
+        let mut header_mbuf: DemiBuffer = self.mm.alloc_header_mbuf()?;
         let header_size = pkt.header_size();
         assert!(header_size <= header_mbuf.len());
         pkt.write_header(&mut header_mbuf[..header_size]);
@@ -438,7 +435,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
                 assert!(header_size + body.len() >= MIN_PAYLOAD_SIZE);
 
                 // We're only using the header_mbuf for, well, the header.
-                header_mbuf.trim(header_mbuf.len() - header_size).unwrap();
+                header_mbuf.trim(header_mbuf.len() - header_size)?;
 
                 // Get the body mbuf.
                 let body_mbuf: *mut rte_mbuf = if body.is_dpdk_allocated() {
@@ -446,14 +443,14 @@ impl NetworkRuntime for SharedDPDKRuntime {
                     expect_some!(body.into_mbuf(), "'body' should be DPDK-allocated")
                 } else {
                     // The body is not dpdk-allocated, allocate a DPDKBuffer and copy the body into it.
-                    let mut mbuf: DemiBuffer = match self.mm.alloc_body_mbuf() {
-                        Ok(mbuf) => mbuf,
-                        Err(e) => panic!("failed to allocate body mbuf: {:?}", e.cause),
-                    };
+                    let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf()?;
                     assert!(mbuf.len() >= body.len());
                     mbuf[..body.len()].copy_from_slice(&body[..]);
-                    mbuf.trim(mbuf.len() - body.len()).unwrap();
-                    expect_some!(mbuf.into_mbuf(), "mbuf should not be empty")
+                    mbuf.trim(mbuf.len() - body.len())?;
+                    match mbuf.into_mbuf() {
+                        Some(body) => body,
+                        _ => return Err(Fail::new(libc::ENOMEM, "body mbuf could not be allocated")),
+                    }
                 };
 
                 let mut header_mbuf_ptr: *mut rte_mbuf =
@@ -502,9 +499,10 @@ impl NetworkRuntime for SharedDPDKRuntime {
             let num_sent = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut header_mbuf_ptr, 1) };
             assert_eq!(num_sent, 1);
         }
+        Ok(())
     }
 
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         timer!("catnip::runtime::receive");
 
         let mut out = ArrayVec::new();
@@ -520,6 +518,6 @@ impl NetworkRuntime for SharedDPDKRuntime {
             }
         }
 
-        out
+        Ok(out)
     }
 }

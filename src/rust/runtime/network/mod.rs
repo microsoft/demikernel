@@ -127,8 +127,8 @@ pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
     fn new(config: &Config) -> Result<Self, Fail>;
 
     /// Transmits a single [PacketBuf].
-    fn transmit<P: PacketBuf>(&mut self, pkt: P);
+    fn transmit<P: PacketBuf>(&mut self, pkt: P) -> Result<(), Fail>;
 
     /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
 }

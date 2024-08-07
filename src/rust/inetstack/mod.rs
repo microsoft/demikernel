@@ -26,6 +26,7 @@ use crate::{
             MemoryRuntime,
         },
         network::{
+            consts::RECEIVE_BATCH_SIZE,
             socket::option::SocketOption,
             transport::NetworkTransport,
             types::MacAddress,
@@ -47,6 +48,7 @@ use ::std::{
     time::Duration,
 };
 
+use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
 use ::std::{
     fmt::Debug,
@@ -130,10 +132,16 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
-                let batch = {
+                let batch: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = match {
                     timer!("inetstack::poll_bg_work::for::receive");
 
                     self.network.receive()
+                } {
+                    Ok(batch) => batch,
+                    Err(_) => {
+                        warn!("Could not receive from network interface, continuing ...");
+                        continue;
+                    },
                 };
 
                 {
