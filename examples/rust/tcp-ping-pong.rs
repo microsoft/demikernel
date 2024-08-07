@@ -45,9 +45,6 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
 const BUFFER_SIZE: usize = 64;
 
-/// Number of rounds to execute.
-const NROUNDS: usize = 10000;
-
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 //======================================================================================================================
@@ -411,10 +408,11 @@ impl Drop for TcpClient {
 
 /// Prints program usage and exits.
 fn usage(program_name: &String) {
-    println!("Usage: {} MODE address", program_name);
+    println!("Usage: {} MODE address nrounds", program_name);
     println!("Modes:");
     println!("  --client    Run program in client mode.");
     println!("  --server    Run program in server mode.");
+    println!("  --nrounds   Number of ping-pong rounds.");
 }
 
 //======================================================================================================================
@@ -424,7 +422,7 @@ fn usage(program_name: &String) {
 pub fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() >= 3 {
+    if args.len() >= 5 {
         // Create the LibOS.
         let libos_name: LibOSName = match LibOSName::from_env() {
             Ok(libos_name) => libos_name.into(),
@@ -435,14 +433,15 @@ pub fn main() -> Result<()> {
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
         };
         let sockaddr: SocketAddr = SocketAddr::from_str(&args[2])?;
+        let nrounds: usize = args[4].parse()?;
 
         // Invoke the appropriate peer.
         if args[1] == "--server" {
             let mut server: TcpServer = TcpServer::new(libos)?;
-            return server.run(sockaddr, NROUNDS);
+            return server.run(sockaddr, nrounds);
         } else if args[1] == "--client" {
             let mut client: TcpClient = TcpClient::new(libos)?;
-            return client.run(sockaddr, NROUNDS);
+            return client.run(sockaddr, nrounds);
         }
     }
 
