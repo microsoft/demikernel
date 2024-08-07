@@ -55,8 +55,9 @@ class MakeRedisOnLinux(BaseLinuxTask):
 
 
 class RunredisServerOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, env: str, params: str):
-        redis_cmd: str = f"{env} ./src/redis-server {params} --daemonize yes"
+    def __init__(self, host: str, redis_path: str, is_sudo: str, env: str, params: str):
+        sudo_cmd: str = "sudo -E" if is_sudo else ""
+        redis_cmd: str = f"{sudo_cmd} {env} ./src/redis-server {params} --daemonize yes"
         cmd: str = f"cd {redis_path} && {redis_cmd}"
         super().__init__(host, cmd)
 
@@ -68,8 +69,8 @@ class RunRedisBenchmarkOnLinux(BaseLinuxTask):
 
 
 class StopRedisServerOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, params: str):
-        cmd: str = f"cd {redis_path} && ./src/redis-cli {params} shutdown"
+    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 10):
+        cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-cli {params} shutdown"
         super().__init__(host, cmd)
 
 

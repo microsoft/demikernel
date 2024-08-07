@@ -350,6 +350,7 @@ class RunRedisServerJobOnLinux(BaseLinuxJob):
     def execute(self) -> bool:
         serverTask: linux.RunredisServerOnLinux = linux.RunredisServerOnLinux(
             host=super().server(), redis_path=f"{super().path()}/redis",
+            is_sudo=super().is_sudo(),
             env=f"CONFIG_PATH={super().config_path()} LD_LIBRARY_PATH={super().ld_library_path()} LD_PRELOAD={super().libshim_path()} LIBOS={super().libos()}",
             params=f"--bind {super().server_addr()} --protected-mode no --save \\\"\\\" ")
 
