@@ -46,7 +46,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 const BUFFER_SIZE: usize = 64;
 
 /// Number of rounds to execute.
-const NROUNDS: usize = 1024;
+const NROUNDS: usize = 10000;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -249,6 +249,7 @@ impl TcpServer {
         // Perform multiple ping-pong rounds.
         for i in 0..nrounds {
             let mut fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+            let (start_cycles, _): (u64, u32) = unsafe { x86::time::rdtscp() };
 
             // Pop data, and sanity check it.
             {
@@ -289,7 +290,9 @@ impl TcpServer {
                 }
             }
 
-            println!("pong {:?}", i);
+            let (end_cycles, _): (u64, u32) = unsafe { x86::time::rdtscp() };
+
+            println!("pong(index,cpu_cycles) {:?},{}", i, end_cycles - start_cycles);
         }
 
         // TODO: close socket when we get close working properly in catnip.
@@ -347,6 +350,7 @@ impl TcpClient {
         // Issue n sends.
         for i in 0..nrounds {
             let fill_char: u8 = (i % (u8::MAX as usize - 1) + 1) as u8;
+            let (start_cycles, _): (u64, u32) = unsafe { x86::time::rdtscp() };
 
             // Push data.
             {
@@ -379,7 +383,9 @@ impl TcpClient {
                 }
             }
 
-            println!("ping {:?}", i);
+            let (end_cycles, _): (u64, u32) = unsafe { x86::time::rdtscp() };
+
+            println!("ping(index,cpu_cycles) {:?},{}", i, end_cycles - start_cycles);
         }
 
         // TODO: close socket when we get close working properly in catnip.
