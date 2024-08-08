@@ -31,7 +31,10 @@ use windows::Win32::{
 };
 
 use crate::{
-    catnap::transport::error::translate_ntstatus,
+    catnap::{
+        transport::error::translate_ntstatus,
+        YIELD_TIMEOUT_MS,
+    },
     collections::pin_slab::PinSlab,
     expect_some,
     runtime::{
@@ -245,7 +248,15 @@ impl<S: Unpin> IoCompletionPort<S> {
 
         loop {
             let mut dequeued: u32 = 0;
-            match unsafe { GetQueuedCompletionStatusEx(self.iocp, entries.as_mut_slice(), &mut dequeued, 0, FALSE) } {
+            match unsafe {
+                GetQueuedCompletionStatusEx(
+                    self.iocp,
+                    entries.as_mut_slice(),
+                    &mut dequeued,
+                    YIELD_TIMEOUT_MS,
+                    FALSE,
+                )
+            } {
                 Ok(()) => {
                     for i in 0..dequeued {
                         self.process_overlapped(&entries[i as usize]);
