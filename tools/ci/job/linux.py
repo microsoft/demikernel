@@ -186,12 +186,12 @@ class TcpEchoTest(SystemTestJobOnLinux):
 
 
 class TcpPingPongTest(SystemTestJobOnLinux):
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, nrounds: int):
         config["test_name"] = "tcp-ping-pong"
         config["test_alias"] = "tcp-ping-pong"
         config["all_pass"] = True
-        config["server_args"] = f"--server {config['server_addr']}:12345"
-        config["client_args"] = f"--client {config['server_addr']}:12345"
+        config["server_args"] = f"--server {config['server_addr']}:12345 --nrounds {nrounds}"
+        config["client_args"] = f"--client {config['server_addr']}:12345 --nrounds {nrounds}"
         super().__init__(config)
 
 

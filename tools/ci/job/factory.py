@@ -75,7 +75,7 @@ class JobFactory:
             elif test_name == "tcp_wait":
                 return windows.TcpWaitTest(self.config, scenario=scenario, nclients=nclients)
             elif test_name == "tcp_ping_pong":
-                return windows.TcpPingPongTest(self.config)
+                return windows.TcpPingPongTest(self.config, nrounds=10000)
             elif test_name == "tcp_push_pop":
                 return windows.TcpPushPopTest(self.config)
             elif test_name == "udp_ping_pong":
@@ -102,7 +102,7 @@ class JobFactory:
                 elif test_name == "tcp_wait":
                     return linux.TcpWaitTest(self.config, scenario=scenario, nclients=nclients)
                 elif test_name == "tcp_ping_pong":
-                    return linux.TcpPingPongTest(self.config)
+                    return linux.TcpPingPongTest(self.config, nrounds=10000)
                 elif test_name == "tcp_push_pop":
                     return linux.TcpPushPopTest(self.config)
                 elif test_name == "udp_ping_pong":
