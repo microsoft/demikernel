@@ -277,3 +277,36 @@ test-clean:
 # C unit benchmarks.
 run-benchmarks-c: all-benchmarks-c $(BINDIR)/syscalls.elf
 	timeout $(TIMEOUT) $(BINDIR)/benchmarks.elf
+
+
+export CONFIG_DIR = $(CURDIR)/scripts/config
+export ELF_DIR ?= $(CURDIR)/bin/examples/rust
+
+# ENV += CAPY_LOG=all
+ENV += LIBOS=catnip
+# ENV += RUST_LOG="debug"
+
+http-server8:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/node8_config.yaml \
+	$(ENV) \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/http-server.elf 10.0.1.8:10008
+
+tcp-ping-pong-server8:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/node8_config.yaml \
+	$(ENV) \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/tcp-ping-pong.elf --server 10.0.1.8:10008
+
+tcp-ping-pong-client:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/node7_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 0 numactl -m0 \
+	$(ELF_DIR)/tcp-ping-pong.elf --client 10.0.1.8:10000

@@ -43,6 +43,9 @@ slab = "0.4.9"
 socket2 = "0.5.7"
 yaml-rust = "0.4.5"
 x86 = "0.52.0"
+lazy_static = "1.4"
+colored = "2.0"
+ctrlc = "3.2.1"
 
 # Local crates.
 nettest = { path = "nettest" }
@@ -142,6 +145,10 @@ path = "examples/rust/tcp-push-pop.rs"
 [[example]]
 name = "tcp-ping-pong"
 path = "examples/rust/tcp-ping-pong.rs"
+
+[[example]]
+name = "http-server"
+path = "examples/rust/http-server.rs"
 
 #=======================================================================================================================
 # Features

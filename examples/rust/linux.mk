@@ -22,6 +22,7 @@ all: all-examples
 	cp -f $(BUILD_DIR)/examples/tcp-close $(BINDIR)/examples/rust/tcp-close.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/pipe-open $(BINDIR)/examples/rust/pipe-open.$(EXEC_SUFFIX)
 	cp -f $(BUILD_DIR)/examples/tcp-wait $(BINDIR)/examples/rust/tcp-wait.$(EXEC_SUFFIX)
+	cp -f $(BUILD_DIR)/examples/http-server $(BINDIR)/examples/rust/http-server.$(EXEC_SUFFIX)
 
 all-examples:
 	@echo "$(CARGO) build --examples $(CARGO_FEATURES) $(CARGO_FLAGS)"
