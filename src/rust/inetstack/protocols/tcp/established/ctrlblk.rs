@@ -41,6 +41,7 @@ use crate::{
             },
             SeqNumber,
         },
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -842,12 +843,18 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
-        let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
-            tcp_hdr: header,
-            data: body,
-            tx_checksum_offload: self.tcp_config.get_tx_checksum_offload(),
+        let segment = match TcpSegment::new(
+            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            header,
+            body,
+            self.tcp_config.get_tx_checksum_offload(),
+        ) {
+            Ok(segment) => segment,
+            Err(e) => {
+                warn!("could not construct packet header: {:?}", e);
+                return;
+            },
         };
 
         // Call the runtime to send the segment.
@@ -1135,7 +1142,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     /// Send a fin by pushing a zero-length DemiBuffer to the sender function.
     fn send_fin(&mut self) {
         // Construct FIN.
-        let fin_buf: DemiBuffer = DemiBuffer::new(0);
+        // TODO: Remove this allocation.
+        let fin_buf: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
         // Send.
         if let Err(e) = self.send(fin_buf) {
             warn!("send_fin(): failed to send fin ({:?})", e);

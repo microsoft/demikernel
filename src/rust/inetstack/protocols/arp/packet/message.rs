@@ -22,8 +22,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct ArpMessage {
-    ethernet2_hdr: Ethernet2Header,
-    header: ArpHeader,
+    pkt: Option<DemiBuffer>,
 }
 
 //======================================================================================================================
@@ -33,10 +32,16 @@ pub struct ArpMessage {
 impl ArpMessage {
     /// Creates an ARP message.
     pub fn new(header: Ethernet2Header, pdu: ArpHeader) -> Self {
-        Self {
-            ethernet2_hdr: header,
-            header: pdu,
-        }
+        let eth_hdr_size: usize = header.compute_size();
+        let arp_pdu_size: usize = pdu.compute_size();
+        let mut pkt: DemiBuffer = DemiBuffer::new((eth_hdr_size + arp_pdu_size) as u16);
+        let mut cur_pos = 0;
+
+        header.serialize(&mut pkt[cur_pos..(cur_pos + eth_hdr_size)]);
+        cur_pos += eth_hdr_size;
+
+        pdu.serialize(&mut pkt[cur_pos..(cur_pos + arp_pdu_size)]);
+        Self { pkt: Some(pkt) }
     }
 }
 
@@ -45,27 +50,7 @@ impl ArpMessage {
 //======================================================================================================================
 
 impl PacketBuf for ArpMessage {
-    fn header_size(&self) -> usize {
-        self.ethernet2_hdr.compute_size() + self.header.compute_size()
-    }
-
-    fn body_size(&self) -> usize {
-        0
-    }
-
-    fn write_header(&self, buf: &mut [u8]) {
-        let eth_hdr_size = self.ethernet2_hdr.compute_size();
-        let arp_pdu_size = self.header.compute_size();
-        let mut cur_pos = 0;
-
-        self.ethernet2_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
-        cur_pos += eth_hdr_size;
-
-        self.header.serialize(&mut buf[cur_pos..(cur_pos + arp_pdu_size)]);
-    }
-
     fn take_body(&mut self) -> Option<DemiBuffer> {
-        None
+        self.pkt.take()
     }
 }

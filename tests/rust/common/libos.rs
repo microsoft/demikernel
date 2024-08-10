@@ -16,7 +16,10 @@ use ::demikernel::{
         config::Config,
         libos::network::libos::SharedNetworkLibOS,
     },
-    inetstack::SharedInetStack,
+    inetstack::{
+        protocols::MAX_HEADER_SIZE,
+        SharedInetStack,
+    },
     runtime::{
         fail::Fail,
         logging,
@@ -42,12 +45,16 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Structures
+// Constants
 //======================================================================================================================
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be quite small to make
 /// timeouts fast.
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1);
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>);
 
@@ -75,7 +82,7 @@ impl DummyLibOS {
     pub fn cook_data(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         let fill_char: u8 = b'a';
 
-        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
+        let mut buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
         for a in &mut buf[..] {
             *a = fill_char;
         }
