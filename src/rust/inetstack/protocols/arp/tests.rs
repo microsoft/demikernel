@@ -220,14 +220,7 @@ fn arp_cache_timeout() -> Result<()> {
 
 /// Serializes an [ArpMessage] into a [DemiBuffer].
 fn serialize_arp_message(pkt: &mut ArpMessage) -> DemiBuffer {
-    let header_size: usize = pkt.header_size();
-    let body_size: usize = pkt.body_size();
-    let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
-    pkt.write_header(&mut buf[..header_size]);
-    if let Some(body) = pkt.take_body() {
-        buf[header_size..].copy_from_slice(&body[..]);
-    }
-    buf
+    pkt.take_body().unwrap()
 }
 
 /// Builds an ARP query request.
@@ -240,7 +233,7 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
         MacAddress::broadcast(),
         remote_ipv4.clone(),
     );
-    ArpMessage::new(header, body)
+    ArpMessage::new(header, body).expect("Should be able to construct ARP message")
 }
 
 /// Creates a new engine.
