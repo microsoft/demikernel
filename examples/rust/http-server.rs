@@ -14,17 +14,20 @@ use ::demikernel::{
     QDesc,
     QToken,
 };
-
-use std::{cell::RefCell, collections::{HashMap, HashSet, hash_map::Entry}, rc::Rc, time::Instant};
 use ::std::{
     env,
     net::SocketAddr,
-    panic,
-    str::FromStr,
     slice,
+    str::FromStr,
     time::Duration,
+    collections::HashMap,
+    cell::RefCell,
+    rc::Rc,
 };
-use ctrlc;
+use log::{
+    error,
+    warn,
+};
 
 #[cfg(feature = "profiler")]
 use ::demikernel::perftools::profiler;
@@ -34,9 +37,7 @@ use colored::Colorize;
 #[macro_use]
 extern crate lazy_static;
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 //=====================================================================================
-
 macro_rules! server_log {
     ($($arg:tt)*) => {
         #[cfg(feature = "capy-log")]
@@ -47,18 +48,103 @@ macro_rules! server_log {
         }
     };
 }
-
 //=====================================================================================
+
+#[cfg(target_os = "windows")]
+pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
+
+#[cfg(target_os = "windows")]
+pub const SOCK_STREAM: i32 = windows::Win32::Networking::WinSock::SOCK_STREAM.0 as i32;
+
+#[cfg(target_os = "linux")]
+pub const AF_INET: i32 = libc::AF_INET;
+
+#[cfg(target_os = "linux")]
+pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
+
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
+const BUFFER_SIZE: usize = 64;
+const FILL_CHAR: u8 = 0x65;
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+//======================================================================================================================
+// mksga()
+//======================================================================================================================
+
+/// Creates a scatter-gather-array.
+fn mksga(libos: &mut LibOS, data: &[u8]) -> Result<demi_sgarray_t> {
+    let size = data.len();
+    debug_assert!(size > std::mem::size_of::<u64>());
+
+    let sga: demi_sgarray_t = libos.sgaalloc(size)?;
+    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+
+    if size > len {
+        freesga(libos, sga);
+        anyhow::bail!("Allocated SGA segment is smaller than the input data");
+    }
+
+    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+
+    // Copy the data into the slice
+    slice[0..size].copy_from_slice(data);
+
+    Ok(sga)
+}
+
+//======================================================================================================================
+// freesga()
+//======================================================================================================================
+
+/// Free scatter-gather array and warn on error.
+fn freesga(libos: &mut LibOS, sga: demi_sgarray_t) {
+    if let Err(e) = libos.sgafree(sga) {
+        error!("sgafree() failed (error={:?})", e);
+        warn!("leaking sga");
+    }
+}
+
+//======================================================================================================================
+// close()
+//======================================================================================================================
+
+/// Closes a socket and warns if not successful.
+fn close(libos: &mut LibOS, sockqd: QDesc) {
+    if let Err(e) = libos.close(sockqd) {
+        error!("close() failed (error={:?})", e);
+        warn!("leaking sockqd={:?}", sockqd);
+    }
+}
+
+//======================================================================================================================
+// push_and_wait()
+//======================================================================================================================
+
+/// Pushes a scatter-gather array to a remote socket and waits for the operation to complete.
+fn push_and_wait(libos: &mut LibOS, sockqd: QDesc, sga: &demi_sgarray_t) -> Result<()> {
+    // Push data.
+    let qt: QToken = match libos.push(sockqd, sga) {
+        Ok(qt) => qt,
+        Err(e) => anyhow::bail!("push failed: {:?}", e),
+    };
+    match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
+        Ok(_) => anyhow::bail!("unexpected result"),
+        Err(e) => anyhow::bail!("operation failed: {:?}", e),
+    };
+
+    Ok(())
+}
+
+
 
 const ROOT: &str = "/var/www/demo";
 const BUFSZ: usize = 4096;
 
-static mut START_TIME: Option<Instant> = None;
-static mut SERVER_PORT: u16 = 0;
-
-//=====================================================================================
-
-// Borrowed from Loadgen
 struct Buffer {
     buf: Vec<u8>,
     head: usize,
@@ -118,30 +204,6 @@ impl Buffer {
     }
 }
 
-//======================================================================================================================
-// push_and_wait()
-//======================================================================================================================
-
-/// Pushes a scatter-gather array to a remote socket and waits for the operation to complete.
-fn push_and_wait(libos: &mut LibOS, sockqd: QDesc, sga: &demi_sgarray_t) -> Result<()> {
-    // Push data.
-    let qt: QToken = match libos.push(sockqd, sga) {
-        Ok(qt) => qt,
-        Err(e) => anyhow::bail!("push failed: {:?}", e),
-    };
-    // match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
-    //     Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
-    //     Ok(_) => anyhow::bail!("unexpected result"),
-    //     Err(e) => anyhow::bail!("operation failed: {:?}", e),
-    // };
-
-    Ok(())
-}
-
-//======================================================================================================================
-// server()
-//======================================================================================================================
-
 struct SessionData {
     data: Vec<u8>,
 }
@@ -151,63 +213,12 @@ impl SessionData {
         Self { data: vec![5; size] }
     }
 }
-
+// The TCP server.
 struct ConnectionState {
     buffer: Buffer,
     session_data: SessionData,
 }
 
-
-/// Creates a scatter-gather-array.
-fn mksga(libos: &mut LibOS, data: &[u8]) -> Result<demi_sgarray_t> {
-    let size = data.len();
-    debug_assert!(size > std::mem::size_of::<u64>());
-
-    let sga: demi_sgarray_t = libos.sgaalloc(size)?;
-    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-
-    if size > len {
-        anyhow::bail!("Allocated SGA segment is smaller than the input data");
-    }
-
-    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-
-    // Copy the data into the slice
-    slice[0..size].copy_from_slice(data);
-
-    Ok(sga)
-}
-
-fn respond_to_request(libos: &mut LibOS, qd: QDesc, data: &[u8]) -> Result<()> {
-    lazy_static! {
-        static ref RESPONSE: String = {
-            match std::fs::read_to_string("/var/www/demo/index.html") {
-                Ok(contents) => {
-                    format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", contents.len(), contents)
-                },
-                Err(_) => {
-                    format!("HTTP/1.1 404 NOT FOUND\r\n\r\nDebug: Invalid path\n")
-                },
-            }
-        };
-    }
-    
-    server_log!("PUSH: {}", RESPONSE.lines().next().unwrap_or(""));
-
-    let sga: demi_sgarray_t = mksga(libos, RESPONSE.as_bytes())?;
-    if let Err(e) = push_and_wait(
-        libos,
-        qd,
-        &sga,
-    ) {
-        anyhow::bail!("push and wait failed: {:?}", e)
-    }
-    if let Err(e) = libos.sgafree(sga) {
-        anyhow::bail!("failed to release scatter-gather array: {:?}", e)
-    }
-    Ok(())
-}
 
 #[inline(always)]
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -216,190 +227,215 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-fn push_data_and_run(libos: &mut LibOS, qd: QDesc, buffer: &mut Buffer, data: &[u8], qts: &mut Vec<QToken>) -> Result<()>{
-    
-    server_log!("buffer.data_size() {}", buffer.data_size());
-    // fast path: no previous data in the stream and this request contains exactly one HTTP request
-    if buffer.data_size() == 0 {
-        if find_subsequence(data, b"\r\n\r\n").unwrap_or(data.len()) == data.len() - 4 {
-            server_log!("responding 1");
-            
-            if let Err(e) = respond_to_request(libos, qd, data) {
-                anyhow::bail!("respond_to_request failed: {:?}", e);
-            }
-            return Ok(());
-        }
-    }
-    // println!("* CHECK *\n");
-    // Copy new data into buffer
-    buffer.get_empty_buf()[..data.len()].copy_from_slice(data);
-    buffer.push_data(data.len());
-    server_log!("buffer.data_size() {}", buffer.data_size());
-    let mut sent = 0;
+pub struct TcpServer {
+    /// Underlying libOS.
+    libos: LibOS,
+    /// Local socket queue descriptor.
+    sockqd: QDesc,
+    /// Accepted socket queue descriptor.
+    accepted_qd: Option<QDesc>,
+    /// The scatter-gather array.
+    sga: Option<demi_sgarray_t>,
+}
 
-    loop {
-        let dbuf = buffer.get_data();
-        match find_subsequence(dbuf, b"\r\n\r\n") {
-            Some(idx) => {
-                server_log!("responding 2");
-                if let Err(e) = respond_to_request(libos, qd, data) {
+// Implementation of the TCP server.
+impl TcpServer {
+    pub fn new(mut libos: LibOS) -> Result<Self> {
+        // Create the local socket.
+        let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
+            Ok(sockqd) => sockqd,
+            Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
+        };
+
+        return Ok(Self {
+            libos,
+            sockqd,
+            accepted_qd: None,
+            sga: None,
+        });
+    }
+
+    pub fn respond_to_request(&mut self, qd: QDesc, data: &[u8]) -> Result<()> {
+        lazy_static! {
+            static ref RESPONSE: String = {
+                match std::fs::read_to_string("/var/www/demo/index.html") {
+                    Ok(contents) => {
+                        format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", contents.len(), contents)
+                    },
+                    Err(_) => {
+                        format!("HTTP/1.1 404 NOT FOUND\r\n\r\nDebug: Invalid path\n")
+                    },
+                }
+            };
+        }
+        
+        server_log!("PUSH: {}", RESPONSE.lines().next().unwrap_or(""));
+    
+        let sga: demi_sgarray_t = mksga(&mut self.libos, RESPONSE.as_bytes())?;
+        if let Err(e) = push_and_wait(
+            &mut self.libos,
+            qd,
+            &sga,
+        ) {
+            anyhow::bail!("push and wait failed: {:?}", e)
+        }
+        if let Err(e) = self.libos.sgafree(sga) {
+            anyhow::bail!("failed to release scatter-gather array: {:?}", e)
+        }
+        Ok(())
+    }
+    
+
+    pub fn push_data_and_run(&mut self, qd: QDesc, buffer: &mut Buffer, data: &[u8], qts: &mut Vec<QToken>) -> Result<()>{
+    
+        server_log!("buffer.data_size() {}", buffer.data_size());
+        // fast path: no previous data in the stream and this request contains exactly one HTTP request
+        if buffer.data_size() == 0 {
+            if find_subsequence(data, b"\r\n\r\n").unwrap_or(data.len()) == data.len() - 4 {
+                server_log!("responding 1");
+                
+                if let Err(e) = self.respond_to_request(qd, data) {
                     anyhow::bail!("respond_to_request failed: {:?}", e);
                 }
-                buffer.pull_data(idx + 4);
-                buffer.try_shrink().unwrap();
-                return Ok(());
-            }
-            None => {
                 return Ok(());
             }
         }
+        // println!("* CHECK *\n");
+        // Copy new data into buffer
+        buffer.get_empty_buf()[..data.len()].copy_from_slice(data);
+        buffer.push_data(data.len());
+        server_log!("buffer.data_size() {}", buffer.data_size());
+        let mut sent = 0;
+    
+        loop {
+            let dbuf = buffer.get_data();
+            match find_subsequence(dbuf, b"\r\n\r\n") {
+                Some(idx) => {
+                    server_log!("responding 2");
+                    if let Err(e) = self.respond_to_request(qd, data) {
+                        anyhow::bail!("respond_to_request failed: {:?}", e);
+                    }
+                    buffer.pull_data(idx + 4);
+                    buffer.try_shrink().unwrap();
+                    return Ok(());
+                }
+                None => {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    pub fn run(&mut self, local: SocketAddr, fill_char: u8, buffer_size: usize) -> Result<()> {
+        let session_data_size: usize = std::env::var("SESSION_DATA_SIZE").map_or(1024, |v| v.parse().unwrap());
+
+        let nbytes: usize = buffer_size * 1024;
+
+        if let Err(e) = self.libos.bind(self.sockqd, local) {
+            anyhow::bail!("bind failed: {:?}", e.cause)
+        };
+
+        // Mark as a passive one.
+        if let Err(e) = self.libos.listen(self.sockqd, 300) {
+            anyhow::bail!("listen failed: {:?}", e.cause)
+        };
+
+        let mut qts: Vec<QToken> = Vec::new();
+        let mut connstate: HashMap<QDesc, Rc<RefCell<ConnectionState>>> = HashMap::new();
+        // Accept incoming connections.
+        let qt: QToken = match self.libos.accept(self.sockqd) {
+            Ok(qt) => qt,
+            Err(e) => anyhow::bail!("accept failed: {:?}", e.cause),
+        };
+
+        qts.push(qt);
+
+        // Create qrs filled with garbage.
+        let mut qrs: Vec<(QDesc, demi_opcode_t)> = Vec::with_capacity(2000);
+        qrs.resize_with(2000, || (0.into(), demi_opcode_t::DEMI_OPC_CONNECT));
+        let mut indices: Vec<usize> = Vec::with_capacity(2000);
+        indices.resize(2000, 0);
+
+        loop {
+            let (offset, qr) = self.libos.wait_any(&qts, None).expect("result");
+            server_log!("\n\n======= OS: I/O operations have been completed, take the results! =======");
+
+            qts.swap_remove(offset);
+            let qd = qr.qr_qd.into();
+            
+            match qr.qr_opcode {
+                demi_opcode_t::DEMI_OPC_ACCEPT  => {
+                    let new_qd = unsafe { qr.qr_value.ares.qd.into() };
+                    server_log!("ACCEPT complete {:?} ==> issue POP and ACCEPT", new_qd);
+                    match self.libos.pop(new_qd, None) {
+                        Ok(pop_qt) => {
+                            qts.push(pop_qt)
+                        },
+                        Err(e) => panic!("pop qt: {}", e),
+                    }
+                    let state = Rc::new(RefCell::new(ConnectionState {
+                        buffer: Buffer::new(),
+                        session_data: SessionData::new(session_data_size),
+                    }));
+                    connstate.insert(new_qd, state);
+                    qts.push(self.libos.accept(qd).expect("accept qtoken"));
+                },
+                demi_opcode_t::DEMI_OPC_POP => {
+                    let sga = unsafe { qr.qr_value.sga };
+                    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+                    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
+                    let recvbuf: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
+                    // match std::str::from_utf8(recvbuf) {
+                    //     Ok(human_readable) => eprintln!("POP: {:?}", human_readable),
+                    //     Err(e) => eprintln!("POP: invalid UTF-8 sequence: {:?}", e),
+                    // }
+                    let mut state = connstate.get_mut(&qd).unwrap().borrow_mut();
+                    let sent = self.push_data_and_run(qd, &mut state.buffer, &recvbuf, &mut qts);
+                    
+                    match self.libos.pop(qd, None) {
+                        Ok(pop_qt) => {
+                            qts.push(pop_qt)
+                        },
+                        Err(e) => panic!("pop qt: {}", e),
+                    }
+    
+                    // Do not silently ignore if unable to free scatter-gather array.
+                    if let Err(e) = self.libos.sgafree(sga) {
+                        anyhow::bail!("failed to release scatter-gather array: {:?}", e);
+                    }
+                },
+                demi_opcode_t::DEMI_OPC_PUSH => {
+                    server_log!("PUSH complete");
+                },
+                demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("operation failed"),
+                _ => anyhow::bail!("unexpected result"),
+            }
+        }
+        eprintln!("server stopping");
+
+        // LibOS::capylog_dump(&mut std::io::stderr().lock());
+
+        #[cfg(feature = "profiler")]
+        profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
+
+        // TODO: close socket when we get close working properly in catnip.
+        Ok(())
     }
 }
 
-fn server(local: SocketAddr) -> Result<()> {
-    unsafe{ SERVER_PORT = local.port() };
-    let mut request_count = 0;
-    let mut queue_length_vec: Vec<(usize, usize)> = Vec::new();
-    let migration_per_n: i32 = env::var("MIG_PER_N")
-            .unwrap_or(String::from("10")) // Default value is 10 if MIG_PER_N is not set
-            .parse()
-            .expect("MIG_PER_N must be a i32");
-    ctrlc::set_handler(move || {
-        eprintln!("Received Ctrl-C signal.");
-        // LibOS::dpdk_print_eth_stats();
-        // LibOS::capylog_dump(&mut std::io::stderr().lock());
-        std::process::exit(0);
-    }).expect("Error setting Ctrl-C handler");
-    // unsafe { START_TIME = Some(Instant::now()); }
+// The Drop implementation for the TCP server.
+impl Drop for TcpServer {
+    fn drop(&mut self) {
+        close(&mut self.libos, self.sockqd);
 
-    let session_data_size: usize = std::env::var("SESSION_DATA_SIZE").map_or(1024, |v| v.parse().unwrap());
-
-    let libos_name: LibOSName = LibOSName::from_env().unwrap().into();
-    let mut libos: LibOS = LibOS::new(libos_name, None).expect("intialized libos");
-    let sockqd: QDesc = libos.socket(libc::AF_INET, libc::SOCK_STREAM, 0).expect("created socket");
-
-    libos.bind(sockqd, local).expect("bind socket");
-    libos.listen(sockqd, 300).expect("listen socket");
-
-    let mut qts: Vec<QToken> = Vec::new();
-    let mut connstate: HashMap<QDesc, Rc<RefCell<ConnectionState>>> = HashMap::new();
-
-    qts.push(libos.accept(sockqd).expect("accept"));
-
-    #[cfg(feature = "manual-tcp-migration")]
-    let mut requests_remaining: HashMap<QDesc, i32> = HashMap::new();
-
-    // Create qrs filled with garbage.
-    let mut qrs: Vec<(QDesc, demi_opcode_t)> = Vec::with_capacity(2000);
-    qrs.resize_with(2000, || (0.into(), demi_opcode_t::DEMI_OPC_CONNECT));
-    let mut indices: Vec<usize> = Vec::with_capacity(2000);
-    indices.resize(2000, 0);
-    
-    loop {
-        let (offset, qr) = libos.wait_any(&qts, None).expect("result");
-
-        /* let mut pop_count = completed_results.iter().filter(|(_, _, result)| {
-            matches!(result, OperationResult::Pop(_, _))
-        }).count(); */
-        /* #[cfg(feature = "tcp-migration")]{
-            request_count += 1;
-            if request_count % 1 == 0 {
-                eprintln!("request_counnt: {} {}", request_count, libos.global_recv_queue_length());
-            queue_length_vec.push((request_count, libos.global_recv_queue_length()));
-            }
-        } */
-            
-        server_log!("\n\n======= OS: I/O operations have been completed, take the results! =======");
-
-        qts.swap_remove(offset);
-        let qd = qr.qr_qd.into();
-        
-        match qr.qr_opcode {
-            demi_opcode_t::DEMI_OPC_ACCEPT  => {
-                let new_qd = unsafe { qr.qr_value.ares.qd.into() };
-                server_log!("ACCEPT complete {:?} ==> issue POP and ACCEPT", new_qd);
-                match libos.pop(new_qd, None) {
-                    Ok(pop_qt) => {
-                        qts.push(pop_qt)
-                    },
-                    Err(e) => panic!("pop qt: {}", e),
-                }
-                let state = Rc::new(RefCell::new(ConnectionState {
-                    buffer: Buffer::new(),
-                    session_data: SessionData::new(session_data_size),
-                }));
-                connstate.insert(new_qd, state);
-                qts.push(libos.accept(qd).expect("accept qtoken"));
-            },
-            demi_opcode_t::DEMI_OPC_POP => {
-                let sga = unsafe { qr.qr_value.sga };
-                let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-                let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-                let recvbuf: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-                // match std::str::from_utf8(recvbuf) {
-                //     Ok(human_readable) => eprintln!("POP: {:?}", human_readable),
-                //     Err(e) => eprintln!("POP: invalid UTF-8 sequence: {:?}", e),
-                // }
-                let mut state = connstate.get_mut(&qd).unwrap().borrow_mut();
-                let sent = push_data_and_run(&mut libos, qd, &mut state.buffer, &recvbuf, &mut qts);
-                
-                match libos.pop(qd, None) {
-                    Ok(pop_qt) => {
-                        qts.push(pop_qt)
-                    },
-                    Err(e) => panic!("pop qt: {}", e),
-                }
-
-                // Do not silently ignore if unable to free scatter-gather array.
-                if let Err(e) = libos.sgafree(sga) {
-                    anyhow::bail!("failed to release scatter-gather array: {:?}", e);
-                }
-            },
-            demi_opcode_t::DEMI_OPC_PUSH => {
-                server_log!("PUSH complete");
-            },
-            demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("operation failed"),
-            _ => anyhow::bail!("unexpected result"),
+        if let Some(accepted_qd) = self.accepted_qd {
+            close(&mut self.libos, accepted_qd);
         }
-        
-        // #[cfg(feature = "profiler")]
-        // profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-        
-        server_log!("******* APP: Okay, handled the results! *******");
+
+        if let Some(sga) = self.sga {
+            freesga(&mut self.libos, sga);
+        }
     }
-
-    eprintln!("server stopping");
-
-    /* #[cfg(feature = "tcp-migration")]
-    // Get the length of the vector
-    let vec_len = queue_length_vec.len();
-
-    // Calculate the starting index for the last 10,000 elements
-    let start_index = if vec_len >= 5_000 {
-        vec_len - 5_000
-    } else {
-        0 // If the vector has fewer than 10,000 elements, start from the beginning
-    };
-
-    // Create a slice of the last 10,000 elements
-    let last_10_000 = &queue_length_vec[start_index..];
-
-    // Iterate over the slice and print the elements
-    let mut cnt = 0;
-    for (idx, qlen) in last_10_000.iter() {
-        println!("{},{}", cnt, qlen);
-        cnt+=1;
-    } */
-    #[cfg(feature = "tcp-migration")]
-    demi_print_queue_length_log();
-
-    // LibOS::capylog_dump(&mut std::io::stderr().lock());
-
-    #[cfg(feature = "profiler")]
-    profiler::write(&mut std::io::stdout(), None).expect("failed to write to stdout");
-
-    // TODO: close socket when we get close working properly in catnip.
-    Ok(())
 }
 
 //======================================================================================================================
@@ -416,14 +452,21 @@ fn usage(program_name: &String) {
 //======================================================================================================================
 
 pub fn main() -> Result<()> {
-    server_log!("*** HTTP SERVER LOGGING IS ON ***");
-    // logging::initialize();
-
     let args: Vec<String> = env::args().collect();
 
     if args.len() >= 2 {
+        // Create the LibOS.
+        let libos_name: LibOSName = match LibOSName::from_env() {
+            Ok(libos_name) => libos_name.into(),
+            Err(e) => anyhow::bail!("{:?}", e),
+        };
+        let libos: LibOS = match LibOS::new(libos_name, None) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+        };
         let sockaddr: SocketAddr = SocketAddr::from_str(&args[1])?;
-        return server(sockaddr);
+        let mut server: TcpServer = TcpServer::new(libos)?;
+        return server.run(sockaddr, FILL_CHAR, BUFFER_SIZE);
     }
 
     usage(&args[0]);
