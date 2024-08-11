@@ -405,7 +405,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
         let outgoing_pkt: DemiBuffer = match pkt.take_body().unwrap() {
             buf if buf.is_dpdk_allocated() => buf,
             buf => {
-                let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf().expect("should be able to allocate mbuf");
+                let mut mbuf: DemiBuffer = self.mm.alloc_mbuf().expect("should be able to allocate mbuf");
                 debug_assert!(buf.len() < mbuf.len());
                 mbuf.trim(mbuf.len() - buf.len()).expect("Should be able to trim");
                 mbuf.copy_from_slice(&buf);

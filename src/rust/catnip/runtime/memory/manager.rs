@@ -7,12 +7,7 @@
 
 use crate::{
     catnip::runtime::memory::mempool::MemoryPool,
-    inetstack::protocols::{
-        ethernet2::ETHERNET2_HEADER_SIZE,
-        ipv4::IPV4_HEADER_MAX_SIZE,
-        tcp::MAX_TCP_HEADER_SIZE,
-        MAX_HEADER_SIZE,
-    },
+    inetstack::protocols::MAX_HEADER_SIZE,
     runtime::{
         fail::Fail,
         libdpdk::{
@@ -53,13 +48,8 @@ pub use crate::catnip::runtime::memory::config::MemoryConfig;
 #[derive(Debug)]
 pub struct MemoryManager {
     config: MemoryConfig,
-
-    // Used by networking stack for protocol headers + inline bodies. These buffers are only used
-    // internally within the network stack.
-    header_pool: MemoryPool,
-
     // Large body pool for buffers given to the application for zero-copy.
-    body_pool: MemoryPool,
+    pool: MemoryPool,
 }
 
 //======================================================================================================================
@@ -70,31 +60,17 @@ pub struct MemoryManager {
 impl MemoryManager {
     /// Instantiates a memory manager.
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
-        let config: MemoryConfig = MemoryConfig::new(None, None, Some(max_body_size), None, None);
-        let header_size: usize = ETHERNET2_HEADER_SIZE + (IPV4_HEADER_MAX_SIZE as usize) + MAX_TCP_HEADER_SIZE;
-        let header_mbuf_size: usize = header_size + config.get_inline_body_size();
-
-        // Create memory pool for holding packet headers.
-        let header_pool: MemoryPool = MemoryPool::new(
-            CString::new("header_pool")?,
-            header_mbuf_size,
-            config.get_header_pool_size(),
-            config.get_cache_size(),
-        )?;
+        let config: MemoryConfig = MemoryConfig::new(None, Some(max_body_size), None, None);
 
         // Create memory pool for holding packet bodies.
-        let body_pool: MemoryPool = MemoryPool::new(
+        let pool: MemoryPool = MemoryPool::new(
             CString::new("body_pool")?,
             config.get_max_body_size(),
-            config.get_body_pool_size(),
+            config.get_pool_size(),
             config.get_cache_size(),
         )?;
 
-        Ok(Self {
-            config,
-            header_pool,
-            body_pool,
-        })
+        Ok(Self { pool, config })
     }
 
     /// Converts a runtime buffer into a scatter-gather array.
@@ -116,16 +92,8 @@ impl MemoryManager {
     }
 
     /// Allocates a header mbuf.
-    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_header_mbuf(&self) -> Result<DemiBuffer, Fail> {
-        let mbuf_ptr: *mut rte_mbuf = self.header_pool.alloc_mbuf(None)?;
-        Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
-    }
-
-    /// Allocates a body mbuf.
-    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
-    pub fn alloc_body_mbuf(&self) -> Result<DemiBuffer, Fail> {
-        let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(None)?;
+    pub fn alloc_mbuf(&self) -> Result<DemiBuffer, Fail> {
+        let mbuf_ptr: *mut rte_mbuf = self.pool.alloc_mbuf(None)?;
         Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
@@ -148,7 +116,7 @@ impl MemoryManager {
         // First allocate the underlying DemiBuffer.
         let buf: DemiBuffer = if size > self.config.get_inline_body_size() && size <= self.config.get_max_body_size() {
             // Allocate a DPDK-managed buffer.
-            let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(Some(size))?;
+            let mbuf_ptr: *mut rte_mbuf = self.pool.alloc_mbuf(Some(size))?;
             // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
             unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
         } else {
@@ -255,8 +223,7 @@ impl MemoryManager {
     }
 
     /// Returns a raw pointer to the underlying body pool.
-    /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn body_pool(&self) -> *mut rte_mempool {
-        self.body_pool.into_raw()
+        self.pool.into_raw()
     }
 }
