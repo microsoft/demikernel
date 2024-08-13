@@ -741,20 +741,6 @@ impl DemiBuffer {
         Ok(cloned_buf)
     }
 
-    /// Provides a raw pointer to the buffer data.
-    ///
-    /// The reference count is not affected in any way and the DemiBuffer is not consumed.  The pointer is valid for as
-    /// long as there is a DemiBuffer in existance that is holding a reference on this data.
-    // This function is not marked unsafe, as the unsafe act is dereferencing the returned pointer, not providing it.
-    pub fn as_ptr(&self) -> *const u8 {
-        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
-        match self.get_tag() {
-            Tag::Heap => self.data_ptr(),
-            #[cfg(feature = "libdpdk")]
-            Tag::Dpdk => self.dpdk_data_ptr(),
-        }
-    }
-
     /// Consumes the `DemiBuffer`, returning a raw token (useful for FFI) that can be used with `from_raw()`.
     // Note the type of the token is arbitrary, it should be treated as an opaque value.
     pub fn into_raw(self) -> NonNull<u8> {
@@ -819,20 +805,6 @@ impl DemiBuffer {
         let buf_ptr: *mut u8 = metadata.buf_addr;
         // Safety: The call to offset is safe, as its argument is known to remain within the allocated region.
         unsafe { buf_ptr.offset(metadata.data_off as isize) }
-    }
-
-    // Gets a raw pointer to the DemiBuffer data (DPDK type specific).
-    // Note: Since our MetaData and DPDK's rte_mbuf have equivalent layouts for the buf_addr and data_off fields, this
-    // function isn't strictly necessary, as it does the exact same thing as data_ptr() does.
-    #[cfg(feature = "libdpdk")]
-    fn dpdk_data_ptr(&self) -> *mut u8 {
-        let mbuf: *mut rte_mbuf = self.as_mbuf();
-        unsafe {
-            // Safety: It is safe to dereference "mbuf" as it is known to be valid.
-            let buf_ptr: *mut u8 = (*mbuf).buf_addr as *mut u8;
-            // Safety: The call to offset is safe, as its argument is known to remain within the allocated region.
-            buf_ptr.offset((*mbuf).data_off as isize)
-        }
     }
 
     ///
@@ -1085,49 +1057,24 @@ impl Deref for DemiBuffer {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
-        match self.get_tag() {
-            Tag::Heap => {
-                // If the buffer is empty, return an empty slice.
-                if self.len() == 0 {
-                    return &[];
-                }
-
-                // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
-                // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
-                // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
-                unsafe { slice::from_raw_parts(self.data_ptr(), self.len()) }
-            },
-            #[cfg(feature = "libdpdk")]
-            Tag::Dpdk => {
-                // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
-                // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
-                // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
-                unsafe { slice::from_raw_parts(self.dpdk_data_ptr(), self.len()) }
-            },
+        // If the buffer is empty, return an empty slice.
+        if self.len() == 0 {
+            return &[];
         }
+        // Safety: the call to from_raw_parts is safe, as its arguments refer to a valid readable memory region
+        // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
+        // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
+        unsafe { slice::from_raw_parts(self.data_ptr(), self.len()) }
     }
 }
 
 /// Mutable De-Reference Trait Implementation for `DemiBuffer`.
 impl DerefMut for DemiBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
-        // TODO: Review having this "match", since MetaData and MBuf are laid out the same, these are equivalent cases.
-        match self.get_tag() {
-            Tag::Heap => {
-                // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region
-                // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
-                // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
-                unsafe { slice::from_raw_parts_mut(self.data_ptr(), self.len()) }
-            },
-            #[cfg(feature = "libdpdk")]
-            Tag::Dpdk => {
-                // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region
-                // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
-                // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
-                unsafe { slice::from_raw_parts_mut(self.dpdk_data_ptr(), self.len()) }
-            },
-        }
+        // Safety: the call to from_raw_parts_mut is safe, as its args refer to a valid readable memory region
+        // of the size specified (which is guaranteed to be smaller than isize::MAX) and is contained within
+        // a single allocated object.  Also, since the data type is u8, proper alignment is not an issue.
+        unsafe { slice::from_raw_parts_mut(self.data_ptr(), self.len()) }
     }
 }
 
