@@ -36,9 +36,12 @@ impl ArpMessage {
         let eth_hdr_size: usize = header.compute_size();
         let arp_pdu_size: usize = pdu.compute_size();
         let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, (eth_hdr_size + arp_pdu_size) as u16);
+
+        // No need to handle errors here, as the pkt will be destroyed if this function does not succeed.
         pkt.prepend(arp_pdu_size)?;
         pdu.serialize(&mut pkt[..arp_pdu_size]);
 
+        // No need to handle errors here, as the pkt will be destroyed if this function does not succeed.
         pkt.prepend(eth_hdr_size)?;
         header.serialize(&mut pkt[..eth_hdr_size]);
         Ok(Self { pkt: Some(pkt) })
