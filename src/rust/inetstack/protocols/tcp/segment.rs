@@ -4,7 +4,10 @@
 use crate::{
     expect_ok,
     inetstack::protocols::{
-        ethernet2::Ethernet2Header,
+        ethernet2::{
+            Ethernet2Header,
+            MIN_PAYLOAD_SIZE,
+        },
         ip::IpProtocol,
         ipv4::Ipv4Header,
         tcp::SeqNumber,
@@ -29,54 +32,50 @@ pub const MAX_TCP_HEADER_SIZE: usize = 60;
 pub const MAX_TCP_OPTIONS: usize = 5;
 
 pub struct TcpSegment {
-    pub ethernet2_hdr: Ethernet2Header,
-    pub ipv4_hdr: Ipv4Header,
-    pub tcp_hdr: TcpHeader,
-    pub data: Option<DemiBuffer>,
-    pub tx_checksum_offload: bool,
+    pub pkt: Option<DemiBuffer>,
+}
+
+impl TcpSegment {
+    pub fn new(
+        ethernet2_hdr: Ethernet2Header,
+        ipv4_hdr: Ipv4Header,
+        tcp_hdr: TcpHeader,
+        payload: Option<DemiBuffer>,
+        checksum_offload: bool,
+    ) -> Result<Self, Fail> {
+        let eth_hdr_size: usize = ethernet2_hdr.compute_size();
+        let ipv4_hdr_size: usize = ipv4_hdr.compute_size();
+        let tcp_hdr_size: usize = tcp_hdr.compute_size();
+
+        let mut pkt: DemiBuffer = match payload {
+            Some(body) => body,
+            _ => {
+                let header_size: usize = eth_hdr_size + ipv4_hdr_size + tcp_hdr_size;
+                let body_size: usize = if header_size < MIN_PAYLOAD_SIZE {
+                    MIN_PAYLOAD_SIZE - header_size
+                } else {
+                    0
+                };
+                DemiBuffer::new_with_headroom(body_size as u16, header_size as u16)
+            },
+        };
+        // Add headers in reverse.
+        pkt.prepend(tcp_hdr_size)?;
+        let (hdr_buf, data_buf): (&mut [u8], &mut [u8]) = pkt[..].split_at_mut(tcp_hdr_size);
+        tcp_hdr.serialize(hdr_buf, &ipv4_hdr, data_buf, checksum_offload);
+        // Get size.
+        let ipv4_payload_len: usize = pkt.len();
+        pkt.prepend(ipv4_hdr_size)?;
+        ipv4_hdr.serialize(&mut pkt[..ipv4_hdr_size], ipv4_payload_len);
+        pkt.prepend(eth_hdr_size)?;
+        ethernet2_hdr.serialize(&mut pkt[..eth_hdr_size]);
+        Ok(Self { pkt: Some(pkt) })
+    }
 }
 
 impl PacketBuf for TcpSegment {
-    fn header_size(&self) -> usize {
-        self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.tcp_hdr.compute_size()
-    }
-
-    fn body_size(&self) -> usize {
-        match &self.data {
-            Some(buf) => buf.len(),
-            None => 0,
-        }
-    }
-
-    fn write_header(&self, buf: &mut [u8]) {
-        let eth_hdr_size: usize = self.ethernet2_hdr.compute_size();
-        let ipv4_hdr_size: usize = self.ipv4_hdr.compute_size();
-        let tcp_hdr_size: usize = self.tcp_hdr.compute_size();
-        let mut cur_pos: usize = 0;
-
-        self.ethernet2_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
-        cur_pos += eth_hdr_size;
-
-        let ipv4_payload_len = tcp_hdr_size + self.body_size();
-        self.ipv4_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
-        cur_pos += ipv4_hdr_size;
-
-        let payload: &[u8] = match &self.data {
-            Some(buf) => &buf[..],
-            None => &[],
-        };
-        self.tcp_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + tcp_hdr_size)],
-            &self.ipv4_hdr,
-            payload,
-            self.tx_checksum_offload,
-        );
-    }
-
     fn take_body(&mut self) -> Option<DemiBuffer> {
-        self.data.take()
+        self.pkt.take()
     }
 }
 

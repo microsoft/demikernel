@@ -223,7 +223,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                     // from RFC 826:
                     // > Swap hardware and protocol fields, putting the local
                     // > hardware and protocol addresses in the sender fields.
-                    let reply = ArpMessage::new(
+                    let reply: ArpMessage = match ArpMessage::new(
                         Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
                         ArpHeader::new(
                             ArpOperation::Reply,
@@ -232,7 +232,13 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                             header.get_sender_hardware_addr(),
                             header.get_sender_protocol_addr(),
                         ),
-                    );
+                    ) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            warn!("Could not construct ARP message {:?}", e);
+                            continue;
+                        },
+                    };
                     debug!("Responding {:?}", reply);
                     if let Err(e) = self.network.transmit(reply) {
                         // Ignore for now because the other end will retry.
@@ -271,7 +277,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                 MacAddress::broadcast(),
                 ipv4_addr,
             ),
-        );
+        )?;
         let mut peer: SharedArpPeer<N> = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per

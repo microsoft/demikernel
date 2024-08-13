@@ -11,6 +11,7 @@ use crate::{
         ethernet2::ETHERNET2_HEADER_SIZE,
         ipv4::IPV4_HEADER_MAX_SIZE,
         tcp::MAX_TCP_HEADER_SIZE,
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -152,7 +153,7 @@ impl MemoryManager {
             unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
         } else {
             // Allocate a heap-managed buffer.
-            DemiBuffer::new(size as u16)
+            DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16)
         };
 
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
