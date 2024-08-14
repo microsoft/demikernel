@@ -45,7 +45,7 @@ use ::rand::{
 };
 
 use ::std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{
         Ipv4Addr,
         SocketAddr,
@@ -168,7 +168,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         socket.bind(local)?;
         capy_log!("[BIND]");
         self.addresses.insert(SocketId::Passive(local), socket.clone());
-        capy_log!("addresses: {:#?}", self.addresses);
+        // capy_log!("addresses: {:#?}", self.addresses);
         Ok(())
     }
 
@@ -191,7 +191,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
                     SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()),
                     socket.clone(),
                 );
-                capy_log!("addresses: {:#?}", self.addresses);
+                // capy_log!("addresses: {:#?}", self.addresses);
                 #[cfg(feature = "tcp-migration")]
                 self.close_active_migration(socket.local().unwrap(), socket.remote().unwrap());
                 Ok(socket)
@@ -239,10 +239,20 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
     }
 
     /// Pushes immediately to the socket and returns the result asynchronously.
-    pub async fn push(&self, socket: &mut SharedTcpSocket<N>, buf: &mut DemiBuffer) -> Result<(), Fail> {
+    pub async fn push(&mut self, socket: &mut SharedTcpSocket<N>, buf: &mut DemiBuffer) -> Result<(), Fail> {
         // TODO: Remove this copy after merging with the transport trait.
         // Wait for push to complete.
-        socket.push(buf.clone()).await?;
+        if socket.is_migrated == false{
+            socket.push(buf.clone()).await?;
+
+            if socket.is_mig_prepared && socket.get_mig_lock() == false {
+                let state = socket.get_tcp_state()?;
+                capy_log_mig!("TcpState: {:#?}", state.cb);
+                self.tcpmig.send_tcp_state(state);
+                self.hard_close(socket);
+                socket.is_migrated = true;
+            }
+        }
         buf.trim(buf.len())
     }
 
@@ -289,6 +299,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
     pub fn hard_close(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<(), Fail> {
         if let Some(socket_id) = socket.hard_close()? {
+            capy_log!("HARD CLOSE");
             self.addresses.remove(&socket_id);
             self.free_ephemeral_port(&socket_id);
         }
@@ -310,26 +321,28 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         debug!("TCP received {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
-        
+        capy_log!("TCP local: {}, remote: {}", local, remote);
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             let cause: String = format!("invalid remote address (remote={})", remote.ip());
             error!("receive(): {}", &cause);
             return;
         }
         #[cfg(feature = "tcp-migration")]
-        let should_migrate = self.tcpmig.should_migrate();
+        let mut should_migrate = self.tcpmig.should_migrate();
 
         // Retrieve the queue descriptor based on the incoming segment.
         let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
             Some(socket) => socket,
             None => {
 
-                #[cfg(feature = "tcp-migration")]
-                // Check if migrating queue exists. If yes, push buffer to queue and return, else continue normally.
-                match self.tcpmig.try_buffer_packet(remote, ip_hdr, tcp_hdr.clone(), data.clone()) {
-                    Ok(()) => return,
-                    Err(()) => {},
-                };
+                #[cfg(feature = "tcp-migration")]{
+                    // Check if migrating queue exists. If yes, push buffer to queue and return, else continue normally.
+                    match self.tcpmig.try_buffer_packet(remote, ip_hdr, tcp_hdr.clone(), data.clone()) {
+                        Ok(()) => return,
+                        Err(()) => {},
+                    };
+                    should_migrate = false; // this connection is already being migrated 
+                }
 
                 match self.addresses.get_mut(&SocketId::Passive(local)) {
                     Some(socket) => socket,
@@ -352,7 +365,6 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             // Clone the socket and initiate migration
             let socket_clone = socket.clone();
             self.tcpmig.initiate_migration(socket_clone);
-
         }
     }
 }
@@ -414,12 +426,16 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
                     Some(socket) => socket,
                     None => panic!("PrepareMigrationAcked for non-existing socket: {:?}", (local, remote)),
                 };
+                socket.is_mig_prepared = true;
                 let state = socket.get_tcp_state()?;
-                // let state = socket.get_tcp_state();
                 capy_log_mig!("PrepareMigrationAcked for {:#?}", socket);
                 capy_log_mig!("TcpState: {:#?}", state.cb);
-                
-                self.tcpmig.send_tcp_state(state);
+                // if state.cb.receiver.recv_queue.is_empty() && socket.get_mig_lock() == false{
+                if socket.get_mig_lock() == false {
+                    self.tcpmig.send_tcp_state(state);
+                    self.hard_close(&mut socket);
+                    socket.is_migrated = true;
+                }
             },
             TcpmigReceiveStatus::StateReceived(state) => {
                 self.migrate_in_connection(state);
