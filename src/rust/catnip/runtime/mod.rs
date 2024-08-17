@@ -183,8 +183,8 @@ impl SharedDPDKRuntime {
     ) -> Result<(), Fail> {
         let rx_rings: u16 = 1;
         let tx_rings: u16 = 1;
-        let rx_ring_size: u16 = 2048;
-        let tx_ring_size: u16 = 2048;
+        let rx_ring_size: u16 = 8;
+        let tx_ring_size: u16 = 8;
         let nb_rxd: u16 = rx_ring_size;
         let nb_txd: u16 = tx_ring_size;
 

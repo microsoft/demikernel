@@ -291,6 +291,9 @@ impl TcpClient {
         const BUFSIZE: usize = 64;
         let sga: demi_sgarray_t = self.make_sgarray(BUFSIZE, fill_char)?;
         let qt: QToken = self.libos.push(self.sockqd.expect("should be a valid socket"), &sga)?;
+        // Ok to immediately free sga because the push has cloned the reference and will not free it until the push
+        // completes.
+        self.libos.sgafree(sga)?;
         Ok(qt)
     }
 

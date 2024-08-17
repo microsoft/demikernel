@@ -1042,7 +1042,9 @@ impl Clone for DemiBuffer {
                 // properly check its return value for null (failure) before using.
                 let mbuf_ptr_clone: *mut rte_mbuf = rte_pktmbuf_clone(mbuf_ptr, mempool_ptr);
                 if mbuf_ptr_clone.is_null() {
-                    panic!("failed to clone mbuf");
+                    let rte_errno: libc::c_int = dpdk_rs::rte_errno();
+
+                    panic!("failed to clone mbuf: {:?}", rte_errno);
                 }
 
                 // Safety: from_mbuf is safe to call here as "mbuf_ptr_clone" is known to point to a valid MBuf.
@@ -1135,6 +1137,7 @@ impl Drop for DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
+                warn!("freeing mbuf");
                 let mbuf_ptr: *mut rte_mbuf = self.as_mbuf();
                 // Safety: This is safe, as mbuf_ptr does indeed point to a valid MBuf.
                 unsafe {
