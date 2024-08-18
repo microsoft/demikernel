@@ -668,18 +668,17 @@ impl DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
-                let mbuf: *mut rte_mbuf = unsafe {
+                let buf: *mut libc::c_void = unsafe {
                     // Safety: rte_pktmbuf_prepend does both sanity and headroom space checks.
-                    rte_pktmbuf_prepend(self.as_mbuf(), nbytes as u16) as *mut rte_mbuf
+                    rte_pktmbuf_prepend(self.as_mbuf(), nbytes as u16) as *mut libc::c_void
                 };
-                if mbuf.is_null() {
+                if buf.is_null() {
                     return Err(Fail::new(libc::EINVAL, "tried to prepend more bytes than are allowed"));
                 }
                 // For debug builds, zero the data.
                 #[cfg(debug_assertions)]
                 unsafe {
-                    let offset: *mut libc::c_void = (*mbuf).buf_addr.add((*mbuf).data_off as usize);
-                    libc::memset(offset, 0, nbytes);
+                    libc::memset(buf, 0, nbytes);
                 }
             },
         }
