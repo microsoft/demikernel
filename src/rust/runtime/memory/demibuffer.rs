@@ -545,10 +545,18 @@ impl DemiBuffer {
                 if nbytes > metadata.data_len as usize {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
+
                 // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
                 metadata.data_off += nbytes as u16;
                 metadata.pkt_len -= nbytes as u32;
                 metadata.data_len -= nbytes as u16;
+
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut u8 = metadata.buf_addr.add(metadata.data_off as usize - nbytes);
+                    libc::memset(offset as *mut libc::c_void, 0, nbytes);
+                }
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
@@ -563,6 +571,12 @@ impl DemiBuffer {
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
                 if unsafe { rte_pktmbuf_adj(mbuf, nbytes as u16) } == ptr::null_mut() {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                }
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut libc::c_void = (*mbuf).buf_addr.add((*mbuf).data_off as usize - nbytes);
+                    libc::memset(offset, 0, nbytes);
                 }
             },
         }
@@ -584,6 +598,16 @@ impl DemiBuffer {
                 if nbytes > md_last.data_len as usize {
                     return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                 }
+
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut u8 = md_last
+                        .buf_addr
+                        .add(md_last.data_off as usize + md_last.pkt_len as usize - nbytes);
+                    libc::memset(offset as *mut libc::c_void, 0, nbytes);
+                }
+
                 // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
                 md_last.data_len -= nbytes as u16;
                 md_first.pkt_len -= nbytes as u32;
@@ -596,6 +620,14 @@ impl DemiBuffer {
                     if ((*mbuf).data_len as usize) < nbytes {
                         return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
                     }
+                }
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut libc::c_void = (*mbuf)
+                        .buf_addr
+                        .add((*mbuf).data_off as usize + (*mbuf).data_len as usize - nbytes);
+                    libc::memset(offset, 0, nbytes);
                 }
 
                 // Safety: rte_pktmbuf_trim is a FFI, which is safe since we call it with an actual MBuf pointer.
@@ -622,10 +654,17 @@ impl DemiBuffer {
                         ),
                     ));
                 }
+
                 // The above check against data_len also means that nbytes is <= u16::MAX.  So these casts are safe.
                 metadata.data_off -= nbytes as u16;
                 metadata.pkt_len += nbytes as u32;
                 metadata.data_len += nbytes as u16;
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut u8 = metadata.buf_addr.add(metadata.data_off as usize);
+                    libc::memset(offset as *mut libc::c_void, 0, nbytes);
+                }
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
@@ -633,9 +672,14 @@ impl DemiBuffer {
                     // Safety: rte_pktmbuf_prepend does both sanity and headroom space checks.
                     rte_pktmbuf_prepend(self.as_mbuf(), nbytes as u16) as *mut rte_mbuf
                 };
-
                 if mbuf.is_null() {
                     return Err(Fail::new(libc::EINVAL, "tried to prepend more bytes than are allowed"));
+                }
+                // For debug builds, zero the data.
+                #[cfg(debug_assertions)]
+                unsafe {
+                    let offset: *mut libc::c_void = (*mbuf).buf_addr.add((*mbuf).data_off as usize);
+                    libc::memset(offset, 0, nbytes);
                 }
             },
         }
@@ -1046,7 +1090,7 @@ impl Clone for DemiBuffer {
 
                     panic!("failed to clone mbuf: {:?}", rte_errno);
                 }
-
+                warn!("cloning mbuf: original {:?} clone {:?}", mbuf_ptr, mbuf_ptr_clone);
                 // Safety: from_mbuf is safe to call here as "mbuf_ptr_clone" is known to point to a valid MBuf.
                 DemiBuffer::from_mbuf(mbuf_ptr_clone)
             },
@@ -1137,8 +1181,8 @@ impl Drop for DemiBuffer {
             },
             #[cfg(feature = "libdpdk")]
             Tag::Dpdk => {
-                warn!("freeing mbuf");
                 let mbuf_ptr: *mut rte_mbuf = self.as_mbuf();
+                warn!("freeing mbuf: {:?}", mbuf_ptr);
                 // Safety: This is safe, as mbuf_ptr does indeed point to a valid MBuf.
                 unsafe {
                     // Note: This DPDK routine properly handles MBuf chains, as well as indirect, and external MBufs.
