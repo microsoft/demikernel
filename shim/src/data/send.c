@@ -123,6 +123,7 @@ ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 
 ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 {
+    int nbytes = 0;
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -133,14 +134,19 @@ ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 
     TRACE("sockfd=%d, iov=%p, iovcnt=%d", sockfd, (void *)iov, iovcnt);
 
-    // TODO: Hook in demi_writev().
-    UNUSED(iov);
-    UNUSED(iovcnt);
-    UNIMPLEMETED("writev() is not hooked in");
 
-    errno = EBADF;
+    for (int i = 0; i < iovcnt; i++)
+    {
+        int ret = __send(sockfd, iov[i].iov_base, iov[i].iov_len, 0);
 
-    return (-1);
+        if (ret < 0)
+            return -1;
+
+        assert(ret == iov[i].iov_len);
+        nbytes += ret;
+    }
+
+    return nbytes;
 }
 
 ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset)
