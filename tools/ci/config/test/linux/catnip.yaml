@@ -16,6 +16,6 @@ catnip:
   tcp_echo:
     bufsize: [64, 1024]
     nclients: [1, 32]
-    nrequests: [128, 1024]
+    nrequests: [128, 1024, 1000000]
     run_mode: [sequential, concurrent]
     nthreads: [1]
