@@ -55,6 +55,7 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
 
     int nevents = epoll_get_ready(demikernel_epfd, qts, evs);
 
+    int nret = 0;
     if (nevents > 0)
     {
         int ret = __demi_wait_any(&qr, &ready_offset, qts, nevents, &abstime);
@@ -70,10 +71,10 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
                 case DEMI_OPC_ACCEPT:
                 {
                     // Fill in event.
-                    events[nevents].events = evs[ready_offset]->ev.events;
-                    events[nevents].data.fd = evs[ready_offset]->sockqd;
+                    events[nret].events = evs[ready_offset]->ev.events;
+                    events[nret].data.fd = evs[ready_offset]->sockqd;
                     evs[ready_offset]->qt = -1;
-                    nevents++;
+                    nret++;
 
                     // Store I/O queue operation result.
                     queue_man_set_accept_result(evs[ready_offset]->sockqd, evs[ready_offset]);
@@ -89,12 +90,12 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
                 {
 
                     // Fill in event.
-                    events[nevents].events = evs[ready_offset]->ev.events;
-                    events[nevents].data.fd = evs[ready_offset]->sockqd;
-                    events[nevents].data.ptr = evs[ready_offset]->ev.data.ptr;
-                    events[nevents].data.u32 = evs[ready_offset]->ev.data.u32;
+                    events[nret].events = evs[ready_offset]->ev.events;
+                    events[nret].data.fd = evs[ready_offset]->sockqd;
+                    events[nret].data.ptr = evs[ready_offset]->ev.data.ptr;
+                    events[nret].data.u32 = evs[ready_offset]->ev.data.u32;
                     evs[ready_offset]->qt = -1;
-                    nevents++;
+                    nret++;
 
                     // Store I/O queue operation result.
                     queue_man_set_pop_result(evs[ready_offset]->sockqd, evs[ready_offset]);
@@ -151,5 +152,5 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
             }
     }
 
-    return (nevents);
+    return (nret);
 }
