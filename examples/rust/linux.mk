@@ -6,15 +6,18 @@ export EXEC_SUFFIX := elf
 
 all: all-examples
 	mkdir -p $(BINDIR)/examples/rust
-	cp -f $(BUILD_DIR)/examples/tcp-ping-pong $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
+#	cp -f $(BUILD_DIR)/examples/tcp-ping-pong $(BINDIR)/examples/rust/tcp-ping-pong.$(EXEC_SUFFIX)
+	cp -f $(BUILD_DIR)/examples/proxy $(BINDIR)/examples/rust/proxy.$(EXEC_SUFFIX)
 
-export EXAMPLE_FEATURES ?= --features=tcp-migration,capy-log
+export EXAMPLE_FEATURES ?= --features=tcp-migration
 # export EXAMPLE_FEATURES ?= --features=capy-log,profiler
 all-examples:
 #	@echo "$(CARGO) build --examples $(CARGO_FEATURES) $(CARGO_FLAGS)"
 #	$(CARGO) build --examples $(CARGO_FEATURES) $(CARGO_FLAGS)
-	@echo "$(CARGO) build --example tcp-ping-pong $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)"
-	$(CARGO) build --example tcp-ping-pong $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)
+#	@echo "$(CARGO) build --example tcp-ping-pong $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)"
+#	$(CARGO) build --example tcp-ping-pong $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)
+	@echo "$(CARGO) build --example proxy $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)"
+	$(CARGO) build --example proxy $(CARGO_FEATURES) $(CARGO_FLAGS) $(EXAMPLE_FEATURES)
 
 clean:
 	@rm -rf $(BINDIR)/examples/rust/udp-dump.$(EXEC_SUFFIX)

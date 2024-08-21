@@ -518,7 +518,9 @@ pub mod state {
         pub fn serialize(&self) -> DemiBuffer {
             // capy_profile!("PROF_SERIALIZE");
             let mut buf = DemiBuffer::new(self.serialized_size() as u16);
+            // eprintln!("BUF SIZE: {}, self.serialized_size(): {}", buf.len(), self.serialized_size());
             let remaining = self.cb.serialize_into(&mut buf);
+            // remaining[0] = 0;
             buf
         }
 

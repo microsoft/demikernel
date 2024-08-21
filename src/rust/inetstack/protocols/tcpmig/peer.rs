@@ -141,7 +141,7 @@ impl<N: NetworkRuntime> TcpMigPeer<N> {
             // }
             FLAG += 1;
             // eprintln!("FLAG: {}", FLAG);
-            FLAG >= 10000
+            FLAG >= 100000
         }
     }
 

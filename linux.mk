@@ -62,7 +62,7 @@ export LIBS := $(BUILD_DIR)/$(DEMIKERNEL_LIB)
 #=======================================================================================================================
 
 export LIBOS ?= catnap
-export CARGO_FEATURES := --features=$(LIBOS)-libos --no-default-features
+export CARGO_FEATURES := --features=$(LIBOS)-libos,catnap-libos --no-default-features
 
 # Switch for DPDK
 ifeq ($(LIBOS),catnip)
@@ -384,3 +384,21 @@ redis-server-p42:
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	LD_PRELOAD=$(LIBDIR)/libshim.so \
 	./redis-server ../config/p42.conf
+
+
+run-proxy-p41:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/p41_config.yaml \
+	$(ENV) \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 2 numactl -m0 \
+	$(ELF_DIR)/proxy.elf 198.19.200.41:10000 198.19.200.41:10001
+
+run-proxy-p42:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/p42_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 2 numactl -m0 \
+	$(ELF_DIR)/proxy.elf 198.19.200.42:10000 198.19.200.42:10001
