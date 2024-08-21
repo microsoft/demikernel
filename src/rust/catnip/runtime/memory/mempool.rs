@@ -50,7 +50,10 @@ impl MemoryPool {
 
         // Failed to create memory pool.
         if pool.is_null() {
-            return Err(Fail::new(libc::EAGAIN, "failed to create memory pool"));
+            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            let cause: String = format!("failed to create memory pool: {:?}", rte_errno);
+            error!("new(): {}", cause);
+            return Err(Fail::new(libc::EAGAIN, &cause));
         }
 
         Ok(Self { pool })
@@ -69,7 +72,11 @@ impl MemoryPool {
         // Allocate mbuf.
         let mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.pool) };
         if mbuf_ptr.is_null() {
-            return Err(Fail::new(libc::ENOMEM, "cannot allocate more mbufs"));
+            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            let cause: String = format!("cannot allocate an mbuf at this time: {:?}", rte_errno);
+            warn!("alloc_mbuf(): {}", cause);
+
+            return Err(Fail::new(libc::ENOMEM, &cause));
         }
 
         // Fill out some fields of the underlying mbuf.
