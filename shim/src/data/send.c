@@ -15,6 +15,9 @@
 #include <sys/types.h>
 #include <glue.h>
 
+// TODO: Detect when using jumbo frames and change this value
+#define MAX_BODY_SIZE 1024
+
 static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
     size_t iovcnt);
 
@@ -134,16 +137,23 @@ ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 
     TRACE("sockfd=%d, iov=%p, iovcnt=%d", sockfd, (void *)iov, iovcnt);
 
-
     for (int i = 0; i < iovcnt; i++)
     {
-        int ret = __send(sockfd, iov[i].iov_base, iov[i].iov_len, 0);
+        int iov_i_sent = 0;
+        while (iov_i_sent < iov[i].iov_len)
+        {
+            int len = MIN(iov[i].iov_len - iov_i_sent, MAX_BODY_SIZE);
+            int ret = __send(sockfd, iov[i].iov_base + iov_i_sent, len, 0);
 
-        if (ret < 0)
-            return -1;
+            if (ret < 0)
+                return -1;
 
-        assert(ret == iov[i].iov_len);
-        nbytes += ret;
+            iov_i_sent += ret;
+            assert(ret == len);
+        }
+
+
+        nbytes += iov_i_sent;
     }
 
     return nbytes;
