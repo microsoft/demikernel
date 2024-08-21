@@ -562,7 +562,10 @@ impl DemiBuffer {
 
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
                 if unsafe { rte_pktmbuf_adj(mbuf, nbytes as u16) } == ptr::null_mut() {
-                    return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                    let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+                    let cause: String = format!("tried to remove more bytes than are present: {:?}", rte_errno);
+                    warn!("adjust(): {}", cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
                 }
             },
         }
@@ -599,8 +602,11 @@ impl DemiBuffer {
                 }
 
                 // Safety: rte_pktmbuf_trim is a FFI, which is safe since we call it with an actual MBuf pointer.
-                if unsafe { rte_pktmbuf_trim(mbuf, nbytes as u16) } != 0 {
-                    return Err(Fail::new(libc::EINVAL, "tried to remove more bytes than are present"));
+                let rte_errno: libc::c_int = unsafe { rte_pktmbuf_trim(mbuf, nbytes as u16) };
+                if rte_errno != 0 {
+                    let cause: String = format!("tried to remove more bytes than are present: {:?}", rte_errno);
+                    warn!("trim(): {}", cause);
+                    return Err(Fail::new(libc::EINVAL, &cause));
                 }
             },
         }
@@ -635,7 +641,11 @@ impl DemiBuffer {
                 };
 
                 if mbuf.is_null() {
-                    return Err(Fail::new(libc::EINVAL, "tried to prepend more bytes than are allowed"));
+                    let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+                    let cause: String = format!("tried to prepend more bytes than are allowed: {:?}", rte_errno);
+                    warn!("prepend(): {}", cause);
+
+                    return Err(Fail::new(libc::EINVAL, &cause));
                 }
             },
         }
@@ -1042,7 +1052,8 @@ impl Clone for DemiBuffer {
                 // properly check its return value for null (failure) before using.
                 let mbuf_ptr_clone: *mut rte_mbuf = rte_pktmbuf_clone(mbuf_ptr, mempool_ptr);
                 if mbuf_ptr_clone.is_null() {
-                    panic!("failed to clone mbuf");
+                    let rte_errno: libc::c_int = dpdk_rs::rte_errno();
+                    panic!("failed to clone mbuf: {:?}", rte_errno);
                 }
 
                 // Safety: from_mbuf is safe to call here as "mbuf_ptr_clone" is known to point to a valid MBuf.
