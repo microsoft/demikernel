@@ -63,15 +63,12 @@ pub trait TaskWith: TryFrom<Box<dyn Any>> {
     type ResultType;
 }
 
-/// A specific instance of Task that returns a particular return type [R].
+/// A specific instance of Task that returns type [R].
 pub struct TaskWithResult<R: Unpin + Clone + Any> {
-    /// Task name. The libOS should use this to identify the type of task.
+    /// The libOS should use this to identify the type of task.
     name: &'static str,
-    /// Task identifier.
     task_id: Option<TaskId>,
-    /// Underlying coroutine to run.
     coroutine: Pin<<Self as TaskWith>::Coroutine>,
-    /// Output value of the underlying future.
     result: Option<<Self as TaskWith>::ResultType>,
 }
 
@@ -79,9 +76,7 @@ pub struct TaskWithResult<R: Unpin + Clone + Any> {
 // Associated Functions
 //======================================================================================================================
 
-/// Associate Functions for TaskWithResults.
 impl<R: Unpin + Clone + Any> TaskWithResult<R> {
-    /// Instantiates a new Task.
     pub fn new(name: &'static str, coroutine: Pin<<Self as TaskWith>::Coroutine>) -> Self {
         Self {
             name,

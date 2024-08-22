@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==============================================================================
+//======================================================================================================================
 // Imports
-//==============================================================================
+//======================================================================================================================
 
 use crate::{
     expect_ok,
@@ -29,23 +29,20 @@ use ::std::{
     },
 };
 
-//==============================================================================
+//======================================================================================================================
 // Structures
-//==============================================================================
+//======================================================================================================================
 
-/// Waker Page Reference
-///
 /// The [crate::Scheduler] relies on this custom reference type to drive the
 /// state of futures.
 pub struct WakerPageRef(NonNull<WakerPage>);
 
-//==============================================================================
+//======================================================================================================================
 // Associate Functions
-//==============================================================================
+//======================================================================================================================
 
 /// Associate Functions for Waker Page References
 impl WakerPageRef {
-    /// Creates a new waker page reference from a non-null reference to a [WakerPage].
     pub fn new(waker_page: NonNull<WakerPage>) -> Self {
         Self(waker_page)
     }
@@ -85,11 +82,10 @@ impl WakerPageRef {
     }
 }
 
-//==============================================================================
+//======================================================================================================================
 // Trait Implementations
-//==============================================================================
+//======================================================================================================================
 
-/// Clone Trait Implementation for Waker Page References
 impl Clone for WakerPageRef {
     fn clone(&self) -> Self {
         let old_refount: u64 = unsafe { self.0.as_ref().refcount_inc() };
@@ -98,7 +94,6 @@ impl Clone for WakerPageRef {
     }
 }
 
-/// Drop Trait Implementation for Waker Page References
 impl Drop for WakerPageRef {
     fn drop(&mut self) {
         match unsafe { self.0.as_ref().refcount_dec() } {
@@ -112,7 +107,6 @@ impl Drop for WakerPageRef {
     }
 }
 
-/// De-Reference Trait Implementation for Waker Page References
 impl Deref for WakerPageRef {
     type Target = WakerPage;
 
@@ -121,7 +115,6 @@ impl Deref for WakerPageRef {
     }
 }
 
-/// Default Trait Implementation for Waker Page References
 impl Default for WakerPageRef {
     fn default() -> Self {
         let layout: Layout = Layout::new::<WakerPage>();
@@ -135,9 +128,9 @@ impl Default for WakerPageRef {
     }
 }
 
-//==============================================================================
+//======================================================================================================================
 // Unit Tests
-//==============================================================================
+//======================================================================================================================
 
 #[cfg(test)]
 mod tests {

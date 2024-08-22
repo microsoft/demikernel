@@ -40,19 +40,15 @@ use ::std::{
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub struct InternalId(usize);
 
-/// Task Scheduler
 pub struct Scheduler {
-    // Mapping between external task ids and internal ids (which currently represent the offset into the slab where the
-    // task lives).
+    // Mapping between external task ids and internal ids (represents the offset into the slab where the task lives).
     ids: IdMap<TaskId, InternalId>,
-    // A group of tasks used for resource management. Currently all of our tasks are in a single group but we will
-    // eventually break them up by Demikernel queue for fairness and performance isolation.
+    // All tasks are in a single group but we will eventually break them up by Demikernel queue for fairness and
+    // performance isolation.
     groups: Slab<TaskGroup>,
-    // Track the currently running task id. This is entirely for external use. If there are no coroutines running (i.
-    // e.g, we did not enter the scheduler through a wait), this MUST be set to none because we cannot yield or wake ///
-    // unless inside a task/async coroutine.
+    // For external use only. If there are no coroutines running (i.e., we did not enter the scheduler through a wait),
+    // this MUST be set to none because we cannot yield or wake unless inside a task/async coroutine.
     current_running_task: Box<Option<TaskId>>,
-
     // These global variables are for our scheduling policy. For now, we simply use round robin.
     // The index of the current or last task that we ran.
     current_task_id: InternalId,
@@ -70,41 +66,36 @@ pub struct SharedScheduler(SharedObject<Scheduler>);
 //======================================================================================================================
 
 impl Scheduler {
-    /// Creates a new task group. Returns an identifier for the group.
     pub fn create_group(&mut self) -> TaskId {
         let internal_id: InternalId = self.groups.insert(TaskGroup::default()).into();
+        // Returns an identifier for the group.
         self.ids.insert_with_new_id(internal_id)
     }
 
-    /// Switch to a different task group. Returns true if the group has been switched.
     pub fn switch_group(&mut self, group_id: TaskId) -> bool {
         if let Some(internal_id) = self.ids.get(&group_id) {
             if self.groups.contains(internal_id.into()) {
                 self.current_group_id = internal_id;
+                // Returns true if the group has been switched.
                 return true;
             }
         }
         false
     }
 
-    /// Get a reference to the task group using the id.
     fn get_group(&self, task_id: &TaskId) -> Option<&TaskGroup> {
         // Get the internal id of the parent task or group.
         let group_id: InternalId = self.ids.get(task_id)?;
-        // Use that to find the task group for this task.
         self.groups.get(group_id.into())
     }
 
-    /// Get a mutable reference to the task group using the id.
     fn get_mut_group(&mut self, task_id: &TaskId) -> Option<&mut TaskGroup> {
-        // Get the internal id of the parent task or group.
         let group_id: InternalId = self.ids.get(task_id)?;
-        // Use that to find the task group for this task.
         self.groups.get_mut(group_id.into())
     }
 
-    /// Removes a task group. The group id should be the one originally allocated for this group since the group should
-    /// not have any running tasks. Returns true if the task group was successfully removed.
+    /// The group id should be the one originally allocated for this group since the group should not have any running
+    /// tasks. Returns true if the task group was successfully removed.
     pub fn remove_group(&mut self, group_id: TaskId) -> bool {
         if let Some(internal_id) = self.ids.remove(&group_id) {
             self.groups.remove(internal_id.into());
@@ -114,12 +105,9 @@ impl Scheduler {
         }
     }
 
-    /// Insert a task into a task group. The parent id can either be the id of the group or another task in the same
-    /// group.
+    /// The parent id can either be the id of the group or another task in the same group.
     pub fn insert_task<T: Task>(&mut self, task: T) -> Option<TaskId> {
-        // Use the currently running task id to find the task group for this task.
         let group: &mut TaskGroup = self.groups.get_mut(self.current_group_id.into())?;
-        // Insert the task into the task group.
         let new_task_id: TaskId = group.insert(Box::new(task))?;
         // Add a mapping so we can use this new task id to find the task in the future.
         if let Some(existing) = self.ids.insert(new_task_id, self.current_group_id) {
@@ -128,14 +116,10 @@ impl Scheduler {
         Some(new_task_id)
     }
 
-    /// Insert a task into a task group. The parent id can either be the id of the group or another task in the same
-    /// group.
+    /// The parent id can either be the id of the group or another task in the same group.
     pub fn insert_task_with_group_id<T: Task>(&mut self, group_id: TaskId, task: T) -> Option<TaskId> {
-        // Get the internal id of the parent task or group.
         let group_id: InternalId = self.ids.get(&group_id)?;
-        // Use that to find the task group for this task.
         let group: &mut TaskGroup = self.groups.get_mut(group_id.into())?;
-        // Insert the task into the task group.
         let new_task_id: TaskId = group.insert(Box::new(task))?;
         // Add a mapping so we can use this new task id to find the task in the future.
         self.ids.insert(new_task_id, group_id);
@@ -143,11 +127,8 @@ impl Scheduler {
     }
 
     pub fn remove_task(&mut self, task_id: TaskId) -> Option<Box<dyn Task>> {
-        // Use that to find the task group for this task.
         let group: &mut TaskGroup = self.get_mut_group(&task_id)?;
-        // Remove the task into the task group.
         let task: Box<dyn Task> = group.remove(task_id)?;
-        // Remove the task mapping.
         self.ids.remove(&task_id)?;
         Some(task)
     }
@@ -246,7 +227,7 @@ impl Scheduler {
             if self.current_group_id == starting_group_index {
                 return;
             }
-            // Update the current_group_id
+
             self.current_group_id = self.get_next_group_index();
         }
     }
@@ -258,7 +239,6 @@ impl Scheduler {
     }
 
     #[allow(unused)]
-    /// Returns whether this task id points to a valid task.
     pub fn is_valid_task(&self, task_id: &TaskId) -> bool {
         if let Some(group) = self.get_group(task_id) {
             group.is_valid_task(&task_id)

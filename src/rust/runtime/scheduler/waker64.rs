@@ -16,24 +16,19 @@ use ::std::{
 
 /// Log2 of [WAKER_BIT_LENGTH].
 pub const WAKER_BIT_LENGTH_SHIFT: usize = 6;
-
-/// Number of Bits in a [Waker64]
 pub const WAKER_BIT_LENGTH: usize = 1 << WAKER_BIT_LENGTH_SHIFT;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-/// 64-Bit Waker
 pub struct Waker64(UnsafeCell<u64>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for 64-Bit Wakers
 impl Waker64 {
-    /// Creates a 64-Bit Waker from `val`.
     pub fn new(val: u64) -> Self {
         Waker64(UnsafeCell::new(val))
     }

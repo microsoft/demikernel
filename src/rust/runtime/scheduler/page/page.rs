@@ -21,8 +21,6 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 // Structures
 //======================================================================================================================
 
-/// Waker Page
-///
 /// This structure holds the status of multiple futures in the scheduler. It is
 /// composed by 3 bitmaps, each of which having the ith bit to represent some
 /// state for the ith future.
@@ -34,7 +32,6 @@ pub const WAKER_PAGE_SIZE: usize = 64;
 /// future whenever needed.
 #[repr(align(64))]
 pub struct WakerPage {
-    /// Reference count for the page.
     refcount: Waker64,
     /// Flags wether or not a given future has been notified.
     notified: Waker64,
@@ -44,7 +41,6 @@ pub struct WakerPage {
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for Waker Page
 impl WakerPage {
     /// Sets the notification flag for the `ix` future in the target [WakerPage].
     pub fn notify(&self, ix: usize) {
@@ -106,7 +102,6 @@ impl WakerPage {
 // Trait Implementations
 //======================================================================================================================
 
-/// Default Trait Implementation for Waker Pages
 impl Default for WakerPage {
     fn default() -> Self {
         Self {
