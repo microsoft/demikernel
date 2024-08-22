@@ -23,8 +23,6 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// Waker Reference
-///
 /// This reference is a representation for the status of a particular task
 /// stored in a [WakerPage].
 #[repr(transparent)]
@@ -79,7 +77,6 @@ impl WakerRef {
 // Trait Implementations
 //======================================================================================================================
 
-/// Clone Trait Implementation for Waker References
 impl Clone for WakerRef {
     fn clone(&self) -> Self {
         let (base_ptr, _): (NonNull<WakerPage>, _) = self.base_ptr();
@@ -92,7 +89,6 @@ impl Clone for WakerRef {
     }
 }
 
-/// Drop Trait Implementation for Waker References
 impl Drop for WakerRef {
     fn drop(&mut self) {
         let (base_ptr, _) = self.base_ptr();
@@ -101,7 +97,6 @@ impl Drop for WakerRef {
     }
 }
 
-/// Convert Trait Implementation for Waker References
 impl Into<RawWaker> for WakerRef {
     fn into(self) -> RawWaker {
         let ptr: *const () = self.0.cast().as_ptr() as *const ();
@@ -112,7 +107,6 @@ impl Into<RawWaker> for WakerRef {
     }
 }
 
-/// Clones the task that is associated to the target [WakerRef].
 unsafe fn waker_ref_clone(ptr: *const ()) -> RawWaker {
     let p: WakerRef = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     let q: WakerRef = p.clone();
@@ -121,13 +115,11 @@ unsafe fn waker_ref_clone(ptr: *const ()) -> RawWaker {
     q.into()
 }
 
-/// Wakes up the task that is associated to the target [WakerRef].
 unsafe fn waker_ref_wake(ptr: *const ()) {
     let p = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     p.wake();
 }
 
-/// Wakes up the task that is associated to the target [WakerRef].
 unsafe fn waker_ref_wake_by_ref(ptr: *const ()) {
     let p: WakerRef = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     p.wake_by_ref();
@@ -135,7 +127,6 @@ unsafe fn waker_ref_wake_by_ref(ptr: *const ()) {
     mem::forget(p);
 }
 
-/// Drops the task that is associated to the target [WakerRef].
 unsafe fn waker_ref_drop(ptr: *const ()) {
     let p: WakerRef = WakerRef(NonNull::new_unchecked(ptr as *const u8 as *mut u8));
     // Decrement reference count.

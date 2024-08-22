@@ -119,8 +119,7 @@ impl TaskGroup {
 
     /// Computes the page and page offset of a given task based on its total offset.
     fn get_waker_page_index_and_offset(&self, pin_slab_index: usize) -> Option<(usize, usize)> {
-        // This check ensures that the slab slot is actually occupied but trusts that the pin_slab_index is for this
-        // task.
+        // This check ensures that slab slot is actually occupied but trusts that pin_slab_index is for this task.
         if !self.tasks.contains(pin_slab_index) {
             return None;
         }
@@ -191,14 +190,11 @@ impl TaskGroup {
     pub fn poll_notified_task_and_remove_if_ready(&mut self, internal_task_id: InternalId) -> Option<Box<dyn Task>> {
         // Perform the actual work of running the task.
         let poll_result: Poll<()> = {
-            // Get the waker context.
             let waker: Waker = self.get_waker(internal_task_id)?;
             let mut waker_context: Context = Context::from_waker(&waker);
-
             let mut pinned_ptr = self.get_pinned_task_ptr(internal_task_id.into());
             let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
 
-            // Poll future.
             Future::poll(pinned_ref, &mut waker_context)
         };
 
