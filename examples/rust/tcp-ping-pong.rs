@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/// This test exercises the following behavior: A server and client pair where the client sends data to the server,
+/// then receives it back before responding with the same data from the server. This test is a simple test of
+/// ping-ponging data between the client and server.
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,

@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/// This test exercises the following behavior: A server and client pair where the client is only sending data and the
+/// server is only receiving. We test this behavior because we want to make sure that the server correctly acknowledges
+/// the sent data, even though there is no data flowing the other direction.
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -43,6 +45,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 //======================================================================================================================
 
 const BUFFER_SIZE: usize = 64;
+const ITERATIONS: usize = 10;
 const FILL_CHAR: u8 = 0x65;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -133,7 +136,7 @@ impl TcpServer {
     }
 
     pub fn run(&mut self, local: SocketAddr, fill_char: u8, buffer_size: usize) -> Result<()> {
-        let nbytes: usize = buffer_size * 1024;
+        let nbytes: usize = buffer_size * ITERATIONS;
 
         if let Err(e) = self.libos.bind(self.sockqd, local) {
             anyhow::bail!("bind failed: {:?}", e.cause)
@@ -246,7 +249,7 @@ impl TcpClient {
     }
 
     pub fn run(&mut self, remote: SocketAddr, fill_char: u8, buffer_size: usize) -> Result<()> {
-        let nbytes: usize = buffer_size * 1024;
+        let nbytes: usize = buffer_size * ITERATIONS;
 
         let qt: QToken = match self.libos.connect(self.sockqd, remote) {
             Ok(qt) => qt,
