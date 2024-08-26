@@ -126,7 +126,7 @@ ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 
 ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 {
-    int nbytes = 0;
+    ssize_t nbytes = 0;
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -139,7 +139,7 @@ ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 
     for (int i = 0; i < iovcnt; i++)
     {
-        int iov_i_sent = 0;
+        ssize_t iov_i_sent = 0;
         while (iov_i_sent < iov[i].iov_len)
         {
             int len = MIN(iov[i].iov_len - iov_i_sent, MAX_BODY_SIZE);
