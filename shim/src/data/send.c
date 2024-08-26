@@ -15,6 +15,9 @@
 #include <sys/types.h>
 #include <glue.h>
 
+// TODO: Detect when using jumbo frames and change this value
+#define MAX_BODY_SIZE 1024
+
 static size_t fill_sga(const struct iovec *iov, demi_sgarray_t *sga,
     size_t iovcnt);
 
@@ -123,6 +126,7 @@ ssize_t __sendmsg(int sockfd, const struct msghdr *msg, int flags)
 
 ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 {
+    ssize_t nbytes = 0;
     // Check if this socket descriptor is managed by Demikernel.
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
@@ -133,14 +137,26 @@ ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt)
 
     TRACE("sockfd=%d, iov=%p, iovcnt=%d", sockfd, (void *)iov, iovcnt);
 
-    // TODO: Hook in demi_writev().
-    UNUSED(iov);
-    UNUSED(iovcnt);
-    UNIMPLEMETED("writev() is not hooked in");
+    for (int i = 0; i < iovcnt; i++)
+    {
+        ssize_t iov_i_sent = 0;
+        while (iov_i_sent < iov[i].iov_len)
+        {
+            int len = MIN(iov[i].iov_len - iov_i_sent, MAX_BODY_SIZE);
+            int ret = __send(sockfd, iov[i].iov_base + iov_i_sent, len, 0);
 
-    errno = EBADF;
+            if (ret < 0)
+                return -1;
 
-    return (-1);
+            iov_i_sent += ret;
+            assert(ret == len);
+        }
+
+
+        nbytes += iov_i_sent;
+    }
+
+    return nbytes;
 }
 
 ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset)
