@@ -45,8 +45,8 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
 #[derive(Debug)]
 pub struct ProgramArguments {
-    local_addr: SocketAddr,
-    remote_addr: SocketAddr,
+    local_socket_addr: SocketAddr,
+    remote_socket_addr: SocketAddr,
     bufsize_bytes: usize,
     injection_rate_microseconds: u64,
 }
@@ -94,18 +94,18 @@ impl ProgramArguments {
             .get_matches();
 
         let mut args: ProgramArguments = ProgramArguments {
-            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_ADDR)?,
-            remote_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
+            local_socket_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_ADDR)?,
+            remote_socket_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
             bufsize_bytes: Self::DEFAULT_BUFSIZE_BYTES,
             injection_rate_microseconds: Self::DEFAULT_INJECTION_RATE_MICROSECONDS,
         };
 
         if let Some(addr) = matches.get_one::<String>("local") {
-            args.set_local_addr(addr)?;
+            args.set_local_socket_addr(addr)?;
         }
 
         if let Some(addr) = matches.get_one::<String>("remote") {
-            args.set_remote_addr(addr)?;
+            args.set_remote_socket_addr(addr)?;
         }
 
         if let Some(bufsize_bytes) = matches.get_one::<String>("bufsize") {
@@ -119,12 +119,12 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    pub fn get_local_addr(&self) -> SocketAddr {
-        self.local_addr
+    pub fn get_local_socket_addr(&self) -> SocketAddr {
+        self.local_socket_addr
     }
 
-    pub fn get_remote_addr(&self) -> SocketAddr {
-        self.remote_addr
+    pub fn get_remote_socket_addr(&self) -> SocketAddr {
+        self.remote_socket_addr
     }
 
     pub fn get_bufsize(&self) -> usize {
@@ -135,13 +135,13 @@ impl ProgramArguments {
         self.injection_rate_microseconds
     }
 
-    fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local_addr = SocketAddr::from_str(addr)?;
+    fn set_local_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.local_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
-    fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote_addr = SocketAddr::from_str(addr)?;
+    fn set_remote_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.remote_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
@@ -169,7 +169,7 @@ impl ProgramArguments {
 struct Application {
     libos: LibOS,
     sockqd: QDesc,
-    remote_addr: SocketAddr,
+    remote_socket_addr: SocketAddr,
     bufsize_bytes: usize,
     injection_rate_microseconds: u64,
 }
@@ -178,8 +178,8 @@ impl Application {
     const LOG_INTERVAL_SECONDS: u64 = 5;
 
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        let local_addr: SocketAddr = args.get_local_addr();
-        let remote_addr: SocketAddr = args.get_remote_addr();
+        let local_socket_addr: SocketAddr = args.get_local_socket_addr();
+        let remote_socket_addr: SocketAddr = args.get_remote_socket_addr();
         let bufsize_byes: usize = args.get_bufsize();
         let injection_rate_microseconds: u64 = args.get_injection_rate();
 
@@ -188,7 +188,7 @@ impl Application {
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        match libos.bind(sockqd, local_addr) {
+        match libos.bind(sockqd, local_socket_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -200,13 +200,13 @@ impl Application {
             },
         };
 
-        println!("Local Address:  {:?}", local_addr);
-        println!("Remote Address: {:?}", remote_addr);
+        println!("Local Address:  {:?}", local_socket_addr);
+        println!("Remote Address: {:?}", remote_socket_addr);
 
         Ok(Self {
             libos,
             sockqd,
-            remote_addr,
+            remote_socket_addr,
             bufsize_bytes: bufsize_byes,
             injection_rate_microseconds,
         })
@@ -230,7 +230,7 @@ impl Application {
             if last_push_time.elapsed() > Duration::from_nanos(self.injection_rate_microseconds) {
                 let sga: demi_sgarray_t = self.mksga(self.bufsize_bytes, 0x65)?;
 
-                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote_addr) {
+                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote_socket_addr) {
                     Ok(qt) => qt,
                     Err(e) => {
                         // If error, free scatter-gather array.

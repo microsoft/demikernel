@@ -44,8 +44,8 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
 #[derive(Debug)]
 pub struct ProgramArguments {
-    local_addr: SocketAddr,
-    remote_addr: SocketAddr,
+    local_socket_addr: SocketAddr,
+    remote_socket_addr: SocketAddr,
 }
 
 impl ProgramArguments {
@@ -73,36 +73,36 @@ impl ProgramArguments {
             .get_matches();
 
         let mut args: ProgramArguments = ProgramArguments {
-            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_ADDR)?,
-            remote_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
+            local_socket_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_ADDR)?,
+            remote_socket_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
         };
 
         if let Some(addr) = matches.get_one::<String>("local") {
-            args.set_local_addr(addr)?;
+            args.set_local_socket_addr(addr)?;
         }
 
         if let Some(addr) = matches.get_one::<String>("remote") {
-            args.set_remote_addr(addr)?;
+            args.set_remote_socket_addr(addr)?;
         }
 
         Ok(args)
     }
 
-    pub fn get_local_addr(&self) -> SocketAddr {
-        self.local_addr
+    pub fn get_local_socket_addr(&self) -> SocketAddr {
+        self.local_socket_addr
     }
 
-    pub fn get_remote_addr(&self) -> SocketAddr {
-        self.remote_addr
+    pub fn get_remote_socket_addr(&self) -> SocketAddr {
+        self.remote_socket_addr
     }
 
-    fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local_addr = SocketAddr::from_str(addr)?;
+    fn set_local_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.local_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
-    fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote_addr = SocketAddr::from_str(addr)?;
+    fn set_remote_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.remote_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
@@ -110,22 +110,22 @@ impl ProgramArguments {
 struct Application {
     libos: LibOS,
     sockqd: QDesc,
-    remote_addr: SocketAddr,
+    remote_socket_addr: SocketAddr,
 }
 
 impl Application {
     const LOG_INTERVAL_SECONDS: u64 = 5;
 
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        let local_addr: SocketAddr = args.get_local_addr();
-        let remote_addr: SocketAddr = args.get_remote_addr();
+        let local_socket_addr: SocketAddr = args.get_local_socket_addr();
+        let remote_socket_addr: SocketAddr = args.get_remote_socket_addr();
 
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        match libos.bind(sockqd, local_addr) {
+        match libos.bind(sockqd, local_socket_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -137,10 +137,10 @@ impl Application {
             },
         };
 
-        println!("Local Address:  {:?}", local_addr);
-        println!("Remote Address: {:?}", remote_addr);
+        println!("Local Address:  {:?}", local_socket_addr);
+        println!("Remote Address: {:?}", remote_socket_addr);
 
-        Ok(Self { libos, sockqd, remote_addr })
+        Ok(Self { libos, sockqd, remote_socket_addr })
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -178,7 +178,7 @@ impl Application {
 
                     num_bytes += sga.sga_segs[0].sgaseg_len as usize;
 
-                    let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote_addr) {
+                    let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote_socket_addr) {
                         Ok(qt) => qt,
                         Err(e) => {
                             // If error, free scatter-gather array.

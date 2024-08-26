@@ -181,13 +181,13 @@ impl UdpClient {
 
     fn run(
         &mut self,
-        local_addr: SocketAddr,
-        remote_addr: SocketAddr,
+        local_socket_addr: SocketAddr,
+        remote_socket_addr: SocketAddr,
         fill_char: u8,
         bufsize_bytes: usize,
         num_sends: usize,
     ) -> Result<()> {
-        match self.libos.bind(self.sockqd, local_addr) {
+        match self.libos.bind(self.sockqd, local_socket_addr) {
             Ok(()) => (),
             Err(e) => anyhow::bail!("bind failed: {:?}", e),
         };
@@ -199,7 +199,7 @@ impl UdpClient {
             };
 
             if let Some(sga) = self.sga {
-                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, remote_addr) {
+                let qt: QToken = match self.libos.pushto(self.sockqd, &sga, remote_socket_addr) {
                     Ok(qt) => qt,
                     Err(e) => anyhow::bail!("push failed: {:?}", e),
                 };
@@ -252,15 +252,15 @@ pub fn main() -> Result<()> {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
         };
-        let local_addr: SocketAddr = SocketAddr::from_str(&args[2])?;
+        let local_socket_addr: SocketAddr = SocketAddr::from_str(&args[2])?;
 
         if args[1] == "--server" {
             let mut server: UdpServer = UdpServer::new(libos)?;
-            return server.run(local_addr, FILL_CHAR, NUM_SENDS);
+            return server.run(local_socket_addr, FILL_CHAR, NUM_SENDS);
         } else if args[1] == "--client" && args.len() == 4 {
-            let remote_addr: SocketAddr = SocketAddr::from_str(&args[3])?;
+            let remote_socket_addr: SocketAddr = SocketAddr::from_str(&args[3])?;
             let mut client: UdpClient = UdpClient::new(libos)?;
-            return client.run(local_addr, remote_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_SENDS);
+            return client.run(local_socket_addr, remote_socket_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_SENDS);
         }
     }
 

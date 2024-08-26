@@ -104,8 +104,8 @@ impl UdpServer {
         });
     }
 
-    pub fn run(&mut self, local_addr: SocketAddr, remote_addr: SocketAddr, fill_char: u8) -> Result<()> {
-        if let Err(e) = self.libos.bind(self.sockqd, local_addr) {
+    pub fn run(&mut self, local_socket_addr: SocketAddr, remote_socket_addr: SocketAddr, fill_char: u8) -> Result<()> {
+        if let Err(e) = self.libos.bind(self.sockqd, local_socket_addr) {
             anyhow::bail!("bind failed: {:?}", e)
         };
 
@@ -136,7 +136,7 @@ impl UdpServer {
             // Push data.
             let qt: QToken = match self
                 .libos
-                .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_addr)
+                .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
             {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -190,15 +190,15 @@ impl UdpClient {
 
     pub fn run(
         &mut self,
-        local_addr: SocketAddr,
-        remote_addr: SocketAddr,
+        local_socket_addr: SocketAddr,
+        remote_socket_addr: SocketAddr,
         fill_char: u8,
         bufsize_bytes: usize,
         num_pings: usize,
     ) -> Result<()> {
         let mut qtokens: Vec<QToken> = Vec::new();
 
-        if let Err(e) = self.libos.bind(self.sockqd, local_addr) {
+        if let Err(e) = self.libos.bind(self.sockqd, local_socket_addr) {
             anyhow::bail!("bind failed: {:?}", e)
         };
 
@@ -206,7 +206,7 @@ impl UdpClient {
         self.sga = Some(mksga(&mut self.libos, bufsize_bytes, fill_char)?);
         match self
             .libos
-            .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_addr)
+            .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
         {
             Ok(qt) => qtokens.push(qt),
             Err(e) => anyhow::bail!("push failed: {:?}", e),
@@ -258,7 +258,7 @@ impl UdpClient {
                     self.sga = Some(mksga(&mut self.libos, bufsize_bytes, fill_char)?);
                     match self
                         .libos
-                        .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_addr)
+                        .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
                     {
                         Ok(qt) => qtokens.push(qt),
                         Err(e) => anyhow::bail!("push failed: {:?}", e),
@@ -307,15 +307,15 @@ pub fn main() -> Result<()> {
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e),
         };
 
-        let local_addr: SocketAddr = SocketAddr::from_str(&args[2])?;
-        let remote_addr: SocketAddr = SocketAddr::from_str(&args[3])?;
+        let local_socket_addr: SocketAddr = SocketAddr::from_str(&args[2])?;
+        let remote_socket_addr: SocketAddr = SocketAddr::from_str(&args[3])?;
 
         if args[1] == "--server" {
             let mut server: UdpServer = UdpServer::new(libos)?;
-            return server.run(local_addr, remote_addr, FILL_CHAR);
+            return server.run(local_socket_addr, remote_socket_addr, FILL_CHAR);
         } else if args[1] == "--client" {
             let mut client: UdpClient = UdpClient::new(libos)?;
-            return client.run(local_addr, remote_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_PINGS);
+            return client.run(local_socket_addr, remote_socket_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_PINGS);
         }
     }
 
