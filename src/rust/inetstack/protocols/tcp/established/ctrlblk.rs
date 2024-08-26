@@ -22,6 +22,7 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         tcp::{
             constants::MSL,
             established::{
@@ -50,7 +51,6 @@ use crate::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         yield_with_timeout,
         SharedDemiRuntime,
@@ -175,7 +175,7 @@ impl Receiver {
 
 /// Transmission control block for representing our TCP connection.
 // TODO: Make all public fields in this structure private.
-pub struct ControlBlock<N: NetworkRuntime> {
+pub struct ControlBlock<N: PhysicalLayer> {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
@@ -243,10 +243,10 @@ pub struct ControlBlock<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedControlBlock<N: NetworkRuntime>(SharedObject<ControlBlock<N>>);
+pub struct SharedControlBlock<N: PhysicalLayer>(SharedObject<ControlBlock<N>>);
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedControlBlock<N> {
+impl<N: PhysicalLayer> SharedControlBlock<N> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
@@ -1237,7 +1237,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedControlBlock<N> {
+impl<N: PhysicalLayer> Deref for SharedControlBlock<N> {
     type Target = ControlBlock<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -1245,7 +1245,7 @@ impl<N: NetworkRuntime> Deref for SharedControlBlock<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedControlBlock<N> {
+impl<N: PhysicalLayer> DerefMut for SharedControlBlock<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

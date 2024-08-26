@@ -10,6 +10,7 @@ use crate::{
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         udp::{
             datagram::UdpHeader,
             socket::SharedUdpSocket,
@@ -18,10 +19,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            NetworkRuntime,
-        },
+        network::types::MacAddress,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -47,7 +45,7 @@ use ::std::{
 /// Per-queue metadata: UDP Control Block
 
 /// UDP Peer
-pub struct UdpPeer<N: NetworkRuntime> {
+pub struct UdpPeer<N: PhysicalLayer> {
     /// Underlying transport.
     transport: N,
     /// Underlying ARP peer.
@@ -63,7 +61,7 @@ pub struct UdpPeer<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedUdpPeer<N: NetworkRuntime>(SharedObject<UdpPeer<N>>);
+pub struct SharedUdpPeer<N: PhysicalLayer>(SharedObject<UdpPeer<N>>);
 
 //======================================================================================================================
 // Associate Functions
@@ -71,7 +69,7 @@ pub struct SharedUdpPeer<N: NetworkRuntime>(SharedObject<UdpPeer<N>>);
 
 /// Associate functions for [SharedUdpPeer].
 
-impl<N: NetworkRuntime> SharedUdpPeer<N> {
+impl<N: PhysicalLayer> SharedUdpPeer<N> {
     pub fn new(
         config: &Config,
         _runtime: SharedDemiRuntime,
@@ -203,7 +201,7 @@ impl<N: NetworkRuntime> SharedUdpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedUdpPeer<N> {
+impl<N: PhysicalLayer> Deref for SharedUdpPeer<N> {
     type Target = UdpPeer<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -211,7 +209,7 @@ impl<N: NetworkRuntime> Deref for SharedUdpPeer<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedUdpPeer<N> {
+impl<N: PhysicalLayer> DerefMut for SharedUdpPeer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

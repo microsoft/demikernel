@@ -14,6 +14,7 @@ use crate::{
             },
             ip::IpProtocol,
             ipv4::Ipv4Header,
+            layer1::PacketBuf,
             tcp::segment::{
                 TcpHeader,
                 TcpOptions2,
@@ -37,7 +38,6 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::PacketBuf,
         OperationResult,
     },
     MacAddress,
@@ -879,7 +879,7 @@ impl Simulation {
     fn run_incoming_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         let segment: TcpSegment = self.build_tcp_segment(&tcp_packet);
 
-        let buf: DemiBuffer = Self::serialize_segment(segment);
+        let buf: DemiBuffer = Self::serialize_packet(segment);
         self.engine.receive(buf)?;
 
         self.engine.poll();
@@ -890,7 +890,7 @@ impl Simulation {
     fn run_incoming_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
         let datagram: UdpDatagram = self.build_udp_datagram(&udp_packet);
 
-        let buf: DemiBuffer = Self::serialize_datagram(datagram);
+        let buf: DemiBuffer = Self::serialize_packet(datagram);
         self.engine.receive(buf)?;
 
         self.engine.poll();
@@ -1059,12 +1059,7 @@ impl Simulation {
     }
 
     /// Serializes a TCP segment.
-    fn serialize_segment(mut pkt: TcpSegment) -> DemiBuffer {
-        pkt.take_body().unwrap()
-    }
-
-    /// Serializes a UDP datagram.
-    fn serialize_datagram(mut pkt: UdpDatagram) -> DemiBuffer {
+    fn serialize_packet<P: PacketBuf>(mut pkt: P) -> DemiBuffer {
         pkt.take_body().unwrap()
     }
 

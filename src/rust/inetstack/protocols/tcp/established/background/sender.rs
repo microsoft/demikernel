@@ -4,19 +4,21 @@
 use crate::{
     collections::async_value::SharedAsyncValue,
     expect_some,
-    inetstack::protocols::tcp::{
-        established::{
-            ctrlblk::SharedControlBlock,
-            sender::UnackedSegment,
+    inetstack::protocols::{
+        layer1::PhysicalLayer,
+        tcp::{
+            established::{
+                ctrlblk::SharedControlBlock,
+                sender::UnackedSegment,
+            },
+            segment::TcpHeader,
+            SeqNumber,
         },
-        segment::TcpHeader,
-        SeqNumber,
     },
     runtime::{
         conditional_yield_until,
         fail::Fail,
         memory::DemiBuffer,
-        network::NetworkRuntime,
     },
 };
 use ::futures::{
@@ -31,7 +33,7 @@ use ::std::{
     time::Duration,
 };
 
-pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
+pub async fn sender<N: PhysicalLayer>(mut cb: SharedControlBlock<N>) -> Result<Never, Fail> {
     'top: loop {
         // First, check to see if there's any unsent data.
         // TODO: Change this to just look at the unsent queue to see if it is empty or not.

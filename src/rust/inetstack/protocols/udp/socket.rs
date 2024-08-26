@@ -15,6 +15,7 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         udp::{
             datagram::UdpDatagram,
             UdpHeader,
@@ -26,7 +27,6 @@ use crate::{
         network::{
             types::MacAddress,
             unwrap_socketaddr,
-            NetworkRuntime,
         },
         SharedObject,
     },
@@ -63,7 +63,7 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// Per-queue metadata for a UDP socket.
-pub struct UdpSocket<N: NetworkRuntime> {
+pub struct UdpSocket<N: PhysicalLayer> {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
     local_link_addr: MacAddress,
@@ -74,13 +74,13 @@ pub struct UdpSocket<N: NetworkRuntime> {
     checksum_offload: bool,
 }
 #[derive(Clone)]
-pub struct SharedUdpSocket<N: NetworkRuntime>(SharedObject<UdpSocket<N>>);
+pub struct SharedUdpSocket<N: PhysicalLayer>(SharedObject<UdpSocket<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedUdpSocket<N> {
+impl<N: PhysicalLayer> SharedUdpSocket<N> {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
@@ -176,7 +176,7 @@ impl<N: NetworkRuntime> SharedUdpSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedUdpSocket<N> {
+impl<N: PhysicalLayer> Deref for SharedUdpSocket<N> {
     type Target = UdpSocket<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -184,13 +184,13 @@ impl<N: NetworkRuntime> Deref for SharedUdpSocket<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedUdpSocket<N> {
+impl<N: PhysicalLayer> DerefMut for SharedUdpSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: NetworkRuntime> Debug for SharedUdpSocket<N> {
+impl<N: PhysicalLayer> Debug for SharedUdpSocket<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "UDP socket local={:?} remote={:?}", self.local(), self.remote())
     }

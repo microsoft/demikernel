@@ -18,21 +18,12 @@ pub mod types;
 //======================================================================================================================
 
 use crate::{
-    demikernel::config::Config,
     runtime::{
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            socket::SocketId,
-        },
+        network::socket::SocketId,
         Fail,
-        QDesc,
     },
+    QDesc,
 };
-use ::arrayvec::ArrayVec;
 use ::std::{
     collections::HashMap,
     net::{
@@ -107,22 +98,4 @@ pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
         SocketAddr::V4(addr) => Ok(addr),
         _ => Err(Fail::new(libc::EINVAL, "bad address family")),
     }
-}
-
-/// Packet Buffer
-pub trait PacketBuf {
-    /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&mut self) -> Option<DemiBuffer>;
-}
-
-/// Network Runtime
-pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
-    /// Creates a new NetworkRuntime with the [config] parameters.
-    fn new(config: &Config) -> Result<Self, Fail>;
-
-    /// Transmits a single [PacketBuf].
-    fn transmit<P: PacketBuf>(&mut self, pkt: P) -> Result<(), Fail>;
-
-    /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
 }

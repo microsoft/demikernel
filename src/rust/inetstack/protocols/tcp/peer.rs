@@ -10,6 +10,7 @@ use crate::{
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         tcp::{
             isn_generator::IsnGenerator,
             segment::TcpHeader,
@@ -30,7 +31,6 @@ use crate::{
                 SocketId,
             },
             types::MacAddress,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -61,7 +61,7 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct TcpPeer<N: NetworkRuntime> {
+pub struct TcpPeer<N: PhysicalLayer> {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
     transport: N,
@@ -76,13 +76,13 @@ pub struct TcpPeer<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedTcpPeer<N: NetworkRuntime>(SharedObject<TcpPeer<N>>);
+pub struct SharedTcpPeer<N: PhysicalLayer>(SharedObject<TcpPeer<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedTcpPeer<N> {
+impl<N: PhysicalLayer> SharedTcpPeer<N> {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
@@ -314,7 +314,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedTcpPeer<N> {
+impl<N: PhysicalLayer> Deref for SharedTcpPeer<N> {
     type Target = TcpPeer<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -322,7 +322,7 @@ impl<N: NetworkRuntime> Deref for SharedTcpPeer<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedTcpPeer<N> {
+impl<N: PhysicalLayer> DerefMut for SharedTcpPeer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

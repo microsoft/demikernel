@@ -11,11 +11,11 @@ use crate::{
     inetstack::protocols::{
         ethernet2::Ethernet2Header,
         ipv4::Ipv4Header,
+        layer1::PacketBuf,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::PacketBuf,
     },
 };
 

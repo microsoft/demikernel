@@ -33,6 +33,11 @@ use crate::demikernel::libos::network::{
     libos::SharedNetworkLibOS,
     NetworkLibOSWrapper,
 };
+#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
+use crate::inetstack::{
+    protocols::layer1::PhysicalLayer,
+    SharedInetStack,
+};
 #[cfg(feature = "profiler")]
 use crate::perftools::profiler::set_callback;
 use crate::{
@@ -52,11 +57,6 @@ use crate::{
         SharedDemiRuntime,
     },
     timer,
-};
-#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::{
-    inetstack::SharedInetStack,
-    runtime::network::NetworkRuntime,
 };
 use ::std::{
     env,

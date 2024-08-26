@@ -9,7 +9,13 @@ use crate::{
     demi_sgarray_t,
     demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::MAX_HEADER_SIZE,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        MAX_HEADER_SIZE,
+    },
     runtime::{
         fail::Fail,
         logging,
@@ -17,11 +23,7 @@ use crate::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -90,7 +92,7 @@ impl SharedTestRuntime {
 // Trait Implementations
 //======================================================================================================================
 
-impl NetworkRuntime for SharedTestRuntime {
+impl PhysicalLayer for SharedTestRuntime {
     fn new(_config: &Config) -> Result<Self, Fail> {
         logging::initialize();
         Ok(Self(SharedObject::<TestRuntime>::new(TestRuntime {

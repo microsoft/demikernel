@@ -18,15 +18,13 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
     },
     runtime::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            NetworkRuntime,
-        },
+        network::types::MacAddress,
         SharedConditionVariable,
         SharedDemiRuntime,
         SharedObject,
@@ -75,7 +73,7 @@ enum InflightRequest {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<N: NetworkRuntime> {
+pub struct Icmpv4Peer<N: PhysicalLayer> {
     /// Shared DemiRuntime.
     runtime: SharedDemiRuntime,
     /// Underlying Network Transport
@@ -100,9 +98,9 @@ pub struct Icmpv4Peer<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedIcmpv4Peer<N: NetworkRuntime>(SharedObject<Icmpv4Peer<N>>);
+pub struct SharedIcmpv4Peer<N: PhysicalLayer>(SharedObject<Icmpv4Peer<N>>);
 
-impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
+impl<N: PhysicalLayer> SharedIcmpv4Peer<N> {
     pub fn new(
         config: &Config,
         mut runtime: SharedDemiRuntime,
@@ -286,7 +284,7 @@ impl<N: NetworkRuntime> SharedIcmpv4Peer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
+impl<N: PhysicalLayer> Deref for SharedIcmpv4Peer<N> {
     type Target = Icmpv4Peer<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -294,7 +292,7 @@ impl<N: NetworkRuntime> Deref for SharedIcmpv4Peer<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedIcmpv4Peer<N> {
+impl<N: PhysicalLayer> DerefMut for SharedIcmpv4Peer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

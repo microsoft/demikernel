@@ -10,12 +10,12 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PacketBuf,
         tcp::SeqNumber,
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::PacketBuf,
     },
 };
 use ::libc::EBADMSG;
