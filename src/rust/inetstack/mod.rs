@@ -14,6 +14,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
+        layer1::PhysicalLayer,
         peer::{
             Peer,
             Socket,
@@ -30,7 +31,6 @@ use crate::{
             socket::option::SocketOption,
             transport::NetworkTransport,
             types::MacAddress,
-            NetworkRuntime,
         },
         poll_yield,
         SharedDemiRuntime,
@@ -86,7 +86,7 @@ const MAX_RECV_ITERS: usize = 2;
 //======================================================================================================================
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
-pub struct InetStack<N: NetworkRuntime> {
+pub struct InetStack<N: PhysicalLayer> {
     arp: SharedArpPeer<N>,
     ipv4: Peer<N>,
     runtime: SharedDemiRuntime,
@@ -98,13 +98,13 @@ pub struct InetStack<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack<N: NetworkRuntime>(SharedObject<InetStack<N>>);
+pub struct SharedInetStack<N: PhysicalLayer>(SharedObject<InetStack<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedInetStack<N> {
+impl<N: PhysicalLayer> SharedInetStack<N> {
     pub fn new(config: &Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
         SharedInetStack::<N>::new_test(config, runtime, network)
     }
@@ -219,7 +219,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
 // Trait Implementation
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedInetStack<N> {
+impl<N: PhysicalLayer> Deref for SharedInetStack<N> {
     type Target = InetStack<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -227,13 +227,13 @@ impl<N: NetworkRuntime> Deref for SharedInetStack<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedInetStack<N> {
+impl<N: PhysicalLayer> DerefMut for SharedInetStack<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
+impl<N: PhysicalLayer> NetworkTransport for SharedInetStack<N> {
     // Socket data structure used by upper level libOS to identify this socket.
     type SocketDescriptor = Socket<N>;
 
@@ -394,7 +394,7 @@ impl<N: NetworkRuntime> NetworkTransport for SharedInetStack<N> {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<N: NetworkRuntime + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
+impl<N: PhysicalLayer + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
         self.network.clone_sgarray(sga)
     }
@@ -412,7 +412,7 @@ impl<N: NetworkRuntime + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
     }
 }
 
-impl<N: NetworkRuntime> Debug for Socket<N> {
+impl<N: PhysicalLayer> Debug for Socket<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Socket::Tcp(socket) => socket.fmt(f),

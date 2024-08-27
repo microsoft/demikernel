@@ -13,6 +13,7 @@ use crate::{
         icmpv4::SharedIcmpv4Peer,
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         tcp::{
             socket::SharedTcpSocket,
             SharedTcpPeer,
@@ -25,10 +26,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            unwrap_socketaddr,
-            NetworkRuntime,
-        },
+        network::unwrap_socketaddr,
         SharedDemiRuntime,
     },
     SocketOption,
@@ -50,7 +48,7 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct Peer<N: NetworkRuntime> {
+pub struct Peer<N: PhysicalLayer> {
     local_ipv4_addr: Ipv4Addr,
     icmpv4: SharedIcmpv4Peer<N>,
     tcp: SharedTcpPeer<N>,
@@ -59,7 +57,7 @@ pub struct Peer<N: NetworkRuntime> {
 
 /// Socket Representation.
 #[derive(Clone)]
-pub enum Socket<N: NetworkRuntime> {
+pub enum Socket<N: PhysicalLayer> {
     Tcp(SharedTcpSocket<N>),
     Udp(SharedUdpSocket<N>),
 }
@@ -68,7 +66,7 @@ pub enum Socket<N: NetworkRuntime> {
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Peer<N> {
+impl<N: PhysicalLayer> Peer<N> {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
@@ -328,7 +326,7 @@ impl<N: NetworkRuntime> Peer<N> {
 }
 
 #[cfg(test)]
-impl<N: NetworkRuntime> Peer<N> {
+impl<N: PhysicalLayer> Peer<N> {
     pub fn tcp_mss(&self, socket: &SharedTcpSocket<N>) -> Result<usize, Fail> {
         socket.remote_mss()
     }

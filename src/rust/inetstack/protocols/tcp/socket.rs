@@ -11,6 +11,7 @@ use crate::{
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
+            layer1::PhysicalLayer,
             tcp::{
                 active_open::SharedActiveOpenSocket,
                 established::EstablishedSocket,
@@ -34,7 +35,6 @@ use crate::{
                 },
                 SocketId,
             },
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -56,7 +56,7 @@ use ::std::{
 // Enumerations
 //======================================================================================================================
 
-pub enum SocketState<N: NetworkRuntime> {
+pub enum SocketState<N: PhysicalLayer> {
     Unbound,
     Bound(SocketAddrV4),
     Listening(SharedPassiveSocket<N>),
@@ -70,7 +70,7 @@ pub enum SocketState<N: NetworkRuntime> {
 //======================================================================================================================
 
 /// Per-queue metadata for the TCP socket.
-pub struct TcpSocket<N: NetworkRuntime> {
+pub struct TcpSocket<N: PhysicalLayer> {
     state: SocketState<N>,
     recv_queue: Option<SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     runtime: SharedDemiRuntime,
@@ -82,13 +82,13 @@ pub struct TcpSocket<N: NetworkRuntime> {
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct SharedTcpSocket<N: NetworkRuntime>(SharedObject<TcpSocket<N>>);
+pub struct SharedTcpSocket<N: PhysicalLayer>(SharedObject<TcpSocket<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedTcpSocket<N> {
+impl<N: PhysicalLayer> SharedTcpSocket<N> {
     /// Create a new shared queue.
     pub fn new(
         runtime: SharedDemiRuntime,
@@ -389,7 +389,7 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
 // Trait implementation
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedTcpSocket<N> {
+impl<N: PhysicalLayer> Deref for SharedTcpSocket<N> {
     type Target = TcpSocket<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -397,19 +397,19 @@ impl<N: NetworkRuntime> Deref for SharedTcpSocket<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedTcpSocket<N> {
+impl<N: PhysicalLayer> DerefMut for SharedTcpSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: NetworkRuntime> Clone for SharedTcpSocket<N> {
+impl<N: PhysicalLayer> Clone for SharedTcpSocket<N> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<N: NetworkRuntime> Debug for SharedTcpSocket<N> {
+impl<N: PhysicalLayer> Debug for SharedTcpSocket<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TCP socket local={:?} remote={:?}", self.local(), self.remote())
     }

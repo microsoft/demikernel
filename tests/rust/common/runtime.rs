@@ -10,18 +10,20 @@ use ::demikernel::{
     demi_sgarray_t,
     demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::MAX_HEADER_SIZE,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        MAX_HEADER_SIZE,
+    },
     runtime::{
         fail::Fail,
         memory::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         SharedObject,
     },
 };
@@ -77,7 +79,7 @@ impl SharedDummyRuntime {
 //======================================================================================================================
 
 /// Network Runtime Trait Implementation for Dummy Runtime
-impl NetworkRuntime for SharedDummyRuntime {
+impl PhysicalLayer for SharedDummyRuntime {
     /// Creates a Dummy Runtime.
     fn new(_config: &Config) -> Result<Self, Fail> {
         Err(Fail::new(

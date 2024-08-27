@@ -18,6 +18,7 @@ use crate::{
             EtherType2,
             Ethernet2Header,
         },
+        layer1::PhysicalLayer,
     },
     runtime::{
         conditional_yield_with_timeout,
@@ -26,7 +27,6 @@ use crate::{
         network::{
             config::ArpConfig,
             types::MacAddress,
-            NetworkRuntime,
         },
         SharedDemiRuntime,
         SharedObject,
@@ -65,7 +65,7 @@ use ::std::{
 ///
 /// Arp Peer
 ///
-pub struct ArpPeer<N: NetworkRuntime> {
+pub struct ArpPeer<N: PhysicalLayer> {
     network: N,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
@@ -76,13 +76,13 @@ pub struct ArpPeer<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedArpPeer<N: NetworkRuntime>(SharedObject<ArpPeer<N>>);
+pub struct SharedArpPeer<N: PhysicalLayer>(SharedObject<ArpPeer<N>>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedArpPeer<N> {
+impl<N: PhysicalLayer> SharedArpPeer<N> {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -320,7 +320,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedArpPeer<N> {
+impl<N: PhysicalLayer> Deref for SharedArpPeer<N> {
     type Target = ArpPeer<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -328,7 +328,7 @@ impl<N: NetworkRuntime> Deref for SharedArpPeer<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedArpPeer<N> {
+impl<N: PhysicalLayer> DerefMut for SharedArpPeer<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

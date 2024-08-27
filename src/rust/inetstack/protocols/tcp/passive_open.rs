@@ -22,6 +22,7 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         tcp::{
             constants::FALLBACK_MSS,
             established::{
@@ -49,7 +50,6 @@ use crate::{
             consts::MAX_WINDOW_SCALE,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -88,7 +88,7 @@ enum State {
     Closed,
 }
 
-pub struct PassiveSocket<N: NetworkRuntime> {
+pub struct PassiveSocket<N: PhysicalLayer> {
     // TCP Connection State.
     state: SharedAsyncValue<State>,
     connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
@@ -111,13 +111,13 @@ pub struct PassiveSocket<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedPassiveSocket<N: NetworkRuntime>(SharedObject<PassiveSocket<N>>);
+pub struct SharedPassiveSocket<N: PhysicalLayer>(SharedObject<PassiveSocket<N>>);
 
 //======================================================================================================================
 // Associated Function
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedPassiveSocket<N> {
+impl<N: PhysicalLayer> SharedPassiveSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
@@ -540,7 +540,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
+impl<N: PhysicalLayer> Deref for SharedPassiveSocket<N> {
     type Target = PassiveSocket<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -548,7 +548,7 @@ impl<N: NetworkRuntime> Deref for SharedPassiveSocket<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedPassiveSocket<N> {
+impl<N: PhysicalLayer> DerefMut for SharedPassiveSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

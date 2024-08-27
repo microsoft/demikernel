@@ -18,6 +18,10 @@ use crate::{
     expect_ok,
     inetstack::protocols::{
         ethernet2::Ethernet2Header,
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -30,8 +34,6 @@ use crate::{
         network::{
             consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
-            NetworkRuntime,
-            PacketBuf,
         },
         Runtime,
         SharedObject,
@@ -132,7 +134,7 @@ impl MemoryRuntime for LinuxRuntime {
 impl Runtime for LinuxRuntime {}
 
 /// Network Runtime Trait Implementation for Linux Runtime
-impl NetworkRuntime for LinuxRuntime {
+impl PhysicalLayer for LinuxRuntime {
     /// Instantiates a Linux Runtime.
     fn new(config: &Config) -> Result<Self, Fail> {
         let mac_addr: [u8; 6] = [0; 6];

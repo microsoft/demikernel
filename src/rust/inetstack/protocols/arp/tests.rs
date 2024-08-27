@@ -17,6 +17,7 @@ use crate::{
                 EtherType2,
                 Ethernet2Header,
             },
+            layer1::PacketBuf,
         },
         test_helpers::{
             self,
@@ -26,10 +27,7 @@ use crate::{
     },
     runtime::{
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            PacketBuf,
-        },
+        network::types::MacAddress,
     },
 };
 use ::anyhow::Result;

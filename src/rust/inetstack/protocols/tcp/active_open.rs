@@ -19,6 +19,7 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
+        layer1::PhysicalLayer,
         tcp::{
             constants::{
                 FALLBACK_MSS,
@@ -47,7 +48,6 @@ use crate::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
             types::MacAddress,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -80,7 +80,7 @@ enum State {
     Closed,
 }
 
-pub struct ActiveOpenSocket<N: NetworkRuntime> {
+pub struct ActiveOpenSocket<N: PhysicalLayer> {
     local_isn: SeqNumber,
     local: SocketAddrV4,
     remote: SocketAddrV4,
@@ -97,13 +97,13 @@ pub struct ActiveOpenSocket<N: NetworkRuntime> {
 }
 
 #[derive(Clone)]
-pub struct SharedActiveOpenSocket<N: NetworkRuntime>(SharedObject<ActiveOpenSocket<N>>);
+pub struct SharedActiveOpenSocket<N: PhysicalLayer>(SharedObject<ActiveOpenSocket<N>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
+impl<N: PhysicalLayer> SharedActiveOpenSocket<N> {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
@@ -372,7 +372,7 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: NetworkRuntime> Deref for SharedActiveOpenSocket<N> {
+impl<N: PhysicalLayer> Deref for SharedActiveOpenSocket<N> {
     type Target = ActiveOpenSocket<N>;
 
     fn deref(&self) -> &Self::Target {
@@ -380,7 +380,7 @@ impl<N: NetworkRuntime> Deref for SharedActiveOpenSocket<N> {
     }
 }
 
-impl<N: NetworkRuntime> DerefMut for SharedActiveOpenSocket<N> {
+impl<N: PhysicalLayer> DerefMut for SharedActiveOpenSocket<N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

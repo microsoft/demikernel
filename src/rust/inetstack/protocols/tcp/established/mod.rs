@@ -12,6 +12,7 @@ use crate::{
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
+            layer1::PhysicalLayer,
             tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::ctrlblk::SharedControlBlock,
@@ -28,7 +29,6 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
-            NetworkRuntime,
         },
         QDesc,
         SharedDemiRuntime,
@@ -45,7 +45,7 @@ use ::std::{
 };
 
 #[derive(Clone)]
-pub struct EstablishedSocket<N: NetworkRuntime> {
+pub struct EstablishedSocket<N: PhysicalLayer> {
     pub cb: SharedControlBlock<N>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
@@ -57,7 +57,7 @@ pub struct EstablishedSocket<N: NetworkRuntime> {
     background_task_qt: QToken,
 }
 
-impl<N: NetworkRuntime> EstablishedSocket<N> {
+impl<N: PhysicalLayer> EstablishedSocket<N> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,

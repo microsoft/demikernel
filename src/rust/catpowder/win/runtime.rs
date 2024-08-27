@@ -17,18 +17,20 @@ use crate::{
     demi_sgarray_t,
     demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::MAX_HEADER_SIZE,
+    inetstack::protocols::{
+        layer1::{
+            PacketBuf,
+            PhysicalLayer,
+        },
+        MAX_HEADER_SIZE,
+    },
     runtime::{
         fail::Fail,
         memory::{
             DemiBuffer,
             MemoryRuntime,
         },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            NetworkRuntime,
-            PacketBuf,
-        },
+        network::consts::RECEIVE_BATCH_SIZE,
         Runtime,
         SharedObject,
     },
@@ -70,7 +72,7 @@ impl SharedCatpowderRuntime {
     const RING_LENGTH: u32 = 1;
 }
 
-impl NetworkRuntime for SharedCatpowderRuntime {
+impl PhysicalLayer for SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;

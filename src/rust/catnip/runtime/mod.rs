@@ -14,6 +14,10 @@ use self::memory::{
 use crate::{
     demikernel::config::Config,
     expect_some,
+    inetstack::protocols::layer1::{
+        PacketBuf,
+        PhysicalLayer,
+    },
     runtime::{
         fail::Fail,
         libdpdk::{
@@ -59,18 +63,15 @@ use crate::{
         network::{
             consts::RECEIVE_BATCH_SIZE,
             types::MacAddress,
-            NetworkRuntime,
-            PacketBuf,
         },
         SharedObject,
     },
     timer,
 };
 use ::arrayvec::ArrayVec;
-use ::std::mem;
-
 use ::std::{
     ffi::CString,
+    mem,
     mem::MaybeUninit,
     net::Ipv4Addr,
     ops::{
@@ -364,7 +365,7 @@ impl DerefMut for SharedDPDKRuntime {
 }
 
 /// Network Runtime Trait Implementation for DPDK Runtime
-impl NetworkRuntime for SharedDPDKRuntime {
+impl PhysicalLayer for SharedDPDKRuntime {
     fn new(config: &Config) -> Result<Self, Fail> {
         let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
             Ok(offload) => Some(offload),
