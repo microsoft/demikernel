@@ -402,3 +402,21 @@ run-proxy-p42:
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	taskset --cpu-list 2 numactl -m0 \
 	$(ELF_DIR)/proxy.elf 198.19.200.42:10000 198.19.200.42:10001
+
+run-proxy-node8:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/node8_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 2 numactl -m0 \
+	$(ELF_DIR)/proxy.elf 10.0.1.8:10000 10.0.1.8:10001
+
+run-proxy-node9:
+	sudo -E \
+	CONFIG_PATH=$(CONFIG_DIR)/node9_config.yaml \
+	$(ENV) \
+	MIG_OFF=1 \
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	taskset --cpu-list 2 numactl -m0 \
+	$(ELF_DIR)/proxy.elf 10.0.1.9:10000 10.0.1.9:10001

@@ -1,0 +1,34 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+demikernel:
+  local_ipv4_addr: 10.0.1.9
+  local_link_addr: "08:c0:eb:b6:c5:ad"
+raw_socket:
+  interface_name: "ens85f1"
+dpdk:
+  eal_init: ["", "-c", "0xff", "-n", "4", "-a", "31:00.1","--proc-type=auto"]
+tcp_socket_options:
+  keepalive:
+    enabled: false
+    time_millis: 0
+    interval: 0
+  linger:
+    enabled: true
+    time_seconds: 0
+  nodelay: true
+inetstack_config:
+  mtu: 1500
+  mss: 1500
+  enable_jumbo_frames: false
+  udp_checksum_offload: false
+  tcp_checksum_offload: false
+  arp_table:
+    "10.0.1.7": "08:c0:eb:b6:cd:5d"
+    "10.0.1.8": "08:c0:eb:b6:e8:05"
+    "10.0.1.9": "08:c0:eb:b6:c5:ad"
+  arp_request_retries: 5
+  arp_request_timeout: 20
+  arp_cache_ttl: 15
+
+# vim: set tabstop=2 shiftwidth=2
