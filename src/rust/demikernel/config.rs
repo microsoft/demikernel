@@ -75,9 +75,9 @@ mod dpdk_config {
 mod raw_socket_config {
     pub const SECTION_NAME: &str = "raw_socket";
     #[cfg(target_os = "linux")]
-    pub const LOCAL_INTERFACE_NAME: &str = "interface_name";
+    pub const LOCAL_INTERFACE_NAME: &str = "linux_interface_name";
     #[cfg(target_os = "windows")]
-    pub const LOCAL_INTERFACE_INDEX: &str = "interface_index";
+    pub const LOCAL_INTERFACE_INDEX: &str = "xdp_interface_index";
 }
 
 //======================================================================================================================
