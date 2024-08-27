@@ -42,31 +42,18 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Local socket address.
-    local: SocketAddr,
-    /// Remote socket address.
-    remote: SocketAddr,
+    local_addr: SocketAddr,
+    remote_addr: SocketAddr,
 }
 
-/// Associate functions for Program Arguments
 impl ProgramArguments {
-    /// Default local address.
-    const DEFAULT_LOCAL: &'static str = "127.0.0.1:12345";
-    /// Default host address.
-    const DEFAULT_REMOTE: &'static str = "127.0.0.1:23456";
+    const DEFAULT_LOCAL_ADDR: &'static str = "127.0.0.1:12345";
+    const DEFAULT_REMOTE_ADDR: &'static str = "127.0.0.1:23456";
 
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("udp-relay")
             .arg(
                 Arg::new("local")
                     .long("local")
@@ -85,18 +72,15 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
-            remote: SocketAddr::from_str(Self::DEFAULT_REMOTE)?,
+            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_ADDR)?,
+            remote_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
         };
 
-        // Local address.
         if let Some(addr) = matches.get_one::<String>("local") {
             args.set_local_addr(addr)?;
         }
 
-        // Remote address.
         if let Some(addr) = matches.get_one::<String>("remote") {
             args.set_remote_addr(addr)?;
         }
@@ -104,62 +88,44 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddr {
-        self.local
+    pub fn get_local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
-    /// Returns the remote endpoint address parameter stored in the target program arguments.
-    pub fn get_remote(&self) -> SocketAddr {
-        self.remote
+    pub fn get_remote_addr(&self) -> SocketAddr {
+        self.remote_addr
     }
 
-    /// Sets the local address and port number parameters in the target program arguments.
     fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddr::from_str(addr)?;
+        self.local_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
-    /// Sets the remote address and port number parameters in the target program arguments.
     fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote = SocketAddr::from_str(addr)?;
+        self.remote_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
 
-//======================================================================================================================
-// Application
-//======================================================================================================================
-
-/// Application
 struct Application {
-    /// Underlying libOS.
     libos: LibOS,
-    // Local socket descriptor.
     sockqd: QDesc,
-    /// Remote endpoint.
-    remote: SocketAddr,
+    remote_addr: SocketAddr,
 }
 
-/// Associated Functions for the Application
 impl Application {
-    /// Logging interval (in seconds).
-    const LOG_INTERVAL: u64 = 5;
+    const LOG_INTERVAL_SECONDS: u64 = 5;
 
-    /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        // Extract arguments.
-        let local: SocketAddr = args.get_local();
-        let remote: SocketAddr = args.get_remote();
+        let local_addr: SocketAddr = args.get_local_addr();
+        let remote_addr: SocketAddr = args.get_remote_addr();
 
-        // Create UDP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, local_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -171,18 +137,17 @@ impl Application {
             },
         };
 
-        println!("Local Address:  {:?}", local);
-        println!("Remote Address: {:?}", remote);
+        println!("Local Address:  {:?}", local_addr);
+        println!("Remote Address: {:?}", remote_addr);
 
-        Ok(Self { libos, sockqd, remote })
+        Ok(Self { libos, sockqd, remote_addr })
     }
 
-    /// Runs the target relay server.
     pub fn run(&mut self) -> Result<()> {
-        let start: Instant = Instant::now();
-        let mut nbytes: usize = 0;
+        let start_time: Instant = Instant::now();
+        let mut num_bytes: usize = 0;
         let mut qtokens: Vec<QToken> = Vec::new();
-        let mut last_log: Instant = Instant::now();
+        let mut last_log_time: Instant = Instant::now();
 
         // Pop first packet.
         let qt: QToken = match self.libos.pop(self.sockqd, None) {
@@ -193,10 +158,10 @@ impl Application {
 
         loop {
             // Dump statistics.
-            if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
-                let elapsed: Duration = Instant::now() - start;
-                println!("{:?} B / {:?} us", nbytes, elapsed.as_micros());
-                last_log = Instant::now();
+            if last_log_time.elapsed() > Duration::from_secs(Self::LOG_INTERVAL_SECONDS) {
+                let elapsed: Duration = Instant::now() - start_time;
+                println!("{:?} B / {:?} us", num_bytes, elapsed.as_micros());
+                last_log_time = Instant::now();
             }
 
             let (i, qr) = match self.libos.wait_any(&qtokens, None) {
@@ -210,9 +175,10 @@ impl Application {
                 // Pop completed.
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
-                    // Push packet back.
-                    let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote) {
+
+                    num_bytes += sga.sga_segs[0].sgaseg_len as usize;
+
+                    let qt: QToken = match self.libos.pushto(self.sockqd, &sga, self.remote_addr) {
                         Ok(qt) => qt,
                         Err(e) => {
                             // If error, free scatter-gather array.
@@ -223,7 +189,9 @@ impl Application {
                             anyhow::bail!("failed to push data to socket: {:?}", e)
                         },
                     };
+
                     qtokens.push(qt);
+
                     if let Err(e) = self.libos.sgafree(sga) {
                         println!("ERROR: sgafree() failed (error={:?})", e);
                         println!("WARN: leaking sga");
@@ -258,15 +226,8 @@ impl Drop for Application {
     }
 }
 
-//======================================================================================================================
-
 fn main() -> Result<()> {
-    let args: ProgramArguments = ProgramArguments::new(
-        "udp-relay",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Relays UDP packets.",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => panic!("{:?}", e),
