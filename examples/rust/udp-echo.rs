@@ -64,7 +64,7 @@ const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct ProgramArguments {
-    local_addr: SocketAddr,
+    local_socket_addr: SocketAddr,
 }
 
 impl ProgramArguments {
@@ -83,22 +83,22 @@ impl ProgramArguments {
             .get_matches();
 
         let mut args: ProgramArguments = ProgramArguments {
-            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_IPV4_ADDR)?,
+            local_socket_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_IPV4_ADDR)?,
         };
 
         if let Some(addr) = matches.get_one::<String>("local") {
-            args.set_local_addr(addr)?;
+            args.set_local_socket_addr(addr)?;
         }
 
         Ok(args)
     }
 
-    pub fn get_local_addr(&self) -> SocketAddr {
-        self.local_addr
+    pub fn get_local_socket_addr(&self) -> SocketAddr {
+        self.local_socket_addr
     }
 
-    fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local_addr = SocketAddr::from_str(addr)?;
+    fn set_local_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.local_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
@@ -112,13 +112,13 @@ impl Application {
     const LOG_INTERVAL_SECONDS: u64 = 5;
 
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        let local_addr: SocketAddr = args.get_local_addr();
+        let local_socket_addr: SocketAddr = args.get_local_socket_addr();
         let sockqd: QDesc = match libos.socket(AF_INET_VALUE, SOCK_DGRAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        match libos.bind(sockqd, local_addr) {
+        match libos.bind(sockqd, local_socket_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -130,7 +130,7 @@ impl Application {
             },
         };
 
-        println!("Local Address: {:?}", local_addr);
+        println!("Local Address: {:?}", local_socket_addr);
 
         Ok(Self { libos, sockqd })
     }

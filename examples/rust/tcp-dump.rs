@@ -45,27 +45,16 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Local socket IPv4 address.
-    local: SocketAddr,
+    local_socket_addr: SocketAddr,
 }
 
-/// Associate functions for Program Arguments
 impl ProgramArguments {
-    /// Default local socket IPv4 address.
-    const DEFAULT_LOCAL: &'static str = "127.0.0.1:12345";
+    const DEFAULT_LOCAL_IPV4_ADDR: &'static str = "127.0.0.1:12345";
 
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("tcp-dump")
             .arg(
                 Arg::new("local")
                     .long("local")
@@ -76,61 +65,43 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
+            local_socket_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_IPV4_ADDR)?,
         };
 
-        // Local address.
         if let Some(addr) = matches.get_one::<String>("local") {
-            args.set_local_addr(addr)?;
+            args.set_local_socket_addr(addr)?;
         }
 
         Ok(args)
     }
 
-    /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddr {
-        self.local
+    pub fn get_local_socket_addr(&self) -> SocketAddr {
+        self.local_socket_addr
     }
 
-    /// Sets the local address and port number parameters in the target program arguments.
-    fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddr::from_str(addr)?;
+    fn set_local_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.local_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
 
-//======================================================================================================================
-// Application
-//======================================================================================================================
-
-/// Application
 struct Application {
-    /// Underlying libOS.
     libos: LibOS,
-    // Local socket descriptor.
     sockqd: QDesc,
 }
 
-/// Associated Functions for the Application
 impl Application {
-    /// Logging interval (in seconds).
-    const LOG_INTERVAL: u64 = 5;
+    const LOG_INTERVAL_SECONDS: u64 = 5;
 
-    /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        // Extract arguments.
-        let local: SocketAddr = args.get_local();
-
-        // Create TCP socket.
+        let local_socket_addr: SocketAddr = args.get_local_socket_addr();
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, local_socket_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -142,7 +113,6 @@ impl Application {
             },
         };
 
-        // Mark socket as a passive one.
         match libos.listen(sockqd, 16) {
             Ok(()) => (),
             Err(e) => {
@@ -155,19 +125,18 @@ impl Application {
             },
         }
 
-        println!("Local Address: {:?}", local);
+        println!("Local Address: {:?}", local_socket_addr);
 
         Ok(Self { libos, sockqd })
     }
 
-    /// Runs the target echo server.
     pub fn run(&mut self) -> Result<()> {
-        let start: Instant = Instant::now();
-        let mut nclients: usize = 0;
-        let mut nbytes: usize = 0;
+        let start_time: Instant = Instant::now();
+        let mut num_clients: usize = 0;
+        let mut num_bytes: usize = 0;
         let mut qtokens: Vec<QToken> = Vec::new();
-        let mut last_log: Instant = Instant::now();
-        let mut clients: Vec<QDesc> = Vec::default();
+        let mut last_log_time: Instant = Instant::now();
+        let mut client_qds: Vec<QDesc> = Vec::default();
 
         // Accept first connection.
         match self.libos.accept(self.sockqd) {
@@ -177,15 +146,15 @@ impl Application {
 
         loop {
             // Dump statistics.
-            if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
-                let elapsed: Duration = Instant::now() - start;
+            if last_log_time.elapsed() > Duration::from_secs(Self::LOG_INTERVAL_SECONDS) {
+                let elapsed_time: Duration = Instant::now() - start_time;
                 println!(
                     "nclients={:?} / {:?} B / {:?} us",
-                    nclients,
-                    nbytes,
-                    elapsed.as_micros()
+                    num_clients,
+                    num_bytes,
+                    elapsed_time.as_micros()
                 );
-                last_log = Instant::now();
+                last_log_time = Instant::now();
             }
 
             let qr: demi_qresult_t = match self.libos.wait_any(&qtokens, None) {
@@ -196,15 +165,14 @@ impl Application {
                 Err(e) => anyhow::bail!("operation failed: {:?}", e),
             };
 
-            // Drain packets.
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_ACCEPT => {
                     println!("connection accepted!");
-                    nclients += 1;
+                    num_clients += 1;
 
                     // Pop first packet from this connection.
                     let sockqd: QDesc = unsafe { qr.qr_value.ares.qd.into() };
-                    clients.push(sockqd);
+                    client_qds.push(sockqd);
                     match self.libos.pop(sockqd, None) {
                         Ok(qt) => qtokens.push(qt),
                         Err(e) => anyhow::bail!("failed to pop data from socket: {:?}", e),
@@ -220,7 +188,9 @@ impl Application {
                 demi_opcode_t::DEMI_OPC_POP => {
                     let sockqd: QDesc = qr.qr_qd.into();
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+
+                    num_bytes += sga.sga_segs[0].sgaseg_len as usize;
+
                     if let Err(e) = self.libos.sgafree(sga) {
                         println!("ERROR: sgafree() failed (error={:?})", e);
                         println!("WARN: leaking sga");
@@ -231,6 +201,7 @@ impl Application {
                         Ok(qt) => qt,
                         Err(e) => anyhow::bail!("failed to pop data from socket: {:?}", e),
                     };
+
                     qtokens.push(qt);
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("operation failed"),
@@ -253,15 +224,8 @@ impl Drop for Application {
     }
 }
 
-//======================================================================================================================
-
 fn main() -> Result<()> {
-    let args: ProgramArguments = ProgramArguments::new(
-        "tcp-dump",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Dumps incoming packets on a TCP port.",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),

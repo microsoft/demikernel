@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+// This program generates TCP packets at a specified rate.
+
 #![deny(clippy::all)]
 
 //======================================================================================================================
@@ -43,35 +45,20 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Remote socket IPv4 address.
-    remote: SocketAddr,
-    /// Buffer size (in bytes).
-    bufsize: usize,
-    /// Injection rate (in micro-seconds).
-    injection_rate: u64,
+    remote_socket_addr: SocketAddr,
+    bufsize_bytes: usize,
+    injection_rate_microseconds: u64,
 }
 
-/// Associate functions for Program Arguments
 impl ProgramArguments {
-    // Default buffer size.
-    const DEFAULT_BUFSIZE: usize = 1024;
-    // Default injection rate.
-    const DEFAULT_INJECTION_RATE: u64 = 100;
-    /// Default host address.
-    const DEFAULT_REMOTE: &'static str = "127.0.0.1:23456";
+    const DEFAULT_BUFSIZE_BYTES: usize = 1024;
+    const DEFAULT_INJECTION_RATE_MICROSECONDS: u64 = 100;
+    const DEFAULT_REMOTE_ADDR: &'static str = "127.0.0.1:23456";
 
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("tcp-pktgen")
             .arg(
                 Arg::new("remote")
                     .long("remote")
@@ -98,68 +85,58 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            remote: SocketAddr::from_str(Self::DEFAULT_REMOTE)?,
-            bufsize: Self::DEFAULT_BUFSIZE,
-            injection_rate: Self::DEFAULT_INJECTION_RATE,
+            remote_socket_addr: SocketAddr::from_str(Self::DEFAULT_REMOTE_ADDR)?,
+            bufsize_bytes: Self::DEFAULT_BUFSIZE_BYTES,
+            injection_rate_microseconds: Self::DEFAULT_INJECTION_RATE_MICROSECONDS,
         };
 
-        // Remote address.
         if let Some(addr) = matches.get_one::<String>("remote") {
-            args.set_remote_addr(addr)?;
+            args.set_remote_socket_addr(addr)?;
         }
 
-        // Buffer size.
-        if let Some(bufsize) = matches.get_one::<String>("bufsize") {
-            args.set_bufsize(bufsize)?;
+        if let Some(bufsize_bytes) = matches.get_one::<String>("bufsize") {
+            args.set_bufsize(bufsize_bytes)?;
         }
 
-        // Injection rate.
-        if let Some(injection_rate) = matches.get_one::<String>("injection_rate") {
-            args.set_injection_rate(injection_rate)?;
+        if let Some(injection_rate_microseconds) = matches.get_one::<String>("injection_rate") {
+            args.set_injection_rate(injection_rate_microseconds)?;
         }
 
         Ok(args)
     }
 
-    /// Returns the remote endpoint address parameter stored in the target program arguments.
-    pub fn get_remote(&self) -> SocketAddr {
-        self.remote
+    pub fn get_remote_socket_addr(&self) -> SocketAddr {
+        self.remote_socket_addr
     }
 
-    /// Returns the buffer size parameter stored in the target program arguments.
     pub fn get_bufsize(&self) -> usize {
-        self.bufsize
+        self.bufsize_bytes
     }
 
-    /// Returns the injection rate parameter stored in the target program arguments.
     pub fn get_injection_rate(&self) -> u64 {
-        self.injection_rate
+        self.injection_rate_microseconds
     }
 
-    /// Sets the remote address and port number parameters in the target program arguments.
-    fn set_remote_addr(&mut self, addr: &str) -> Result<()> {
-        self.remote = SocketAddr::from_str(addr)?;
+    fn set_remote_socket_addr(&mut self, addr: &str) -> Result<()> {
+        self.remote_socket_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 
-    /// Sets the buffer size parameter in the target program arguments.
-    fn set_bufsize(&mut self, bufsize_str: &str) -> Result<()> {
-        let bufsize: usize = bufsize_str.parse()?;
-        if bufsize > 0 {
-            self.bufsize = bufsize;
+    fn set_bufsize(&mut self, bufsize_bytes: &str) -> Result<()> {
+        let bufsize_bytes: usize = bufsize_bytes.parse()?;
+        if bufsize_bytes > 0 {
+            self.bufsize_bytes = bufsize_bytes;
             Ok(())
         } else {
             anyhow::bail!("invalid buffer size")
         }
     }
 
-    /// Sets the injection rate parameter in the target program arguments.
-    fn set_injection_rate(&mut self, injection_rate_str: &str) -> Result<()> {
-        let injection_rate: u64 = injection_rate_str.parse()?;
-        if injection_rate > 0 {
-            self.injection_rate = injection_rate;
+    fn set_injection_rate(&mut self, injection_rate_microseconds: &str) -> Result<()> {
+        let injection_rate_microseconds: u64 = injection_rate_microseconds.parse()?;
+        if injection_rate_microseconds > 0 {
+            self.injection_rate_microseconds = injection_rate_microseconds;
             Ok(())
         } else {
             anyhow::bail!("invalid injection rate")
@@ -167,35 +144,21 @@ impl ProgramArguments {
     }
 }
 
-//======================================================================================================================
-// Application
-//======================================================================================================================
-
-/// Application
 struct Application {
-    /// Underlying libOS.
     libos: LibOS,
-    // Local socket descriptor.
     sockqd: QDesc,
-    /// Buffer size.
-    bufsize: usize,
-    /// Injection rate
-    injection_rate: u64,
+    bufsize_bytes: usize,
+    injection_rate_microseconds: u64,
 }
 
-/// Associated Functions for the Application
 impl Application {
-    /// Logging interval (in seconds).
-    const LOG_INTERVAL: u64 = 5;
+    const LOG_INTERVAL_SECONDS: u64 = 5;
 
-    /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        // Extract arguments.
-        let remote: SocketAddr = args.get_remote();
-        let bufsize: usize = args.get_bufsize();
-        let injection_rate: u64 = args.get_injection_rate();
+        let remote_socket_addr: SocketAddr = args.get_remote_socket_addr();
+        let bufsize_bytes: usize = args.get_bufsize();
+        let injection_rate_microseconds: u64 = args.get_injection_rate();
 
-        // Create TCP socket.
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_STREAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => {
@@ -203,8 +166,7 @@ impl Application {
             },
         };
 
-        // Setup connection.
-        let qt: QToken = match libos.connect(sockqd, remote) {
+        let qt: QToken = match libos.connect(sockqd, remote_socket_addr) {
             Ok(qt) => qt,
             Err(e) => {
                 // If error, free socket.
@@ -215,6 +177,7 @@ impl Application {
                 anyhow::bail!("failed to connect socket: {:?}", e)
             },
         };
+
         match libos.wait(qt, None) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT => println!("connected!"),
             Ok(_) => {
@@ -235,33 +198,32 @@ impl Application {
             },
         }
 
-        println!("Remote Address: {:?}", remote);
+        println!("Remote Address: {:?}", remote_socket_addr);
 
         Ok(Self {
             libos,
             sockqd,
-            bufsize,
-            injection_rate,
+            bufsize_bytes,
+            injection_rate_microseconds,
         })
     }
 
-    /// Runs the target application.
     pub fn run(&mut self) -> Result<()> {
-        let mut nbytes: usize = 0;
-        let start: Instant = Instant::now();
-        let mut last_push: Instant = Instant::now();
-        let mut last_log: Instant = Instant::now();
+        let mut num_bytes: usize = 0;
+        let start_time: Instant = Instant::now();
+        let mut last_push_time: Instant = Instant::now();
+        let mut last_log_time: Instant = Instant::now();
 
         loop {
             // Dump statistics.
-            if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
-                let elapsed: Duration = Instant::now() - start;
-                println!("{:?} B / {:?} us", nbytes, elapsed.as_micros());
-                last_log = Instant::now();
+            if last_log_time.elapsed() > Duration::from_secs(Self::LOG_INTERVAL_SECONDS) {
+                let elapsed_time: Duration = Instant::now() - start_time;
+                println!("{:?} B / {:?} us", num_bytes, elapsed_time.as_micros());
+                last_log_time = Instant::now();
             }
 
-            if last_push.elapsed() > Duration::from_micros(self.injection_rate) {
-                let sga: demi_sgarray_t = self.mksga(self.bufsize, 0x65)?;
+            if last_push_time.elapsed() > Duration::from_micros(self.injection_rate_microseconds) {
+                let sga: demi_sgarray_t = self.mksga(self.bufsize_bytes, 0x65)?;
 
                 let qt: QToken = match self.libos.push(self.sockqd, &sga) {
                     Ok(qt) => qt,
@@ -291,27 +253,24 @@ impl Application {
                     },
                 };
 
-                nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                num_bytes += sga.sga_segs[0].sgaseg_len as usize;
                 if let Err(e) = self.libos.sgafree(sga) {
                     println!("ERROR: sgafree() failed (error={:?})", e);
                     println!("WARN: leaking sga");
                 }
 
-                last_push = Instant::now();
+                last_push_time = Instant::now();
             }
         }
     }
 
-    // Makes a scatter-gather array.
     fn mksga(&mut self, size: usize, value: u8) -> Result<demi_sgarray_t> {
-        // Allocate scatter-gather array.
         let sga: demi_sgarray_t = match self.libos.sgaalloc(size) {
             Ok(sga) => sga,
             Err(e) => anyhow::bail!("failed to allocate scatter-gather array: {:?}", e),
         };
 
-        // Ensure that scatter-gather array has the requested size.
-        // If error, free scatter-gather array.
+        // Ensure that allocated array has the requested size.
         if sga.sga_segs[0].sgaseg_len as usize != size {
             if let Err(e) = self.libos.sgafree(sga) {
                 println!("ERROR: sgafree() failed (error={:?})", e);
@@ -325,7 +284,7 @@ impl Application {
             );
         }
 
-        // Fill in scatter-gather array.
+        // Fill in the array.
         let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
         let len: usize = sga.sga_segs[0].sgaseg_len as usize;
         let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
@@ -348,16 +307,8 @@ impl Drop for Application {
     }
 }
 
-//======================================================================================================================
-
-/// Drives the application.
 fn main() -> Result<()> {
-    let args: ProgramArguments = ProgramArguments::new(
-        "tcp-pktgen",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Generates TCP traffic",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => anyhow::bail!("{:?}", e),
