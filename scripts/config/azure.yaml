@@ -5,7 +5,8 @@ demikernel:
   local_ipv4_addr: XX.XX.XX.XX
   local_link_addr: "ff:ff:ff:ff:ff:ff"
 raw_socket:
-  interface_name: "abcde"
+  linux_interface_name: "abcde"
+  xdp_interface_index: 0
 dpdk:
   eal_init: ["-c", "0xff", "-n", "4", "-a", "WW:WW.W", "--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=abcde"]
 tcp_socket_options:
