@@ -60,29 +60,18 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 // Constants
 //======================================================================================================================
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Local socket IPv4 address.
-    local: SocketAddr,
+    local_addr: SocketAddr,
 }
 
-/// Associate functions for Program Arguments
 impl ProgramArguments {
-    /// Default local address.
-    const DEFAULT_LOCAL: &'static str = "127.0.0.1:12345";
+    const DEFAULT_LOCAL_IPV4_ADDR: &'static str = "127.0.0.1:12345";
 
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("udp-echo")
             .arg(
                 Arg::new("local")
                     .long("local")
@@ -93,12 +82,10 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
+            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_IPV4_ADDR)?,
         };
 
-        // Local address.
         if let Some(addr) = matches.get_one::<String>("local") {
             args.set_local_addr(addr)?;
         }
@@ -106,48 +93,32 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddr {
-        self.local
+    pub fn get_local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
-    /// Sets the local address and port number parameters in the target program arguments.
     fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddr::from_str(addr)?;
+        self.local_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
 
-//======================================================================================================================
-// Application
-//======================================================================================================================
-
-/// Application
 struct Application {
-    /// Underlying libOS.
     libos: LibOS,
-    // Local socket descriptor.
     sockqd: QDesc,
 }
 
-/// Associated Functions for the Application
 impl Application {
-    /// Logging interval (in seconds).
-    const LOG_INTERVAL: u64 = 5;
+    const LOG_INTERVAL_SECONDS: u64 = 5;
 
-    /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        // Extract arguments.
-        let local: SocketAddr = args.get_local();
-
-        // Create UDP socket.
+        let local_addr: SocketAddr = args.get_local_addr();
         let sockqd: QDesc = match libos.socket(AF_INET_VALUE, SOCK_DGRAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, local_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -159,17 +130,16 @@ impl Application {
             },
         };
 
-        println!("Local Address: {:?}", local);
+        println!("Local Address: {:?}", local_addr);
 
         Ok(Self { libos, sockqd })
     }
 
-    /// Runs the target echo server.
     pub fn run(&mut self) -> Result<()> {
-        let mut nbytes: usize = 0;
-        let start: Instant = Instant::now();
+        let mut num_bytes: usize = 0;
+        let start_time: Instant = Instant::now();
         let mut qtokens: Vec<QToken> = Vec::new();
-        let mut last_log: Instant = Instant::now();
+        let mut last_log_time: Instant = Instant::now();
 
         // Pop first packet.
         let qt: QToken = match self.libos.pop(self.sockqd, None) {
@@ -180,13 +150,13 @@ impl Application {
 
         loop {
             // Dump statistics.
-            if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
-                let elapsed: Duration = Instant::now() - start;
-                println!("{:?} B / {:?} us", nbytes, elapsed.as_micros());
-                last_log = Instant::now();
+            if last_log_time.elapsed() > Duration::from_secs(Self::LOG_INTERVAL_SECONDS) {
+                let elapsed: Duration = Instant::now() - start_time;
+                println!("{:?} B / {:?} us", num_bytes, elapsed.as_micros());
+                last_log_time = Instant::now();
             }
 
-            let (i, qr) = match self.libos.wait_any(&qtokens, Some(DEFAULT_TIMEOUT)) {
+            let (i, qr) = match self.libos.wait_any(&qtokens, Some(TIMEOUT_SECONDS)) {
                 Ok((i, qr)) => (i, qr),
                 Err(e) => anyhow::bail!("operation failed: {:?}", e),
             };
@@ -209,7 +179,7 @@ impl Application {
                             anyhow::bail!("could not parse sockaddr: {}", e)
                         },
                     };
-                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    num_bytes += sga.sga_segs[0].sgaseg_len as usize;
                     // Push packet back.
                     let qt: QToken = match self.libos.pushto(sockqd, &sga, saddr) {
                         Ok(qt) => qt,
@@ -245,7 +215,6 @@ impl Application {
     }
 
     #[cfg(target_os = "linux")]
-    /// Converts a [sockaddr] into a [SocketAddrV4].
     pub fn sockaddr_to_socketaddrv4(saddr: *const libc::sockaddr) -> Result<SocketAddrV4> {
         // TODO: Change the logic below and rename this function once we support V6 addresses as well.
         let sin: libc::sockaddr_in =
@@ -259,7 +228,6 @@ impl Application {
     }
 
     #[cfg(target_os = "windows")]
-    /// Converts a [sockaddr] into a [SocketAddrV4].
     pub fn sockaddr_to_socketaddrv4(saddr: *const SOCKADDR) -> Result<SocketAddrV4> {
         // TODO: Change the logic below and rename this function once we support V6 addresses as well.
 
@@ -286,17 +254,8 @@ impl Drop for Application {
     }
 }
 
-//======================================================================================================================
-// Main
-//======================================================================================================================
-
 fn main() -> Result<()> {
-    let args: ProgramArguments = ProgramArguments::new(
-        "udp-echo",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Echoes UDP packets.",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => panic!("{:?}", e),

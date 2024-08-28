@@ -42,27 +42,16 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 struct ProgramArguments {
-    /// Local socket IPv4 address.
-    local: SocketAddr,
+    local_addr: SocketAddr,
 }
 
-/// Associate functions for Program Arguments
 impl ProgramArguments {
-    /// Default local address.
-    const DEFAULT_LOCAL: &'static str = "127.0.0.1:12345";
+    const DEFAULT_LOCAL_IPV4_ADDR: &'static str = "127.0.0.1:12345";
 
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("udp-dump")
             .arg(
                 Arg::new("local")
                     .long("local")
@@ -73,12 +62,10 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Default arguments.
         let mut args: ProgramArguments = ProgramArguments {
-            local: SocketAddr::from_str(Self::DEFAULT_LOCAL)?,
+            local_addr: SocketAddr::from_str(Self::DEFAULT_LOCAL_IPV4_ADDR)?,
         };
 
-        // Local address.
         if let Some(addr) = matches.get_one::<String>("local") {
             args.set_local_addr(addr)?;
         }
@@ -86,48 +73,32 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    /// Returns the local endpoint address parameter stored in the target program arguments.
-    pub fn get_local(&self) -> SocketAddr {
-        self.local
+    pub fn get_local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
-    /// Sets the local address and port number parameters in the target program arguments.
     fn set_local_addr(&mut self, addr: &str) -> Result<()> {
-        self.local = SocketAddr::from_str(addr)?;
+        self.local_addr = SocketAddr::from_str(addr)?;
         Ok(())
     }
 }
 
-//======================================================================================================================
-// Application
-//======================================================================================================================
-
-/// Application
 struct Application {
-    /// Underlying libOS.
     libos: LibOS,
-    /// Local socket descriptor.
     sockqd: QDesc,
 }
 
-/// Associated Functions for the Application
 impl Application {
-    /// Logging interval (in seconds).
-    const LOG_INTERVAL: u64 = 5;
+    const LOG_INTERVAL_SECONDS: u64 = 5;
 
-    /// Instantiates the application.
     pub fn new(mut libos: LibOS, args: &ProgramArguments) -> Result<Self> {
-        // Extract arguments.
-        let local: SocketAddr = args.get_local();
-
-        // Create UDP socket.
+        let local_addr: SocketAddr = args.get_local_addr();
         let sockqd: QDesc = match libos.socket(AF_INET, SOCK_DGRAM, 0) {
             Ok(sockqd) => sockqd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
         };
 
-        // Bind to local address.
-        match libos.bind(sockqd, local) {
+        match libos.bind(sockqd, local_addr) {
             Ok(()) => (),
             Err(e) => {
                 // If error, close socket.
@@ -139,23 +110,22 @@ impl Application {
             },
         };
 
-        println!("Local Address: {:?}", local);
+        println!("Local Address: {:?}", local_addr);
 
         Ok(Self { libos, sockqd })
     }
 
-    /// Runs the target application.
     pub fn run(&mut self) -> Result<()> {
-        let start: Instant = Instant::now();
-        let mut nbytes: usize = 0;
-        let mut last_log: Instant = Instant::now();
+        let start_time: Instant = Instant::now();
+        let mut num_bytes: usize = 0;
+        let mut last_log_time: Instant = Instant::now();
 
         loop {
             // Dump statistics.
-            if last_log.elapsed() > Duration::from_secs(Self::LOG_INTERVAL) {
-                let elapsed: Duration = Instant::now() - start;
-                println!("{:?} B / {:?} us", nbytes, elapsed.as_micros());
-                last_log = Instant::now();
+            if last_log_time.elapsed() > Duration::from_secs(Self::LOG_INTERVAL_SECONDS) {
+                let elapsed_time: Duration = Instant::now() - start_time;
+                println!("{:?} B / {:?} us", num_bytes, elapsed_time.as_micros());
+                last_log_time = Instant::now();
             }
 
             // Drain packets.
@@ -166,7 +136,7 @@ impl Application {
             match self.libos.wait(qt, None) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
-                    nbytes += sga.sga_segs[0].sgaseg_len as usize;
+                    num_bytes += sga.sga_segs[0].sgaseg_len as usize;
                     if let Err(e) = self.libos.sgafree(sga) {
                         println!("ERROR: sgafree() failed (error={:?})", e);
                         println!("WARN: leaking sga");
@@ -178,6 +148,7 @@ impl Application {
         }
     }
 }
+
 //======================================================================================================================
 // Trait Implementations
 //======================================================================================================================
@@ -191,16 +162,8 @@ impl Drop for Application {
     }
 }
 
-//======================================================================================================================
-
-/// Drives the application.
 fn main() -> Result<()> {
-    let args: ProgramArguments = ProgramArguments::new(
-        "udp-dump",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Dumps incoming packets on a UDP port.",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let libos_name: LibOSName = match LibOSName::from_env() {
         Ok(libos_name) => libos_name.into(),
         Err(e) => panic!("{:?}", e),
