@@ -13,31 +13,18 @@ use clap::{
 };
 use std::net::SocketAddr;
 
-//======================================================================================================================
-// Program Arguments
-//======================================================================================================================
-
-/// Program Arguments
 #[derive(Debug)]
 pub struct ProgramArguments {
-    /// Run mode.
     run_mode: String,
-    /// Socket address.
-    addr: SocketAddr,
-    /// Number of clients
-    nclients: Option<usize>,
-    /// Peer type.
+    socket_addr: SocketAddr,
+    num_clients: Option<usize>,
     peer_type: Option<String>,
-    /// Who closes sockets?
     who_closes: Option<String>,
 }
 
 impl ProgramArguments {
-    /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("tcp-close")
             .arg(
                 Arg::new("addr")
                     .long("address")
@@ -80,35 +67,31 @@ impl ProgramArguments {
             )
             .get_matches();
 
-        // Run mode.
         let run_mode: String = matches
             .get_one::<String>("run-mode")
             .ok_or(anyhow::anyhow!("missing run mode"))?
             .to_string();
 
-        // Socket address.
-        let addr: SocketAddr = {
+        let socket_addr: SocketAddr = {
             let addr: &String = matches.get_one::<String>("addr").expect("missing address");
             addr.parse()?
         };
 
         let mut args: ProgramArguments = Self {
             run_mode,
-            addr,
-            nclients: None,
+            socket_addr,
+            num_clients: None,
             peer_type: None,
             who_closes: None,
         };
 
-        // Number of clients.
-        if let Some(nclients) = matches.get_one::<usize>("nclients") {
-            if *nclients == 0 {
+        if let Some(num_clients) = matches.get_one::<usize>("nclients") {
+            if *num_clients == 0 {
                 anyhow::bail!("invalid nclients");
             }
-            args.nclients = Some(*nclients);
+            args.num_clients = Some(*num_clients);
         }
 
-        // Peer type.
         if let Some(peer_type) = matches.get_one::<String>("peer") {
             if peer_type != "server" && peer_type != "client" {
                 anyhow::bail!("invalid peer type");
@@ -116,7 +99,6 @@ impl ProgramArguments {
             args.peer_type = Some(peer_type.to_string());
         }
 
-        // Who closes the sockets.
         if let Some(who_closes) = matches.get_one::<String>("whocloses") {
             if who_closes != "server" && who_closes != "client" {
                 anyhow::bail!("invalid whocloses type");
@@ -127,28 +109,23 @@ impl ProgramArguments {
         Ok(args)
     }
 
-    /// Returns the `addr` command line argument.
-    pub fn addr(&self) -> SocketAddr {
-        self.addr
+    pub fn get_socket_addr(&self) -> SocketAddr {
+        self.socket_addr
     }
 
-    /// Returns the `nclients` command line argument.
-    pub fn nclients(&self) -> Option<usize> {
-        self.nclients
+    pub fn get_num_clients(&self) -> Option<usize> {
+        self.num_clients
     }
 
-    /// Returns the `peer_type` command line argument.
-    pub fn peer_type(&self) -> Option<String> {
+    pub fn get_peer_type(&self) -> Option<String> {
         self.peer_type.clone()
     }
 
-    /// Returns the `peer_type` command line argument.
-    pub fn who_closes(&self) -> Option<String> {
+    pub fn get_who_closes(&self) -> Option<String> {
         self.who_closes.clone()
     }
 
-    /// Returns the `run_mode` command line argument.
-    pub fn run_mode(&self) -> String {
+    pub fn get_run_mode(&self) -> String {
         self.run_mode.clone()
     }
 }

@@ -1,13 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+// This program is a client that tests the TCP close operation. It can run in two modes: 1) sequential, 2) concurrent.
+// Within each mode, it can run in two variations: 1) client closes the sockets right after connecting, 2) expecting the
+// server to close the sockets.
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
 use crate::{
     helper_functions,
-    DEFAULT_TIMEOUT,
+    TIMEOUT_SECONDS,
 };
 use anyhow::Result;
 use demikernel::{
@@ -48,18 +52,12 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 // Structures
 //======================================================================================================================
 
-/// TCP Client
 pub struct TcpClient {
-    /// Underlying libOS.
     libos: LibOS,
-    /// Address of remote peer.
-    remote: SocketAddr,
-    /// Open queue descriptors.
-    qds: HashSet<QDesc>,
-    /// Number of clients that established a connection.
-    clients_connected: usize,
-    /// Number of clients that closed their connection.
-    clients_closed: usize,
+    remote_socket_addr: SocketAddr,
+    open_qds: HashSet<QDesc>,
+    num_connected_clients: usize,
+    num_closed_clients: usize,
 }
 
 //======================================================================================================================
@@ -67,32 +65,23 @@ pub struct TcpClient {
 //======================================================================================================================
 
 impl TcpClient {
-    /// Creates a new TCP client.
-    pub fn new(libos: LibOS, remote: SocketAddr) -> Result<Self> {
-        println!("Connecting to: {:?}", remote);
+    pub fn new(libos: LibOS, remote_socket_addr: SocketAddr) -> Result<Self> {
+        println!("Connecting to: {:?}", remote_socket_addr);
         Ok(Self {
             libos,
-            remote,
-            qds: HashSet::<QDesc>::default(),
-            clients_connected: 0,
-            clients_closed: 0,
+            remote_socket_addr,
+            open_qds: HashSet::<QDesc>::default(),
+            num_connected_clients: 0,
+            num_closed_clients: 0,
         })
     }
 
-    /// Attempts to close several connections sequentially.
-    pub fn run_sequential(&mut self, nclients: usize) -> Result<()> {
-        // Open several connections.
-        for i in 0..nclients {
-            // Create TCP socket.
-            let qd: QDesc = self.issue_socket()?;
+    pub fn run_sequential(&mut self, num_clients: usize) -> Result<()> {
+        for i in 0..num_clients {
+            let qd: QDesc = self.create_and_register_socket()?;
+            let qt: QToken = self.libos.connect(qd, self.remote_socket_addr)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, Some(TIMEOUT_SECONDS))?;
 
-            // Connect TCP socket.
-            let qt: QToken = self.libos.connect(qd, self.remote)?;
-
-            // Wait for connection to be established.
-            let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
-
-            // Parse result.
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
                     println!("{} clients connected", i + 1);
@@ -111,47 +100,42 @@ impl TcpClient {
         Ok(())
     }
 
-    /// Attempts to close several connections concurrently.
-    pub fn run_concurrent(&mut self, nclients: usize) -> Result<()> {
-        let mut qts: Vec<QToken> = Vec::default();
-        let mut qts_reverse: HashMap<QToken, QDesc> = HashMap::default();
+    pub fn run_concurrent(&mut self, num_clients: usize) -> Result<()> {
+        let mut qtokens: Vec<QToken> = Vec::default();
+        let mut qtokens_reverse: HashMap<QToken, QDesc> = HashMap::default();
 
-        // Open several connections.
-        for _ in 0..nclients {
-            // Create TCP socket.
-            let qd: QDesc = self.issue_socket()?;
+        for _ in 0..num_clients {
+            let qd: QDesc = self.create_and_register_socket()?;
+            let qt: QToken = self.libos.connect(qd, self.remote_socket_addr)?;
 
-            // Connect TCP socket.
-            let qt: QToken = self.libos.connect(qd, self.remote)?;
-            qts_reverse.insert(qt, qd);
-            qts.push(qt);
+            qtokens_reverse.insert(qt, qd);
+            qtokens.push(qt);
         }
 
         // Wait for all connections to be established.
         loop {
             // Stop when enough connections were closed.
-            if self.clients_closed >= nclients {
+            if self.num_closed_clients >= num_clients {
                 break;
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, Some(DEFAULT_TIMEOUT))?;
-                let qt: QToken = qts.remove(index);
-                qts_reverse
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qtokens, Some(TIMEOUT_SECONDS))?;
+                let qt: QToken = qtokens.remove(index);
+                qtokens_reverse
                     .remove(&qt)
                     .ok_or(anyhow::anyhow!("unregistered queue token"))?;
                 qr
             };
 
-            // Parse result.
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
                     let qd: QDesc = qr.qr_qd.into();
 
-                    self.clients_connected += 1;
-                    println!("{} clients connected", self.clients_connected);
+                    self.num_connected_clients += 1;
+                    println!("{} clients connected", self.num_connected_clients);
 
-                    self.clients_closed += 1;
+                    self.num_closed_clients += 1;
                     self.issue_close_and_deregister_qd(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
@@ -166,14 +150,11 @@ impl TcpClient {
         Ok(())
     }
 
-    /// Attempts to close several connections sequentially with the expectation
-    /// that the server will close sockets.
-    pub fn run_sequential_expecting_server_to_close_sockets(&mut self, nclients: usize) -> Result<()> {
-        for i in 0..nclients {
-            // Connect to the server and wait.
-            let qd: QDesc = self.issue_socket()?;
-            let qt: QToken = self.libos.connect(qd, self.remote)?;
-            let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
+    pub fn run_sequential_expecting_server_to_close_sockets(&mut self, num_clients: usize) -> Result<()> {
+        for i in 0..num_clients {
+            let qd: QDesc = self.create_and_register_socket()?;
+            let qt: QToken = self.libos.connect(qd, self.remote_socket_addr)?;
+            let qr: demi_qresult_t = self.libos.wait(qt, Some(TIMEOUT_SECONDS))?;
 
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
@@ -181,7 +162,7 @@ impl TcpClient {
 
                     // Pop immediately after connect and wait.
                     let pop_qt: QToken = self.libos.pop(qd, None)?;
-                    let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, Some(DEFAULT_TIMEOUT))?;
+                    let pop_qr: demi_qresult_t = self.libos.wait(pop_qt, Some(TIMEOUT_SECONDS))?;
 
                     match pop_qr.qr_opcode {
                         demi_opcode_t::DEMI_OPC_POP => {
@@ -221,26 +202,24 @@ impl TcpClient {
         Ok(())
     }
 
-    /// Attempts to make several connections concurrently.
     pub fn run_concurrent_expecting_server_to_close_sockets(&mut self, num_clients: usize) -> Result<()> {
         let mut qts: Vec<QToken> = Vec::default();
 
-        // Create several TCP sockets and connect.
         for _i in 0..num_clients {
-            let qd: QDesc = self.issue_socket()?;
-            let qt: QToken = self.libos.connect(qd, self.remote)?;
+            let qd: QDesc = self.create_and_register_socket()?;
+            let qt: QToken = self.libos.connect(qd, self.remote_socket_addr)?;
             qts.push(qt);
         }
 
         // Wait for all connections to be established and then closed by the server.
         loop {
-            if self.clients_closed == num_clients {
+            if self.num_closed_clients == num_clients {
                 // Stop when enough connections were closed.
                 break;
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, Some(DEFAULT_TIMEOUT))?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qts, Some(TIMEOUT_SECONDS))?;
                 let _qt: QToken = qts.remove(index);
                 qr
             };
@@ -248,8 +227,8 @@ impl TcpClient {
             match qr.qr_opcode {
                 demi_opcode_t::DEMI_OPC_CONNECT => {
                     let qd: QDesc = qr.qr_qd.into();
-                    self.clients_connected += 1;
-                    println!("{} clients connected", self.clients_connected);
+                    self.num_connected_clients += 1;
+                    println!("{} clients connected", self.num_connected_clients);
                     // pop immediately after connect.
                     let pop_qt: QToken = self.libos.pop(qd, None)?;
                     qts.push(pop_qt);
@@ -266,7 +245,7 @@ impl TcpClient {
                     );
 
                     println!("server disconnected (pop returned 0 len buffer)");
-                    self.clients_closed += 1;
+                    self.num_closed_clients += 1;
                     self.issue_close_and_deregister_qd(qr.qr_qd.into())?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
@@ -277,7 +256,7 @@ impl TcpClient {
                         "server should have had closed the connection, but it has not"
                     );
                     println!("server disconnected (ECONNRESET)");
-                    self.clients_closed += 1;
+                    self.num_closed_clients += 1;
                     self.issue_close_and_deregister_qd(qr.qr_qd.into())?;
                 },
                 qr_opcode => {
@@ -290,16 +269,16 @@ impl TcpClient {
     }
 
     /// Issues an open socket() operation and registers the queue descriptor for cleanup.
-    fn issue_socket(&mut self) -> Result<QDesc> {
+    fn create_and_register_socket(&mut self) -> Result<QDesc> {
         let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-        self.qds.insert(qd);
+        self.open_qds.insert(qd);
         Ok(qd)
     }
 
     /// Issues the close() and wait() operations, and deregisters the queue descriptor.
     fn issue_close_and_deregister_qd(&mut self, qd: QDesc) -> Result<()> {
         helper_functions::close_and_wait(&mut self.libos, qd)?;
-        self.qds.remove(&qd);
+        self.open_qds.remove(&qd);
         Ok(())
     }
 }
@@ -309,9 +288,8 @@ impl TcpClient {
 //======================================================================================================================
 
 impl Drop for TcpClient {
-    // Releases all resources allocated to a pipe client.
     fn drop(&mut self) {
-        for qd in self.qds.clone().drain() {
+        for qd in self.open_qds.clone().drain() {
             if let Err(e) = self.issue_close_and_deregister_qd(qd) {
                 println!("ERROR: close() failed (error={:?}", e);
                 println!("WARN: leaking qd={:?}", qd);
