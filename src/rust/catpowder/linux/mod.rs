@@ -17,11 +17,8 @@ use crate::{
     demikernel::config::Config,
     expect_ok,
     inetstack::protocols::{
-        ethernet2::Ethernet2Header,
-        layer1::{
-            PacketBuf,
-            PhysicalLayer,
-        },
+        layer1::PhysicalLayer,
+        layer2::Ethernet2Header,
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -70,6 +67,25 @@ pub struct LinuxRuntime {
 
 /// Associate Functions for Linux Runtime
 impl LinuxRuntime {
+    /// Instantiates a Linux Runtime.
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        let mac_addr: [u8; 6] = [0; 6];
+        let ifindex: i32 = match Self::get_ifindex(&config.local_interface_name()?) {
+            Ok(ifindex) => ifindex,
+            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse ifindex")),
+        };
+        let socket: RawSocket = RawSocket::new()?;
+        let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
+        socket.bind(&sockaddr)?;
+
+        Ok(Self {
+            link_addr: config.local_link_addr()?,
+            ipv4_addr: config.local_ipv4_addr()?,
+            ifindex,
+            socket: SharedObject::<RawSocket>::new(socket),
+        })
+    }
+
     /// Gets the interface index of the network interface named `ifname`.
     fn get_ifindex(ifname: &str) -> Result<i32, ParseIntError> {
         let path: String = format!("/sys/class/net/{}/ifindex", ifname);
@@ -135,47 +151,20 @@ impl Runtime for LinuxRuntime {}
 
 /// Network Runtime Trait Implementation for Linux Runtime
 impl PhysicalLayer for LinuxRuntime {
-    /// Instantiates a Linux Runtime.
-    fn new(config: &Config) -> Result<Self, Fail> {
-        let mac_addr: [u8; 6] = [0; 6];
-        let ifindex: i32 = match Self::get_ifindex(&config.local_interface_name()?) {
-            Ok(ifindex) => ifindex,
-            Err(_) => return Err(Fail::new(libc::EINVAL, "could not parse ifindex")),
-        };
-        let socket: RawSocket = RawSocket::new()?;
-        let sockaddr: RawSocketAddr = RawSocketAddr::new(ifindex, &mac_addr);
-        socket.bind(&sockaddr)?;
-
-        Ok(Self {
-            link_addr: config.local_link_addr()?,
-            ipv4_addr: config.local_ipv4_addr()?,
-            ifindex,
-            socket: SharedObject::<RawSocket>::new(socket),
-        })
-    }
-
     /// Transmits a single [PacketBuf].
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
-        let buf: DemiBuffer = match pkt.take_body() {
-            Some(body) => body,
-            _ => {
-                let cause = format!("No body in PacketBuf to transmit");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            },
-        };
-        let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        let (header, _) = Ethernet2Header::parse(pkt.clone()).unwrap();
         let dest_addr_arr: [u8; 6] = header.dst_addr().to_array();
         let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
 
         // Send packet.
-        match self.socket.sendto(&buf, &dest_sockaddr) {
+        match self.socket.sendto(&pkt, &dest_sockaddr) {
             // Operation succeeded.
-            Ok(size) if size == buf.len() => Ok(()),
+            Ok(size) if size == pkt.len() => Ok(()),
             Ok(size) => {
                 let cause = format!(
                     "Incorrect number of bytes sent: packet_size={:?} sent={:?}",
-                    buf.len(),
+                    pkt.len(),
                     size
                 );
                 warn!("{}", cause);

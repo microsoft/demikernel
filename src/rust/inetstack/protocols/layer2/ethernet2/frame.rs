@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 use crate::{
-    inetstack::protocols::ethernet2::EtherType2,
+    inetstack::protocols::layer2::EtherType2,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,

@@ -8,8 +8,8 @@
 use crate::{
     inetstack::protocols::{
         arp::packet::ArpHeader,
-        ethernet2::Ethernet2Header,
         layer1::PacketBuf,
+        layer2::Ethernet2Header,
     },
     runtime::{
         fail::Fail,

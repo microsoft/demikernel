@@ -8,13 +8,13 @@
 use crate::{
     inetstack::{
         protocols::{
-            ethernet2::{
-                EtherType2,
-                Ethernet2Header,
-            },
             ip::IpProtocol,
             ipv4::Ipv4Header,
             layer1::PacketBuf,
+            layer2::{
+                EtherType2,
+                Ethernet2Header,
+            },
             tcp::segment::{
                 TcpHeader,
                 TcpOptions2,
@@ -33,7 +33,7 @@ use crate::{
                 SharedEngine,
                 DEFAULT_TIMEOUT,
             },
-            runtime::SharedTestRuntime,
+            physical_layer::SharedTestPhysicalLayer,
         },
     },
     runtime::{
@@ -221,7 +221,7 @@ impl Simulation {
     ) -> Result<Simulation> {
         let now: Instant = Instant::now();
 
-        let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
+        let test_rig: SharedTestPhysicalLayer = SharedTestPhysicalLayer::new_test(now);
         let local: SharedEngine = SharedEngine::new(test_helpers::ALICE_CONFIG_PATH, test_rig, now)?;
 
         info!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
@@ -880,7 +880,7 @@ impl Simulation {
         let segment: TcpSegment = self.build_tcp_segment(&tcp_packet);
 
         let buf: DemiBuffer = Self::serialize_packet(segment);
-        self.engine.receive(buf)?;
+        self.engine.push_frame(buf);
 
         self.engine.poll();
         Ok(())
@@ -891,7 +891,7 @@ impl Simulation {
         let datagram: UdpDatagram = self.build_udp_datagram(&udp_packet);
 
         let buf: DemiBuffer = Self::serialize_packet(datagram);
-        self.engine.receive(buf)?;
+        self.engine.push_frame(buf);
 
         self.engine.poll();
         Ok(())

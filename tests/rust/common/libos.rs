@@ -56,7 +56,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1);
 // Structures
 //======================================================================================================================
 
-pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>);
+pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack>);
 
 //======================================================================================================================
 // Associate Functions
@@ -71,7 +71,7 @@ impl DummyLibOS {
 
         logging::initialize();
         let transport = SharedInetStack::new_test(&config, runtime.clone(), network)?;
-        Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedDummyRuntime>>::new(
+        Ok(Self(SharedNetworkLibOS::<SharedInetStack>::new(
             config.local_ipv4_addr()?,
             runtime,
             transport,
@@ -128,7 +128,7 @@ impl DummyLibOS {
 //======================================================================================================================
 
 impl Deref for DummyLibOS {
-    type Target = SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>;
+    type Target = SharedNetworkLibOS<SharedInetStack>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

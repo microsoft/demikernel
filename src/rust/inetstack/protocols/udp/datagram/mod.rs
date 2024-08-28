@@ -9,9 +9,9 @@ mod header;
 
 use crate::{
     inetstack::protocols::{
-        ethernet2::Ethernet2Header,
         ipv4::Ipv4Header,
         layer1::PacketBuf,
+        layer2::Ethernet2Header,
     },
     runtime::{
         fail::Fail,
@@ -91,12 +91,12 @@ mod test {
     use self::header::UDP_HEADER_SIZE;
     use crate::{
         inetstack::protocols::{
-            ethernet2::{
+            ip::IpProtocol,
+            ipv4::IPV4_HEADER_MIN_SIZE,
+            layer2::{
                 EtherType2,
                 ETHERNET2_HEADER_SIZE,
             },
-            ip::IpProtocol,
-            ipv4::IPV4_HEADER_MIN_SIZE,
             udp::datagram::*,
         },
         runtime::network::types::MacAddress,

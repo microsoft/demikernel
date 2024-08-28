@@ -13,17 +13,18 @@ use crate::{
                 ArpMessage,
                 ArpOperation,
             },
-            ethernet2::{
+            layer1::PacketBuf,
+            layer2::{
                 EtherType2,
                 Ethernet2Header,
             },
-            layer1::PacketBuf,
         },
         test_helpers::{
             self,
             SharedEngine,
-            SharedTestRuntime,
+            SharedTestPhysicalLayer,
         },
+        SharedInetStack,
     },
     runtime::{
         memory::DemiBuffer,
@@ -73,7 +74,7 @@ fn arp_immediate_reply() -> Result<()> {
     let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
-    engine.receive(buf)?;
+    engine.push_frame(buf);
 
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
@@ -114,7 +115,7 @@ fn arp_no_reply() -> Result<()> {
     let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
-    engine.receive(buf)?;
+    engine.push_frame(buf);
 
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
@@ -143,7 +144,7 @@ fn arp_cache_update() -> Result<()> {
     let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
-    engine.receive(buf)?;
+    engine.push_frame(buf);
 
     // Move clock forward and poll the engine.
     now += Duration::from_micros(1);
@@ -181,8 +182,8 @@ fn arp_cache_timeout() -> Result<()> {
     let mut now: Instant = Instant::now();
     let other_remote_ipv4: Ipv4Addr = test_helpers::CARRIE_IPV4;
     let mut engine: SharedEngine = new_engine(now, test_helpers::ALICE_CONFIG_PATH)?;
-
-    let coroutine = Box::pin(engine.clone().arp_query(other_remote_ipv4).fuse());
+    let mut inetstack: SharedInetStack = engine.get_transport();
+    let coroutine = Box::pin(async move { inetstack.arp_query(other_remote_ipv4).await }.fuse());
     let qt: QToken = engine.get_runtime().clone().insert_coroutine("arp query", coroutine)?;
     engine.poll();
     engine.poll();
@@ -236,6 +237,6 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
 
 /// Creates a new engine.
 fn new_engine(now: Instant, config_path: &str) -> Result<SharedEngine> {
-    let test_rig: SharedTestRuntime = SharedTestRuntime::new_test(now);
-    Ok(SharedEngine::new(config_path, test_rig, now)?)
+    let layer1_endpoint: SharedTestPhysicalLayer = SharedTestPhysicalLayer::new_test(now);
+    Ok(SharedEngine::new(config_path, layer1_endpoint, now)?)
 }

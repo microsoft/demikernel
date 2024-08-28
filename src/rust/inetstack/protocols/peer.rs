@@ -13,7 +13,7 @@ use crate::{
         icmpv4::SharedIcmpv4Peer,
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        layer1::PhysicalLayer,
+        layer2::SharedLayer2Endpoint,
         tcp::{
             socket::SharedTcpSocket,
             SharedTcpPeer,
@@ -48,36 +48,36 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct Peer<N: PhysicalLayer> {
+pub struct Peer {
     local_ipv4_addr: Ipv4Addr,
-    icmpv4: SharedIcmpv4Peer<N>,
-    tcp: SharedTcpPeer<N>,
-    udp: SharedUdpPeer<N>,
+    icmpv4: SharedIcmpv4Peer,
+    tcp: SharedTcpPeer,
+    udp: SharedUdpPeer,
 }
 
 /// Socket Representation.
 #[derive(Clone)]
-pub enum Socket<N: PhysicalLayer> {
-    Tcp(SharedTcpSocket<N>),
-    Udp(SharedUdpSocket<N>),
+pub enum Socket {
+    Tcp(SharedTcpSocket),
+    Udp(SharedUdpSocket),
 }
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Peer<N> {
+impl Peer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        transport: N,
-        arp: SharedArpPeer<N>,
+        layer2_endpoint: SharedLayer2Endpoint,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let udp: SharedUdpPeer<N> = SharedUdpPeer::<N>::new(config, runtime.clone(), transport.clone(), arp.clone())?;
-        let icmpv4: SharedIcmpv4Peer<N> =
-            SharedIcmpv4Peer::<N>::new(config, runtime.clone(), transport.clone(), arp.clone(), rng_seed)?;
-        let tcp: SharedTcpPeer<N> = SharedTcpPeer::<N>::new(config, runtime.clone(), transport.clone(), arp, rng_seed)?;
+        let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer2_endpoint.clone(), arp.clone())?;
+        let icmpv4: SharedIcmpv4Peer =
+            SharedIcmpv4Peer::new(config, runtime.clone(), layer2_endpoint.clone(), arp.clone(), rng_seed)?;
+        let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer2_endpoint.clone(), arp, rng_seed)?;
 
         Ok(Peer {
             local_ipv4_addr: config.local_ipv4_addr()?,
@@ -119,7 +119,7 @@ impl<N: PhysicalLayer> Peer<N> {
         self.local_ipv4_addr
     }
 
-    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket<N>, Fail> {
+    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
         // TODO: Remove this once we support Ipv6.
         if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
@@ -132,7 +132,7 @@ impl<N: PhysicalLayer> Peer<N> {
     }
 
     /// Set an SO_* option on the socket.
-    pub fn set_socket_option(&mut self, sd: &mut Socket<N>, option: SocketOption) -> Result<(), Fail> {
+    pub fn set_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.set_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -145,7 +145,7 @@ impl<N: PhysicalLayer> Peer<N> {
 
     /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
     /// [option].
-    pub fn get_socket_option(&mut self, sd: &mut Socket<N>, option: SocketOption) -> Result<SocketOption, Fail> {
+    pub fn get_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<SocketOption, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.get_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -156,7 +156,7 @@ impl<N: PhysicalLayer> Peer<N> {
         }
     }
 
-    pub fn getpeername(&mut self, sd: &mut Socket<N>) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, sd: &mut Socket) -> Result<SocketAddrV4, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.getpeername(socket),
             Socket::Udp(_) => {
@@ -178,7 +178,7 @@ impl<N: PhysicalLayer> Peer<N> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, sd: &mut Socket<N>, local: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, sd: &mut Socket, local: SocketAddr) -> Result<(), Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let local: SocketAddrV4 = unwrap_socketaddr(local)?;
 
@@ -204,7 +204,7 @@ impl<N: PhysicalLayer> Peer<N> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn listen(&mut self, sd: &mut Socket<N>, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sd: &mut Socket, backlog: usize) -> Result<(), Fail> {
         trace!("listen() backlog={:?}", backlog);
 
         // FIXME: https://github.com/demikernel/demikernel/issues/584
@@ -234,7 +234,7 @@ impl<N: PhysicalLayer> Peer<N> {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn accept(&mut self, sd: &mut Socket<N>) -> Result<(Socket<N>, SocketAddr), Fail> {
+    pub async fn accept(&mut self, sd: &mut Socket) -> Result<(Socket, SocketAddr), Fail> {
         trace!("accept()");
 
         // Search for target queue descriptor.
@@ -265,7 +265,7 @@ impl<N: PhysicalLayer> Peer<N> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn connect(&mut self, sd: &mut Socket<N>, remote: SocketAddr) -> Result<(), Fail> {
+    pub async fn connect(&mut self, sd: &mut Socket, remote: SocketAddr) -> Result<(), Fail> {
         trace!("connect(): remote={:?}", remote);
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
@@ -287,7 +287,7 @@ impl<N: PhysicalLayer> Peer<N> {
     /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
-    pub async fn close(&mut self, sd: &mut Socket<N>) -> Result<(), Fail> {
+    pub async fn close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.close(socket).await,
             Socket::Udp(socket) => self.udp.close(socket).await,
@@ -295,7 +295,7 @@ impl<N: PhysicalLayer> Peer<N> {
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
-    pub fn hard_close(&mut self, sd: &mut Socket<N>) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.hard_close(socket),
             Socket::Udp(socket) => self.udp.hard_close(socket),
@@ -303,12 +303,7 @@ impl<N: PhysicalLayer> Peer<N> {
     }
 
     /// Pushes a buffer to a TCP socket.
-    pub async fn push(
-        &mut self,
-        sd: &mut Socket<N>,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-    ) -> Result<(), Fail> {
+    pub async fn push(&mut self, sd: &mut Socket, buf: &mut DemiBuffer, addr: Option<SocketAddr>) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.push(socket, buf).await,
             Socket::Udp(socket) => self.udp.push(socket, buf, addr).await,
@@ -317,7 +312,7 @@ impl<N: PhysicalLayer> Peer<N> {
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
     /// allocated by the application.
-    pub async fn pop(&mut self, sd: &mut Socket<N>, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+    pub async fn pop(&mut self, sd: &mut Socket, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.pop(socket, size).await,
             Socket::Udp(socket) => self.udp.pop(socket, size).await,
@@ -326,12 +321,12 @@ impl<N: PhysicalLayer> Peer<N> {
 }
 
 #[cfg(test)]
-impl<N: PhysicalLayer> Peer<N> {
-    pub fn tcp_mss(&self, socket: &SharedTcpSocket<N>) -> Result<usize, Fail> {
+impl Peer {
+    pub fn tcp_mss(&self, socket: &SharedTcpSocket) -> Result<usize, Fail> {
         socket.remote_mss()
     }
 
-    pub fn tcp_rto(&self, socket: &SharedTcpSocket<N>) -> Result<Duration, Fail> {
+    pub fn tcp_rto(&self, socket: &SharedTcpSocket) -> Result<Duration, Fail> {
         socket.current_rto()
     }
 }

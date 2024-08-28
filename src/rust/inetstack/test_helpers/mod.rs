@@ -2,9 +2,9 @@
 // Licensed under the MIT license.
 
 pub mod engine;
-pub mod runtime;
+pub mod physical_layer;
 pub use engine::SharedEngine;
-pub use runtime::SharedTestRuntime;
+pub use physical_layer::SharedTestPhysicalLayer;
 
 use crate::MacAddress;
 use ::std::{
@@ -31,11 +31,11 @@ pub const CARRIE_CONFIG_PATH: &str = "./src/rust/inetstack/test_helpers/carrie.y
 //======================================================================================================================
 
 pub fn new_bob(now: Instant) -> SharedEngine {
-    let network: SharedTestRuntime = SharedTestRuntime::new_test(now);
+    let network: SharedTestPhysicalLayer = SharedTestPhysicalLayer::new_test(now);
     SharedEngine::new(BOB_CONFIG_PATH, network, now).unwrap()
 }
 
 pub fn new_carrie(now: Instant) -> SharedEngine {
-    let network = SharedTestRuntime::new_test(now);
+    let network = SharedTestPhysicalLayer::new_test(now);
     SharedEngine::new(CARRIE_CONFIG_PATH, network, now).unwrap()
 }

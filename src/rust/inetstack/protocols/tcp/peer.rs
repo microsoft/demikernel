@@ -10,7 +10,7 @@ use crate::{
     inetstack::protocols::{
         arp::SharedArpPeer,
         ipv4::Ipv4Header,
-        layer1::PhysicalLayer,
+        layer2::SharedLayer2Endpoint,
         tcp::{
             isn_generator::IsnGenerator,
             segment::TcpHeader,
@@ -61,42 +61,42 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct TcpPeer<N: PhysicalLayer> {
+pub struct TcpPeer {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    transport: N,
+    layer2_endpoint: SharedLayer2Endpoint,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
     default_socket_options: TcpSocketOptions,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
-    addresses: HashMap<SocketId, SharedTcpSocket<N>>,
+    addresses: HashMap<SocketId, SharedTcpSocket>,
 }
 
 #[derive(Clone)]
-pub struct SharedTcpPeer<N: PhysicalLayer>(SharedObject<TcpPeer<N>>);
+pub struct SharedTcpPeer(SharedObject<TcpPeer>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedTcpPeer<N> {
+impl SharedTcpPeer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        transport: N,
-        arp: SharedArpPeer<N>,
+        layer2_endpoint: SharedLayer2Endpoint,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
         let (tx, _) = mpsc::unbounded();
-        Ok(Self(SharedObject::<TcpPeer<N>>::new(TcpPeer {
+        Ok(Self(SharedObject::<TcpPeer>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
-            transport,
+            layer2_endpoint,
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             tcp_config: TcpConfig::new(config)?,
@@ -104,15 +104,15 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
             arp,
             rng,
             dead_socket_tx: tx,
-            addresses: HashMap::<SocketId, SharedTcpSocket<N>>::new(),
+            addresses: HashMap::<SocketId, SharedTcpSocket>::new(),
         })))
     }
 
     /// Creates a TCP socket.
-    pub fn socket(&mut self) -> Result<SharedTcpSocket<N>, Fail> {
-        Ok(SharedTcpSocket::<N>::new(
+    pub fn socket(&mut self) -> Result<SharedTcpSocket, Fail> {
+        Ok(SharedTcpSocket::new(
             self.runtime.clone(),
-            self.transport.clone(),
+            self.layer2_endpoint.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
             self.default_socket_options.clone(),
@@ -122,26 +122,26 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     /// Sets an option on a TCP socket.
-    pub fn set_socket_option(&mut self, socket: &mut SharedTcpSocket<N>, option: SocketOption) -> Result<(), Fail> {
+    pub fn set_socket_option(&mut self, socket: &mut SharedTcpSocket, option: SocketOption) -> Result<(), Fail> {
         socket.set_socket_option(option)
     }
 
     /// Sets an option on a TCP socket.
     pub fn get_socket_option(
         &mut self,
-        socket: &mut SharedTcpSocket<N>,
+        socket: &mut SharedTcpSocket,
         option: SocketOption,
     ) -> Result<SocketOption, Fail> {
         socket.get_socket_option(option)
     }
 
     /// Gets a peer address on a TCP socket.
-    pub fn getpeername(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, socket: &mut SharedTcpSocket) -> Result<SocketAddrV4, Fail> {
         socket.getpeername()
     }
 
     /// Binds a socket to a local address supplied by [local].
-    pub fn bind(&mut self, socket: &mut SharedTcpSocket<N>, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, socket: &mut SharedTcpSocket, local: SocketAddrV4) -> Result<(), Fail> {
         // All other checks should have been done already.
         debug_assert!(!Ipv4Addr::is_unspecified(local.ip()));
         debug_assert!(local.port() != 0);
@@ -154,7 +154,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     // Marks the target socket as passive.
-    pub fn listen(&mut self, socket: &mut SharedTcpSocket<N>, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, socket: &mut SharedTcpSocket, backlog: usize) -> Result<(), Fail> {
         // Most checks should have been performed already
         debug_assert!(socket.local().is_some());
         let nonce: u32 = self.rng.gen();
@@ -162,7 +162,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     /// Runs until a new connection is accepted.
-    pub async fn accept(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<SharedTcpSocket<N>, Fail> {
+    pub async fn accept(&mut self, socket: &mut SharedTcpSocket) -> Result<SharedTcpSocket, Fail> {
         // Wait for accept to complete.
         match socket.accept().await {
             Ok(socket) => {
@@ -177,7 +177,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     /// Runs until the connect to remote is made or times out.
-    pub async fn connect(&mut self, socket: &mut SharedTcpSocket<N>, remote: SocketAddrV4) -> Result<(), Fail> {
+    pub async fn connect(&mut self, socket: &mut SharedTcpSocket, remote: SocketAddrV4) -> Result<(), Fail> {
         // Check whether we need to allocate an ephemeral port.
         let local: SocketAddrV4 = match socket.local() {
             Some(addr) => {
@@ -215,7 +215,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     /// Pushes immediately to the socket and returns the result asynchronously.
-    pub async fn push(&self, socket: &mut SharedTcpSocket<N>, buf: &mut DemiBuffer) -> Result<(), Fail> {
+    pub async fn push(&self, socket: &mut SharedTcpSocket, buf: &mut DemiBuffer) -> Result<(), Fail> {
         // TODO: Remove this copy after merging with the transport trait.
         // Wait for push to complete.
         socket.push(buf.clone()).await?;
@@ -225,7 +225,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     /// Sets up a coroutine for popping data from the socket.
     pub async fn pop(
         &self,
-        socket: &mut SharedTcpSocket<N>,
+        socket: &mut SharedTcpSocket,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -253,7 +253,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
     }
 
     /// Closes a TCP socket.
-    pub async fn close(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<(), Fail> {
+    pub async fn close(&mut self, socket: &mut SharedTcpSocket) -> Result<(), Fail> {
         // Wait for close to complete.
         // Handle result: If unsuccessful, free the new queue descriptor.
         if let Some(socket_id) = socket.close().await? {
@@ -263,7 +263,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
         Ok(())
     }
 
-    pub fn hard_close(&mut self, socket: &mut SharedTcpSocket<N>) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, socket: &mut SharedTcpSocket) -> Result<(), Fail> {
         if let Some(socket_id) = socket.hard_close()? {
             self.addresses.remove(&socket_id);
             self.free_ephemeral_port(&socket_id);
@@ -293,7 +293,7 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
         }
 
         // Retrieve the queue descriptor based on the incoming segment.
-        let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
+        let socket: &mut SharedTcpSocket = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
             Some(socket) => socket,
             None => match self.addresses.get_mut(&SocketId::Passive(local)) {
                 Some(socket) => socket,
@@ -314,15 +314,15 @@ impl<N: PhysicalLayer> SharedTcpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedTcpPeer<N> {
-    type Target = TcpPeer<N>;
+impl Deref for SharedTcpPeer {
+    type Target = TcpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedTcpPeer<N> {
+impl DerefMut for SharedTcpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
