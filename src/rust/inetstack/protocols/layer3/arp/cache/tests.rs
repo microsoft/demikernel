@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::inetstack::{
-    protocols::arp::cache::*,
+    protocols::layer3::arp::cache::*,
     test_helpers,
 };
 use ::anyhow::Result;

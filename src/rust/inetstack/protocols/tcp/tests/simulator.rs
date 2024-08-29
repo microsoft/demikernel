@@ -8,12 +8,14 @@
 use crate::{
     inetstack::{
         protocols::{
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
             layer2::{
                 packet::PacketBuf,
                 EtherType2,
                 Ethernet2Header,
+            },
+            layer3::{
+                ip::IpProtocol,
+                ipv4::Ipv4Header,
             },
             tcp::segment::{
                 TcpHeader,

@@ -4,11 +4,13 @@
 use crate::{
     expect_ok,
     inetstack::protocols::{
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
         layer2::{
             packet::PacketBuf,
             MIN_PAYLOAD_SIZE,
+        },
+        layer3::{
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
         },
         tcp::SeqNumber,
         MAX_HEADER_SIZE,

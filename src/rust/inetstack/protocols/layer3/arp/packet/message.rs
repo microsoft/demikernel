@@ -7,8 +7,8 @@
 
 use crate::{
     inetstack::protocols::{
-        arp::packet::ArpHeader,
         layer2::packet::PacketBuf,
+        layer3::arp::packet::ArpHeader,
         MAX_HEADER_SIZE,
     },
     runtime::{

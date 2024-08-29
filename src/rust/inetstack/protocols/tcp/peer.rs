@@ -8,9 +8,11 @@
 use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
-        arp::SharedArpPeer,
-        ipv4::Ipv4Header,
         layer2::SharedLayer2Endpoint,
+        layer3::{
+            arp::SharedArpPeer,
+            ipv4::Ipv4Header,
+        },
         tcp::{
             isn_generator::IsnGenerator,
             segment::TcpHeader,

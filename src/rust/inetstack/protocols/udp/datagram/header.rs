@@ -7,8 +7,10 @@
 
 use crate::{
     inetstack::protocols::{
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
+        layer3::{
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
+        },
         MAX_HEADER_SIZE,
     },
     runtime::{

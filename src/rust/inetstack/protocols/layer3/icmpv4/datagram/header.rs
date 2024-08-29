@@ -9,7 +9,7 @@ use crate::{
     inetstack::protocols::{
         compute_generic_checksum,
         fold16,
-        icmpv4::datagram::Icmpv4Type2,
+        layer3::icmpv4::datagram::Icmpv4Type2,
     },
     runtime::{
         fail::Fail,
