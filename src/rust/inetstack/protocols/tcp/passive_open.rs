@@ -15,13 +15,15 @@ use crate::{
     },
     expect_some,
     inetstack::protocols::{
-        arp::SharedArpPeer,
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
         layer2::{
             packet::PacketBuf,
             EtherType2,
             SharedLayer2Endpoint,
+        },
+        layer3::{
+            arp::SharedArpPeer,
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
         },
         tcp::{
             constants::FALLBACK_MSS,

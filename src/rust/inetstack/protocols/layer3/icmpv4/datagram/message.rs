@@ -7,9 +7,11 @@
 
 use crate::{
     inetstack::protocols::{
-        icmpv4::datagram::Icmpv4Header,
-        ipv4::Ipv4Header,
         layer2::packet::PacketBuf,
+        layer3::{
+            icmpv4::datagram::Icmpv4Header,
+            ipv4::Ipv4Header,
+        },
     },
     runtime::{
         fail::Fail,

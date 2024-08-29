@@ -9,8 +9,8 @@ mod header;
 
 use crate::{
     inetstack::protocols::{
-        ipv4::Ipv4Header,
         layer2::packet::PacketBuf,
+        layer3::ipv4::Ipv4Header,
     },
     runtime::{
         fail::Fail,
@@ -85,8 +85,10 @@ impl PacketBuf for UdpDatagram {
 mod test {
     use self::header::UDP_HEADER_SIZE;
     use crate::inetstack::protocols::{
-        ip::IpProtocol,
-        ipv4::IPV4_HEADER_MIN_SIZE,
+        layer3::{
+            ip::IpProtocol,
+            ipv4::IPV4_HEADER_MIN_SIZE,
+        },
         udp::datagram::*,
     };
     use ::anyhow::Result;

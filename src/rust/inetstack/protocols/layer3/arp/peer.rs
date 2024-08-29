@@ -6,18 +6,18 @@ use crate::{
     demikernel::config::Config,
     expect_ok,
     inetstack::protocols::{
-        arp::{
+        layer2::{
+            packet::PacketBuf,
+            EtherType2,
+            SharedLayer2Endpoint,
+        },
+        layer3::arp::{
             cache::ArpCache,
             packet::{
                 ArpHeader,
                 ArpMessage,
                 ArpOperation,
             },
-        },
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
         },
     },
     runtime::{

@@ -8,13 +8,15 @@
 use crate::{
     collections::async_queue::AsyncQueue,
     inetstack::protocols::{
-        arp::SharedArpPeer,
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
         layer2::{
             packet::PacketBuf,
             EtherType2,
             SharedLayer2Endpoint,
+        },
+        layer3::{
+            arp::SharedArpPeer,
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
         },
         udp::{
             datagram::UdpDatagram,

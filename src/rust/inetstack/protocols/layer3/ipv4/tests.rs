@@ -7,7 +7,7 @@
 
 use crate::{
     inetstack::{
-        protocols::{
+        protocols::layer3::{
             ip::IpProtocol,
             ipv4::Ipv4Header,
         },

@@ -8,15 +8,15 @@
 use crate::{
     inetstack::{
         protocols::{
-            arp::packet::{
-                ArpHeader,
-                ArpMessage,
-                ArpOperation,
-            },
             layer2::{
                 packet::PacketBuf,
                 EtherType2,
                 Ethernet2Header,
+            },
+            layer3::arp::packet::{
+                ArpHeader,
+                ArpMessage,
+                ArpOperation,
             },
         },
         test_helpers::{

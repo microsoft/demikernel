@@ -11,8 +11,8 @@ use crate::{
     collections::async_queue::SharedAsyncQueue,
     inetstack::{
         protocols::{
-            ipv4::Ipv4Header,
             layer2::SharedLayer2Endpoint,
+            layer3::ipv4::Ipv4Header,
             tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::ctrlblk::SharedControlBlock,

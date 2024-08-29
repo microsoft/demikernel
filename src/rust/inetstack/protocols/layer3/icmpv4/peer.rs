@@ -5,19 +5,21 @@ use crate::{
     collections::async_queue::AsyncQueue,
     demikernel::config::Config,
     inetstack::protocols::{
-        arp::SharedArpPeer,
-        icmpv4::datagram::{
-            self,
-            Icmpv4Header,
-            Icmpv4Message,
-            Icmpv4Type2,
-        },
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
         layer2::{
             packet::PacketBuf,
             EtherType2,
             SharedLayer2Endpoint,
+        },
+        layer3::{
+            arp::SharedArpPeer,
+            icmpv4::datagram::{
+                self,
+                Icmpv4Header,
+                Icmpv4Message,
+                Icmpv4Type2,
+            },
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
         },
     },
     runtime::{

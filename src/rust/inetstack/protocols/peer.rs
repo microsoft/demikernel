@@ -9,11 +9,13 @@ use crate::{
     demikernel::config::Config,
     expect_some,
     inetstack::protocols::{
-        arp::SharedArpPeer,
-        icmpv4::SharedIcmpv4Peer,
-        ip::IpProtocol,
-        ipv4::Ipv4Header,
         layer2::SharedLayer2Endpoint,
+        layer3::{
+            arp::SharedArpPeer,
+            icmpv4::SharedIcmpv4Peer,
+            ip::IpProtocol,
+            ipv4::Ipv4Header,
+        },
         tcp::{
             socket::SharedTcpSocket,
             SharedTcpPeer,

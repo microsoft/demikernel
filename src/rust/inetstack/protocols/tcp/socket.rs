@@ -10,8 +10,8 @@ use crate::{
     expect_some,
     inetstack::{
         protocols::{
-            ipv4::Ipv4Header,
             layer2::SharedLayer2Endpoint,
+            layer3::ipv4::Ipv4Header,
             tcp::{
                 active_open::SharedActiveOpenSocket,
                 established::EstablishedSocket,

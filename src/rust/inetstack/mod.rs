@@ -11,8 +11,8 @@ use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
     inetstack::protocols::{
-        arp::SharedArpPeer,
         layer2::EtherType2,
+        layer3::arp::SharedArpPeer,
         peer::{
             Peer,
             Socket,

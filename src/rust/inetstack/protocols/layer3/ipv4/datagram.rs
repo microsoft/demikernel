@@ -7,7 +7,7 @@
 
 use crate::{
     expect_ok,
-    inetstack::protocols::ip::IpProtocol,
+    inetstack::protocols::layer3::ip::IpProtocol,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
