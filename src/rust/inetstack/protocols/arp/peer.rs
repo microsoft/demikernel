@@ -14,11 +14,11 @@ use crate::{
                 ArpOperation,
             },
         },
-        ethernet2::{
+        layer2::{
             EtherType2,
             Ethernet2Header,
+            SharedLayer2Endpoint,
         },
-        layer1::PhysicalLayer,
     },
     runtime::{
         conditional_yield_with_timeout,
@@ -65,8 +65,8 @@ use ::std::{
 ///
 /// Arp Peer
 ///
-pub struct ArpPeer<N: PhysicalLayer> {
-    network: N,
+pub struct ArpPeer {
+    layer2_endpoint: SharedLayer2Endpoint,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
@@ -76,17 +76,21 @@ pub struct ArpPeer<N: PhysicalLayer> {
 }
 
 #[derive(Clone)]
-pub struct SharedArpPeer<N: PhysicalLayer>(SharedObject<ArpPeer<N>>);
+pub struct SharedArpPeer(SharedObject<ArpPeer>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedArpPeer<N> {
+impl SharedArpPeer {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
-    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+    pub fn new(
+        config: &Config,
+        mut runtime: SharedDemiRuntime,
+        layer2_endpoint: SharedLayer2Endpoint,
+    ) -> Result<Self, Fail> {
         let arp_config: ArpConfig = ArpConfig::new(config)?;
         let cache: ArpCache = ArpCache::new(
             runtime.get_now(),
@@ -95,8 +99,8 @@ impl<N: PhysicalLayer> SharedArpPeer<N> {
             arp_config.get_disable_arp(),
         );
 
-        let peer: SharedArpPeer<N> = Self(SharedObject::<ArpPeer<N>>::new(ArpPeer {
-            network,
+        let peer: SharedArpPeer = Self(SharedObject::new(ArpPeer {
+            layer2_endpoint,
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             cache,
@@ -240,7 +244,7 @@ impl<N: PhysicalLayer> SharedArpPeer<N> {
                         },
                     };
                     debug!("Responding {:?}", reply);
-                    if let Err(e) = self.network.transmit(reply) {
+                    if let Err(e) = self.layer2_endpoint.transmit(reply) {
                         // Ignore for now because the other end will retry.
                         // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
                         // FIXME: https://github.com/microsoft/demikernel/issues/1365
@@ -278,13 +282,13 @@ impl<N: PhysicalLayer> SharedArpPeer<N> {
                 ipv4_addr,
             ),
         )?;
-        let mut peer: SharedArpPeer<N> = self.clone();
+        let mut peer: SharedArpPeer = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                if let Err(e) = self.network.transmit(msg.clone()) {
+                if let Err(e) = self.layer2_endpoint.transmit(msg.clone()) {
                     warn!("Could not send packet: {:?}", e);
                     continue;
                 }
@@ -320,15 +324,15 @@ impl<N: PhysicalLayer> SharedArpPeer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedArpPeer<N> {
-    type Target = ArpPeer<N>;
+impl Deref for SharedArpPeer {
+    type Target = ArpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedArpPeer<N> {
+impl DerefMut for SharedArpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

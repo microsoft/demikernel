@@ -16,13 +16,13 @@ use crate::{
     expect_some,
     inetstack::protocols::{
         arp::SharedArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        layer1::PhysicalLayer,
+        layer2::{
+            EtherType2,
+            Ethernet2Header,
+            SharedLayer2Endpoint,
+        },
         tcp::{
             constants::FALLBACK_MSS,
             established::{
@@ -88,22 +88,22 @@ enum State {
     Closed,
 }
 
-pub struct PassiveSocket<N: PhysicalLayer> {
+pub struct PassiveSocket {
     // TCP Connection State.
     state: SharedAsyncValue<State>,
     connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
-    ready: AsyncQueue<Result<EstablishedSocket<N>, Fail>>,
+    ready: AsyncQueue<Result<EstablishedSocket, Fail>>,
     max_backlog: usize,
     isn_generator: IsnGenerator,
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    transport: N,
+    layer2_endpoint: SharedLayer2Endpoint,
     tcp_config: TcpConfig,
     // We do not use these right now, but will in the future.
     socket_options: TcpSocketOptions,
     local_link_addr: MacAddress,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 
     background_task_qt: Option<QToken>,
@@ -111,38 +111,38 @@ pub struct PassiveSocket<N: PhysicalLayer> {
 }
 
 #[derive(Clone)]
-pub struct SharedPassiveSocket<N: PhysicalLayer>(SharedObject<PassiveSocket<N>>);
+pub struct SharedPassiveSocket(SharedObject<PassiveSocket>);
 
 //======================================================================================================================
 // Associated Function
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedPassiveSocket<N> {
+impl SharedPassiveSocket {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
         mut runtime: SharedDemiRuntime,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
-        transport: N,
+        layer2_endpoint: SharedLayer2Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         local_link_addr: MacAddress,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
         let socket_queue: SharedAsyncQueue<SocketAddrV4> = SharedAsyncQueue::<SocketAddrV4>::default();
-        let mut me: Self = Self(SharedObject::<PassiveSocket<N>>::new(PassiveSocket {
+        let mut me: Self = Self(SharedObject::<PassiveSocket>::new(PassiveSocket {
             state: SharedAsyncValue::new(State::Listening),
             connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
-            ready: AsyncQueue::<Result<EstablishedSocket<N>, Fail>>::default(),
+            ready: AsyncQueue::<Result<EstablishedSocket, Fail>>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
             local_link_addr,
             runtime: runtime.clone(),
-            transport,
+            layer2_endpoint,
             tcp_config,
             socket_options: default_socket_options,
             arp,
@@ -162,7 +162,7 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
     }
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
-    pub async fn do_accept(&mut self) -> Result<EstablishedSocket<N>, Fail> {
+    pub async fn do_accept(&mut self) -> Result<EstablishedSocket, Fail> {
         self.ready.pop(None).await?
     }
 
@@ -334,7 +334,7 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
         };
 
         // Send it.
-        if let Err(e) = self.transport.transmit(segment) {
+        if let Err(e) = self.layer2_endpoint.transmit(segment) {
             warn!("Could not send RST: {:?}", e);
         }
     }
@@ -442,7 +442,7 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
             None,
             self.tcp_config.get_rx_checksum_offload(),
         )?;
-        self.transport.transmit(segment)
+        self.layer2_endpoint.transmit(segment)
     }
 
     async fn wait_for_ack(
@@ -455,7 +455,7 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
         header_window_size: u16,
         remote_window_scale: Option<u8>,
         mss: usize,
-    ) -> Result<EstablishedSocket<N>, Fail> {
+    ) -> Result<EstablishedSocket, Fail> {
         let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(None).await?;
         debug!("Received ACK: {:?}", tcp_hdr);
 
@@ -507,11 +507,11 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
             recv_queue.push((ipv4_hdr, tcp_hdr, buf));
         }
 
-        let new_socket: EstablishedSocket<N> = EstablishedSocket::<N>::new(
+        let new_socket: EstablishedSocket = EstablishedSocket::new(
             self.local,
             remote,
             self.runtime.clone(),
-            self.transport.clone(),
+            self.layer2_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
             self.local_link_addr,
@@ -540,15 +540,15 @@ impl<N: PhysicalLayer> SharedPassiveSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedPassiveSocket<N> {
-    type Target = PassiveSocket<N>;
+impl Deref for SharedPassiveSocket {
+    type Target = PassiveSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedPassiveSocket<N> {
+impl DerefMut for SharedPassiveSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

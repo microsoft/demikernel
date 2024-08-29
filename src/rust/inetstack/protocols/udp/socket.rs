@@ -9,13 +9,13 @@ use crate::{
     collections::async_queue::AsyncQueue,
     inetstack::protocols::{
         arp::SharedArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        layer1::PhysicalLayer,
+        layer2::{
+            EtherType2,
+            Ethernet2Header,
+            SharedLayer2Endpoint,
+        },
         udp::{
             datagram::UdpDatagram,
             UdpHeader,
@@ -63,36 +63,36 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// Per-queue metadata for a UDP socket.
-pub struct UdpSocket<N: PhysicalLayer> {
+pub struct UdpSocket {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
     local_link_addr: MacAddress,
-    network: N,
+    layer2_endpoint: SharedLayer2Endpoint,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     checksum_offload: bool,
 }
 #[derive(Clone)]
-pub struct SharedUdpSocket<N: PhysicalLayer>(SharedObject<UdpSocket<N>>);
+pub struct SharedUdpSocket(SharedObject<UdpSocket>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedUdpSocket<N> {
+impl SharedUdpSocket {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
         local_link_addr: MacAddress,
-        network: N,
-        arp: SharedArpPeer<N>,
+        layer2_endpoint: SharedLayer2Endpoint,
+        arp: SharedArpPeer,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::new(UdpSocket::<N> {
+        Ok(Self(SharedObject::new(UdpSocket {
             local_ipv4_addr,
             bound: None,
             local_link_addr,
-            network,
+            layer2_endpoint,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
             arp,
             checksum_offload,
@@ -130,7 +130,7 @@ impl<N: PhysicalLayer> SharedUdpSocket<N> {
             buf,
             self.checksum_offload,
         )?;
-        self.network.transmit(datagram)
+        self.layer2_endpoint.transmit(datagram)
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
@@ -176,21 +176,21 @@ impl<N: PhysicalLayer> SharedUdpSocket<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedUdpSocket<N> {
-    type Target = UdpSocket<N>;
+impl Deref for SharedUdpSocket {
+    type Target = UdpSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedUdpSocket<N> {
+impl DerefMut for SharedUdpSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: PhysicalLayer> Debug for SharedUdpSocket<N> {
+impl Debug for SharedUdpSocket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "UDP socket local={:?} remote={:?}", self.local(), self.remote())
     }

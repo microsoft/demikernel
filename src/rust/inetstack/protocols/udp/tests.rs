@@ -106,8 +106,8 @@ fn udp_push_pop() -> Result<()> {
     };
     now += Duration::from_micros(1);
 
-    // Receive data from Bob.
-    carrie.receive(bob.pop_frame()).unwrap();
+    // Take a packet from Bob and deliver to Carrie.
+    carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
 
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
@@ -158,8 +158,8 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
 
     now += Duration::from_micros(1);
 
-    // Receive data from Bob.
-    carrie.receive(bob.pop_frame()).unwrap();
+    // Take a packet from Bob and deliver to Carrie.
+    carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
     let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
         match carrie.wait(carrie_qt, DEFAULT_TIMEOUT)? {
@@ -207,8 +207,8 @@ fn udp_ping_pong() -> Result<()> {
     };
     now += Duration::from_micros(1);
 
-    // Receive data from Bob.
-    carrie.receive(bob.pop_frame()).unwrap();
+    // Take a packet from Bob and deliver to Carrie.
+    carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
     carrie.poll();
 
@@ -233,8 +233,8 @@ fn udp_ping_pong() -> Result<()> {
     carrie.poll();
     now += Duration::from_micros(1);
 
-    // Receive data from Carrie.
-    bob.receive(carrie.pop_frame()).unwrap();
+    // Take a packet from Carrie and deliver to Bob.
+    bob.push_frame(carrie.pop_frame());
     let bob_qt: QToken = bob.udp_pop(bob_fd)?;
     let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
         (_, OperationResult::Pop(addr, buf)) => (addr, buf),
@@ -343,8 +343,8 @@ fn udp_loop2_push_pop() -> Result<()> {
 
         now += Duration::from_micros(1);
 
-        // Receive data from Bob.
-        carrie.receive(bob.pop_frame()).unwrap();
+        // Take a packet from Bob and deliver to Carrie.
+        carrie.push_frame(bob.pop_frame());
         let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
         let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
             match carrie.wait(carrie_qt, DEFAULT_TIMEOUT)? {
@@ -408,8 +408,8 @@ fn udp_loop2_ping_pong() -> Result<()> {
 
         now += Duration::from_micros(1);
 
-        // Receive data from Bob.
-        carrie.receive(bob.pop_frame()).unwrap();
+        // Take a packet from Bob and deliver to Carrie.
+        carrie.push_frame(bob.pop_frame());
         let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
         let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
             match carrie.wait(carrie_qt, DEFAULT_TIMEOUT)? {
@@ -432,8 +432,8 @@ fn udp_loop2_ping_pong() -> Result<()> {
 
         now += Duration::from_micros(1);
 
-        // Receive data from Carrie.
-        bob.receive(carrie.pop_frame()).unwrap();
+        // Take a packet from Carrie and deliver to Bob.
+        bob.push_frame(carrie.pop_frame());
         let bob_qt: QToken = bob.udp_pop(bob_fd)?;
         let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
             match bob.wait(bob_qt, DEFAULT_TIMEOUT)? {
@@ -561,10 +561,10 @@ fn udp_pop_not_bound() -> Result<()> {
 
     now += Duration::from_micros(1);
 
-    // Receive data from Bob.
+    // Take a packet from Bob and deliver to Carrie.
     // TODO: check that Carrie drops this packet.
     // FIXME: https://github.com/microsoft/demikernel/issues/1065
-    carrie.receive(bob.pop_frame())?;
+    carrie.push_frame(bob.pop_frame());
     // Close peers.
     bob.udp_close(bob_fd)?;
     // Carrie does not have a socket.

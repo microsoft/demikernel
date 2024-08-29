@@ -12,7 +12,7 @@ use crate::{
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
-            layer1::PhysicalLayer,
+            layer2::SharedLayer2Endpoint,
             tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::ctrlblk::SharedControlBlock,
@@ -45,8 +45,8 @@ use ::std::{
 };
 
 #[derive(Clone)]
-pub struct EstablishedSocket<N: PhysicalLayer> {
-    pub cb: SharedControlBlock<N>,
+pub struct EstablishedSocket {
+    pub cb: SharedControlBlock,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
@@ -57,18 +57,18 @@ pub struct EstablishedSocket<N: PhysicalLayer> {
     background_task_qt: QToken,
 }
 
-impl<N: PhysicalLayer> EstablishedSocket<N> {
+impl EstablishedSocket {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        transport: N,
+        layer2_endpoint: SharedLayer2Endpoint,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -87,7 +87,7 @@ impl<N: PhysicalLayer> EstablishedSocket<N> {
             local,
             remote,
             runtime.clone(),
-            transport,
+            layer2_endpoint,
             local_link_addr,
             tcp_config,
             default_socket_options,

@@ -10,11 +10,10 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
-        ethernet2::{
+        layer2::{
             EtherType2,
             Ethernet2Header,
         },
-        layer1::PhysicalLayer,
         peer::{
             Peer,
             Socket,
@@ -46,6 +45,10 @@ use ::std::{
     collections::HashMap,
     hash::RandomState,
     time::Duration,
+};
+use protocols::{
+    layer1::PhysicalLayer,
+    layer2::SharedLayer2Endpoint,
 };
 
 use ::arrayvec::ArrayVec;
@@ -86,39 +89,46 @@ const MAX_RECV_ITERS: usize = 2;
 //======================================================================================================================
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
-pub struct InetStack<N: PhysicalLayer> {
-    arp: SharedArpPeer<N>,
-    ipv4: Peer<N>,
+pub struct InetStack {
+    arp: SharedArpPeer,
+    ipv4: Peer,
     runtime: SharedDemiRuntime,
-    network: N,
-    local_link_addr: MacAddress,
+    layer2_endpoint: SharedLayer2Endpoint,
     // Keeping this here for now in case we want to use it.
     #[allow(unused)]
     local_ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack<N: PhysicalLayer>(SharedObject<InetStack<N>>);
+pub struct SharedInetStack(SharedObject<InetStack>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedInetStack<N> {
-    pub fn new(config: &Config, runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
-        SharedInetStack::<N>::new_test(config, runtime, network)
+impl SharedInetStack {
+    pub fn new<P: PhysicalLayer>(
+        config: &Config,
+        runtime: SharedDemiRuntime,
+        layer1_endpoint: P,
+    ) -> Result<Self, Fail> {
+        SharedInetStack::new_test(config, runtime, layer1_endpoint)
     }
 
-    pub fn new_test(config: &Config, mut runtime: SharedDemiRuntime, network: N) -> Result<Self, Fail> {
+    pub fn new_test<P: PhysicalLayer>(
+        config: &Config,
+        mut runtime: SharedDemiRuntime,
+        layer1_endpoint: P,
+    ) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
-        let arp: SharedArpPeer<N> = SharedArpPeer::new(config, runtime.clone(), network.clone())?;
-        let ipv4: Peer<N> = Peer::new(config, runtime.clone(), network.clone(), arp.clone(), rng_seed)?;
-        let me: Self = Self(SharedObject::<InetStack<N>>::new(InetStack::<N> {
+        let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
+        let arp: SharedArpPeer = SharedArpPeer::new(config, runtime.clone(), layer2_endpoint.clone())?;
+        let ipv4: Peer = Peer::new(config, runtime.clone(), layer2_endpoint.clone(), arp.clone(), rng_seed)?;
+        let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
             arp,
             ipv4,
             runtime: runtime.clone(),
-            network,
-            local_link_addr: config.local_link_addr()?,
+            layer2_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
         }));
         runtime.insert_background_coroutine("bgc::inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
@@ -132,10 +142,10 @@ impl<N: PhysicalLayer> SharedInetStack<N> {
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
-                let batch: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = match {
+                let batch: ArrayVec<(Ethernet2Header, DemiBuffer), RECEIVE_BATCH_SIZE> = match {
                     timer!("inetstack::poll_bg_work::for::receive");
 
-                    self.network.receive()
+                    self.layer2_endpoint.receive()
                 } {
                     Ok(batch) => batch,
                     Err(_) => {
@@ -151,8 +161,8 @@ impl<N: PhysicalLayer> SharedInetStack<N> {
                         break;
                     }
 
-                    for pkt in batch {
-                        if let Err(e) = self.receive(pkt) {
+                    for (header, payload) in batch {
+                        if let Err(e) = self.receive(header, payload) {
                             warn!("incorrectly formatted packet: {:?}", e);
                         }
                     }
@@ -162,20 +172,14 @@ impl<N: PhysicalLayer> SharedInetStack<N> {
         }
     }
 
-    /// Generally these functions are for testing.
-    #[cfg(test)]
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.local_link_addr
-    }
-
     #[cfg(test)]
     pub fn get_ip_addr(&self) -> Ipv4Addr {
         self.ipv4.get_local_addr()
     }
 
     #[cfg(test)]
-    pub fn get_network(&self) -> N {
-        self.network.clone()
+    pub fn get_network(&self) -> SharedLayer2Endpoint {
+        self.layer2_endpoint.clone()
     }
 
     #[cfg(test)]
@@ -194,18 +198,9 @@ impl<N: PhysicalLayer> SharedInetStack<N> {
         self.arp.export_cache()
     }
 
-    pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, header: Ethernet2Header, payload: DemiBuffer) -> Result<(), Fail> {
         timer!("inetstack::receive");
 
-        let (header, payload) = Ethernet2Header::parse(pkt)?;
-        debug!("Engine received {:?}", header);
-        if self.local_link_addr != header.dst_addr()
-            && !header.dst_addr().is_broadcast()
-            && !header.dst_addr().is_multicast()
-        {
-            warn!("dropping packet");
-            return Ok(());
-        }
         match header.ether_type() {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
@@ -219,23 +214,23 @@ impl<N: PhysicalLayer> SharedInetStack<N> {
 // Trait Implementation
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedInetStack<N> {
-    type Target = InetStack<N>;
+impl Deref for SharedInetStack {
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedInetStack<N> {
+impl DerefMut for SharedInetStack {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: PhysicalLayer> NetworkTransport for SharedInetStack<N> {
+impl NetworkTransport for SharedInetStack {
     // Socket data structure used by upper level libOS to identify this socket.
-    type SocketDescriptor = Socket<N>;
+    type SocketDescriptor = Socket;
 
     ///
     /// **Brief**
@@ -394,25 +389,25 @@ impl<N: PhysicalLayer> NetworkTransport for SharedInetStack<N> {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<N: PhysicalLayer + MemoryRuntime> MemoryRuntime for SharedInetStack<N> {
+impl MemoryRuntime for SharedInetStack {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.network.clone_sgarray(sga)
+        self.layer2_endpoint.clone_sgarray(sga)
     }
 
     fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.network.into_sgarray(buf)
+        self.layer2_endpoint.into_sgarray(buf)
     }
 
     fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.network.sgaalloc(size)
+        self.layer2_endpoint.sgaalloc(size)
     }
 
     fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.network.sgafree(sga)
+        self.layer2_endpoint.sgafree(sga)
     }
 }
 
-impl<N: PhysicalLayer> Debug for Socket<N> {
+impl Debug for Socket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Socket::Tcp(socket) => socket.fmt(f),

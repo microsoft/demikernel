@@ -9,12 +9,8 @@ use ::arrayvec::ArrayVec;
 use ::demikernel::{
     demi_sgarray_t,
     demi_sgaseg_t,
-    demikernel::config::Config,
     inetstack::protocols::{
-        layer1::{
-            PacketBuf,
-            PhysicalLayer,
-        },
+        layer1::PhysicalLayer,
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -28,10 +24,7 @@ use ::demikernel::{
     },
 };
 use ::libc::c_void;
-use ::log::{
-    error,
-    warn,
-};
+use ::log::error;
 use ::std::{
     mem,
     ops::{
@@ -80,28 +73,12 @@ impl SharedDummyRuntime {
 
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl PhysicalLayer for SharedDummyRuntime {
-    /// Creates a Dummy Runtime.
-    fn new(_config: &Config) -> Result<Self, Fail> {
-        Err(Fail::new(
-            libc::ENOTSUP,
-            "this function is not supported for the dummy runtime",
-        ))
-    }
-
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
-        let outgoing_pkt: DemiBuffer = match pkt.take_body() {
-            Some(body) => body,
-            _ => {
-                let cause = format!("No body in PacketBuf to transmit");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            },
-        };
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         // The packet header and body must fit into whatever physical media we're transmitting over.
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
-        assert!(outgoing_pkt.len() < u16::MAX as usize);
+        assert!(pkt.len() < u16::MAX as usize);
 
-        match self.outgoing.try_send(outgoing_pkt) {
+        match self.outgoing.try_send(pkt) {
             Ok(_) => Ok(()),
             Err(_) => Err(Fail::new(
                 libc::EAGAIN,

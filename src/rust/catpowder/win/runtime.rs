@@ -18,10 +18,7 @@ use crate::{
     demi_sgaseg_t,
     demikernel::config::Config,
     inetstack::protocols::{
-        layer1::{
-            PacketBuf,
-            PhysicalLayer,
-        },
+        layer1::PhysicalLayer,
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -70,11 +67,9 @@ impl SharedCatpowderRuntime {
     /// implementation. It is not all about just changing this constant.
     ///
     const RING_LENGTH: u32 = 1;
-}
 
-impl PhysicalLayer for SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
-    fn new(config: &Config) -> Result<Self, Fail> {
+    pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
         const QUEUEID: u32 = 0; // We do no use RSS, thus queue id is always 0.
 
@@ -87,18 +82,12 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
         Ok(Self(SharedObject::new(CatpowderRuntimeInner { api, rx, tx })))
     }
+}
 
+impl PhysicalLayer for SharedCatpowderRuntime {
     /// Transmits a packet.
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
-        let outgoing_pkt: DemiBuffer = match pkt.take_body() {
-            Some(body) => body,
-            _ => {
-                let cause = format!("No body in PacketBuf to transmit");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            },
-        };
-        let pkt_size: usize = outgoing_pkt.len();
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        let pkt_size: usize = pkt.len();
         trace!("transmit(): pkt_size={:?}", pkt_size);
         if pkt_size >= u16::MAX as usize {
             let cause = format!("packet is too large: {:?}", pkt_size);
@@ -114,8 +103,8 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             return Err(Fail::new(libc::EAGAIN, &cause));
         }
 
-        let mut buf: XdpBuffer = self.0.borrow_mut().tx.get_buffer(idx, outgoing_pkt.len());
-        buf.copy_from_slice(&outgoing_pkt);
+        let mut buf: XdpBuffer = self.0.borrow_mut().tx.get_buffer(idx, pkt_size);
+        buf.copy_from_slice(&pkt);
 
         self.0.borrow_mut().tx.submit_tx(Self::RING_LENGTH);
 

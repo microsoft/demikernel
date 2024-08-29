@@ -6,10 +6,6 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
-        ethernet2::{
-            EtherType2,
-            Ethernet2Header,
-        },
         icmpv4::datagram::{
             self,
             Icmpv4Header,
@@ -18,7 +14,11 @@ use crate::{
         },
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        layer1::PhysicalLayer,
+        layer2::{
+            EtherType2,
+            Ethernet2Header,
+            SharedLayer2Endpoint,
+        },
     },
     runtime::{
         conditional_yield_with_timeout,
@@ -73,16 +73,16 @@ enum InflightRequest {
 ///
 /// ICMP for IPv4 is defined in RFC 792.
 ///
-pub struct Icmpv4Peer<N: PhysicalLayer> {
+pub struct Icmpv4Peer {
     /// Shared DemiRuntime.
     runtime: SharedDemiRuntime,
     /// Underlying Network Transport
-    transport: N,
+    layer2_endpoint: SharedLayer2Endpoint,
     local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
 
     /// Incoming packets
     recv_queue: AsyncQueue<(Ipv4Header, DemiBuffer)>,
@@ -98,20 +98,20 @@ pub struct Icmpv4Peer<N: PhysicalLayer> {
 }
 
 #[derive(Clone)]
-pub struct SharedIcmpv4Peer<N: PhysicalLayer>(SharedObject<Icmpv4Peer<N>>);
+pub struct SharedIcmpv4Peer(SharedObject<Icmpv4Peer>);
 
-impl<N: PhysicalLayer> SharedIcmpv4Peer<N> {
+impl SharedIcmpv4Peer {
     pub fn new(
         config: &Config,
         mut runtime: SharedDemiRuntime,
-        transport: N,
-        arp: SharedArpPeer<N>,
+        layer2_endpoint: SharedLayer2Endpoint,
+        arp: SharedArpPeer,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let rng: SmallRng = SmallRng::from_seed(rng_seed);
-        let peer: SharedIcmpv4Peer<N> = Self(SharedObject::new(Icmpv4Peer {
+        let peer: SharedIcmpv4Peer = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
-            transport: transport.clone(),
+            layer2_endpoint: layer2_endpoint.clone(),
             local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             arp: arp.clone(),
@@ -181,7 +181,7 @@ impl<N: PhysicalLayer> SharedIcmpv4Peer<N> {
                     continue;
                 },
             };
-            if let Err(e) = self.transport.transmit(message) {
+            if let Err(e) = self.layer2_endpoint.transmit(message) {
                 warn!("Could not send packet: {:?}", e);
             }
         }
@@ -240,7 +240,7 @@ impl<N: PhysicalLayer> SharedIcmpv4Peer<N> {
             data,
         )?;
 
-        if let Err(e) = self.transport.transmit(msg) {
+        if let Err(e) = self.layer2_endpoint.transmit(msg) {
             // Ignore for now because the other end will retry.
             // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
             // FIXME: https://github.com/microsoft/demikernel/issues/1365
@@ -284,15 +284,15 @@ impl<N: PhysicalLayer> SharedIcmpv4Peer<N> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedIcmpv4Peer<N> {
-    type Target = Icmpv4Peer<N>;
+impl Deref for SharedIcmpv4Peer {
+    type Target = Icmpv4Peer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedIcmpv4Peer<N> {
+impl DerefMut for SharedIcmpv4Peer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

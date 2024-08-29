@@ -8,12 +8,8 @@
 use crate::{
     demi_sgarray_t,
     demi_sgaseg_t,
-    demikernel::config::Config,
     inetstack::protocols::{
-        layer1::{
-            PacketBuf,
-            PhysicalLayer,
-        },
+        layer1::PhysicalLayer,
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -44,23 +40,23 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct TestRuntime {
+pub struct TestPhysicalLayer {
     incoming: VecDeque<DemiBuffer>,
     outgoing: VecDeque<DemiBuffer>,
     runtime: SharedDemiRuntime,
 }
 
 #[derive(Clone)]
-pub struct SharedTestRuntime(SharedObject<TestRuntime>);
+pub struct SharedTestPhysicalLayer(SharedObject<TestPhysicalLayer>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-impl SharedTestRuntime {
+impl SharedTestPhysicalLayer {
     pub fn new_test(now: Instant) -> Self {
         logging::initialize();
-        Self(SharedObject::<TestRuntime>::new(TestRuntime {
+        Self(SharedObject::<TestPhysicalLayer>::new(TestPhysicalLayer {
             incoming: VecDeque::new(),
             outgoing: VecDeque::new(),
             runtime: SharedDemiRuntime::new(now),
@@ -82,6 +78,10 @@ impl SharedTestRuntime {
         self.pop_frames(1).pop_front().expect("should be at least one frame")
     }
 
+    pub fn push_frame(&mut self, pkt: DemiBuffer) {
+        self.incoming.push_back(pkt);
+    }
+
     /// Get the underlying DemiRuntime.
     pub fn get_runtime(&self) -> SharedDemiRuntime {
         self.runtime.clone()
@@ -92,29 +92,19 @@ impl SharedTestRuntime {
 // Trait Implementations
 //======================================================================================================================
 
-impl PhysicalLayer for SharedTestRuntime {
-    fn new(_config: &Config) -> Result<Self, Fail> {
-        logging::initialize();
-        Ok(Self(SharedObject::<TestRuntime>::new(TestRuntime {
-            incoming: VecDeque::new(),
-            outgoing: VecDeque::new(),
-            runtime: SharedDemiRuntime::new(Instant::now()),
-        })))
-    }
-
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
-        let outgoing_pkt: DemiBuffer = pkt.take_body().unwrap();
+impl PhysicalLayer for SharedTestPhysicalLayer {
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         debug!(
             "transmit frame: {:?} total packet size: {:?}",
             self.outgoing.len(),
-            outgoing_pkt.len()
+            pkt.len()
         );
 
         // The packet header and body must fit into whatever physical media we're transmitting over.
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
-        assert!(outgoing_pkt.len() < u16::MAX as usize);
+        assert!(pkt.len() < u16::MAX as usize);
 
-        self.outgoing.push_back(outgoing_pkt);
+        self.outgoing.push_back(pkt);
         Ok(())
     }
 
@@ -131,21 +121,21 @@ impl PhysicalLayer for SharedTestRuntime {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedTestRuntime {
-    type Target = TestRuntime;
+impl Deref for SharedTestPhysicalLayer {
+    type Target = TestPhysicalLayer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedTestRuntime {
+impl DerefMut for SharedTestPhysicalLayer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl MemoryRuntime for SharedTestRuntime {
+impl MemoryRuntime for SharedTestPhysicalLayer {
     /// Allocates a scatter-gather array.
     fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.

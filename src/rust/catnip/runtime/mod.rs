@@ -14,10 +14,7 @@ use self::memory::{
 use crate::{
     demikernel::config::Config,
     expect_some,
-    inetstack::protocols::layer1::{
-        PacketBuf,
-        PhysicalLayer,
-    },
+    inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
         libdpdk::{
@@ -102,6 +99,39 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
+    pub fn new(config: &Config) -> Result<Self, Fail> {
+        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for TCP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
+            Ok(offload) => Some(offload),
+            Err(_) => {
+                warn!("No setting for UDP checksum offload. Turning off by default.");
+                None
+            },
+        };
+
+        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
+            &config.eal_init_args()?,
+            config.enable_jumbo_frames()?,
+            config.mtu()?,
+            tcp_offload.unwrap_or(false),
+            udp_offload.unwrap_or(false),
+        )?;
+
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+            mm,
+            port_id,
+            link_addr,
+            ipv4_addr: config.local_ipv4_addr()?,
+        })))
+    }
+
     /// Initializes DPDK.
     fn initialize_dpdk(
         eal_init_args: &[CString],
@@ -366,59 +396,19 @@ impl DerefMut for SharedDPDKRuntime {
 
 /// Network Runtime Trait Implementation for DPDK Runtime
 impl PhysicalLayer for SharedDPDKRuntime {
-    fn new(config: &Config) -> Result<Self, Fail> {
-        let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for TCP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let udp_offload: Option<bool> = match config.udp_checksum_offload() {
-            Ok(offload) => Some(offload),
-            Err(_) => {
-                warn!("No setting for UDP checksum offload. Turning off by default.");
-                None
-            },
-        };
-
-        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
-            &config.eal_init_args()?,
-            config.enable_jumbo_frames()?,
-            config.mtu()?,
-            tcp_offload.unwrap_or(false),
-            udp_offload.unwrap_or(false),
-        )?;
-
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
-            mm,
-            port_id,
-            link_addr,
-            ipv4_addr: config.local_ipv4_addr()?,
-        })))
-    }
-
-    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         timer!("catnip::runtime::transmit");
         // Grab the packet and copy it if necessary. In general, this copy will happen for small packets without
         // payloads because we allocate actual data-carrying application buffers from the DPDK pool.
-        let outgoing_pkt: DemiBuffer = match pkt.take_body() {
-            Some(body) => match body {
-                buf if buf.is_dpdk_allocated() => buf,
-                buf => {
-                    let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf().expect("should be able to allocate mbuf");
-                    debug_assert!(buf.len() < mbuf.len());
-                    mbuf.trim(mbuf.len() - buf.len()).expect("Should be able to trim");
-                    mbuf.copy_from_slice(&buf);
+        let outgoing_pkt: DemiBuffer = match pkt {
+            buf if buf.is_dpdk_allocated() => buf,
+            buf => {
+                let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf().expect("should be able to allocate mbuf");
+                debug_assert!(buf.len() < mbuf.len());
+                mbuf.trim(mbuf.len() - buf.len()).expect("Should be able to trim");
+                mbuf.copy_from_slice(&buf);
 
-                    mbuf
-                },
-            },
-            _ => {
-                let cause = format!("No body in PacketBuf to transmit");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
+                mbuf
             },
         };
 

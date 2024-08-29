@@ -11,7 +11,7 @@ use crate::{
     inetstack::{
         protocols::{
             ipv4::Ipv4Header,
-            layer1::PhysicalLayer,
+            layer2::SharedLayer2Endpoint,
             tcp::{
                 active_open::SharedActiveOpenSocket,
                 established::EstablishedSocket,
@@ -56,13 +56,13 @@ use ::std::{
 // Enumerations
 //======================================================================================================================
 
-pub enum SocketState<N: PhysicalLayer> {
+pub enum SocketState {
     Unbound,
     Bound(SocketAddrV4),
-    Listening(SharedPassiveSocket<N>),
-    Connecting(SharedActiveOpenSocket<N>),
-    Established(EstablishedSocket<N>),
-    Closing(EstablishedSocket<N>),
+    Listening(SharedPassiveSocket),
+    Connecting(SharedActiveOpenSocket),
+    Established(EstablishedSocket),
+    Closing(EstablishedSocket),
 }
 
 //======================================================================================================================
@@ -70,40 +70,40 @@ pub enum SocketState<N: PhysicalLayer> {
 //======================================================================================================================
 
 /// Per-queue metadata for the TCP socket.
-pub struct TcpSocket<N: PhysicalLayer> {
-    state: SocketState<N>,
+pub struct TcpSocket {
+    state: SocketState,
     recv_queue: Option<SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
     runtime: SharedDemiRuntime,
-    network: N,
+    layer2_endpoint: SharedLayer2Endpoint,
     local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
-    arp: SharedArpPeer<N>,
+    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
-pub struct SharedTcpSocket<N: PhysicalLayer>(SharedObject<TcpSocket<N>>);
+pub struct SharedTcpSocket(SharedObject<TcpSocket>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<N: PhysicalLayer> SharedTcpSocket<N> {
+impl SharedTcpSocket {
     /// Create a new shared queue.
     pub fn new(
         runtime: SharedDemiRuntime,
-        network: N,
+        layer2_endpoint: SharedLayer2Endpoint,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
-        Self(SharedObject::<TcpSocket<N>>::new(TcpSocket::<N> {
+        Self(SharedObject::<TcpSocket>::new(TcpSocket {
             state: SocketState::Unbound,
             recv_queue: None,
             runtime,
-            network,
+            layer2_endpoint,
             local_link_addr,
             tcp_config,
             socket_options: default_socket_options,
@@ -113,21 +113,21 @@ impl<N: PhysicalLayer> SharedTcpSocket<N> {
     }
 
     pub fn new_established(
-        socket: EstablishedSocket<N>,
+        socket: EstablishedSocket,
         runtime: SharedDemiRuntime,
-        network: N,
+        layer2_endpoint: SharedLayer2Endpoint,
         local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer<N>,
+        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
-        Self(SharedObject::<TcpSocket<N>>::new(TcpSocket::<N> {
+        Self(SharedObject::<TcpSocket>::new(TcpSocket {
             state: SocketState::Established(socket),
             recv_queue: Some(recv_queue),
             runtime,
-            network,
+            layer2_endpoint,
             local_link_addr,
             tcp_config,
             socket_options: default_socket_options,
@@ -189,7 +189,7 @@ impl<N: PhysicalLayer> SharedTcpSocket<N> {
             backlog,
             self.runtime.clone(),
             recv_queue.clone(),
-            self.network.clone(),
+            self.layer2_endpoint.clone(),
             self.tcp_config.clone(),
             self.socket_options.clone(),
             self.local_link_addr,
@@ -201,18 +201,18 @@ impl<N: PhysicalLayer> SharedTcpSocket<N> {
         Ok(())
     }
 
-    pub async fn accept(&mut self) -> Result<SharedTcpSocket<N>, Fail> {
+    pub async fn accept(&mut self) -> Result<SharedTcpSocket, Fail> {
         // Wait for a new connection on the listening socket.
-        let mut listening_socket: SharedPassiveSocket<N> = match self.state {
+        let mut listening_socket: SharedPassiveSocket = match self.state {
             SocketState::Listening(ref listening_socket) => listening_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
-        let new_socket: EstablishedSocket<N> = listening_socket.do_accept().await?;
+        let new_socket: EstablishedSocket = listening_socket.do_accept().await?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
             self.runtime.clone(),
-            self.network.clone(),
+            self.layer2_endpoint.clone(),
             self.local_link_addr,
             self.tcp_config.clone(),
             self.socket_options.clone(),
@@ -232,12 +232,12 @@ impl<N: PhysicalLayer> SharedTcpSocket<N> {
             SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         // Create active socket.
-        let socket: SharedActiveOpenSocket<N> = SharedActiveOpenSocket::new(
+        let socket: SharedActiveOpenSocket = SharedActiveOpenSocket::new(
             local_isn,
             local,
             remote,
             self.runtime.clone(),
-            self.network.clone(),
+            self.layer2_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
             self.tcp_config.clone(),
@@ -389,27 +389,27 @@ impl<N: PhysicalLayer> SharedTcpSocket<N> {
 // Trait implementation
 //======================================================================================================================
 
-impl<N: PhysicalLayer> Deref for SharedTcpSocket<N> {
-    type Target = TcpSocket<N>;
+impl Deref for SharedTcpSocket {
+    type Target = TcpSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<N: PhysicalLayer> DerefMut for SharedTcpSocket<N> {
+impl DerefMut for SharedTcpSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<N: PhysicalLayer> Clone for SharedTcpSocket<N> {
+impl Clone for SharedTcpSocket {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<N: PhysicalLayer> Debug for SharedTcpSocket<N> {
+impl Debug for SharedTcpSocket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TCP socket local={:?} remote={:?}", self.local(), self.remote())
     }

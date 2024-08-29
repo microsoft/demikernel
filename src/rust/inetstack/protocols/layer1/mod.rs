@@ -14,16 +14,13 @@ pub use packet::PacketBuf;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    demikernel::config::Config,
-    runtime::{
-        fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::consts::RECEIVE_BATCH_SIZE,
+use crate::runtime::{
+    fail::Fail,
+    memory::{
+        DemiBuffer,
+        MemoryRuntime,
     },
+    network::consts::RECEIVE_BATCH_SIZE,
 };
 
 //======================================================================================================================
@@ -32,12 +29,9 @@ use crate::{
 
 /// API for the Physical Layer for any underlying hardware that implements a raw NIC interface (e.g., DPDK, raw
 /// sockets).
-pub trait PhysicalLayer: Clone + 'static + MemoryRuntime {
-    /// Creates a new PhysicalLayer with the [config] parameters.
-    fn new(config: &Config) -> Result<Self, Fail>;
-
+pub trait PhysicalLayer: 'static + MemoryRuntime {
     /// Transmits a single [PacketBuf].
-    fn transmit<P: PacketBuf>(&mut self, pkt: P) -> Result<(), Fail>;
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail>;
 
     /// Receives a batch of [DemiBuffer].
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
