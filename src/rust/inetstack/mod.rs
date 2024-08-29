@@ -5,15 +5,14 @@
 // Imports
 //======================================================================================================================
 
+#[cfg(test)]
+use crate::runtime::network::types::MacAddress;
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
     inetstack::protocols::{
         arp::SharedArpPeer,
-        layer2::{
-            EtherType2,
-            Ethernet2Header,
-        },
+        layer2::EtherType2,
         peer::{
             Peer,
             Socket,
@@ -29,7 +28,6 @@ use crate::{
             consts::RECEIVE_BATCH_SIZE,
             socket::option::SocketOption,
             transport::NetworkTransport,
-            types::MacAddress,
         },
         poll_yield,
         SharedDemiRuntime,
@@ -142,7 +140,7 @@ impl SharedInetStack {
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
-                let batch: ArrayVec<(Ethernet2Header, DemiBuffer), RECEIVE_BATCH_SIZE> = match {
+                let batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = match {
                     timer!("inetstack::poll_bg_work::for::receive");
 
                     self.layer2_endpoint.receive()
@@ -161,8 +159,8 @@ impl SharedInetStack {
                         break;
                     }
 
-                    for (header, payload) in batch {
-                        if let Err(e) = self.receive(header, payload) {
+                    for (eth2_type, payload) in batch {
+                        if let Err(e) = self.receive(eth2_type, payload) {
                             warn!("incorrectly formatted packet: {:?}", e);
                         }
                     }
@@ -198,10 +196,10 @@ impl SharedInetStack {
         self.arp.export_cache()
     }
 
-    pub fn receive(&mut self, header: Ethernet2Header, payload: DemiBuffer) -> Result<(), Fail> {
+    pub fn receive(&mut self, eth2_type: EtherType2, payload: DemiBuffer) -> Result<(), Fail> {
         timer!("inetstack::receive");
 
-        match header.ether_type() {
+        match eth2_type {
             EtherType2::Arp => self.arp.receive(payload),
             EtherType2::Ipv4 => self.ipv4.receive(payload),
             EtherType2::Ipv6 => (), // Ignore for now.

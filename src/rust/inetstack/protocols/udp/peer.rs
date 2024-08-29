@@ -19,7 +19,6 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::types::MacAddress,
         SharedDemiRuntime,
         SharedObject,
     },
@@ -50,8 +49,6 @@ pub struct UdpPeer {
     layer2_endpoint: SharedLayer2Endpoint,
     /// Underlying ARP peer.
     arp: SharedArpPeer,
-    /// Local link address.
-    local_link_addr: MacAddress,
     /// Local IPv4 address.
     local_ipv4_addr: Ipv4Addr,
     /// Offload checksum to hardware?
@@ -79,7 +76,6 @@ impl SharedUdpPeer {
         Ok(Self(SharedObject::<UdpPeer>::new(UdpPeer {
             layer2_endpoint,
             arp,
-            local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             checksum_offload: config.udp_checksum_offload()?,
             addresses: HashMap::<SocketAddrV4, SharedUdpSocket>::new(),
@@ -90,7 +86,6 @@ impl SharedUdpPeer {
     pub fn socket(&mut self) -> Result<SharedUdpSocket, Fail> {
         SharedUdpSocket::new(
             self.local_ipv4_addr,
-            self.local_link_addr,
             self.layer2_endpoint.clone(),
             self.arp.clone(),
             self.checksum_offload,

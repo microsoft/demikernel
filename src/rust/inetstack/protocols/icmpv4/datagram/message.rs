@@ -9,8 +9,7 @@ use crate::{
     inetstack::protocols::{
         icmpv4::datagram::Icmpv4Header,
         ipv4::Ipv4Header,
-        layer1::PacketBuf,
-        layer2::Ethernet2Header,
+        layer2::packet::PacketBuf,
     },
     runtime::{
         fail::Fail,
@@ -33,13 +32,7 @@ pub struct Icmpv4Message {
 
 impl Icmpv4Message {
     /// Creates an ICMP message.
-    pub fn new(
-        ethernet2_hdr: Ethernet2Header,
-        ipv4_hdr: Ipv4Header,
-        icmpv4_hdr: Icmpv4Header,
-        mut data: DemiBuffer,
-    ) -> Result<Self, Fail> {
-        let eth_hdr_size: usize = ethernet2_hdr.compute_size();
+    pub fn new(ipv4_hdr: Ipv4Header, icmpv4_hdr: Icmpv4Header, mut data: DemiBuffer) -> Result<Self, Fail> {
         let ipv4_hdr_size: usize = ipv4_hdr.compute_size();
         let icmpv4_hdr_size: usize = icmpv4_hdr.size();
         let ipv4_payload_len: usize = icmpv4_hdr_size + data.len();
@@ -51,8 +44,6 @@ impl Icmpv4Message {
 
         data.prepend(ipv4_hdr_size)?;
         ipv4_hdr.serialize(&mut data, ipv4_payload_len);
-        data.prepend(eth_hdr_size)?;
-        ethernet2_hdr.serialize(&mut data);
 
         Ok(Self { pkt: Some(data) })
     }

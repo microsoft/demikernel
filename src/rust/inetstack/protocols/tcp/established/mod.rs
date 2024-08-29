@@ -20,7 +20,6 @@ use crate::{
                 SeqNumber,
             },
         },
-        MacAddress,
         SharedArpPeer,
     },
     runtime::{
@@ -65,7 +64,6 @@ impl EstablishedSocket {
         layer2_endpoint: SharedLayer2Endpoint,
         recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
-        local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer,
@@ -88,7 +86,6 @@ impl EstablishedSocket {
             remote,
             runtime.clone(),
             layer2_endpoint,
-            local_link_addr,
             tcp_config,
             default_socket_options,
             arp,

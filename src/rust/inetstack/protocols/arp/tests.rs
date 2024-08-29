@@ -13,8 +13,8 @@ use crate::{
                 ArpMessage,
                 ArpOperation,
             },
-            layer1::PacketBuf,
             layer2::{
+                packet::PacketBuf,
                 EtherType2,
                 Ethernet2Header,
             },
@@ -70,8 +70,7 @@ fn arp_immediate_reply() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
-    let mut pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &local_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
+    let buf: DemiBuffer = build_arp_query(&remote_mac, &remote_ipv4, &local_ipv4);
 
     // Feed it to engine.
     engine.push_frame(buf);
@@ -111,8 +110,7 @@ fn arp_no_reply() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to a different IP address.
-    let mut pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &other_remote_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
+    let buf: DemiBuffer = build_arp_query(&remote_mac, &remote_ipv4, &other_remote_ipv4);
 
     // Feed it to engine.
     engine.push_frame(buf);
@@ -140,8 +138,7 @@ fn arp_cache_update() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::BOB_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
-    let mut pkt: ArpMessage = build_arp_query(&other_remote_mac, &other_remote_ipv4, &local_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
+    let buf: DemiBuffer = build_arp_query(&other_remote_mac, &other_remote_ipv4, &local_ipv4);
 
     // Feed it to engine.
     engine.push_frame(buf);
@@ -217,14 +214,8 @@ fn arp_cache_timeout() -> Result<()> {
 // Test Helpers
 //======================================================================================================================
 
-/// Serializes an [ArpMessage] into a [DemiBuffer].
-fn serialize_arp_message(pkt: &mut ArpMessage) -> DemiBuffer {
-    pkt.take_body().unwrap()
-}
-
 /// Builds an ARP query request.
-fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &Ipv4Addr) -> ArpMessage {
-    let header: Ethernet2Header = Ethernet2Header::new(MacAddress::broadcast(), local_mac.clone(), EtherType2::Arp);
+fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &Ipv4Addr) -> DemiBuffer {
     let body: ArpHeader = ArpHeader::new(
         ArpOperation::Request,
         local_mac.clone(),
@@ -232,7 +223,15 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
         MacAddress::broadcast(),
         remote_ipv4.clone(),
     );
-    ArpMessage::new(header, body).expect("Should be able to construct ARP message")
+    let mut msg: ArpMessage = ArpMessage::new(body).expect("Should be able to construct ARP message");
+
+    let mut pkt: DemiBuffer = msg.take_body().unwrap();
+    let eth2_header: Ethernet2Header =
+        Ethernet2Header::new(MacAddress::broadcast(), local_mac.clone(), EtherType2::Arp);
+    let eth2_header_size: usize = eth2_header.compute_size();
+    pkt.prepend(eth2_header_size).expect("Should have sufficient headroom");
+    eth2_header.serialize(&mut pkt[0..eth2_header_size]);
+    pkt
 }
 
 /// Creates a new engine.

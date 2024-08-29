@@ -12,8 +12,8 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
         udp::{
@@ -66,7 +66,6 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 pub struct UdpSocket {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
-    local_link_addr: MacAddress,
     layer2_endpoint: SharedLayer2Endpoint,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
@@ -83,7 +82,6 @@ pub struct SharedUdpSocket(SharedObject<UdpSocket>);
 impl SharedUdpSocket {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
-        local_link_addr: MacAddress,
         layer2_endpoint: SharedLayer2Endpoint,
         arp: SharedArpPeer,
         checksum_offload: bool,
@@ -91,7 +89,6 @@ impl SharedUdpSocket {
         Ok(Self(SharedObject::new(UdpSocket {
             local_ipv4_addr,
             bound: None,
-            local_link_addr,
             layer2_endpoint,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
             arp,
@@ -123,14 +120,17 @@ impl SharedUdpSocket {
         let remote_link_addr: MacAddress = self.arp.query(remote.ip().clone()).await?;
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
         debug!("UDP send {:?}", udp_header);
-        let datagram: UdpDatagram = UdpDatagram::new(
-            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+        let mut datagram: UdpDatagram = UdpDatagram::new(
             Ipv4Header::new(self.local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
             udp_header,
             buf,
             self.checksum_offload,
         )?;
-        self.layer2_endpoint.transmit(datagram)
+        self.layer2_endpoint.transmit(
+            remote_link_addr,
+            EtherType2::Ipv4,
+            datagram.take_body().expect("just constructed above"),
+        )
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {

@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 pub mod ethernet2;
+pub mod packet;
 pub use self::ethernet2::{
     frame::{
         Ethernet2Header,
@@ -22,10 +23,7 @@ pub use self::ethernet2::{
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::layer1::{
-        PacketBuf,
-        PhysicalLayer,
-    },
+    inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
         memory::{
@@ -51,7 +49,7 @@ use ::std::ops::{
 
 pub struct Layer2Endpoint {
     layer1_endpoint: Box<dyn PhysicalLayer>,
-    link_addr: MacAddress,
+    local_link_addr: MacAddress,
 }
 
 #[derive(Clone)]
@@ -65,12 +63,12 @@ impl SharedLayer2Endpoint {
     pub fn new<P: PhysicalLayer>(config: &Config, layer1_endpoint: P) -> Result<Self, Fail> {
         Ok(Self(SharedObject::new(Layer2Endpoint {
             layer1_endpoint: Box::new(layer1_endpoint),
-            link_addr: config.local_link_addr()?,
+            local_link_addr: config.local_link_addr()?,
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(Ethernet2Header, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(Ethernet2Header, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        let mut batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
         for pkt in self.layer1_endpoint.receive()? {
             let (header, payload) = match Ethernet2Header::parse(pkt) {
                 Ok(result) => result,
@@ -82,28 +80,33 @@ impl SharedLayer2Endpoint {
                 },
             };
             debug!("Engine received {:?}", header);
-            if self.link_addr != header.dst_addr()
+            if self.local_link_addr != header.dst_addr()
                 && !header.dst_addr().is_broadcast()
                 && !header.dst_addr().is_multicast()
             {
                 let cause: &str = "invalid link address";
                 warn!("dropping packet: {}", cause);
             }
-            batch.push((header, payload))
+            batch.push((header.ether_type(), payload))
         }
         Ok(batch)
     }
 
-    pub fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
-        let buf: DemiBuffer = match pkt.take_body() {
-            Some(body) => body,
-            _ => {
-                let cause = format!("No body in PacketBuf to transmit");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EINVAL, &cause));
-            },
-        };
-        self.layer1_endpoint.transmit(buf)
+    pub fn transmit(
+        &mut self,
+        remote_link_addr: MacAddress,
+        eth2_type: EtherType2,
+        mut pkt: DemiBuffer,
+    ) -> Result<(), Fail> {
+        let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
+        let eth2_header_size: usize = eth2_header.compute_size();
+        pkt.prepend(eth2_header_size)?;
+        eth2_header.serialize(&mut pkt[..eth2_header_size]);
+        self.layer1_endpoint.transmit(pkt)
+    }
+
+    pub fn get_local_link_addr(&self) -> MacAddress {
+        self.local_link_addr
     }
 }
 

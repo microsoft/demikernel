@@ -19,8 +19,8 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
         tcp::{
@@ -102,7 +102,6 @@ pub struct PassiveSocket {
     tcp_config: TcpConfig,
     // We do not use these right now, but will in the future.
     socket_options: TcpSocketOptions,
-    local_link_addr: MacAddress,
     arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 
@@ -126,7 +125,6 @@ impl SharedPassiveSocket {
         layer2_endpoint: SharedLayer2Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        local_link_addr: MacAddress,
         arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
@@ -140,7 +138,6 @@ impl SharedPassiveSocket {
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
-            local_link_addr,
             runtime: runtime.clone(),
             layer2_endpoint,
             tcp_config,
@@ -310,7 +307,7 @@ impl SharedPassiveSocket {
         };
 
         // Create a RST segment.
-        let segment: TcpSegment = {
+        let mut segment: TcpSegment = {
             let mut tcp_hdr: TcpHeader = TcpHeader::new(self.local.port(), remote.port());
             tcp_hdr.rst = true;
             tcp_hdr.seq_num = seq_num;
@@ -319,7 +316,6 @@ impl SharedPassiveSocket {
                 tcp_hdr.ack_num = ack_num;
             }
             match TcpSegment::new(
-                Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
                 Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                 tcp_hdr,
                 None,
@@ -333,8 +329,12 @@ impl SharedPassiveSocket {
             }
         };
 
-        // Send it.
-        if let Err(e) = self.layer2_endpoint.transmit(segment) {
+        // Pass on to send through the L2 layer.
+        if let Err(e) = self.layer2_endpoint.transmit(
+            dst_link_addr,
+            EtherType2::Ipv4,
+            segment.take_body().expect("just constructed above"),
+        ) {
             warn!("Could not send RST: {:?}", e);
         }
     }
@@ -435,14 +435,17 @@ impl SharedPassiveSocket {
         info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
         debug!("Sending SYN+ACK: {:?}", tcp_hdr);
-        let segment = TcpSegment::new(
-            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+        let mut segment = TcpSegment::new(
             Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             None,
             self.tcp_config.get_rx_checksum_offload(),
         )?;
-        self.layer2_endpoint.transmit(segment)
+        self.layer2_endpoint.transmit(
+            remote_link_addr,
+            EtherType2::Ipv4,
+            segment.take_body().expect("just constructed above"),
+        )
     }
 
     async fn wait_for_ack(
@@ -514,7 +517,6 @@ impl SharedPassiveSocket {
             self.layer2_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
-            self.local_link_addr,
             self.tcp_config.clone(),
             self.socket_options,
             self.arp.clone(),
