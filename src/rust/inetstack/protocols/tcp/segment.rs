@@ -6,12 +6,12 @@ use crate::{
     inetstack::protocols::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
-        layer1::PacketBuf,
         layer2::{
-            Ethernet2Header,
+            packet::PacketBuf,
             MIN_PAYLOAD_SIZE,
         },
         tcp::SeqNumber,
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -37,20 +37,20 @@ pub struct TcpSegment {
 
 impl TcpSegment {
     pub fn new(
-        ethernet2_hdr: Ethernet2Header,
         ipv4_hdr: Ipv4Header,
         tcp_hdr: TcpHeader,
         payload: Option<DemiBuffer>,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
-        let eth_hdr_size: usize = ethernet2_hdr.compute_size();
         let ipv4_hdr_size: usize = ipv4_hdr.compute_size();
         let tcp_hdr_size: usize = tcp_hdr.compute_size();
 
         let mut pkt: DemiBuffer = match payload {
             Some(body) => body,
             _ => {
-                let header_size: usize = eth_hdr_size + ipv4_hdr_size + tcp_hdr_size;
+                // Use this value for now until we get rid of this data structure to allow for enough header space for
+                // ethernet headers to be inserted later.
+                let header_size: usize = MAX_HEADER_SIZE;
                 let body_size: usize = if header_size < MIN_PAYLOAD_SIZE {
                     MIN_PAYLOAD_SIZE - header_size
                 } else {
@@ -67,8 +67,6 @@ impl TcpSegment {
         let ipv4_payload_len: usize = pkt.len();
         pkt.prepend(ipv4_hdr_size)?;
         ipv4_hdr.serialize(&mut pkt[..ipv4_hdr_size], ipv4_payload_len);
-        pkt.prepend(eth_hdr_size)?;
-        ethernet2_hdr.serialize(&mut pkt[..eth_hdr_size]);
         Ok(Self { pkt: Some(pkt) })
     }
 }

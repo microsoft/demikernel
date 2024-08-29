@@ -16,8 +16,8 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
         tcp::{
@@ -88,7 +88,6 @@ pub struct ActiveOpenSocket {
     layer2_endpoint: SharedLayer2Endpoint,
     recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
     ack_queue: SharedAsyncQueue<usize>,
-    local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
     arp: SharedArpPeer,
@@ -114,7 +113,6 @@ impl SharedActiveOpenSocket {
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        local_link_addr: MacAddress,
         arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
@@ -128,7 +126,6 @@ impl SharedActiveOpenSocket {
             layer2_endpoint,
             recv_queue,
             ack_queue,
-            local_link_addr,
             tcp_config,
             socket_options: default_socket_options,
             arp,
@@ -180,14 +177,17 @@ impl SharedActiveOpenSocket {
         tcp_hdr.seq_num = self.local_isn + SeqNumber::from(1);
         debug!("Sending ACK: {:?}", tcp_hdr);
 
-        let segment = TcpSegment::new(
-            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+        let mut segment = TcpSegment::new(
             Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
             None,
             self.tcp_config.get_rx_checksum_offload(),
         )?;
-        self.layer2_endpoint.transmit(segment)?;
+        self.layer2_endpoint.transmit(
+            remote_link_addr,
+            EtherType2::Ipv4,
+            segment.take_body().expect("just created above"),
+        )?;
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -247,7 +247,6 @@ impl SharedActiveOpenSocket {
             self.layer2_endpoint.clone(),
             self.recv_queue.clone(),
             self.ack_queue.clone(),
-            self.local_link_addr,
             self.tcp_config.clone(),
             self.socket_options,
             self.arp.clone(),
@@ -313,15 +312,18 @@ impl SharedActiveOpenSocket {
             info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
             debug!("Sending SYN {:?}", tcp_hdr);
-            let segment = TcpSegment::new(
-                Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            let mut segment = TcpSegment::new(
                 Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
                 tcp_hdr,
                 None,
                 self.tcp_config.get_rx_checksum_offload(),
             )?;
             // Send SYN.
-            if let Err(e) = self.layer2_endpoint.transmit(segment) {
+            if let Err(e) = self.layer2_endpoint.transmit(
+                remote_link_addr,
+                EtherType2::Ipv4,
+                segment.take_body().expect("just constructed above"),
+            ) {
                 warn!("Could not send SYN: {:?}", e);
                 continue;
             }

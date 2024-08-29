@@ -15,8 +15,8 @@ use crate::{
             },
         },
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
     },
@@ -67,7 +67,6 @@ use ::std::{
 ///
 pub struct ArpPeer {
     layer2_endpoint: SharedLayer2Endpoint,
-    local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
     waiters: HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>,
@@ -101,7 +100,6 @@ impl SharedArpPeer {
 
         let peer: SharedArpPeer = Self(SharedObject::new(ArpPeer {
             layer2_endpoint,
-            local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             cache,
             waiters: HashMap::default(),
@@ -227,16 +225,13 @@ impl SharedArpPeer {
                     // from RFC 826:
                     // > Swap hardware and protocol fields, putting the local
                     // > hardware and protocol addresses in the sender fields.
-                    let reply: ArpMessage = match ArpMessage::new(
-                        Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
-                        ArpHeader::new(
-                            ArpOperation::Reply,
-                            self.local_link_addr,
-                            self.local_ipv4_addr,
-                            header.get_sender_hardware_addr(),
-                            header.get_sender_protocol_addr(),
-                        ),
-                    ) {
+                    let mut reply: ArpMessage = match ArpMessage::new(ArpHeader::new(
+                        ArpOperation::Reply,
+                        self.layer2_endpoint.get_local_link_addr(),
+                        self.local_ipv4_addr,
+                        header.get_sender_hardware_addr(),
+                        header.get_sender_protocol_addr(),
+                    )) {
                         Ok(msg) => msg,
                         Err(e) => {
                             warn!("Could not construct ARP message {:?}", e);
@@ -244,7 +239,12 @@ impl SharedArpPeer {
                         },
                     };
                     debug!("Responding {:?}", reply);
-                    if let Err(e) = self.layer2_endpoint.transmit(reply) {
+
+                    if let Err(e) = self.layer2_endpoint.transmit(
+                        header.get_sender_hardware_addr(),
+                        EtherType2::Arp,
+                        reply.take_body().expect("just constructed above"),
+                    ) {
                         // Ignore for now because the other end will retry.
                         // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
                         // FIXME: https://github.com/microsoft/demikernel/issues/1365
@@ -272,23 +272,24 @@ impl SharedArpPeer {
         if let Some(&link_addr) = self.cache.get(ipv4_addr) {
             return Ok(link_addr);
         }
-        let msg = ArpMessage::new(
-            Ethernet2Header::new(MacAddress::broadcast(), self.local_link_addr, EtherType2::Arp),
-            ArpHeader::new(
-                ArpOperation::Request,
-                self.local_link_addr,
-                self.local_ipv4_addr,
-                MacAddress::broadcast(),
-                ipv4_addr,
-            ),
-        )?;
+        let mut msg = ArpMessage::new(ArpHeader::new(
+            ArpOperation::Request,
+            self.layer2_endpoint.get_local_link_addr(),
+            self.local_ipv4_addr,
+            MacAddress::broadcast(),
+            ipv4_addr,
+        ))?;
         let mut peer: SharedArpPeer = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
+        let pkt: DemiBuffer = msg.take_body().expect("Just constructed above");
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                if let Err(e) = self.layer2_endpoint.transmit(msg.clone()) {
+                if let Err(e) = self
+                    .layer2_endpoint
+                    .transmit(MacAddress::broadcast(), EtherType2::Arp, pkt.clone())
+                {
                     warn!("Could not send packet: {:?}", e);
                     continue;
                 }

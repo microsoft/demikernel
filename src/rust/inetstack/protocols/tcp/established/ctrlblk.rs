@@ -19,8 +19,8 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
         tcp::{
@@ -182,7 +182,6 @@ pub struct ControlBlock {
     layer2_endpoint: SharedLayer2Endpoint,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
-    local_link_addr: MacAddress,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
 
@@ -252,7 +251,6 @@ impl SharedControlBlock {
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
         layer2_endpoint: SharedLayer2Endpoint,
-        local_link_addr: MacAddress,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         arp: SharedArpPeer,
@@ -276,7 +274,6 @@ impl SharedControlBlock {
             remote,
             runtime,
             layer2_endpoint,
-            local_link_addr,
             tcp_config,
             socket_options: default_socket_options,
             arp,
@@ -843,8 +840,7 @@ impl SharedControlBlock {
 
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
-        let segment = match TcpSegment::new(
-            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+        let mut segment = match TcpSegment::new(
             Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             header,
             body,
@@ -857,8 +853,12 @@ impl SharedControlBlock {
             },
         };
 
-        // Call the runtime to send the segment.
-        if let Err(e) = self.layer2_endpoint.transmit(segment) {
+        // Call lower L2 layer to send the segment.
+        if let Err(e) = self.layer2_endpoint.transmit(
+            remote_link_addr,
+            EtherType2::Ipv4,
+            segment.take_body().expect("just constructed above"),
+        ) {
             warn!("could not emit packet: {:?}", e);
             return;
         }

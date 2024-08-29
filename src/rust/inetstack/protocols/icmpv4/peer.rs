@@ -15,8 +15,8 @@ use crate::{
         ip::IpProtocol,
         ipv4::Ipv4Header,
         layer2::{
+            packet::PacketBuf,
             EtherType2,
-            Ethernet2Header,
             SharedLayer2Endpoint,
         },
     },
@@ -78,7 +78,6 @@ pub struct Icmpv4Peer {
     runtime: SharedDemiRuntime,
     /// Underlying Network Transport
     layer2_endpoint: SharedLayer2Endpoint,
-    local_link_addr: MacAddress,
     local_ipv4_addr: Ipv4Addr,
 
     /// Underlying ARP Peer
@@ -112,7 +111,6 @@ impl SharedIcmpv4Peer {
         let peer: SharedIcmpv4Peer = Self(SharedObject::new(Icmpv4Peer {
             runtime: runtime.clone(),
             layer2_endpoint: layer2_endpoint.clone(),
-            local_link_addr: config.local_link_addr()?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             arp: arp.clone(),
             recv_queue: AsyncQueue::<(Ipv4Header, DemiBuffer)>::default(),
@@ -167,10 +165,8 @@ impl SharedIcmpv4Peer {
             debug!("ARP query complete ({} -> {})", dst_ipv4_addr, dst_link_addr);
             debug!("reply ping ({}, {}, {})", dst_ipv4_addr, id, seq_num);
             // Send reply message.
-            let local_link_addr: MacAddress = self.local_link_addr;
             let local_ipv4_addr: Ipv4Addr = self.local_ipv4_addr;
-            let message: Icmpv4Message = match Icmpv4Message::new(
-                Ethernet2Header::new(dst_link_addr, local_link_addr, EtherType2::Ipv4),
+            let mut message: Icmpv4Message = match Icmpv4Message::new(
                 Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
                 Icmpv4Header::new(Icmpv4Type2::EchoReply { id, seq_num }, 0),
                 data,
@@ -181,7 +177,12 @@ impl SharedIcmpv4Peer {
                     continue;
                 },
             };
-            if let Err(e) = self.layer2_endpoint.transmit(message) {
+
+            if let Err(e) = self.layer2_endpoint.transmit(
+                dst_link_addr,
+                EtherType2::Ipv4,
+                message.take_body().expect("just constructed above"),
+            ) {
                 warn!("Could not send packet: {:?}", e);
             }
         }
@@ -233,14 +234,17 @@ impl SharedIcmpv4Peer {
 
         let data: DemiBuffer = DemiBuffer::new(datagram::ICMPV4_ECHO_REQUEST_MESSAGE_SIZE);
 
-        let msg: Icmpv4Message = Icmpv4Message::new(
-            Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
+        let mut msg: Icmpv4Message = Icmpv4Message::new(
             Ipv4Header::new(self.local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4),
             Icmpv4Header::new(echo_request, 0),
             data,
         )?;
 
-        if let Err(e) = self.layer2_endpoint.transmit(msg) {
+        if let Err(e) = self.layer2_endpoint.transmit(
+            dst_link_addr,
+            EtherType2::Ipv4,
+            msg.take_body().expect("just constructed above"),
+        ) {
             // Ignore for now because the other end will retry.
             // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
             // FIXME: https://github.com/microsoft/demikernel/issues/1365

@@ -10,8 +10,8 @@ use crate::{
         protocols::{
             ip::IpProtocol,
             ipv4::Ipv4Header,
-            layer1::PacketBuf,
             layer2::{
+                packet::PacketBuf,
                 EtherType2,
                 Ethernet2Header,
             },
@@ -850,9 +850,8 @@ impl Simulation {
     }
 
     /// Builds a TCP segment.
-    fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> TcpSegment {
+    fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> DemiBuffer {
         // Create headers.
-        let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
         let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::TCP);
         let tcp_hdr: TcpHeader = self.build_tcp_header(&tcp_packet);
         let data: Option<DemiBuffer> = if tcp_packet.seqnum.win > 0 {
@@ -860,26 +859,41 @@ impl Simulation {
         } else {
             None
         };
+        let mut segment: TcpSegment =
+            TcpSegment::new(ipv4_hdr, tcp_hdr, data, false).expect("Should be able to create TCP segment");
+        let mut pkt: DemiBuffer = segment.take_body().unwrap();
 
-        TcpSegment::new(ethernet2_hdr, ipv4_hdr, tcp_hdr, data, false).unwrap()
+        // Actually prepend L2 header.
+        self.prepend_ethernet_header(&mut pkt);
+        pkt
     }
 
     /// Builds a UDP datagram.
-    fn build_udp_datagram(&self, udp_packet: &UdpPacket) -> UdpDatagram {
+    fn build_udp_datagram(&self, udp_packet: &UdpPacket) -> DemiBuffer {
         // Create headers.
-        let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
         let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::UDP);
         let udp_hdr: UdpHeader = self.build_udp_header(&udp_packet);
         let data: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
+        let mut datagram: UdpDatagram = UdpDatagram::new(ipv4_hdr, udp_hdr, data, false).unwrap();
 
-        UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, false).unwrap()
+        let mut pkt: DemiBuffer = datagram.take_body().unwrap();
+
+        // Actually prepend L2 header.
+        self.prepend_ethernet_header(&mut pkt);
+        pkt
+    }
+
+    /// Attach the ethernet header to a packet.
+    fn prepend_ethernet_header(&self, pkt: &mut DemiBuffer) {
+        let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
+        let ethernet2_hdr_size: usize = ethernet2_hdr.compute_size();
+        pkt.prepend(ethernet2_hdr_size).expect("Should be enough headeroom");
+        ethernet2_hdr.serialize(&mut pkt[0..ethernet2_hdr_size]);
     }
 
     /// Runs an incoming packet.
     fn run_incoming_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let segment: TcpSegment = self.build_tcp_segment(&tcp_packet);
-
-        let buf: DemiBuffer = Self::serialize_packet(segment);
+        let buf: DemiBuffer = self.build_tcp_segment(&tcp_packet);
         self.engine.push_frame(buf);
 
         self.engine.poll();
@@ -888,9 +902,7 @@ impl Simulation {
 
     /// Runs an incoming packet.
     fn run_incoming_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
-        let datagram: UdpDatagram = self.build_udp_datagram(&udp_packet);
-
-        let buf: DemiBuffer = Self::serialize_packet(datagram);
+        let buf: DemiBuffer = self.build_udp_datagram(&udp_packet);
         self.engine.push_frame(buf);
 
         self.engine.poll();
@@ -1056,11 +1068,6 @@ impl Simulation {
         self.check_udp_header(&udp_header, &udp_packet)?;
 
         Ok(())
-    }
-
-    /// Serializes a TCP segment.
-    fn serialize_packet<P: PacketBuf>(mut pkt: P) -> DemiBuffer {
-        pkt.take_body().unwrap()
     }
 
     /// Cooks a buffer.
