@@ -12,7 +12,7 @@ use self::{
 };
 use crate::{
     async_timer,
-    inetstack::protocols::tcp::established::ctrlblk::SharedControlBlock,
+    inetstack::protocols::layer4::tcp::established::ctrlblk::SharedControlBlock,
     runtime::QDesc,
 };
 use ::futures::{

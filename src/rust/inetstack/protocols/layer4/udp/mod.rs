@@ -21,6 +21,7 @@ mod tests;
 pub use self::{
     datagram::UdpHeader,
     peer::SharedUdpPeer,
+    socket::SharedUdpSocket,
 };
 
 /// Expose this when building tests, as the network simulator uses it.

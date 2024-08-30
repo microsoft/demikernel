@@ -4,7 +4,7 @@
 use crate::{
     collections::async_value::SharedAsyncValue,
     expect_some,
-    inetstack::protocols::tcp::{
+    inetstack::protocols::layer4::tcp::{
         established::{
             ctrlblk::SharedControlBlock,
             sender::UnackedSegment,

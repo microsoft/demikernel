@@ -10,7 +10,7 @@ use crate::{
     expect_some,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        tcp::{
+        layer4::tcp::{
             active_open::SharedActiveOpenSocket,
             established::EstablishedSocket,
             passive_open::SharedPassiveSocket,

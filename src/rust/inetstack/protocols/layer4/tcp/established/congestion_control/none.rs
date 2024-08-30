@@ -7,7 +7,7 @@
 
 use crate::{
     collections::async_value::SharedAsyncValue,
-    inetstack::protocols::tcp::{
+    inetstack::protocols::layer4::tcp::{
         established::congestion_control::{
             CongestionControl,
             FastRetransmitRecovery,

@@ -9,7 +9,7 @@ use crate::{
             ip::IpProtocol,
             PacketBuf,
         },
-        tcp::SeqNumber,
+        layer4::tcp::SeqNumber,
         MAX_HEADER_SIZE,
     },
     runtime::{

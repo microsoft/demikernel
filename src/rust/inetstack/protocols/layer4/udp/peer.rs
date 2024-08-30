@@ -9,7 +9,7 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        udp::{
+        layer4::udp::{
             datagram::UdpHeader,
             socket::SharedUdpSocket,
         },

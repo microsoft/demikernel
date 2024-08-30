@@ -15,14 +15,19 @@ use crate::{
             layer3::{
                 ip::IpProtocol,
                 ipv4::Ipv4Header,
+                PacketBuf,
             },
             layer4::{
-                tcp::header::{
+                tcp::segment::{
                     TcpHeader,
                     TcpOptions2,
+                    TcpSegment,
                     MAX_TCP_OPTIONS,
                 },
-                udp::header::UdpHeader,
+                udp::{
+                    UdpDatagram,
+                    UdpHeader,
+                },
             },
             MAX_HEADER_SIZE,
         },
@@ -851,16 +856,24 @@ impl Simulation {
     /// Builds a TCP segment.
     fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> DemiBuffer {
         // Create headers.
-
+        let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::TCP);
         let tcp_hdr: TcpHeader = self.build_tcp_header(&tcp_packet);
-        let mut pkt: DemiBuffer = if tcp_packet.seqnum.win > 0 {
-            Self::cook_buffer(tcp_packet.seqnum.win as usize, None)
+        let data: Option<DemiBuffer> = if tcp_packet.seqnum.win > 0 {
+            Some(Self::cook_buffer(tcp_packet.seqnum.win as usize, None))
         } else {
-            DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
+            None
         };
-        tcp_hdr.serialize(&mut pkt, self.remote_sockaddr.ip(), self.local_sockaddr.ip(), false);
+        let mut segment: TcpSegment = TcpSegment::new(
+            self.remote_sockaddr.ip(),
+            self.local_sockaddr.ip(),
+            tcp_hdr,
+            data,
+            false,
+        )
+        .expect("Should be able to create TCP segment");
+        let mut pkt: DemiBuffer = segment.take_body().unwrap();
         let payload_size_bytes: usize = pkt.len();
-        self.prepend_ipv4_header(IpProtocol::TCP, &mut pkt, payload_size_bytes);
+        self.prepend_ipv4_header(&ipv4_hdr, &mut pkt, payload_size_bytes);
         self.prepend_ethernet_header(&mut pkt);
         pkt
     }
@@ -868,13 +881,22 @@ impl Simulation {
     /// Builds a UDP datagram.
     fn build_udp_datagram(&self, udp_packet: &UdpPacket) -> DemiBuffer {
         // Create headers.
+        let ipv4_hdr: Ipv4Header = self.build_ipv4_header(IpProtocol::UDP);
         let udp_hdr: UdpHeader = self.build_udp_header(&udp_packet);
-        let mut pkt: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
-        let payload_size_bytes: usize = pkt.len();
+        let data: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
         // This is an incoming packet, so the source is the remote address and the destination is the local address.
-        udp_hdr.serialize(&mut pkt, &self.remote_sockaddr.ip(), &self.local_sockaddr.ip(), false);
+        let mut datagram: UdpDatagram = UdpDatagram::new(
+            &self.remote_sockaddr.ip(),
+            &self.local_sockaddr.ip(),
+            udp_hdr,
+            data,
+            false,
+        )
+        .unwrap();
 
-        self.prepend_ipv4_header(IpProtocol::UDP, &mut pkt, payload_size_bytes);
+        let mut pkt: DemiBuffer = datagram.take_body().unwrap();
+        let payload_size_bytes: usize = pkt.len();
+        self.prepend_ipv4_header(&ipv4_hdr, &mut pkt, payload_size_bytes);
         self.prepend_ethernet_header(&mut pkt);
         pkt
     }
@@ -882,13 +904,16 @@ impl Simulation {
     /// Attach the ethernet header to a packet.
     fn prepend_ethernet_header(&self, pkt: &mut DemiBuffer) {
         let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
-        ethernet2_hdr.serialize(pkt);
+        let ethernet2_hdr_bytes: usize = ethernet2_hdr.compute_size();
+        pkt.prepend(ethernet2_hdr_bytes).expect("Should be enough headeroom");
+        ethernet2_hdr.serialize(&mut pkt[..ethernet2_hdr_bytes]);
     }
 
     /// Attach the Ipv4 header to a packet.
-    fn prepend_ipv4_header(&self, ip_protocol: IpProtocol, pkt: &mut DemiBuffer, payload_size_bytes: usize) {
-        let ipv4_hdr: Ipv4Header = self.build_ipv4_header(ip_protocol);
-        ipv4_hdr.serialize(pkt, payload_size_bytes);
+    fn prepend_ipv4_header(&self, ipv4_hdr: &Ipv4Header, pkt: &mut DemiBuffer, payload_size_bytes: usize) {
+        let ipv4_hdr_bytes: usize = ipv4_hdr.compute_size();
+        pkt.prepend(ipv4_hdr_bytes).expect("Should be enough headroom");
+        ipv4_hdr.serialize(&mut pkt[..ipv4_hdr_bytes], payload_size_bytes);
     }
 
     /// Runs an incoming packet.

@@ -7,7 +7,7 @@ mod options;
 
 use crate::{
     collections::async_value::SharedAsyncValue,
-    inetstack::protocols::tcp::SeqNumber,
+    inetstack::protocols::layer4::tcp::SeqNumber,
 };
 use ::std::{
     fmt::Debug,
