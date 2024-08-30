@@ -15,15 +15,9 @@ use crate::{
     },
     expect_ok,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
         layer3::{
-            arp::SharedArpPeer,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
+            PacketBuf,
+            SharedLayer3Endpoint,
         },
         tcp::{
             constants::MSL,
@@ -52,7 +46,6 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
-            types::MacAddress,
         },
         yield_with_timeout,
         SharedDemiRuntime,
@@ -61,7 +54,10 @@ use crate::{
 };
 use ::std::{
     collections::VecDeque,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -181,15 +177,11 @@ pub struct ControlBlock {
     local: SocketAddrV4,
     remote: SocketAddrV4,
 
-    layer2_endpoint: SharedLayer2Endpoint,
+    layer3_endpoint: SharedLayer3Endpoint,
     #[allow(unused)]
     runtime: SharedDemiRuntime,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
-
-    // TODO: We shouldn't be keeping anything datalink-layer specific at this level.  The IP layer should be holding
-    // this along with other remote IP information (such as routing, path MTU, etc).
-    arp: SharedArpPeer,
 
     // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
     sender: Sender,
@@ -237,7 +229,7 @@ pub struct ControlBlock {
     rto_calculator: RtoCalculator,
 
     // Incoming packets for this connection.
-    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
 
     ack_queue: SharedAsyncQueue<usize>,
     socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
@@ -252,10 +244,9 @@ impl SharedControlBlock {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -266,7 +257,7 @@ impl SharedControlBlock {
         sender_mss: usize,
         cc_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
-        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
     ) -> Self {
@@ -275,10 +266,9 @@ impl SharedControlBlock {
             local,
             remote,
             runtime,
-            layer2_endpoint,
+            layer3_endpoint,
             tcp_config,
             socket_options: default_socket_options,
-            arp,
             sender,
             state: State::Established,
             ack_delay_timeout,
@@ -303,11 +293,6 @@ impl SharedControlBlock {
 
     pub fn get_remote(&self) -> SocketAddrV4 {
         self.remote
-    }
-
-    // TODO: Remove this.  ARP doesn't belong at this layer.
-    pub fn arp(&self) -> SharedArpPeer {
-        self.arp.clone()
     }
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
@@ -415,8 +400,8 @@ impl SharedControlBlock {
         self.runtime.get_now()
     }
 
-    pub fn receive(&mut self, ipv4_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
-        self.recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+    pub fn receive(&mut self, remote_ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+        self.recv_queue.push((remote_ipv4_addr, tcp_hdr, buf));
     }
 
     // This is the main TCP processing routine.
@@ -811,22 +796,17 @@ impl SharedControlBlock {
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(&mut self) {
+        trace!("sending ack");
         let mut header: TcpHeader = self.tcp_header();
 
         // TODO: Think about moving this to tcp_header() as well.
         let seq_num: SeqNumber = self.get_send_next().get();
         header.seq_num = seq_num;
-
-        // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
-        // left to the ARP layer and not exposed to TCP).
-        if let Some(remote_link_addr) = self.arp().try_query(self.remote.ip().clone()) {
-            self.emit(header, None, remote_link_addr);
-        }
+        self.emit(header, None);
     }
 
     /// Transmit this message to our connected peer.
-    ///
-    pub fn emit(&mut self, header: TcpHeader, body: Option<DemiBuffer>, remote_link_addr: MacAddress) {
+    pub fn emit(&mut self, header: TcpHeader, body: Option<DemiBuffer>) {
         // Only perform this debug print in debug builds.  debug_assertions is compiler set in non-optimized builds.
         #[cfg(debug_assertions)]
         if body.is_some() {
@@ -839,11 +819,12 @@ impl SharedControlBlock {
         debug_assert!(header.ack);
 
         let sent_fin: bool = header.fin;
-
+        let remote_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
         let mut segment = match TcpSegment::new(
-            Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            self.local.ip(),
+            self.remote.ip(),
             header,
             body,
             self.tcp_config.get_tx_checksum_offload(),
@@ -855,12 +836,11 @@ impl SharedControlBlock {
             },
         };
 
-        // Call lower L2 layer to send the segment.
-        if let Err(e) = self.layer2_endpoint.transmit(
-            remote_link_addr,
-            EtherType2::Ipv4,
-            segment.take_body().expect("just constructed above"),
-        ) {
+        // Call lower L3 layer to send the segment.
+        if let Err(e) = self
+            .layer3_endpoint
+            .transmit_tcp_packet_nonblocking(remote_ipv4_addr, segment.take_body().expect("just constructed above"))
+        {
             warn!("could not emit packet: {:?}", e);
             return;
         }

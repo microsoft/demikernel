@@ -5,11 +5,7 @@ use crate::{
     collections::async_queue::AsyncQueue,
     demikernel::config::Config,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
+        layer2::SharedLayer2Endpoint,
         layer3::{
             arp::SharedArpPeer,
             icmpv4::datagram::{
@@ -20,6 +16,7 @@ use crate::{
             },
             ip::IpProtocol,
             ipv4::Ipv4Header,
+            PacketBuf,
         },
     },
     runtime::{
@@ -180,11 +177,10 @@ impl SharedIcmpv4Peer {
                 },
             };
 
-            if let Err(e) = self.layer2_endpoint.transmit(
-                dst_link_addr,
-                EtherType2::Ipv4,
-                message.take_body().expect("just constructed above"),
-            ) {
+            if let Err(e) = self
+                .layer2_endpoint
+                .transmit_ipv4_packet(dst_link_addr, message.take_body().expect("just constructed above"))
+            {
                 warn!("Could not send packet: {:?}", e);
             }
         }
@@ -242,11 +238,10 @@ impl SharedIcmpv4Peer {
             data,
         )?;
 
-        if let Err(e) = self.layer2_endpoint.transmit(
-            dst_link_addr,
-            EtherType2::Ipv4,
-            msg.take_body().expect("just constructed above"),
-        ) {
+        if let Err(e) = self
+            .layer2_endpoint
+            .transmit_ipv4_packet(dst_link_addr, msg.take_body().expect("just constructed above"))
+        {
             // Ignore for now because the other end will retry.
             // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
             // FIXME: https://github.com/microsoft/demikernel/issues/1365

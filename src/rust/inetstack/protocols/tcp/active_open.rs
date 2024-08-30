@@ -12,15 +12,9 @@ use crate::{
     },
     expect_some,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
         layer3::{
-            arp::SharedArpPeer,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
+            PacketBuf,
+            SharedLayer3Endpoint,
         },
         tcp::{
             constants::{
@@ -43,13 +37,11 @@ use crate::{
         },
     },
     runtime::{
-        conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
             config::TcpConfig,
             socket::option::TcpSocketOptions,
-            types::MacAddress,
         },
         QDesc,
         SharedDemiRuntime,
@@ -62,7 +54,10 @@ use ::futures::{
     FutureExt,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -87,12 +82,11 @@ pub struct ActiveOpenSocket {
     local: SocketAddrV4,
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    layer2_endpoint: SharedLayer2Endpoint,
-    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+    layer3_endpoint: SharedLayer3Endpoint,
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
     ack_queue: SharedAsyncQueue<usize>,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
-    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     state: SharedAsyncValue<State>,
 }
@@ -110,12 +104,11 @@ impl SharedActiveOpenSocket {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        layer3_endpoint: SharedLayer3Endpoint,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Result<Self, Fail> {
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
@@ -125,12 +118,11 @@ impl SharedActiveOpenSocket {
             local,
             remote,
             runtime: runtime.clone(),
-            layer2_endpoint,
+            layer3_endpoint,
             recv_queue,
             ack_queue,
             tcp_config,
             socket_options: default_socket_options,
-            arp,
             dead_socket_tx,
             state: SharedAsyncValue::new(State::Connecting),
         })))
@@ -165,11 +157,6 @@ impl SharedActiveOpenSocket {
 
         debug!("Received SYN+ACK: {:?}", header);
 
-        // Acknowledge the SYN+ACK segment.
-        let remote_link_addr = match self.arp.try_query(self.remote.ip().clone()) {
-            Some(r) => r,
-            None => panic!("TODO: Clean up ARP query control flow"),
-        };
         let remote_seq_num = header.seq_num + SeqNumber::from(1);
 
         let mut tcp_hdr = TcpHeader::new(self.local.port(), self.remote.port());
@@ -179,17 +166,16 @@ impl SharedActiveOpenSocket {
         tcp_hdr.seq_num = self.local_isn + SeqNumber::from(1);
         debug!("Sending ACK: {:?}", tcp_hdr);
 
+        let dst_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
         let mut segment = TcpSegment::new(
-            Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            self.local.ip(),
+            self.remote.ip(),
             tcp_hdr,
             None,
             self.tcp_config.get_rx_checksum_offload(),
         )?;
-        self.layer2_endpoint.transmit(
-            remote_link_addr,
-            EtherType2::Ipv4,
-            segment.take_body().expect("just created above"),
-        )?;
+        self.layer3_endpoint
+            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, segment.take_body().expect("just created above"))?;
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -246,12 +232,11 @@ impl SharedActiveOpenSocket {
             self.local,
             self.remote,
             self.runtime.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             self.recv_queue.clone(),
             self.ack_queue.clone(),
             self.tcp_config.clone(),
             self.socket_options,
-            self.arp.clone(),
             remote_seq_num,
             self.tcp_config.get_ack_delay_timeout(),
             rx_window_size,
@@ -271,32 +256,6 @@ impl SharedActiveOpenSocket {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
-        // Look up remote MAC address.
-        let mut retries_left: usize = handshake_retries;
-        // Look up MAC address.
-        let remote_link_addr: MacAddress = loop {
-            match conditional_yield_with_timeout(
-                self.clone().arp.query(self.remote.ip().clone()).fuse(),
-                handshake_timeout,
-            )
-            .await
-            {
-                Ok(r) => break r?,
-                Err(e) if e.errno == libc::ETIMEDOUT && retries_left > 0 => {
-                    retries_left = retries_left - 1;
-                },
-                Err(e) if e.errno == libc::ETIMEDOUT => {
-                    let cause: String = format!("ARP query failed");
-                    error!("connect(): {}", cause);
-                    return Err(Fail::new(libc::ECONNREFUSED, &cause));
-                },
-                Err(e) => {
-                    let cause: String = format!("ARP query failed: {:?}", e);
-                    error!("connect(): {}", cause);
-                    return Err(e);
-                },
-            }
-        };
 
         // Try to connect.
         for _ in 0..handshake_retries {
@@ -314,24 +273,26 @@ impl SharedActiveOpenSocket {
             info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
             debug!("Sending SYN {:?}", tcp_hdr);
+            let dst_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
             let mut segment = TcpSegment::new(
-                Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+                self.local.ip(),
+                self.remote.ip(),
                 tcp_hdr,
                 None,
                 self.tcp_config.get_rx_checksum_offload(),
             )?;
             // Send SYN.
-            if let Err(e) = self.layer2_endpoint.transmit(
-                remote_link_addr,
-                EtherType2::Ipv4,
-                segment.take_body().expect("just constructed above"),
-            ) {
+            if let Err(e) = self
+                .layer3_endpoint
+                .transmit_tcp_packet_blocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
+                .await
+            {
                 warn!("Could not send SYN: {:?}", e);
                 continue;
             }
 
             // Wait for either a response or timeout.
-            let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
+            let mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
             let mut state: SharedAsyncValue<State> = self.state.clone();
             select_biased! {
             r = state.wait_for_change(None).fuse() => if let Ok(r) = r {

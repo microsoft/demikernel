@@ -8,11 +8,7 @@
 use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
-        layer2::SharedLayer2Endpoint,
-        layer3::{
-            arp::SharedArpPeer,
-            ipv4::Ipv4Header,
-        },
+        layer3::SharedLayer3Endpoint,
         tcp::{
             isn_generator::IsnGenerator,
             segment::TcpHeader,
@@ -65,11 +61,10 @@ use ::std::{
 pub struct TcpPeer {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    layer2_endpoint: SharedLayer2Endpoint,
+    layer3_endpoint: SharedLayer3Endpoint,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
     default_socket_options: TcpSocketOptions,
-    arp: SharedArpPeer,
     rng: SmallRng,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     addresses: HashMap<SocketId, SharedTcpSocket>,
@@ -86,8 +81,7 @@ impl SharedTcpPeer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-        arp: SharedArpPeer,
+        layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
@@ -96,11 +90,10 @@ impl SharedTcpPeer {
         Ok(Self(SharedObject::<TcpPeer>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
-            layer2_endpoint,
+            layer3_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
             tcp_config: TcpConfig::new(config)?,
             default_socket_options: TcpSocketOptions::new(config)?,
-            arp,
             rng,
             dead_socket_tx: tx,
             addresses: HashMap::<SocketId, SharedTcpSocket>::new(),
@@ -111,10 +104,9 @@ impl SharedTcpPeer {
     pub fn socket(&mut self) -> Result<SharedTcpSocket, Fail> {
         Ok(SharedTcpSocket::new(
             self.runtime.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             self.tcp_config.clone(),
             self.default_socket_options.clone(),
-            self.arp.clone(),
             self.dead_socket_tx.clone(),
         ))
     }
@@ -270,25 +262,25 @@ impl SharedTcpPeer {
     }
 
     /// Processes an incoming TCP segment.
-    pub fn receive(&mut self, ip_hdr: Ipv4Header, buf: DemiBuffer) {
-        let (tcp_hdr, data): (TcpHeader, DemiBuffer) =
-            match TcpHeader::parse(&ip_hdr, buf, self.tcp_config.get_rx_checksum_offload()) {
-                Ok(result) => result,
-                Err(e) => {
-                    let cause: String = format!("invalid tcp header: {:?}", e);
-                    error!("receive(): {}", &cause);
-                    return;
-                },
-            };
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, buf: DemiBuffer) {
+        // We can assume that the destination is our local IPv4 address; otherwise, the IP layer would have discarded
+        // the packet already.
+        let (tcp_hdr, data): (TcpHeader, DemiBuffer) = match TcpHeader::parse(
+            &src_ipv4_addr,
+            &self.local_ipv4_addr,
+            buf,
+            self.tcp_config.get_rx_checksum_offload(),
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let cause: String = format!("invalid tcp header: {:?}", e);
+                error!("receive(): {}", &cause);
+                return;
+            },
+        };
         debug!("TCP received {:?}", tcp_hdr);
-        let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
-        let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
-
-        if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
-            let cause: String = format!("invalid remote address (remote={})", remote.ip());
-            error!("receive(): {}", &cause);
-            return;
-        }
+        let local: SocketAddrV4 = SocketAddrV4::new(self.local_ipv4_addr, tcp_hdr.dst_port);
+        let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, tcp_hdr.src_port);
 
         // Retrieve the queue descriptor based on the incoming segment.
         let socket: &mut SharedTcpSocket = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
@@ -304,7 +296,7 @@ impl SharedTcpPeer {
         };
 
         // Dispatch to further processing depending on the socket state.
-        socket.receive(ip_hdr, tcp_hdr, data)
+        socket.receive(src_ipv4_addr, tcp_hdr, data)
     }
 }
 

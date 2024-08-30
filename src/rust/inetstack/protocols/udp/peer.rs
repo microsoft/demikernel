@@ -8,11 +8,7 @@
 use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
-        layer2::SharedLayer2Endpoint,
-        layer3::{
-            arp::SharedArpPeer,
-            ipv4::Ipv4Header,
-        },
+        layer3::SharedLayer3Endpoint,
         udp::{
             datagram::UdpHeader,
             socket::SharedUdpSocket,
@@ -48,9 +44,7 @@ use ::std::{
 /// UDP Peer
 pub struct UdpPeer {
     /// Underlying transport.
-    layer2_endpoint: SharedLayer2Endpoint,
-    /// Underlying ARP peer.
-    arp: SharedArpPeer,
+    layer3_endpoint: SharedLayer3Endpoint,
     /// Local IPv4 address.
     local_ipv4_addr: Ipv4Addr,
     /// Offload checksum to hardware?
@@ -72,12 +66,10 @@ impl SharedUdpPeer {
     pub fn new(
         config: &Config,
         _runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-        arp: SharedArpPeer,
+        layer3_endpoint: SharedLayer3Endpoint,
     ) -> Result<Self, Fail> {
         Ok(Self(SharedObject::<UdpPeer>::new(UdpPeer {
-            layer2_endpoint,
-            arp,
+            layer3_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
             checksum_offload: config.udp_checksum_offload()?,
             addresses: HashMap::<SocketAddrV4, SharedUdpSocket>::new(),
@@ -88,8 +80,7 @@ impl SharedUdpPeer {
     pub fn socket(&mut self) -> Result<SharedUdpSocket, Fail> {
         SharedUdpSocket::new(
             self.local_ipv4_addr,
-            self.layer2_endpoint.clone(),
-            self.arp.clone(),
+            self.layer3_endpoint.clone(),
             self.checksum_offload,
         )
     }
@@ -150,21 +141,23 @@ impl SharedUdpPeer {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn receive(&mut self, ipv4_hdr: Ipv4Header, buf: DemiBuffer) {
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, buf: DemiBuffer) {
         timer!("udp::receive");
-        // Parse datagram.
-        let (hdr, data): (UdpHeader, DemiBuffer) = match UdpHeader::parse(&ipv4_hdr, buf, self.checksum_offload) {
-            Ok(result) => result,
-            Err(e) => {
-                let cause: String = format!("dropping packet: unable to parse UDP header");
-                warn!("{}: {:?}", cause, e);
-                return;
-            },
-        };
+        // Parse datagram. Safe to use the local IP address here because the lower IP layer would have discarded the
+        // packet if the destination did not match the local IP.
+        let (hdr, data): (UdpHeader, DemiBuffer) =
+            match UdpHeader::parse(&src_ipv4_addr, &self.local_ipv4_addr, buf, self.checksum_offload) {
+                Ok(result) => result,
+                Err(e) => {
+                    let cause: String = format!("dropping packet: unable to parse UDP header");
+                    warn!("{}: {:?}", cause, e);
+                    return;
+                },
+            };
         debug!("UDP received {:?}", hdr);
 
-        let local: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_dest_addr(), hdr.dest_port());
-        let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), hdr.src_port());
+        let local: SocketAddrV4 = SocketAddrV4::new(self.local_ipv4_addr, hdr.dest_port());
+        let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, hdr.src_port());
 
         let socket: &mut SharedUdpSocket = match self.get_socket_from_addr(&local) {
             Some(queue) => queue,

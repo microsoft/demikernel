@@ -8,15 +8,9 @@
 use crate::{
     collections::async_queue::AsyncQueue,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
         layer3::{
-            arp::SharedArpPeer,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
+            PacketBuf,
+            SharedLayer3Endpoint,
         },
         udp::{
             datagram::UdpDatagram,
@@ -26,10 +20,7 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            types::MacAddress,
-            unwrap_socketaddr,
-        },
+        network::unwrap_socketaddr,
         SharedObject,
     },
 };
@@ -68,10 +59,9 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 pub struct UdpSocket {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
-    layer2_endpoint: SharedLayer2Endpoint,
+    layer3_endpoint: SharedLayer3Endpoint,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
-    arp: SharedArpPeer,
     checksum_offload: bool,
 }
 #[derive(Clone)]
@@ -84,16 +74,14 @@ pub struct SharedUdpSocket(SharedObject<UdpSocket>);
 impl SharedUdpSocket {
     pub fn new(
         local_ipv4_addr: Ipv4Addr,
-        layer2_endpoint: SharedLayer2Endpoint,
-        arp: SharedArpPeer,
+        layer3_endpoint: SharedLayer3Endpoint,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
         Ok(Self(SharedObject::new(UdpSocket {
             local_ipv4_addr,
             bound: None,
-            layer2_endpoint,
+            layer3_endpoint,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
-            arp,
             checksum_offload,
         })))
     }
@@ -119,20 +107,21 @@ impl SharedUdpSocket {
             error!("pushto(): {}", &cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         };
-        let remote_link_addr: MacAddress = self.arp.query(remote.ip().clone()).await?;
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
         debug!("UDP send {:?}", udp_header);
         let mut datagram: UdpDatagram = UdpDatagram::new(
-            Ipv4Header::new(self.local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
+            &self.local_ipv4_addr,
+            remote.ip(),
             udp_header,
             buf,
             self.checksum_offload,
         )?;
-        self.layer2_endpoint.transmit(
-            remote_link_addr,
-            EtherType2::Ipv4,
-            datagram.take_body().expect("just constructed above"),
-        )
+        self.layer3_endpoint
+            .transmit_udp_packet_blocking(
+                remote.ip().clone(),
+                datagram.take_body().expect("just constructed above"),
+            )
+            .await
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {

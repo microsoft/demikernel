@@ -9,14 +9,16 @@ use crate::{
     inetstack::{
         protocols::{
             layer2::{
-                packet::PacketBuf,
                 EtherType2,
                 Ethernet2Header,
             },
-            layer3::arp::packet::{
-                ArpHeader,
-                ArpMessage,
-                ArpOperation,
+            layer3::{
+                arp::packet::{
+                    ArpHeader,
+                    ArpMessage,
+                    ArpOperation,
+                },
+                PacketBuf,
             },
         },
         test_helpers::{

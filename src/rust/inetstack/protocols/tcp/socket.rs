@@ -8,19 +8,15 @@
 use crate::{
     collections::async_queue::SharedAsyncQueue,
     expect_some,
-    inetstack::{
-        protocols::{
-            layer2::SharedLayer2Endpoint,
-            layer3::ipv4::Ipv4Header,
-            tcp::{
-                active_open::SharedActiveOpenSocket,
-                established::EstablishedSocket,
-                passive_open::SharedPassiveSocket,
-                segment::TcpHeader,
-                SeqNumber,
-            },
+    inetstack::protocols::{
+        layer3::SharedLayer3Endpoint,
+        tcp::{
+            active_open::SharedActiveOpenSocket,
+            established::EstablishedSocket,
+            passive_open::SharedPassiveSocket,
+            segment::TcpHeader,
+            SeqNumber,
         },
-        SharedArpPeer,
     },
     runtime::{
         fail::Fail,
@@ -43,7 +39,10 @@ use crate::{
 use ::futures::channel::mpsc;
 use ::std::{
     fmt::Debug,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -71,12 +70,11 @@ pub enum SocketState {
 /// Per-queue metadata for the TCP socket.
 pub struct TcpSocket {
     state: SocketState,
-    recv_queue: Option<SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
+    recv_queue: Option<SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>>,
     runtime: SharedDemiRuntime,
-    layer2_endpoint: SharedLayer2Endpoint,
+    layer3_endpoint: SharedLayer3Endpoint,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
-    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 }
 
@@ -90,20 +88,18 @@ impl SharedTcpSocket {
     /// Create a new shared queue.
     pub fn new(
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
         Self(SharedObject::<TcpSocket>::new(TcpSocket {
             state: SocketState::Unbound,
             recv_queue: None,
             runtime,
-            layer2_endpoint,
+            layer3_endpoint,
             tcp_config,
             socket_options: default_socket_options,
-            arp,
             dead_socket_tx,
         }))
     }
@@ -111,21 +107,19 @@ impl SharedTcpSocket {
     pub fn new_established(
         socket: EstablishedSocket,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
     ) -> Self {
-        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
+        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> = socket.get_recv_queue();
         Self(SharedObject::<TcpSocket>::new(TcpSocket {
             state: SocketState::Established(socket),
             recv_queue: Some(recv_queue),
             runtime,
-            layer2_endpoint,
+            layer3_endpoint,
             tcp_config,
             socket_options: default_socket_options,
-            arp,
             dead_socket_tx,
         }))
     }
@@ -173,8 +167,8 @@ impl SharedTcpSocket {
 
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&mut self, backlog: usize, nonce: u32) -> Result<(), Fail> {
-        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
-            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Addr, TcpHeader, DemiBuffer)>::default();
         self.state = SocketState::Listening(SharedPassiveSocket::new(
             expect_some!(
                 self.local(),
@@ -183,10 +177,9 @@ impl SharedTcpSocket {
             backlog,
             self.runtime.clone(),
             recv_queue.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             self.tcp_config.clone(),
             self.socket_options.clone(),
-            self.arp.clone(),
             self.dead_socket_tx.clone(),
             nonce,
         )?);
@@ -205,10 +198,9 @@ impl SharedTcpSocket {
         let new_queue = Self::new_established(
             new_socket,
             self.runtime.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             self.tcp_config.clone(),
             self.socket_options.clone(),
-            self.arp.clone(),
             self.dead_socket_tx.clone(),
         );
         Ok(new_queue)
@@ -220,8 +212,8 @@ impl SharedTcpSocket {
         remote: SocketAddrV4,
         local_isn: SeqNumber,
     ) -> Result<(), Fail> {
-        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
-            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Addr, TcpHeader, DemiBuffer)>::default();
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         // Create active socket.
         let socket: SharedActiveOpenSocket = SharedActiveOpenSocket::new(
@@ -229,12 +221,11 @@ impl SharedTcpSocket {
             local,
             remote,
             self.runtime.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
             self.tcp_config.clone(),
             self.socket_options.clone(),
-            self.arp.clone(),
             self.dead_socket_tx.clone(),
         )?;
         self.state = SocketState::Connecting(socket.clone());
@@ -343,7 +334,7 @@ impl SharedTcpSocket {
         }
     }
 
-    pub fn receive(&mut self, ip_hdr: Ipv4Header, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, ip_hdr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         // If this queue has an allocated receive queue, then direct the packet there.
         if let Some(recv_queue) = self.recv_queue.as_mut() {
             recv_queue.push((ip_hdr, tcp_hdr, buf));

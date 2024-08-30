@@ -6,7 +6,6 @@
 //======================================================================================================================
 
 pub mod ethernet2;
-pub mod packet;
 pub use self::ethernet2::{
     frame::{
         Ethernet2Header,
@@ -92,7 +91,15 @@ impl SharedLayer2Endpoint {
         Ok(batch)
     }
 
-    pub fn transmit(
+    pub fn transmit_arp_packet(&mut self, remote_link_addr: MacAddress, pkt: DemiBuffer) -> Result<(), Fail> {
+        self.transmit(remote_link_addr, EtherType2::Arp, pkt)
+    }
+
+    pub fn transmit_ipv4_packet(&mut self, remote_link_addr: MacAddress, pkt: DemiBuffer) -> Result<(), Fail> {
+        self.transmit(remote_link_addr, EtherType2::Ipv4, pkt)
+    }
+
+    fn transmit(
         &mut self,
         remote_link_addr: MacAddress,
         eth2_type: EtherType2,

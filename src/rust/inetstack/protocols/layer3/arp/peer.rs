@@ -6,18 +6,17 @@ use crate::{
     demikernel::config::Config,
     expect_ok,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
-        layer3::arp::{
-            cache::ArpCache,
-            packet::{
-                ArpHeader,
-                ArpMessage,
-                ArpOperation,
+        layer2::SharedLayer2Endpoint,
+        layer3::{
+            arp::{
+                cache::ArpCache,
+                packet::{
+                    ArpHeader,
+                    ArpMessage,
+                    ArpOperation,
+                },
             },
+            PacketBuf,
         },
     },
     runtime::{
@@ -240,9 +239,8 @@ impl SharedArpPeer {
                     };
                     debug!("Responding {:?}", reply);
 
-                    if let Err(e) = self.layer2_endpoint.transmit(
+                    if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
                         header.get_sender_hardware_addr(),
-                        EtherType2::Arp,
                         reply.take_body().expect("just constructed above"),
                     ) {
                         // Ignore for now because the other end will retry.
@@ -288,7 +286,7 @@ impl SharedArpPeer {
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 if let Err(e) = self
                     .layer2_endpoint
-                    .transmit(MacAddress::broadcast(), EtherType2::Arp, pkt.clone())
+                    .transmit_arp_packet(MacAddress::broadcast(), pkt.clone())
                 {
                     warn!("Could not send packet: {:?}", e);
                     continue;
