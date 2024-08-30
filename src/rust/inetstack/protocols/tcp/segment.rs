@@ -4,13 +4,10 @@
 use crate::{
     expect_ok,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            MIN_PAYLOAD_SIZE,
-        },
+        layer2::MIN_PAYLOAD_SIZE,
         layer3::{
             ip::IpProtocol,
-            ipv4::Ipv4Header,
+            PacketBuf,
         },
         tcp::SeqNumber,
         MAX_HEADER_SIZE,
@@ -26,6 +23,7 @@ use ::std::{
         Cursor,
         Read,
     },
+    net::Ipv4Addr,
     slice::ChunksExact,
 };
 
@@ -39,12 +37,14 @@ pub struct TcpSegment {
 
 impl TcpSegment {
     pub fn new(
-        ipv4_hdr: Ipv4Header,
+        // This is the local IP address because when we create a TCP segment, we are transmitting.
+        src_ipv4_addr: &Ipv4Addr,
+        // This is the remote IP address.
+        dst_ipv4_addr: &Ipv4Addr,
         tcp_hdr: TcpHeader,
         payload: Option<DemiBuffer>,
         checksum_offload: bool,
     ) -> Result<Self, Fail> {
-        let ipv4_hdr_size: usize = ipv4_hdr.compute_size();
         let tcp_hdr_size: usize = tcp_hdr.compute_size();
 
         let mut pkt: DemiBuffer = match payload {
@@ -64,11 +64,7 @@ impl TcpSegment {
         // Add headers in reverse.
         pkt.prepend(tcp_hdr_size)?;
         let (hdr_buf, data_buf): (&mut [u8], &mut [u8]) = pkt[..].split_at_mut(tcp_hdr_size);
-        tcp_hdr.serialize(hdr_buf, &ipv4_hdr, data_buf, checksum_offload);
-        // Get size.
-        let ipv4_payload_len: usize = pkt.len();
-        pkt.prepend(ipv4_hdr_size)?;
-        ipv4_hdr.serialize(&mut pkt[..ipv4_hdr_size], ipv4_payload_len);
+        tcp_hdr.serialize(hdr_buf, src_ipv4_addr, dst_ipv4_addr, data_buf, checksum_offload);
         Ok(Self { pkt: Some(pkt) })
     }
 }
@@ -222,7 +218,8 @@ impl TcpHeader {
     }
 
     pub fn parse(
-        ipv4_header: &Ipv4Header,
+        local_ipv4_addr: &Ipv4Addr,
+        remote_ipv4_addr: &Ipv4Addr,
         mut buf: DemiBuffer,
         rx_checksum_offload: bool,
     ) -> Result<(Self, DemiBuffer), Fail> {
@@ -263,7 +260,7 @@ impl TcpHeader {
 
         if !rx_checksum_offload {
             let checksum: u16 = u16::from_be_bytes([hdr_buf[16], hdr_buf[17]]);
-            if checksum != tcp_checksum(ipv4_header, hdr_buf, data_buf) {
+            if checksum != tcp_checksum(local_ipv4_addr, remote_ipv4_addr, hdr_buf, data_buf) {
                 return Err(Fail::new(EBADMSG, "TCP checksum mismatch"));
             }
         }
@@ -389,7 +386,14 @@ impl TcpHeader {
         Ok((header, buf))
     }
 
-    pub fn serialize(&self, buf: &mut [u8], ipv4_hdr: &Ipv4Header, data: &[u8], tx_checksum_offload: bool) {
+    pub fn serialize(
+        &self,
+        buf: &mut [u8],
+        src_ipv4_addr: &Ipv4Addr,
+        dst_ipv4_addr: &Ipv4Addr,
+        data: &[u8],
+        tx_checksum_offload: bool,
+    ) {
         let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] = (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
         fixed_buf[0..2].copy_from_slice(&self.src_port.to_be_bytes());
         fixed_buf[2..4].copy_from_slice(&self.dst_port.to_be_bytes());
@@ -448,7 +452,7 @@ impl TcpHeader {
 
         // Alright, we've fully filled out the header, time to compute the checksum.
         if !tx_checksum_offload {
-            let checksum: u16 = tcp_checksum(ipv4_hdr, &buf[..], data);
+            let checksum: u16 = tcp_checksum(src_ipv4_addr, dst_ipv4_addr, &buf[..], data);
             buf[16..18].copy_from_slice(&checksum.to_be_bytes());
         } else {
             buf[16] = 0;
@@ -482,17 +486,17 @@ impl TcpHeader {
     }
 }
 
-fn tcp_checksum(ipv4_header: &Ipv4Header, header: &[u8], data: &[u8]) -> u16 {
+fn tcp_checksum(src_ipv4_addr: &Ipv4Addr, dst_ipv4_addr: &Ipv4Addr, header: &[u8], data: &[u8]) -> u16 {
     let mut state: u32 = 0xffff;
 
     // First, fold in a "pseudo-IP" header of...
     // 1) Source address (4 bytes)
-    let src_octets: [u8; 4] = ipv4_header.get_src_addr().octets();
+    let src_octets: [u8; 4] = src_ipv4_addr.octets();
     state += u16::from_be_bytes([src_octets[0], src_octets[1]]) as u32;
     state += u16::from_be_bytes([src_octets[2], src_octets[3]]) as u32;
 
     // 2) Destination address (4 bytes)
-    let dst_octets: [u8; 4] = ipv4_header.get_dest_addr().octets();
+    let dst_octets: [u8; 4] = dst_ipv4_addr.octets();
     state += u16::from_be_bytes([dst_octets[0], dst_octets[1]]) as u32;
     state += u16::from_be_bytes([dst_octets[2], dst_octets[3]]) as u32;
 

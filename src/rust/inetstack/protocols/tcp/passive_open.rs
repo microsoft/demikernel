@@ -15,15 +15,9 @@ use crate::{
     },
     expect_some,
     inetstack::protocols::{
-        layer2::{
-            packet::PacketBuf,
-            EtherType2,
-            SharedLayer2Endpoint,
-        },
         layer3::{
-            arp::SharedArpPeer,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
+            PacketBuf,
+            SharedLayer3Endpoint,
         },
         tcp::{
             constants::FALLBACK_MSS,
@@ -51,7 +45,6 @@ use crate::{
             config::TcpConfig,
             consts::MAX_WINDOW_SCALE,
             socket::option::TcpSocketOptions,
-            types::MacAddress,
         },
         QDesc,
         SharedDemiRuntime,
@@ -69,7 +62,10 @@ use ::libc::{
 };
 use ::std::{
     collections::HashMap,
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     ops::{
         Deref,
         DerefMut,
@@ -93,18 +89,17 @@ enum State {
 pub struct PassiveSocket {
     // TCP Connection State.
     state: SharedAsyncValue<State>,
-    connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>,
-    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+    connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>>,
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
     ready: AsyncQueue<Result<EstablishedSocket, Fail>>,
     max_backlog: usize,
     isn_generator: IsnGenerator,
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    layer2_endpoint: SharedLayer2Endpoint,
+    layer3_endpoint: SharedLayer3Endpoint,
     tcp_config: TcpConfig,
     // We do not use these right now, but will in the future.
     socket_options: TcpSocketOptions,
-    arp: SharedArpPeer,
     dead_socket_tx: mpsc::UnboundedSender<QDesc>,
 
     background_task_qt: Option<QToken>,
@@ -123,28 +118,26 @@ impl SharedPassiveSocket {
         local: SocketAddrV4,
         max_backlog: usize,
         mut runtime: SharedDemiRuntime,
-        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
-        layer2_endpoint: SharedLayer2Endpoint,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         dead_socket_tx: mpsc::UnboundedSender<QDesc>,
         nonce: u32,
     ) -> Result<Self, Fail> {
         let socket_queue: SharedAsyncQueue<SocketAddrV4> = SharedAsyncQueue::<SocketAddrV4>::default();
         let mut me: Self = Self(SharedObject::<PassiveSocket>::new(PassiveSocket {
             state: SharedAsyncValue::new(State::Listening),
-            connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>>::new(),
+            connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>>::new(),
             recv_queue,
             ready: AsyncQueue::<Result<EstablishedSocket, Fail>>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
             runtime: runtime.clone(),
-            layer2_endpoint,
+            layer3_endpoint,
             tcp_config,
             socket_options: default_socket_options,
-            arp,
             dead_socket_tx,
             background_task_qt: None,
             socket_queue,
@@ -174,7 +167,7 @@ impl SharedPassiveSocket {
     async fn poll(mut self) {
         loop {
             let mut socket_queue: SharedAsyncQueue<SocketAddrV4> = self.socket_queue.clone();
-            let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
+            let mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
             let mut state: SharedAsyncValue<State> = self.state.clone();
             // Remove sockets that have been closed.
             futures::select! {
@@ -187,11 +180,11 @@ impl SharedPassiveSocket {
                 },
                 result = recv_queue.pop(None).fuse() => {
                     match result {
-                        Ok((ipv4_hdr, tcp_hdr, buf)) =>  {
-                                    let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_hdr.get_src_addr(), tcp_hdr.src_port);
+                        Ok((ipv4_addr, tcp_hdr, buf)) =>  {
+                                    let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_addr, tcp_hdr.src_port);
                                     if let Some(recv_queue) = self.connections.get_mut(&remote) {
                                         // Packet is either for an inflight request or established connection.
-                                        recv_queue.push((ipv4_hdr, tcp_hdr, buf));
+                                        recv_queue.push((ipv4_addr, tcp_hdr, buf));
                                         continue;
                                     }
 
@@ -254,8 +247,8 @@ impl SharedPassiveSocket {
         let remote_isn = tcp_hdr.seq_num;
 
         // Allocate a new coroutine to send the SYN+ACK and retry if necessary.
-        let recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> =
-            SharedAsyncQueue::<(Ipv4Header, TcpHeader, DemiBuffer)>::default();
+        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Addr, TcpHeader, DemiBuffer)>::default();
         let ack_queue: SharedAsyncQueue<usize> = SharedAsyncQueue::<usize>::default();
         let future = self
             .clone()
@@ -296,19 +289,8 @@ impl SharedPassiveSocket {
             )
         };
 
-        // Query link address for destination.
-        let dst_link_addr: MacAddress = match self.arp.try_query(remote.ip().clone()) {
-            Some(link_addr) => link_addr,
-            None => {
-                // ARP query is unlikely to fail, but if it does, don't send the RST segment,
-                // and return an error to server side.
-                let cause: String = format!("missing ARP entry (remote={})", remote.ip());
-                error!("send_rst(): {}", &cause);
-                return;
-            },
-        };
-
         // Create a RST segment.
+        let dst_ipv4_addr: Ipv4Addr = remote.ip().clone();
         let mut segment: TcpSegment = {
             let mut tcp_hdr: TcpHeader = TcpHeader::new(self.local.port(), remote.port());
             tcp_hdr.rst = true;
@@ -318,7 +300,8 @@ impl SharedPassiveSocket {
                 tcp_hdr.ack_num = ack_num;
             }
             match TcpSegment::new(
-                Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+                self.local.ip(),
+                remote.ip(),
                 tcp_hdr,
                 None,
                 self.tcp_config.get_rx_checksum_offload(),
@@ -332,11 +315,10 @@ impl SharedPassiveSocket {
         };
 
         // Pass on to send through the L2 layer.
-        if let Err(e) = self.layer2_endpoint.transmit(
-            dst_link_addr,
-            EtherType2::Ipv4,
-            segment.take_body().expect("just constructed above"),
-        ) {
+        if let Err(e) = self
+            .layer3_endpoint
+            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
+        {
             warn!("Could not send RST: {:?}", e);
         }
     }
@@ -347,7 +329,7 @@ impl SharedPassiveSocket {
         remote_isn: SeqNumber,
         local_isn: SeqNumber,
         tcp_hdr: TcpHeader,
-        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
     ) {
         // Set up new inflight accept connection.
@@ -421,7 +403,6 @@ impl SharedPassiveSocket {
         remote_isn: SeqNumber,
         remote: SocketAddrV4,
     ) -> Result<(), Fail> {
-        let remote_link_addr = self.arp.query(remote.ip().clone()).await?;
         let mut tcp_hdr = TcpHeader::new(self.local.port(), remote.port());
         tcp_hdr.syn = true;
         tcp_hdr.seq_num = local_isn;
@@ -437,22 +418,22 @@ impl SharedPassiveSocket {
         info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
         debug!("Sending SYN+ACK: {:?}", tcp_hdr);
+        let dst_ipv4_addr: Ipv4Addr = remote.ip().clone();
         let mut segment = TcpSegment::new(
-            Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+            self.local.ip(),
+            remote.ip(),
             tcp_hdr,
             None,
             self.tcp_config.get_rx_checksum_offload(),
         )?;
-        self.layer2_endpoint.transmit(
-            remote_link_addr,
-            EtherType2::Ipv4,
-            segment.take_body().expect("just constructed above"),
-        )
+        self.layer3_endpoint
+            .transmit_tcp_packet_blocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
+            .await
     }
 
     async fn wait_for_ack(
         self,
-        mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         remote: SocketAddrV4,
         local_isn: SeqNumber,
@@ -516,12 +497,11 @@ impl SharedPassiveSocket {
             self.local,
             remote,
             self.runtime.clone(),
-            self.layer2_endpoint.clone(),
+            self.layer3_endpoint.clone(),
             recv_queue.clone(),
             ack_queue,
             self.tcp_config.clone(),
             self.socket_options,
-            self.arp.clone(),
             remote_isn + SeqNumber::from(1),
             self.tcp_config.get_ack_delay_timeout(),
             local_window_size,

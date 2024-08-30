@@ -9,18 +9,14 @@ mod sender;
 
 use crate::{
     collections::async_queue::SharedAsyncQueue,
-    inetstack::{
-        protocols::{
-            layer2::SharedLayer2Endpoint,
-            layer3::ipv4::Ipv4Header,
-            tcp::{
-                congestion_control::CongestionControlConstructor,
-                established::ctrlblk::SharedControlBlock,
-                segment::TcpHeader,
-                SeqNumber,
-            },
+    inetstack::protocols::{
+        layer3::SharedLayer3Endpoint,
+        tcp::{
+            congestion_control::CongestionControlConstructor,
+            established::ctrlblk::SharedControlBlock,
+            segment::TcpHeader,
+            SeqNumber,
         },
-        SharedArpPeer,
     },
     runtime::{
         fail::Fail,
@@ -39,14 +35,17 @@ use ::futures::{
     FutureExt,
 };
 use ::std::{
-    net::SocketAddrV4,
+    net::{
+        Ipv4Addr,
+        SocketAddrV4,
+    },
     time::Duration,
 };
 
 #[derive(Clone)]
 pub struct EstablishedSocket {
     pub cb: SharedControlBlock,
-    recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
     // We need this to eventually stop the background task on close.
     #[allow(unused)]
     runtime: SharedDemiRuntime,
@@ -61,12 +60,11 @@ impl EstablishedSocket {
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-        recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)>,
+        layer3_endpoint: SharedLayer3Endpoint,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         ack_queue: SharedAsyncQueue<usize>,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        arp: SharedArpPeer,
         receiver_seq_no: SeqNumber,
         ack_delay_timeout: Duration,
         receiver_window_size: u32,
@@ -85,10 +83,9 @@ impl EstablishedSocket {
             local,
             remote,
             runtime.clone(),
-            layer2_endpoint,
+            layer3_endpoint,
             tcp_config,
             default_socket_options,
-            arp,
             receiver_seq_no,
             ack_delay_timeout,
             receiver_window_size,
@@ -115,7 +112,7 @@ impl EstablishedSocket {
         })
     }
 
-    pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> {
+    pub fn get_recv_queue(&self) -> SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> {
         self.recv_queue.clone()
     }
 

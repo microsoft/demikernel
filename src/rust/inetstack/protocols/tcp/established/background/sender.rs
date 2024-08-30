@@ -65,7 +65,6 @@ pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
         // repeatedly send window probes until window opens up.
         if win_sz == 0 {
             // Send a window probe (this is a one-byte packet designed to elicit a window update from our peer).
-            let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
             let buf: DemiBuffer = cb
                 .pop_one_unsent_byte()
                 .unwrap_or_else(|| panic!("No unsent data? {}, {}", send_next, unsent_seq));
@@ -87,7 +86,7 @@ pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
                 // Create packet.
                 let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = send_next;
-                cb.emit(header, Some(buf.clone()), remote_link_addr);
+                cb.emit(header, Some(buf.clone()));
 
                 match win_sz_watched.wait_for_change(Some(timeout)).await {
                     Ok(_) => continue 'top,
@@ -134,9 +133,6 @@ pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
         // TODO: Nagle's algorithm - We need to coalese small buffers together to send MSS sized packets.
         // TODO: Silly window syndrome - See RFC 1122's discussion of the SWS avoidance algorithm.
 
-        // TODO: Link-level concerns don't belong here, we should call an IP-level send routine below.
-        let remote_link_addr = cb.arp().query(cb.get_remote().ip().clone()).await?;
-
         // Form an outgoing packet.
         let max_size: usize = cmp::min(
             cmp::min((win_sz - sent_data) as usize, cb.get_mss()),
@@ -163,7 +159,7 @@ pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
             header.psh = true;
         }
         let mut cb4 = cb.clone();
-        cb4.emit(header, Some(segment_data.clone()), remote_link_addr);
+        cb4.emit(header, Some(segment_data.clone()));
 
         // Update SND.NXT.
         cb.modify_send_next(|s| s + SeqNumber::from(segment_data_len));

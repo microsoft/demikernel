@@ -204,49 +204,45 @@ impl Sender {
             let win_sz: u32 = self.send_window.get();
 
             if win_sz > 0 && win_sz >= in_flight_after_send && effective_cwnd >= in_flight_after_send {
-                if let Some(remote_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
-                    // This hook is primarily intended to record the last time we sent data, so we can later tell if
-                    // the connection has been idle.
-                    let rto: Duration = cb.rto();
-                    cb.congestion_control_on_send(rto, sent_data);
+                // This hook is primarily intended to record the last time we sent data, so we can later tell if
+                // the connection has been idle.
+                let rto: Duration = cb.rto();
+                cb.congestion_control_on_send(rto, sent_data);
 
-                    // Prepare the segment and send it.
-                    let mut header: TcpHeader = cb.tcp_header();
-                    header.seq_num = send_next;
-                    if buf_len == 0 {
-                        // This buffer is the end-of-send marker.
-                        // Set FIN and adjust sequence number consumption accordingly.
-                        header.fin = true;
-                        buf_len = 1;
-                    } else {
-                        header.psh = true;
-                    }
-                    trace!("Send immediate");
-                    cb.emit(header, Some(buf.clone()), remote_link_addr);
-
-                    // Update SND.NXT.
-                    self.send_next.modify(|s| s + SeqNumber::from(buf_len));
-
-                    // TODO: We don't need to track this.
-                    self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
-
-                    // Put the segment we just sent on the retransmission queue.
-                    let unacked_segment = UnackedSegment {
-                        bytes: buf,
-                        initial_tx: Some(cb.get_now()),
-                    };
-                    self.unacked_queue.borrow_mut().push_back(unacked_segment);
-
-                    // Start the retransmission timer if it isn't already running.
-                    if cb.get_retransmit_deadline().is_none() {
-                        let rto: Duration = cb.rto();
-                        cb.set_retransmit_deadline(Some(cb.get_now() + rto));
-                    }
-
-                    return Ok(());
+                // Prepare the segment and send it.
+                let mut header: TcpHeader = cb.tcp_header();
+                header.seq_num = send_next;
+                if buf_len == 0 {
+                    // This buffer is the end-of-send marker.
+                    // Set FIN and adjust sequence number consumption accordingly.
+                    header.fin = true;
+                    buf_len = 1;
                 } else {
-                    warn!("no ARP cache entry for send");
+                    header.psh = true;
                 }
+                trace!("Send immediate");
+                cb.emit(header, Some(buf.clone()));
+
+                // Update SND.NXT.
+                self.send_next.modify(|s| s + SeqNumber::from(buf_len));
+
+                // TODO: We don't need to track this.
+                self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
+
+                // Put the segment we just sent on the retransmission queue.
+                let unacked_segment = UnackedSegment {
+                    bytes: buf,
+                    initial_tx: Some(cb.get_now()),
+                };
+                self.unacked_queue.borrow_mut().push_back(unacked_segment);
+
+                // Start the retransmission timer if it isn't already running.
+                if cb.get_retransmit_deadline().is_none() {
+                    let rto: Duration = cb.rto();
+                    cb.set_retransmit_deadline(Some(cb.get_now() + rto));
+                }
+
+                return Ok(());
             }
         }
 
@@ -278,17 +274,15 @@ impl Sender {
             // TODO: Issue #198 Repacketization - we should send a full MSS (and set the FIN flag if applicable).
 
             // Prepare and send the segment.
-            if let Some(first_hop_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
-                let mut header: TcpHeader = cb.tcp_header();
-                header.seq_num = self.send_unacked.get();
-                if data.len() == 0 {
-                    // This buffer is the end-of-send marker.  Retransmit the FIN.
-                    header.fin = true;
-                } else {
-                    header.psh = true;
-                }
-                cb.emit(header, Some(data), first_hop_link_addr);
+            let mut header: TcpHeader = cb.tcp_header();
+            header.seq_num = self.send_unacked.get();
+            if data.len() == 0 {
+                // This buffer is the end-of-send marker.  Retransmit the FIN.
+                header.fin = true;
+            } else {
+                header.psh = true;
             }
+            cb.emit(header, Some(data));
         } else {
             // We shouldn't enter the retransmit routine with an empty unacknowledged queue.  So maybe we should assert
             // here?  But this is relatively benign if it happens, and could be the result of a race-condition or a

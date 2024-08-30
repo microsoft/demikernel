@@ -7,8 +7,10 @@
 
 use crate::{
     inetstack::protocols::{
-        layer2::packet::PacketBuf,
-        layer3::arp::packet::ArpHeader,
+        layer3::{
+            arp::packet::ArpHeader,
+            PacketBuf,
+        },
         MAX_HEADER_SIZE,
     },
     runtime::{
@@ -33,6 +35,7 @@ pub struct ArpMessage {
 impl ArpMessage {
     /// Creates an ARP message.
     pub fn new(pdu: ArpHeader) -> Result<Self, Fail> {
+        trace!("Creating ARP packet");
         let arp_pdu_size: usize = pdu.compute_size();
         // Leave this here until we get rid of this data structure.
         let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);

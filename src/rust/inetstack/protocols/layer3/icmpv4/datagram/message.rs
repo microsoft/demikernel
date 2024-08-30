@@ -6,12 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    inetstack::protocols::{
-        layer2::packet::PacketBuf,
-        layer3::{
-            icmpv4::datagram::Icmpv4Header,
-            ipv4::Ipv4Header,
-        },
+    inetstack::protocols::layer3::{
+        icmpv4::datagram::Icmpv4Header,
+        ipv4::Ipv4Header,
+        PacketBuf,
     },
     runtime::{
         fail::Fail,

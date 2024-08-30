@@ -9,13 +9,7 @@ use crate::{
     demikernel::config::Config,
     expect_some,
     inetstack::protocols::{
-        layer2::SharedLayer2Endpoint,
-        layer3::{
-            arp::SharedArpPeer,
-            icmpv4::SharedIcmpv4Peer,
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
-        },
+        layer3::SharedLayer3Endpoint,
         tcp::{
             socket::SharedTcpSocket,
             SharedTcpPeer,
@@ -37,22 +31,19 @@ use ::socket2::{
     Domain,
     Type,
 };
-use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    time::Duration,
+use ::std::net::{
+    Ipv4Addr,
+    SocketAddr,
+    SocketAddrV4,
 };
+#[cfg(test)]
+use ::std::time::Duration;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
 pub struct Peer {
-    local_ipv4_addr: Ipv4Addr,
-    icmpv4: SharedIcmpv4Peer,
     tcp: SharedTcpPeer,
     udp: SharedUdpPeer,
 }
@@ -72,53 +63,21 @@ impl Peer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-        arp: SharedArpPeer,
+        layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer2_endpoint.clone(), arp.clone())?;
-        let icmpv4: SharedIcmpv4Peer =
-            SharedIcmpv4Peer::new(config, runtime.clone(), layer2_endpoint.clone(), arp.clone(), rng_seed)?;
-        let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer2_endpoint.clone(), arp, rng_seed)?;
+        let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer3_endpoint.clone())?;
+        let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
 
-        Ok(Peer {
-            local_ipv4_addr: config.local_ipv4_addr()?,
-            icmpv4,
-            tcp,
-            udp,
-        })
+        Ok(Peer { tcp, udp })
     }
 
-    pub fn receive(&mut self, buf: DemiBuffer) {
-        let (header, payload) = match Ipv4Header::parse(buf) {
-            Ok(result) => result,
-            Err(e) => {
-                let cause: String = format!("Invalid destination address: {:?}", e);
-                warn!("dropping packet: {}", cause);
-                return;
-            },
-        };
-        debug!("Ipv4 received {:?}", header);
-        if header.get_dest_addr() != self.local_ipv4_addr && !header.get_dest_addr().is_broadcast() {
-            let cause: String = format!("Invalid destination address");
-            warn!("dropping packet: {}", cause);
-            return;
-        }
-        match header.get_protocol() {
-            IpProtocol::ICMPv4 => self.icmpv4.receive(header, payload),
-            IpProtocol::TCP => self.tcp.receive(header, payload),
-            IpProtocol::UDP => self.udp.receive(header, payload),
-        }
+    pub fn receive_tcp_packet(&mut self, src_ipv4_addr: Ipv4Addr, pkt: DemiBuffer) {
+        self.tcp.receive(src_ipv4_addr, pkt)
     }
 
-    pub async fn ping(&mut self, dest_ipv4_addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        self.icmpv4.ping(dest_ipv4_addr, timeout).await
-    }
-
-    /// This function is only used for testing for now.
-    /// TODO: Remove this function once our legacy tests have been disabled.
-    pub fn get_local_addr(&self) -> Ipv4Addr {
-        self.local_ipv4_addr
+    pub fn receive_udp_packet(&mut self, src_ipv4_addr: Ipv4Addr, pkt: DemiBuffer) {
+        self.udp.receive(src_ipv4_addr, pkt)
     }
 
     pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
