@@ -790,7 +790,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                 }
 
                 let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
-                self.ack_queue.push(nbytes);
+                // self.ack_queue.push(nbytes);
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.

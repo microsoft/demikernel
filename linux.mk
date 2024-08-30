@@ -407,7 +407,6 @@ run-proxy-node8:
 	sudo -E \
 	CONFIG_PATH=$(CONFIG_DIR)/node8_config.yaml \
 	$(ENV) \
-	MIG_OFF=1 \
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	taskset --cpu-list 2 numactl -m0 \
 	$(ELF_DIR)/proxy.elf 10.0.1.8:10000 10.0.1.8:10001
