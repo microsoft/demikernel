@@ -5,10 +5,13 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
-    network::types::MacAddress,
+use crate::{
+    inetstack::protocols::layer2::ETHERNET2_HEADER_SIZE,
+    runtime::{
+        fail::Fail,
+        memory::DemiBuffer,
+        network::types::MacAddress,
+    },
 };
 use ::libc::{
     EBADMSG,
@@ -80,12 +83,8 @@ impl ArpHeader {
         }
     }
 
-    /// Computes the size of the target ARP PDU.
-    pub fn compute_size(&self) -> usize {
-        ARP_MESSAGE_SIZE
-    }
-
-    pub fn parse(buf: DemiBuffer) -> Result<Self, Fail> {
+    /// Parse the ARP message, consuming the packet Demibuffer in the process.
+    pub fn parse_and_consume(buf: DemiBuffer) -> Result<Self, Fail> {
         if buf.len() < ARP_MESSAGE_SIZE {
             return Err(Fail::new(EBADMSG, "ARP message too short"));
         }
@@ -121,9 +120,14 @@ impl ArpHeader {
         Ok(pdu)
     }
 
-    /// Serializes the target ARP PDU.
-    pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut buf[..ARP_MESSAGE_SIZE]).try_into().unwrap();
+    /// Create an ARP message and return the packetized buffer.
+    pub fn create_and_serialize(&self) -> DemiBuffer {
+        // We need to have a downward dependency to ethernet header size because we need to allocate enough headroom
+        // for all of the headers.
+        let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, (ARP_MESSAGE_SIZE + ETHERNET2_HEADER_SIZE) as u16);
+        pkt.prepend(ARP_MESSAGE_SIZE).expect("Should have sufficient headroom");
+
+        let buf: &mut [u8; ARP_MESSAGE_SIZE] = (&mut pkt[..ARP_MESSAGE_SIZE]).try_into().unwrap();
         buf[0..2].copy_from_slice(&ARP_HTYPE_ETHER2.to_be_bytes());
         buf[2..4].copy_from_slice(&ARP_PTYPE_IPV4.to_be_bytes());
         buf[4] = ARP_HLEN_ETHER2;
@@ -133,6 +137,7 @@ impl ArpHeader {
         buf[14..18].copy_from_slice(&self.sender_protocol_addr.octets());
         buf[18..24].copy_from_slice(&self.target_hardware_addr.octets());
         buf[24..28].copy_from_slice(&self.target_protocol_addr.octets());
+        pkt
     }
 
     pub fn get_operation(&self) -> ArpOperation {

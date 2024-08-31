@@ -7,7 +7,7 @@
 //!
 //! - https://datatracker.ietf.org/doc/html/rfc768.
 
-pub mod datagram;
+pub mod header;
 pub mod peer;
 pub mod socket;
 
@@ -19,11 +19,6 @@ mod tests;
 //======================================================================================================================
 
 pub use self::{
-    datagram::UdpHeader,
     peer::SharedUdpPeer,
     socket::SharedUdpSocket,
 };
-
-/// Expose this when building tests, as the network simulator uses it.
-#[cfg(test)]
-pub use self::datagram::UdpDatagram;

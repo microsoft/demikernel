@@ -8,14 +8,8 @@
 use crate::{
     collections::async_queue::AsyncQueue,
     inetstack::protocols::{
-        layer3::{
-            PacketBuf,
-            SharedLayer3Endpoint,
-        },
-        layer4::udp::{
-            datagram::UdpDatagram,
-            UdpHeader,
-        },
+        layer3::SharedLayer3Endpoint,
+        layer4::udp::header::UdpHeader,
     },
     runtime::{
         fail::Fail,
@@ -91,7 +85,7 @@ impl SharedUdpSocket {
         Ok(())
     }
 
-    pub async fn push(&mut self, remote: Option<SocketAddr>, buf: DemiBuffer) -> Result<(), Fail> {
+    pub async fn push(&mut self, remote: Option<SocketAddr>, mut buf: DemiBuffer) -> Result<(), Fail> {
         let remote: SocketAddrV4 = if let Some(remote) = remote {
             unwrap_socketaddr(remote)?
         } else {
@@ -109,18 +103,10 @@ impl SharedUdpSocket {
         };
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
         debug!("UDP send {:?}", udp_header);
-        let mut datagram: UdpDatagram = UdpDatagram::new(
-            &self.local_ipv4_addr,
-            remote.ip(),
-            udp_header,
-            buf,
-            self.checksum_offload,
-        )?;
+        udp_header.serialize_and_attach(&mut buf, &self.local_ipv4_addr, remote.ip(), self.checksum_offload);
+        // Send the packet to the lower layer.
         self.layer3_endpoint
-            .transmit_udp_packet_blocking(
-                remote.ip().clone(),
-                datagram.take_body().expect("just constructed above"),
-            )
+            .transmit_udp_packet_blocking(remote.ip().clone(), buf)
             .await
     }
 

@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    inetstack::protocols::{
-        layer3::ip::IpProtocol,
-        MAX_HEADER_SIZE,
-    },
+    inetstack::protocols::layer3::ip::IpProtocol,
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
@@ -62,18 +59,13 @@ impl UdpHeader {
         self.dest_port
     }
 
-    /// Returns the size of the target UDP header (in bytes).
-    pub fn size(&self) -> usize {
-        UDP_HEADER_SIZE
-    }
-
-    /// Parses a byte slice into a UDP header.
-    pub fn parse_from_slice<'a>(
+    /// Parses and strips the UDP header off of the packet in [buf].
+    pub fn parse_and_strip(
         src_ipv4_addr: &Ipv4Addr,
         dst_ipv4_addr: &Ipv4Addr,
-        buf: &'a [u8],
+        buf: &mut DemiBuffer,
         checksum_offload: bool,
-    ) -> Result<(Self, &'a [u8]), Fail> {
+    ) -> Result<Self, Fail> {
         // Malformed header.
         if buf.len() < UDP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "UDP segment too small"));
@@ -102,32 +94,27 @@ impl UdpHeader {
         }
 
         let header: UdpHeader = Self::new(src_port, dest_port);
-        Ok((header, &buf[UDP_HEADER_SIZE..]))
+        buf.adjust(UDP_HEADER_SIZE)
+            .expect("Buffer should be at least long enough to hold the UDP header");
+        Ok(header)
     }
 
-    /// Parses a buffer into a UDP header.
-    pub fn parse(
-        src_ipv4_addr: &Ipv4Addr,
-        dst_ipv4_addr: &Ipv4Addr,
-        buf: DemiBuffer,
-        checksum_offload: bool,
-    ) -> Result<(Self, DemiBuffer), Fail> {
-        match Self::parse_from_slice(src_ipv4_addr, dst_ipv4_addr, &buf[..], checksum_offload) {
-            Ok((udp_hdr, bytes)) => Ok((udp_hdr, DemiBuffer::from_slice_with_headroom(bytes, MAX_HEADER_SIZE)?)),
-            Err(e) => Err(e),
-        }
-    }
-
-    /// Serializes the target UDP header.
-    pub fn serialize(
+    /// Serializes and prepends the UDP header on to the packet in [buf].
+    pub fn serialize_and_attach(
         &self,
-        buf: &mut [u8],
+        buf: &mut DemiBuffer,
         src_ipv4_addr: &Ipv4Addr,
         dst_ipv4_addr: &Ipv4Addr,
-        data: &[u8],
         checksum_offload: bool,
     ) {
-        let fixed_buf: &mut [u8; UDP_HEADER_SIZE] = (&mut buf[..UDP_HEADER_SIZE]).try_into().unwrap();
+        // Create room for the header in the packet.
+        buf.prepend(UDP_HEADER_SIZE).expect("Should have enough headroom");
+        let buf_size_bytes: usize = buf.len();
+
+        // Split the packet up into two slices: one for the header and one for the payload.
+        let (hdr_buf, payload): (&mut [u8], &mut [u8]) = buf[..].split_at_mut(UDP_HEADER_SIZE);
+
+        let fixed_buf: &mut [u8; UDP_HEADER_SIZE] = (&mut hdr_buf[..UDP_HEADER_SIZE]).try_into().unwrap();
 
         // Write source port.
         fixed_buf[0..2].copy_from_slice(&self.src_port.to_be_bytes());
@@ -136,15 +123,16 @@ impl UdpHeader {
         fixed_buf[2..4].copy_from_slice(&self.dest_port.to_be_bytes());
 
         // Write payload length.
-        fixed_buf[4..6].copy_from_slice(&((UDP_HEADER_SIZE + data.len()) as u16).to_be_bytes());
+        fixed_buf[4..6].copy_from_slice(&(buf_size_bytes as u16).to_be_bytes());
 
         // Write checksum.
         let checksum: u16 = if checksum_offload {
             0
         } else {
-            Self::checksum(src_ipv4_addr, dst_ipv4_addr, &fixed_buf[..], data)
+            Self::checksum(src_ipv4_addr, dst_ipv4_addr, &fixed_buf[..], payload)
         };
         fixed_buf[6..8].copy_from_slice(&checksum.to_be_bytes());
+        trace!("UDP header: {:?} packet size: {:?} bytes", self, buf_size_bytes);
     }
 
     /// Computes the checksum of a UDP datagram.
@@ -217,13 +205,14 @@ impl UdpHeader {
 
 #[cfg(test)]
 mod test {
-    use crate::inetstack::protocols::layer4::udp::datagram::header::*;
+    use crate::inetstack::protocols::layer4::udp::header::*;
     use ::anyhow::Result;
     use ::std::net::Ipv4Addr;
 
     /// Tets UDP serialization.
     #[test]
     fn test_udp_header_serialization() -> Result<()> {
+        const UDP_HEADER_SIZE: usize = 8;
         let src_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 1);
         let dst_addr: Ipv4Addr = Ipv4Addr::new(198, 0, 0, 2);
 
@@ -235,13 +224,11 @@ mod test {
 
         // Payload.
         let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-
-        // Output buffer.
-        let mut buf: [u8; 8] = [0; 8];
+        let mut buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&data, UDP_HEADER_SIZE)?;
 
         // Do it.
-        udp_hdr.serialize(&mut buf, &src_addr, &dst_addr, &data, checksum_offload);
-        crate::ensure_eq!(buf, [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
+        udp_hdr.serialize_and_attach(&mut buf, &src_addr, &dst_addr, checksum_offload);
+        crate::ensure_eq!(buf[..UDP_HEADER_SIZE], [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
 
         Ok(())
     }
@@ -263,11 +250,11 @@ mod test {
         let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
 
         // Input buffer.
-        let buf: Vec<u8> = [hdr, data].concat();
+        let mut buf: DemiBuffer = DemiBuffer::from_slice(&[hdr, data].concat())?;
 
         // Do it.
-        match UdpHeader::parse_from_slice(&src_addr, &dst_addr, &buf, checksum_offload) {
-            Ok((udp_hdr, buf)) => {
+        match UdpHeader::parse_and_strip(&src_addr, &dst_addr, &mut buf, checksum_offload) {
+            Ok(udp_hdr) => {
                 crate::ensure_eq!(udp_hdr.src_port(), src_port);
                 crate::ensure_eq!(udp_hdr.dest_port(), dest_port);
                 crate::ensure_eq!(buf.len(), 8);

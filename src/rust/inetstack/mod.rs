@@ -21,7 +21,6 @@ use crate::{
             MemoryRuntime,
         },
         network::{
-            consts::RECEIVE_BATCH_SIZE,
             socket::option::SocketOption,
             transport::NetworkTransport,
         },
@@ -38,23 +37,19 @@ use ::socket2::{
 use ::std::{
     collections::HashMap,
     hash::RandomState,
+    net::Ipv4Addr,
     time::Duration,
 };
 use protocols::{
     layer1::PhysicalLayer,
     layer2::SharedLayer2Endpoint,
-    layer3::{
-        IpProtocol,
-        SharedLayer3Endpoint,
-    },
+    layer3::SharedLayer3Endpoint,
 };
 
-use ::arrayvec::ArrayVec;
 use ::futures::FutureExt;
 use ::std::{
     fmt::Debug,
     net::{
-        Ipv4Addr,
         SocketAddr,
         SocketAddrV4,
     },
@@ -89,7 +84,6 @@ const MAX_RECV_ITERS: usize = 2;
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
 pub struct InetStack {
     runtime: SharedDemiRuntime,
-    layer3_endpoint: SharedLayer3Endpoint,
     layer4_endpoint: Peer,
 }
 
@@ -118,10 +112,9 @@ impl SharedInetStack {
         let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
         let layer3_endpoint: SharedLayer3Endpoint =
             SharedLayer3Endpoint::new(config, runtime.clone(), layer2_endpoint, rng_seed)?;
-        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
+        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed)?;
         let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
             runtime: runtime.clone(),
-            layer3_endpoint,
             layer4_endpoint,
         }));
         runtime.insert_background_coroutine("bgc::inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
@@ -135,62 +128,26 @@ impl SharedInetStack {
         timer!("inetstack::poll");
         loop {
             for _ in 0..MAX_RECV_ITERS {
-                let batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE> = match {
-                    timer!("inetstack::poll_bg_work::for::receive");
-
-                    self.layer3_endpoint.receive()
-                } {
-                    Ok(batch) => batch,
-                    Err(_) => {
-                        warn!("Could not receive from network interface, continuing ...");
-                        continue;
-                    },
-                };
-
-                {
-                    timer!("inetstack::poll_bg_work::for::for");
-
-                    if batch.is_empty() {
-                        break;
-                    }
-
-                    for (src_ipv4_addr, ip_type, payload) in batch {
-                        match ip_type {
-                            IpProtocol::TCP => self.layer4_endpoint.receive_tcp_packet(src_ipv4_addr, payload),
-                            IpProtocol::UDP => self.layer4_endpoint.receive_udp_packet(src_ipv4_addr, payload),
-                            _ => unreachable!("Should have been handled at a lower layer"),
-                        }
-                    }
-                }
+                self.layer4_endpoint.poll_once();
             }
             poll_yield().await;
         }
     }
 
     #[cfg(test)]
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.layer3_endpoint.get_local_addr()
-    }
-
-    #[cfg(test)]
-    pub fn get_network(&self) -> SharedLayer3Endpoint {
-        self.layer3_endpoint.clone()
-    }
-
-    #[cfg(test)]
     /// Schedule a ping.
     pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        self.layer3_endpoint.ping(addr, timeout).await
+        self.layer4_endpoint.ping(addr, timeout).await
     }
 
     #[cfg(test)]
     pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
-        self.layer3_endpoint.arp_query(addr).await
+        self.layer4_endpoint.arp_query(addr).await
     }
 
     #[cfg(test)]
     pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
-        self.layer3_endpoint.export_arp_cache()
+        self.layer4_endpoint.export_arp_cache()
     }
 }
 
@@ -375,19 +332,19 @@ impl NetworkTransport for SharedInetStack {
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
 impl MemoryRuntime for SharedInetStack {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer3_endpoint.clone_sgarray(sga)
+        self.layer4_endpoint.clone_sgarray(sga)
     }
 
     fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer3_endpoint.into_sgarray(buf)
+        self.layer4_endpoint.into_sgarray(buf)
     }
 
     fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer3_endpoint.sgaalloc(size)
+        self.layer4_endpoint.sgaalloc(size)
     }
 
     fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer3_endpoint.sgafree(sga)
+        self.layer4_endpoint.sgafree(sga)
     }
 }
 

@@ -6,7 +6,6 @@
 //======================================================================================================================
 
 use crate::{
-    expect_ok,
     inetstack::protocols::layer3::ip::IpProtocol,
     runtime::{
         fail::Fail,
@@ -117,8 +116,8 @@ impl Ipv4Header {
         (self.ihl as usize) << 2
     }
 
-    /// Parses a buffer into an IPv4 header and payload.
-    pub fn parse(mut buf: DemiBuffer) -> Result<(Self, DemiBuffer), Fail> {
+    /// Parses and strips the IPv4 header from the packet in [buf].
+    pub fn parse_and_strip(buf: &mut DemiBuffer) -> Result<Self, Fail> {
         // The datagram should be as big as the header.
         if buf.len() < (IPV4_DATAGRAM_MIN_SIZE as usize) {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));
@@ -226,7 +225,7 @@ impl Ipv4Header {
         buf.adjust(hdr_size as usize)?;
         buf.trim(padding_bytes)?;
 
-        let header: Ipv4Header = Self {
+        Ok(Self {
             version,
             ihl,
             dscp,
@@ -240,15 +239,15 @@ impl Ipv4Header {
             header_checksum,
             src_addr,
             dst_addr,
-        };
-
-        Ok((header, buf))
+        })
     }
 
-    /// Serializes the target IPv4 header.
-    pub fn serialize(&self, buf: &mut [u8], payload_len: usize) {
-        let buf: &mut [u8; IPV4_HEADER_MIN_SIZE as usize] =
-            expect_ok!(buf.try_into(), "buffer should be large enough to hold an IPv4 header");
+    /// Serializes the IPv4 header and prepends it to the packet in [buf]. Assumes that there is enough headroom for
+    /// the header.
+    pub fn serialize_and_attach(&self, buf: &mut DemiBuffer) {
+        buf.prepend(IPV4_HEADER_MIN_SIZE as usize)
+            .expect("Should be sufficient headroom");
+        let pkt_size_bytes: usize = buf.len();
 
         // Version + IHL.
         buf[0] = (self.version << 4) | self.ihl;
@@ -257,7 +256,7 @@ impl Ipv4Header {
         buf[1] = (self.dscp << 2) | (self.ecn & 3);
 
         // Total Length.
-        buf[2..4].copy_from_slice(&(IPV4_HEADER_MIN_SIZE + (payload_len as u16)).to_be_bytes());
+        buf[2..4].copy_from_slice(&(pkt_size_bytes as u16).to_be_bytes());
 
         // Identification.
         buf[4..6].copy_from_slice(&self.identification.to_be_bytes());

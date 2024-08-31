@@ -12,11 +12,17 @@ pub mod udp;
 // Imports
 //======================================================================================================================
 
+#[cfg(test)]
+use crate::runtime::network::types::MacAddress;
 use crate::{
+    demi_sgarray_t,
     demikernel::config::Config,
     expect_some,
     inetstack::protocols::{
-        layer3::SharedLayer3Endpoint,
+        layer3::{
+            ip::IpProtocol,
+            SharedLayer3Endpoint,
+        },
         layer4::{
             tcp::{
                 SharedTcpPeer,
@@ -30,10 +36,17 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::DemiBuffer,
-        network::unwrap_socketaddr,
+        memory::{
+            DemiBuffer,
+            MemoryRuntime,
+        },
+        network::{
+            consts::RECEIVE_BATCH_SIZE,
+            unwrap_socketaddr,
+        },
         SharedDemiRuntime,
     },
+    timer,
     SocketOption,
 };
 use ::socket2::{
@@ -46,7 +59,13 @@ use ::std::net::{
     SocketAddrV4,
 };
 #[cfg(test)]
-use ::std::time::Duration;
+use ::std::{
+    collections::HashMap,
+    hash::RandomState,
+    time::Duration,
+};
+
+use arrayvec::ArrayVec;
 
 //======================================================================================================================
 // Structures
@@ -55,6 +74,7 @@ use ::std::time::Duration;
 pub struct Peer {
     tcp: SharedTcpPeer,
     udp: SharedUdpPeer,
+    layer3_endpoint: SharedLayer3Endpoint,
 }
 
 /// Socket Representation.
@@ -78,15 +98,35 @@ impl Peer {
         let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer3_endpoint.clone())?;
         let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
 
-        Ok(Peer { tcp, udp })
+        Ok(Peer {
+            tcp,
+            udp,
+            layer3_endpoint,
+        })
     }
 
-    pub fn receive_tcp_packet(&mut self, src_ipv4_addr: Ipv4Addr, pkt: DemiBuffer) {
-        self.tcp.receive(src_ipv4_addr, pkt)
+    pub fn poll_once(&mut self) {
+        match {
+            timer!("inetstack::layer4_endpoint::poll_once");
+
+            self.layer3_endpoint.receive()
+        } {
+            Ok(batch) if !batch.is_empty() => self.receive_batch(batch),
+            Ok(_) => (),
+            Err(_) => warn!("Could not receive from network interface, continuing ..."),
+        }
     }
 
-    pub fn receive_udp_packet(&mut self, src_ipv4_addr: Ipv4Addr, pkt: DemiBuffer) {
-        self.udp.receive(src_ipv4_addr, pkt)
+    fn receive_batch(&mut self, batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>) {
+        timer!("inetstack::poll_bg_work::for::for");
+        trace!("found packets: {:?}", batch.len());
+        for (src_ipv4_addr, ip_type, payload) in batch {
+            match ip_type {
+                IpProtocol::TCP => self.tcp.receive(src_ipv4_addr, payload),
+                IpProtocol::UDP => self.udp.receive(src_ipv4_addr, payload),
+                _ => unreachable!("Should have been handled at a lower layer"),
+            }
+        }
     }
 
     pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
@@ -298,5 +338,39 @@ impl Peer {
 
     pub fn tcp_rto(&self, socket: &SharedTcpSocket) -> Result<Duration, Fail> {
         socket.current_rto()
+    }
+
+    pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
+        self.layer3_endpoint.ping(addr, timeout).await
+    }
+
+    pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+        self.layer3_endpoint.arp_query(addr).await
+    }
+
+    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
+        self.layer3_endpoint.export_arp_cache()
+    }
+}
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
+
+impl MemoryRuntime for Peer {
+    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
+        self.layer3_endpoint.clone_sgarray(sga)
+    }
+
+    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
+        self.layer3_endpoint.into_sgarray(buf)
+    }
+
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        self.layer3_endpoint.sgaalloc(size)
+    }
+
+    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
+        self.layer3_endpoint.sgafree(sga)
     }
 }

@@ -153,7 +153,8 @@ impl Runtime for LinuxRuntime {}
 impl PhysicalLayer for LinuxRuntime {
     /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
-        let (header, _) = Ethernet2Header::parse(pkt.clone()).unwrap();
+        // We clone the packet so as to not remove the ethernet header from the outgoing message.
+        let header = Ethernet2Header::parse_and_strip(&mut pkt.clone()).unwrap();
         let dest_addr_arr: [u8; 6] = header.dst_addr().to_array();
         let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
 

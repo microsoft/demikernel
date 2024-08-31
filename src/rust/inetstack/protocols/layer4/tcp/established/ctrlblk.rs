@@ -15,10 +15,7 @@ use crate::{
     },
     expect_ok,
     inetstack::protocols::{
-        layer3::{
-            PacketBuf,
-            SharedLayer3Endpoint,
-        },
+        layer3::SharedLayer3Endpoint,
         layer4::tcp::{
             constants::MSL,
             established::{
@@ -32,10 +29,7 @@ use crate::{
                     UnackedSegment,
                 },
             },
-            segment::{
-                TcpHeader,
-                TcpSegment,
-            },
+            header::TcpHeader,
             SeqNumber,
         },
         MAX_HEADER_SIZE,
@@ -808,38 +802,33 @@ impl SharedControlBlock {
     /// Transmit this message to our connected peer.
     pub fn emit(&mut self, header: TcpHeader, body: Option<DemiBuffer>) {
         // Only perform this debug print in debug builds.  debug_assertions is compiler set in non-optimized builds.
-        #[cfg(debug_assertions)]
-        if body.is_some() {
-            debug!("Sending {} bytes + {:?}", body.as_ref().unwrap().len(), header);
-        } else {
-            debug!("Sending 0 bytes + {:?}", header);
-        }
+        let mut pkt = match body {
+            Some(body) => {
+                debug!("Sending {} bytes + {:?}", body.len(), header);
+                body
+            },
+            _ => {
+                debug!("Sending 0 bytes + {:?}", header);
+                DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
+            },
+        };
 
         // This routine should only ever be called to send TCP segments that contain a valid ACK value.
         debug_assert!(header.ack);
 
         let sent_fin: bool = header.fin;
         let remote_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
-        // Prepare description of TCP segment to send.
-        // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
-        let mut segment = match TcpSegment::new(
+        header.serialize_and_attach(
+            &mut pkt,
             self.local.ip(),
             self.remote.ip(),
-            header,
-            body,
             self.tcp_config.get_tx_checksum_offload(),
-        ) {
-            Ok(segment) => segment,
-            Err(e) => {
-                warn!("could not construct packet header: {:?}", e);
-                return;
-            },
-        };
+        );
 
         // Call lower L3 layer to send the segment.
         if let Err(e) = self
             .layer3_endpoint
-            .transmit_tcp_packet_nonblocking(remote_ipv4_addr, segment.take_body().expect("just constructed above"))
+            .transmit_tcp_packet_nonblocking(remote_ipv4_addr, pkt)
         {
             warn!("could not emit packet: {:?}", e);
             return;

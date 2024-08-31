@@ -10,8 +10,8 @@ use crate::{
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
         layer4::tcp::{
+            header::TcpHeader,
             isn_generator::IsnGenerator,
-            segment::TcpHeader,
             socket::SharedTcpSocket,
             SeqNumber,
         },
@@ -262,16 +262,16 @@ impl SharedTcpPeer {
     }
 
     /// Processes an incoming TCP segment.
-    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, buf: DemiBuffer) {
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, mut buf: DemiBuffer) {
         // We can assume that the destination is our local IPv4 address; otherwise, the IP layer would have discarded
         // the packet already.
-        let (tcp_hdr, data): (TcpHeader, DemiBuffer) = match TcpHeader::parse(
+        let tcp_hdr: TcpHeader = match TcpHeader::parse_and_strip(
             &src_ipv4_addr,
             &self.local_ipv4_addr,
-            buf,
+            &mut buf,
             self.tcp_config.get_rx_checksum_offload(),
         ) {
-            Ok(result) => result,
+            Ok(header) => header,
             Err(e) => {
                 let cause: String = format!("invalid tcp header: {:?}", e);
                 error!("receive(): {}", &cause);
@@ -296,7 +296,7 @@ impl SharedTcpPeer {
         };
 
         // Dispatch to further processing depending on the socket state.
-        socket.receive(src_ipv4_addr, tcp_hdr, data)
+        socket.receive(src_ipv4_addr, tcp_hdr, buf)
     }
 }
 

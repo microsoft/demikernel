@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 mod cache;
-mod packet;
+mod header;
 mod peer;
 
 // Disable for now due to incorrect use of scheduler.

@@ -4,10 +4,10 @@
 mod active_open;
 pub mod constants;
 mod established;
+pub mod header;
 mod isn_generator;
 mod passive_open;
 pub mod peer;
-pub mod segment;
 mod sequence_number;
 pub mod socket;
 
@@ -16,11 +16,11 @@ mod tests;
 
 pub use self::{
     established::congestion_control,
-    peer::SharedTcpPeer,
-    segment::{
+    header::{
         MAX_TCP_HEADER_SIZE,
         MIN_TCP_HEADER_SIZE,
     },
+    peer::SharedTcpPeer,
     sequence_number::SeqNumber,
     socket::SharedTcpSocket,
 };

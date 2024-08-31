@@ -7,7 +7,7 @@
 
 pub mod ethernet2;
 pub use self::ethernet2::{
-    frame::{
+    header::{
         Ethernet2Header,
         ETHERNET2_HEADER_SIZE,
         MIN_PAYLOAD_SIZE,
@@ -68,8 +68,8 @@ impl SharedLayer2Endpoint {
 
     pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
         let mut batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        for pkt in self.layer1_endpoint.receive()? {
-            let (header, payload) = match Ethernet2Header::parse(pkt) {
+        for mut pkt in self.layer1_endpoint.receive()? {
+            let header: Ethernet2Header = match Ethernet2Header::parse_and_strip(&mut pkt) {
                 Ok(result) => result,
                 Err(e) => {
                     // TODO: Collect dropped packet statistics.
@@ -86,7 +86,7 @@ impl SharedLayer2Endpoint {
                 let cause: &str = "invalid link address";
                 warn!("dropping packet: {}", cause);
             }
-            batch.push((header.ether_type(), payload))
+            batch.push((header.ether_type(), pkt))
         }
         Ok(batch)
     }
@@ -106,9 +106,7 @@ impl SharedLayer2Endpoint {
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
-        let eth2_header_size: usize = eth2_header.compute_size();
-        pkt.prepend(eth2_header_size)?;
-        eth2_header.serialize(&mut pkt[..eth2_header_size]);
+        eth2_header.serialize_and_attach(&mut pkt);
         self.layer1_endpoint.transmit(pkt)
     }
 
