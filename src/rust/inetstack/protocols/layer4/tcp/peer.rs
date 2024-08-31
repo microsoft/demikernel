@@ -9,7 +9,7 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        tcp::{
+        layer4::tcp::{
             isn_generator::IsnGenerator,
             segment::TcpHeader,
             socket::SharedTcpSocket,

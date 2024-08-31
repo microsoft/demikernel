@@ -2,6 +2,13 @@
 // Licensed under the MIT license.
 
 //======================================================================================================================
+// Exports
+//======================================================================================================================
+
+pub mod tcp;
+pub mod udp;
+
+//======================================================================================================================
 // Imports
 //======================================================================================================================
 
@@ -10,13 +17,15 @@ use crate::{
     expect_some,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        tcp::{
-            socket::SharedTcpSocket,
-            SharedTcpPeer,
-        },
-        udp::{
-            socket::SharedUdpSocket,
-            SharedUdpPeer,
+        layer4::{
+            tcp::{
+                SharedTcpPeer,
+                SharedTcpSocket,
+            },
+            udp::{
+                SharedUdpPeer,
+                SharedUdpSocket,
+            },
         },
     },
     runtime::{

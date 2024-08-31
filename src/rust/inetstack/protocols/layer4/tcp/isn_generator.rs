@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::inetstack::protocols::tcp::SeqNumber;
+use crate::inetstack::protocols::layer4::tcp::SeqNumber;
 #[allow(unused_imports)]
 use std::{
     hash::Hasher,

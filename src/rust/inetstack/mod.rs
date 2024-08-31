@@ -10,7 +10,7 @@ use crate::runtime::network::types::MacAddress;
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::peer::{
+    inetstack::protocols::layer4::{
         Peer,
         Socket,
     },

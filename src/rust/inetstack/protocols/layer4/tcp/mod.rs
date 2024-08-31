@@ -22,4 +22,5 @@ pub use self::{
         MIN_TCP_HEADER_SIZE,
     },
     sequence_number::SeqNumber,
+    socket::SharedTcpSocket,
 };

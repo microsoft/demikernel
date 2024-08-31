@@ -8,9 +8,7 @@
 pub mod layer1;
 pub mod layer2;
 pub mod layer3;
-pub mod peer;
-pub mod tcp;
-pub mod udp;
+pub mod layer4;
 
 //======================================================================================================================
 // Imports
@@ -24,7 +22,7 @@ use ::std::slice::ChunksExact;
 
 // Maximum header size of all possible headers.
 pub const MAX_HEADER_SIZE: usize =
-    tcp::MAX_TCP_HEADER_SIZE + layer3::ipv4::IPV4_HEADER_MAX_SIZE as usize + layer2::ETHERNET2_HEADER_SIZE;
+    layer4::tcp::MAX_TCP_HEADER_SIZE + layer3::ipv4::IPV4_HEADER_MAX_SIZE as usize + layer2::ETHERNET2_HEADER_SIZE;
 
 //======================================================================================================================
 // Structures
