@@ -13,8 +13,8 @@ use crate::{
         layer4::tcp::{
             active_open::SharedActiveOpenSocket,
             established::EstablishedSocket,
+            header::TcpHeader,
             passive_open::SharedPassiveSocket,
-            segment::TcpHeader,
             SeqNumber,
         },
     },

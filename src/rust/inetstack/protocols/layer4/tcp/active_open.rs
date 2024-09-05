@@ -12,10 +12,7 @@ use crate::{
     },
     expect_some,
     inetstack::protocols::{
-        layer3::{
-            PacketBuf,
-            SharedLayer3Endpoint,
-        },
+        layer3::SharedLayer3Endpoint,
         layer4::tcp::{
             constants::{
                 FALLBACK_MSS,
@@ -28,13 +25,13 @@ use crate::{
                 },
                 EstablishedSocket,
             },
-            segment::{
+            header::{
                 TcpHeader,
                 TcpOptions2,
-                TcpSegment,
             },
             SeqNumber,
         },
+        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -167,15 +164,15 @@ impl SharedActiveOpenSocket {
         debug!("Sending ACK: {:?}", tcp_hdr);
 
         let dst_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
-        let mut segment = TcpSegment::new(
+        let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
+        tcp_hdr.serialize_and_attach(
+            &mut pkt,
             self.local.ip(),
             self.remote.ip(),
-            tcp_hdr,
-            None,
             self.tcp_config.get_rx_checksum_offload(),
-        )?;
+        );
         self.layer3_endpoint
-            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, segment.take_body().expect("just created above"))?;
+            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, pkt)?;
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -274,17 +271,17 @@ impl SharedActiveOpenSocket {
 
             debug!("Sending SYN {:?}", tcp_hdr);
             let dst_ipv4_addr: Ipv4Addr = self.remote.ip().clone();
-            let mut segment = TcpSegment::new(
+            let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
+            tcp_hdr.serialize_and_attach(
+                &mut pkt,
                 self.local.ip(),
                 self.remote.ip(),
-                tcp_hdr,
-                None,
                 self.tcp_config.get_rx_checksum_offload(),
-            )?;
+            );
             // Send SYN.
             if let Err(e) = self
                 .layer3_endpoint
-                .transmit_tcp_packet_blocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
+                .transmit_tcp_packet_blocking(dst_ipv4_addr, pkt)
                 .await
             {
                 warn!("Could not send SYN: {:?}", e);

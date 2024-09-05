@@ -116,17 +116,17 @@ fn test_ipv4_header_parse_good() -> Result<()> {
         buf[header_size..datagram_size].copy_from_slice(&data);
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf[..datagram_size]) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf[..datagram_size]) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
-        match Ipv4Header::parse(buf_bytes) {
-            Ok((ipv4_hdr, datagram)) => {
+        match Ipv4Header::parse_and_strip(&mut buf) {
+            Ok(ipv4_hdr) => {
                 assert_eq!(ipv4_hdr.get_src_addr(), ALICE_IPV4);
                 assert_eq!(ipv4_hdr.get_dest_addr(), BOB_IPV4);
                 assert_eq!(ipv4_hdr.get_protocol(), IpProtocol::UDP);
-                assert_eq!(datagram.len(), PAYLOAD_SIZE);
-                assert_eq!(datagram[..], data_bytes[..]);
+                assert_eq!(buf.len(), PAYLOAD_SIZE);
+                assert_eq!(buf[..], data_bytes[..]);
             },
             Err(e) => anyhow::bail!("{:?}", e),
         }
@@ -167,11 +167,11 @@ fn test_ipv4_header_parse_invalid_version() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => anyhow::bail!("parsed ipv4_header with invalid version={:?}", version),
             Err(_) => {},
         };
@@ -208,12 +208,12 @@ fn test_ipv4_header_parse_invalid_ihl() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
 
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => anyhow::bail!("parsed ipv4 header with invalid ihl={:?}", ihl),
             Err(_) => {},
         };
@@ -250,12 +250,12 @@ fn test_ipv4_header_parse_invalid_total_length() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit in a DemiBuffer: {:?}", e),
         };
 
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => anyhow::bail!("parsed ipv4 header with invalid total_length={:?}", total_length),
             Err(_) => {},
         };
@@ -292,12 +292,12 @@ fn test_ipv4_header_parse_invalid_flags() -> Result<()> {
     );
 
     // Do it.
-    let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-        Ok(buf_bytes) => buf_bytes,
+    let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+        Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
     };
 
-    match Ipv4Header::parse(buf_bytes) {
+    match Ipv4Header::parse_and_strip(&mut buf) {
         Ok(_) => anyhow::bail!("parsed ipv4 header with invalid flags={:?}", flags),
         Err(_) => Ok(()),
     }
@@ -331,12 +331,12 @@ fn test_ipv4_header_parse_invalid_ttl() -> Result<()> {
     );
 
     // Do it.
-    let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-        Ok(buf_bytes) => buf_bytes,
+    let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+        Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
     };
 
-    match Ipv4Header::parse(buf_bytes) {
+    match Ipv4Header::parse_and_strip(&mut buf) {
         Ok(_) => anyhow::bail!("parsed ipv4 header with invalid ttl={:?}", ttl),
         Err(_) => Ok(()),
     }
@@ -370,12 +370,12 @@ fn test_ipv4_header_parse_invalid_protocol() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
 
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => anyhow::ensure!(false, "parsed ipv4 header with invalid protocol={:?}", protocol),
             Err(_) => {},
         };
@@ -412,12 +412,12 @@ fn test_ipv4_header_parse_invalid_header_checksum() -> Result<()> {
     );
 
     // Do it.
-    let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-        Ok(buf_bytes) => buf_bytes,
+    let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+        Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
     };
 
-    match Ipv4Header::parse(buf_bytes) {
+    match Ipv4Header::parse_and_strip(&mut buf) {
         Ok(_) => anyhow::bail!("parsed ipv4 header with invalid header checksum={:?}", hdr_checksum),
         Err(_) => Ok(()),
     }
@@ -455,12 +455,12 @@ fn test_ipv4_header_parse_unsupported_dscp() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
 
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => {},
             Err(_) => anyhow::bail!("dscp field should be ignored (dscp={:?})", dscp),
         };
@@ -497,12 +497,12 @@ fn test_ipv4_header_parse_unsupported_ecn() -> Result<()> {
         );
 
         // Do it.
-        let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-            Ok(buf_bytes) => buf_bytes,
+        let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+            Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
         };
 
-        match Ipv4Header::parse(buf_bytes) {
+        match Ipv4Header::parse_and_strip(&mut buf) {
             Ok(_) => {},
             Err(_) => anyhow::bail!("ecn field should be ignored (ecn={:?})", ecn),
         };
@@ -542,12 +542,12 @@ fn test_ipv4_header_parse_unsupported_fragmentation() -> Result<()> {
     );
 
     // Do it.
-    let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-        Ok(buf_bytes) => buf_bytes,
+    let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+        Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
     };
 
-    match Ipv4Header::parse(buf_bytes) {
+    match Ipv4Header::parse_and_strip(&mut buf) {
         Ok(_) => anyhow::bail!("parsed ipv4 header with Flags={:?}. Do we support it now?", flags,),
         Err(_) => {},
     };
@@ -573,12 +573,12 @@ fn test_ipv4_header_parse_unsupported_fragmentation() -> Result<()> {
     );
 
     // Do it.
-    let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-        Ok(buf_bytes) => buf_bytes,
+    let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+        Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
     };
 
-    match Ipv4Header::parse(buf_bytes) {
+    match Ipv4Header::parse_and_strip(&mut buf) {
         Ok(_) => anyhow::bail!(
             "parsed ipv4 header with fragment_offset={:?}. Do we support it now?",
             fragment_offset,
@@ -621,12 +621,12 @@ fn test_ipv4_header_parse_unsupported_protocol() -> Result<()> {
                 );
 
                 // Do it.
-                let buf_bytes: DemiBuffer = match DemiBuffer::from_slice(&buf) {
-                    Ok(buf_bytes) => buf_bytes,
+                let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
+                    Ok(buf) => buf,
                     Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
                 };
 
-                match Ipv4Header::parse(buf_bytes) {
+                match Ipv4Header::parse_and_strip(&mut buf) {
                     Ok(_) => anyhow::bail!("parsed ipv4 header with protocol={:?}. Do we support it now?", protocol,),
                     Err(_) => {},
                 };

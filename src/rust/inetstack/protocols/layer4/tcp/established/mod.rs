@@ -14,7 +14,7 @@ use crate::{
         layer4::tcp::{
             congestion_control::CongestionControlConstructor,
             established::ctrlblk::SharedControlBlock,
-            segment::TcpHeader,
+            header::TcpHeader,
             SeqNumber,
         },
     },

@@ -12,13 +12,9 @@ use crate::{
                 EtherType2,
                 Ethernet2Header,
             },
-            layer3::{
-                arp::packet::{
-                    ArpHeader,
-                    ArpMessage,
-                    ArpOperation,
-                },
-                PacketBuf,
+            layer3::arp::header::{
+                ArpHeader,
+                ArpOperation,
             },
         },
         test_helpers::{
@@ -83,17 +79,18 @@ fn arp_immediate_reply() -> Result<()> {
     engine.poll();
 
     // Check if the ARP cache outputs a reply message.
-    let buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
+    let mut buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
     crate::ensure_eq!(buffers.len(), 1);
+    let mut pkt: DemiBuffer = buffers.pop_front().unwrap();
 
     // Sanity check Ethernet header.
-    let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(buffers[0].clone())?;
+    let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(&mut pkt)?;
     crate::ensure_eq!(eth2_header.dst_addr(), remote_mac);
     crate::ensure_eq!(eth2_header.src_addr(), local_mac);
     crate::ensure_eq!(eth2_header.ether_type(), EtherType2::Arp);
 
     // Sanity check ARP header.
-    let arp_header: ArpHeader = ArpHeader::parse(eth2_payload)?;
+    let arp_header: ArpHeader = ArpHeader::parse_and_consume(pkt)?;
     crate::ensure_eq!(arp_header.get_operation(), ArpOperation::Reply);
     crate::ensure_eq!(arp_header.get_sender_hardware_addr(), local_mac);
     crate::ensure_eq!(arp_header.get_sender_protocol_addr(), local_ipv4);
@@ -155,17 +152,18 @@ fn arp_cache_update() -> Result<()> {
     crate::ensure_eq!(cache.get(&other_remote_ipv4), Some(&other_remote_mac));
 
     // Check if the ARP cache outputs a reply message.
-    let buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
+    let mut buffers: VecDeque<DemiBuffer> = engine.pop_all_frames();
     crate::ensure_eq!(buffers.len(), 1);
+    let mut first_pkt: DemiBuffer = buffers.pop_front().unwrap();
 
     // Sanity check Ethernet header.
-    let (eth2_header, eth2_payload): (Ethernet2Header, DemiBuffer) = Ethernet2Header::parse(buffers[0].clone())?;
+    let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(&mut first_pkt)?;
     crate::ensure_eq!(eth2_header.dst_addr(), other_remote_mac);
     crate::ensure_eq!(eth2_header.src_addr(), local_mac);
     crate::ensure_eq!(eth2_header.ether_type(), EtherType2::Arp);
 
     // Sanity check ARP header.
-    let arp_header: ArpHeader = ArpHeader::parse(eth2_payload)?;
+    let arp_header: ArpHeader = ArpHeader::parse_and_consume(first_pkt)?;
     crate::ensure_eq!(arp_header.get_operation(), ArpOperation::Reply);
     crate::ensure_eq!(arp_header.get_sender_hardware_addr(), local_mac);
     crate::ensure_eq!(arp_header.get_sender_protocol_addr(), local_ipv4);
@@ -225,14 +223,10 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
         MacAddress::broadcast(),
         remote_ipv4.clone(),
     );
-    let mut msg: ArpMessage = ArpMessage::new(body).expect("Should be able to construct ARP message");
-
-    let mut pkt: DemiBuffer = msg.take_body().unwrap();
+    let mut pkt: DemiBuffer = body.create_and_serialize();
     let eth2_header: Ethernet2Header =
         Ethernet2Header::new(MacAddress::broadcast(), local_mac.clone(), EtherType2::Arp);
-    let eth2_header_size: usize = eth2_header.compute_size();
-    pkt.prepend(eth2_header_size).expect("Should have sufficient headroom");
-    eth2_header.serialize(&mut pkt[0..eth2_header_size]);
+    eth2_header.serialize_and_attach(&mut pkt);
     pkt
 }
 

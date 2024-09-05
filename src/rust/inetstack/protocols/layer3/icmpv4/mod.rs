@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod datagram;
+mod header;
 mod peer;
+mod protocol;
 
 // Disable for now due to incorrect use of scheduler.
 // #[cfg(test)]

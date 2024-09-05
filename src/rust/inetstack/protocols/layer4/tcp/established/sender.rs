@@ -6,7 +6,7 @@ use crate::{
     expect_ok,
     inetstack::protocols::layer4::tcp::{
         established::SharedControlBlock,
-        segment::TcpHeader,
+        header::TcpHeader,
         SeqNumber,
     },
     runtime::{

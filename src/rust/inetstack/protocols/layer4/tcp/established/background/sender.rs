@@ -9,7 +9,7 @@ use crate::{
             ctrlblk::SharedControlBlock,
             sender::UnackedSegment,
         },
-        segment::TcpHeader,
+        header::TcpHeader,
         SeqNumber,
     },
     runtime::{

@@ -2,15 +2,9 @@
 // Licensed under the MIT license.
 
 use crate::{
-    expect_ok,
     inetstack::protocols::{
-        layer2::MIN_PAYLOAD_SIZE,
-        layer3::{
-            ip::IpProtocol,
-            PacketBuf,
-        },
+        layer3::ip::IpProtocol,
         layer4::tcp::SeqNumber,
-        MAX_HEADER_SIZE,
     },
     runtime::{
         fail::Fail,
@@ -30,50 +24,6 @@ use ::std::{
 pub const MIN_TCP_HEADER_SIZE: usize = 20;
 pub const MAX_TCP_HEADER_SIZE: usize = 60;
 pub const MAX_TCP_OPTIONS: usize = 5;
-
-pub struct TcpSegment {
-    pub pkt: Option<DemiBuffer>,
-}
-
-impl TcpSegment {
-    pub fn new(
-        // This is the local IP address because when we create a TCP segment, we are transmitting.
-        src_ipv4_addr: &Ipv4Addr,
-        // This is the remote IP address.
-        dst_ipv4_addr: &Ipv4Addr,
-        tcp_hdr: TcpHeader,
-        payload: Option<DemiBuffer>,
-        checksum_offload: bool,
-    ) -> Result<Self, Fail> {
-        let tcp_hdr_size: usize = tcp_hdr.compute_size();
-
-        let mut pkt: DemiBuffer = match payload {
-            Some(body) => body,
-            _ => {
-                // Use this value for now until we get rid of this data structure to allow for enough header space for
-                // ethernet headers to be inserted later.
-                let header_size: usize = MAX_HEADER_SIZE;
-                let body_size: usize = if header_size < MIN_PAYLOAD_SIZE {
-                    MIN_PAYLOAD_SIZE - header_size
-                } else {
-                    0
-                };
-                DemiBuffer::new_with_headroom(body_size as u16, header_size as u16)
-            },
-        };
-        // Add headers in reverse.
-        pkt.prepend(tcp_hdr_size)?;
-        let (hdr_buf, data_buf): (&mut [u8], &mut [u8]) = pkt[..].split_at_mut(tcp_hdr_size);
-        tcp_hdr.serialize(hdr_buf, src_ipv4_addr, dst_ipv4_addr, data_buf, checksum_offload);
-        Ok(Self { pkt: Some(pkt) })
-    }
-}
-
-impl PacketBuf for TcpSegment {
-    fn take_body(&mut self) -> Option<DemiBuffer> {
-        self.pkt.take()
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SelectiveAcknowlegement {
@@ -217,12 +167,13 @@ impl TcpHeader {
         }
     }
 
-    pub fn parse(
+    /// Strip and parse the TCP header from the packet in [buf].
+    pub fn parse_and_strip(
         local_ipv4_addr: &Ipv4Addr,
         remote_ipv4_addr: &Ipv4Addr,
-        mut buf: DemiBuffer,
+        buf: &mut DemiBuffer,
         rx_checksum_offload: bool,
-    ) -> Result<(Self, DemiBuffer), Fail> {
+    ) -> Result<Self, Fail> {
         if buf.len() < MIN_TCP_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "TCP segment too small"));
         }
@@ -359,7 +310,10 @@ impl TcpHeader {
             }
         }
 
-        let header: TcpHeader = Self {
+        buf.adjust(data_offset)
+            .expect("buf should contain at least 'data_offset' bytes");
+
+        Ok(Self {
             src_port,
             dst_port,
             seq_num,
@@ -378,23 +332,22 @@ impl TcpHeader {
 
             num_options,
             option_list,
-        };
-        expect_ok!(
-            buf.adjust(data_offset),
-            "buf should contain at least 'data_offset' bytes"
-        );
-        Ok((header, buf))
+        })
     }
 
-    pub fn serialize(
+    /// Serialize a TCP header and prepend to the packet in [buf].
+    pub fn serialize_and_attach(
         &self,
-        buf: &mut [u8],
+        pkt: &mut DemiBuffer,
         src_ipv4_addr: &Ipv4Addr,
         dst_ipv4_addr: &Ipv4Addr,
-        data: &[u8],
         tx_checksum_offload: bool,
     ) {
-        let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] = (&mut buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
+        let header_bytes: usize = self.compute_size();
+        pkt.prepend(header_bytes).expect("Should have sufficient headroom");
+        let (hdr_buf, payload): (&mut [u8], &mut [u8]) = pkt[..].split_at_mut(header_bytes);
+
+        let fixed_buf: &mut [u8; MIN_TCP_HEADER_SIZE] = (&mut hdr_buf[..MIN_TCP_HEADER_SIZE]).try_into().unwrap();
         fixed_buf[0..2].copy_from_slice(&self.src_port.to_be_bytes());
         fixed_buf[2..4].copy_from_slice(&self.dst_port.to_be_bytes());
         fixed_buf[4..8].copy_from_slice(&u32::from(self.seq_num).to_be_bytes());
@@ -437,26 +390,26 @@ impl TcpHeader {
 
         let mut cur_pos: usize = MIN_TCP_HEADER_SIZE;
         for i in 0..self.num_options {
-            let bytes_written = self.option_list[i].serialize(&mut buf[cur_pos..]);
+            let bytes_written = self.option_list[i].serialize(&mut hdr_buf[cur_pos..]);
             cur_pos += bytes_written;
         }
         // Write out an "End of options list" if we had options.
         if self.num_options > 0 {
-            buf[cur_pos] = 0;
+            hdr_buf[cur_pos] = 0;
             cur_pos += 1;
         }
         // Zero out the remainder of padding in the header.
-        for byte in &mut buf[cur_pos..] {
+        for byte in &mut hdr_buf[cur_pos..] {
             *byte = 0;
         }
 
         // Alright, we've fully filled out the header, time to compute the checksum.
         if !tx_checksum_offload {
-            let checksum: u16 = tcp_checksum(src_ipv4_addr, dst_ipv4_addr, &buf[..], data);
-            buf[16..18].copy_from_slice(&checksum.to_be_bytes());
+            let checksum: u16 = tcp_checksum(src_ipv4_addr, dst_ipv4_addr, &hdr_buf[..], &payload);
+            hdr_buf[16..18].copy_from_slice(&checksum.to_be_bytes());
         } else {
-            buf[16] = 0;
-            buf[17] = 0;
+            hdr_buf[16] = 0;
+            hdr_buf[17] = 0;
         }
     }
 

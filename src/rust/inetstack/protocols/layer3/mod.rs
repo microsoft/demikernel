@@ -53,16 +53,6 @@ use ::std::{
 };
 
 //======================================================================================================================
-// Traits
-//======================================================================================================================
-
-/// L3 Packet Buffer
-pub trait PacketBuf {
-    /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&mut self) -> Option<DemiBuffer>;
-}
-
-//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -99,15 +89,15 @@ impl SharedLayer3Endpoint {
 
     pub fn receive(&mut self) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
         let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        for (eth2_type, packet) in self.layer2_endpoint.receive()? {
+        for (eth2_type, mut packet) in self.layer2_endpoint.receive()? {
             match eth2_type {
                 EtherType2::Arp => {
                     self.arp.receive(packet);
                     continue;
                 },
                 EtherType2::Ipv4 => {
-                    let (header, payload) = match Ipv4Header::parse(packet) {
-                        Ok(result) => result,
+                    let header = match Ipv4Header::parse_and_strip(&mut packet) {
+                        Ok(header) => header,
                         Err(e) => {
                             let cause: String = format!("Invalid destination address: {:?}", e);
                             warn!("dropping packet: {}", cause);
@@ -136,10 +126,10 @@ impl SharedLayer3Endpoint {
                     let protocol: IpProtocol = header.get_protocol();
                     match protocol {
                         IpProtocol::ICMPv4 => {
-                            self.icmpv4.receive(header, payload);
+                            self.icmpv4.receive(header, packet);
                             continue;
                         },
-                        _ => batch.push((header.get_src_addr(), protocol, payload)),
+                        _ => batch.push((header.get_src_addr(), protocol, packet)),
                     }
                 },
                 EtherType2::Ipv6 => warn!("Ipv6 not supported yet"), // Ignore for now.
@@ -185,10 +175,7 @@ impl SharedLayer3Endpoint {
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let ipv4_header: Ipv4Header = Ipv4Header::new(self.local_ipv4_addr, remote_ipv4_addr, ip_protocol);
-        let ipv4_header_size: usize = ipv4_header.compute_size();
-        let payload_size: usize = pkt.len();
-        pkt.prepend(ipv4_header_size)?;
-        ipv4_header.serialize(&mut pkt[..ipv4_header_size], payload_size);
+        ipv4_header.serialize_and_attach(&mut pkt);
         self.layer2_endpoint.transmit_ipv4_packet(remote_link_addr, pkt)
     }
 

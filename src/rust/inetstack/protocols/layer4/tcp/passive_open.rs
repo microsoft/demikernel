@@ -15,10 +15,7 @@ use crate::{
     },
     expect_some,
     inetstack::protocols::{
-        layer3::{
-            PacketBuf,
-            SharedLayer3Endpoint,
-        },
+        layer3::SharedLayer3Endpoint,
         layer4::tcp::{
             constants::FALLBACK_MSS,
             established::{
@@ -28,14 +25,14 @@ use crate::{
                 },
                 EstablishedSocket,
             },
-            isn_generator::IsnGenerator,
-            segment::{
+            header::{
                 TcpHeader,
                 TcpOptions2,
-                TcpSegment,
             },
+            isn_generator::IsnGenerator,
             SeqNumber,
         },
+        MAX_HEADER_SIZE,
     },
     runtime::{
         conditional_yield_with_timeout,
@@ -291,34 +288,25 @@ impl SharedPassiveSocket {
 
         // Create a RST segment.
         let dst_ipv4_addr: Ipv4Addr = remote.ip().clone();
-        let mut segment: TcpSegment = {
-            let mut tcp_hdr: TcpHeader = TcpHeader::new(self.local.port(), remote.port());
-            tcp_hdr.rst = true;
-            tcp_hdr.seq_num = seq_num;
-            if let Some(ack_num) = ack_num {
-                tcp_hdr.ack = true;
-                tcp_hdr.ack_num = ack_num;
-            }
-            match TcpSegment::new(
-                self.local.ip(),
-                remote.ip(),
-                tcp_hdr,
-                None,
-                self.tcp_config.get_rx_checksum_offload(),
-            ) {
-                Ok(segment) => segment,
-                Err(e) => {
-                    warn!("Could not construct TCP segment: {:?}", e);
-                    return;
-                },
-            }
-        };
+        let mut tcp_hdr: TcpHeader = TcpHeader::new(self.local.port(), remote.port());
+        tcp_hdr.rst = true;
+        tcp_hdr.seq_num = seq_num;
+        if let Some(ack_num) = ack_num {
+            tcp_hdr.ack = true;
+            tcp_hdr.ack_num = ack_num;
+        }
+
+        // Add headers in reverse.
+        let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
+        tcp_hdr.serialize_and_attach(
+            &mut pkt,
+            self.local.ip(),
+            remote.ip(),
+            self.tcp_config.get_rx_checksum_offload(),
+        );
 
         // Pass on to send through the L2 layer.
-        if let Err(e) = self
-            .layer3_endpoint
-            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
-        {
+        if let Err(e) = self.layer3_endpoint.transmit_tcp_packet_nonblocking(dst_ipv4_addr, pkt) {
             warn!("Could not send RST: {:?}", e);
         }
     }
@@ -419,15 +407,15 @@ impl SharedPassiveSocket {
 
         debug!("Sending SYN+ACK: {:?}", tcp_hdr);
         let dst_ipv4_addr: Ipv4Addr = remote.ip().clone();
-        let mut segment = TcpSegment::new(
+        let mut pkt: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
+        tcp_hdr.serialize_and_attach(
+            &mut pkt,
             self.local.ip(),
             remote.ip(),
-            tcp_hdr,
-            None,
             self.tcp_config.get_rx_checksum_offload(),
-        )?;
+        );
         self.layer3_endpoint
-            .transmit_tcp_packet_blocking(dst_ipv4_addr, segment.take_body().expect("just constructed above"))
+            .transmit_tcp_packet_blocking(dst_ipv4_addr, pkt)
             .await
     }
 

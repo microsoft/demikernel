@@ -10,7 +10,7 @@ use crate::{
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
         layer4::udp::{
-            datagram::UdpHeader,
+            header::UdpHeader,
             socket::SharedUdpSocket,
         },
     },
@@ -141,13 +141,13 @@ impl SharedUdpPeer {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, buf: DemiBuffer) {
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, mut buf: DemiBuffer) {
         timer!("udp::receive");
         // Parse datagram. Safe to use the local IP address here because the lower IP layer would have discarded the
         // packet if the destination did not match the local IP.
-        let (hdr, data): (UdpHeader, DemiBuffer) =
-            match UdpHeader::parse(&src_ipv4_addr, &self.local_ipv4_addr, buf, self.checksum_offload) {
-                Ok(result) => result,
+        let hdr: UdpHeader =
+            match UdpHeader::parse_and_strip(&src_ipv4_addr, &self.local_ipv4_addr, &mut buf, self.checksum_offload) {
+                Ok(header) => header,
                 Err(e) => {
                     let cause: String = format!("dropping packet: unable to parse UDP header");
                     warn!("{}: {:?}", cause, e);
@@ -179,7 +179,7 @@ impl SharedUdpPeer {
             },
         };
         // TODO: Drop this packet if local address/port pair is not bound.
-        socket.receive(remote, data)
+        socket.receive(remote, buf)
     }
 
     fn get_socket_from_addr(&mut self, local: &SocketAddrV4) -> Option<&mut SharedUdpSocket> {

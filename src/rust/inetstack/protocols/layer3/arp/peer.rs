@@ -7,16 +7,12 @@ use crate::{
     expect_ok,
     inetstack::protocols::{
         layer2::SharedLayer2Endpoint,
-        layer3::{
-            arp::{
-                cache::ArpCache,
-                packet::{
-                    ArpHeader,
-                    ArpMessage,
-                    ArpOperation,
-                },
+        layer3::arp::{
+            cache::ArpCache,
+            header::{
+                ArpHeader,
+                ArpOperation,
             },
-            PacketBuf,
         },
     },
     runtime::{
@@ -158,7 +154,7 @@ impl SharedArpPeer {
             // > [optionally check the hardware length ar$hln]
             // > ?Do I speak the protocol in ar$pro?
             // > [optionally check the protocol length ar$pln]
-            let header: ArpHeader = match ArpHeader::parse(buf) {
+            let header: ArpHeader = match ArpHeader::parse_and_consume(buf) {
                 Ok(header) => header,
                 Err(e) => {
                     let cause: String = format!("could not parse ARP header:");
@@ -224,25 +220,19 @@ impl SharedArpPeer {
                     // from RFC 826:
                     // > Swap hardware and protocol fields, putting the local
                     // > hardware and protocol addresses in the sender fields.
-                    let mut reply: ArpMessage = match ArpMessage::new(ArpHeader::new(
+                    let reply_hdr: ArpHeader = ArpHeader::new(
                         ArpOperation::Reply,
                         self.layer2_endpoint.get_local_link_addr(),
                         self.local_ipv4_addr,
                         header.get_sender_hardware_addr(),
                         header.get_sender_protocol_addr(),
-                    )) {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            warn!("Could not construct ARP message {:?}", e);
-                            continue;
-                        },
-                    };
-                    debug!("Responding {:?}", reply);
+                    );
+                    debug!("Responding {:?}", reply_hdr);
 
-                    if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
-                        header.get_sender_hardware_addr(),
-                        reply.take_body().expect("just constructed above"),
-                    ) {
+                    if let Err(e) = self
+                        .layer2_endpoint
+                        .transmit_arp_packet(header.get_sender_hardware_addr(), reply_hdr.create_and_serialize())
+                    {
                         // Ignore for now because the other end will retry.
                         // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
                         // FIXME: https://github.com/microsoft/demikernel/issues/1365
@@ -270,23 +260,22 @@ impl SharedArpPeer {
         if let Some(&link_addr) = self.cache.get(ipv4_addr) {
             return Ok(link_addr);
         }
-        let mut msg = ArpMessage::new(ArpHeader::new(
+        let header: ArpHeader = ArpHeader::new(
             ArpOperation::Request,
             self.layer2_endpoint.get_local_link_addr(),
             self.local_ipv4_addr,
             MacAddress::broadcast(),
             ipv4_addr,
-        ))?;
+        );
         let mut peer: SharedArpPeer = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
-        let pkt: DemiBuffer = msg.take_body().expect("Just constructed above");
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 if let Err(e) = self
                     .layer2_endpoint
-                    .transmit_arp_packet(MacAddress::broadcast(), pkt.clone())
+                    .transmit_arp_packet(MacAddress::broadcast(), header.create_and_serialize())
                 {
                     warn!("Could not send packet: {:?}", e);
                     continue;

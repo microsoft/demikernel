@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use crate::{
     inetstack::protocols::layer2::EtherType2,
     runtime::{
@@ -11,8 +15,16 @@ use crate::{
 };
 use ::libc::EBADMSG;
 
+//======================================================================================================================
+// Constants
+//======================================================================================================================
+
 pub const ETHERNET2_HEADER_SIZE: usize = 14;
 pub const MIN_PAYLOAD_SIZE: usize = 46;
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 #[derive(Clone, Debug)]
 pub struct Ethernet2Header {
@@ -24,6 +36,10 @@ pub struct Ethernet2Header {
     ether_type: EtherType2,
 }
 
+//======================================================================================================================
+// Associated Functions
+//======================================================================================================================
+
 impl Ethernet2Header {
     /// Creates a header for an Ethernet frame.
     pub fn new(dst_addr: MacAddress, src_addr: MacAddress, ether_type: EtherType2) -> Self {
@@ -34,11 +50,8 @@ impl Ethernet2Header {
         }
     }
 
-    pub fn compute_size(&self) -> usize {
-        ETHERNET2_HEADER_SIZE
-    }
-
-    pub fn parse(mut buf: DemiBuffer) -> Result<(Self, DemiBuffer), Fail> {
+    /// Parse and strip the ethernet header from the packet in [buf].
+    pub fn parse_and_strip(buf: &mut DemiBuffer) -> Result<Self, Fail> {
         if buf.len() < ETHERNET2_HEADER_SIZE {
             return Err(Fail::new(EBADMSG, "frame too small"));
         }
@@ -46,18 +59,18 @@ impl Ethernet2Header {
         let dst_addr = MacAddress::from_bytes(&hdr_buf[0..6]);
         let src_addr = MacAddress::from_bytes(&hdr_buf[6..12]);
         let ether_type = EtherType2::try_from(u16::from_be_bytes([hdr_buf[12], hdr_buf[13]]))?;
-        let hdr = Self {
+
+        buf.adjust(ETHERNET2_HEADER_SIZE)?;
+        Ok(Self {
             dst_addr,
             src_addr,
             ether_type,
-        };
-
-        buf.adjust(ETHERNET2_HEADER_SIZE)?;
-        Ok((hdr, buf))
+        })
     }
 
-    pub fn serialize(&self, buf: &mut [u8]) {
-        let buf: &mut [u8; ETHERNET2_HEADER_SIZE] = buf.try_into().unwrap();
+    /// Create and prepend the ethernet header onto the packet in [buf].
+    pub fn serialize_and_attach(&self, buf: &mut DemiBuffer) {
+        buf.prepend(ETHERNET2_HEADER_SIZE).expect("Should have enough headroom");
         buf[0..6].copy_from_slice(&self.dst_addr.octets());
         buf[6..12].copy_from_slice(&self.src_addr.octets());
         buf[12..14].copy_from_slice(&(self.ether_type as u16).to_be_bytes());
