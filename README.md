@@ -23,9 +23,9 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 
 - `catloop` - TCP Socket Loopback LibOS
 - `catmem` - Shared Memory LibOS
-- `catnap` - Linux Sockets LibOS
+- `catnap` - Linux Sockets/Windows Winsock LibOS
 - `catnip` - DPDK LibOS
-- `catpowder` - Linux Raw Sockets
+- `catpowder` - Linux Raw Sockets/Windows XDP LibOS
 
 ## Documentation
 
@@ -44,6 +44,7 @@ and feedback. Please send any questions or comments to one of the following
 maintainers of the project:
 
 - [Irene Zhang](https://github.com/iyzhang) - [irene.zhang@microsoft.com](mailto:irene.zhang@microsoft.com)
+- [Anand Bonde](https://github.com/anandbonde) - [abonde@microsoft.com](mailto:abonde@microsoft.com)
 - [Pedro Henrique Penna](https://github.com/ppenna) - [ppenna@microsoft.com](mailto:ppenna@microsoft.com)
 
 > By sending feedback, you are consenting that it may be used  in the further
