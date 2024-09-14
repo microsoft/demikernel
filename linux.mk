@@ -76,6 +76,10 @@ ifeq ($(PROFILER),yes)
 CARGO_FEATURES += --features=profiler
 endif
 
+ifeq ($(IH_LOG),1)
+CARGO_FEATURES += --features=ih-log,capy-log
+endif
+
 CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
@@ -282,7 +286,8 @@ run-benchmarks-c: all-benchmarks-c $(BINDIR)/syscalls.elf
 export CONFIG_DIR = $(CURDIR)/scripts/config
 export ELF_DIR ?= $(CURDIR)/bin/examples/rust
 
-# ENV += CAPY_LOG=all
+ENV += IH_LOG=1
+ENV += CAPY_LOG=all
 ENV += LIBOS=catnip
 # ENV += RUST_LOG="debug"
 
@@ -309,4 +314,4 @@ tcp-ping-pong-client:
 	MIG_OFF=1 \
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
 	taskset --cpu-list 0 numactl -m0 \
-	$(ELF_DIR)/tcp-ping-pong.elf --client 10.0.1.8:10000
+	$(ELF_DIR)/tcp-ping-pong.elf --client 10.0.1.8:10008

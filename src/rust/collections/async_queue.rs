@@ -13,10 +13,10 @@ use crate::runtime::{
 };
 use ::std::{
     collections::{
-        vec_deque::{
-            Iter,
-            IterMut,
-        },
+        // vec_deque::{
+        //     Iter,
+        //     IterMut,
+        // },
         VecDeque,
     },
     ops::{
@@ -24,6 +24,14 @@ use ::std::{
         DerefMut,
     },
     time::Duration,
+};
+use arrayvec::ArrayVec;
+// pub use behavior::Saturating;
+use arraydeque::{
+    Iter,
+    IterMut,
+    ArrayDeque,
+    Saturating,
 };
 
 //======================================================================================================================
@@ -40,7 +48,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 /// This data structure implements an unbounded asynchronous queue that is hooked into the Demikernel scheduler. On
 /// pop, if the queue is empty, the coroutine will yield until there is data to be read.
 pub struct AsyncQueue<T> {
-    queue: VecDeque<T>,
+    queue: ArrayDeque<[T; 4096], Saturating>,
     cond_var: SharedConditionVariable,
 }
 
@@ -55,7 +63,7 @@ impl<T> AsyncQueue<T> {
     // TODO: Enforce capacity limit and do not let queue grow past that.
     pub fn with_capacity(size: usize) -> Self {
         Self {
-            queue: VecDeque::<T>::with_capacity(size),
+            queue: ArrayDeque::new(),
             cond_var: SharedConditionVariable::default(),
         }
     }
@@ -130,7 +138,7 @@ impl<T> SharedAsyncQueue<T> {
 impl<T> Default for AsyncQueue<T> {
     fn default() -> Self {
         Self {
-            queue: VecDeque::<T>::default(),
+            queue: ArrayDeque::new(),
             cond_var: SharedConditionVariable::default(),
         }
     }

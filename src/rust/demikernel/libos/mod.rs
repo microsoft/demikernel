@@ -107,6 +107,7 @@ impl LibOS {
         timer!("demikernel::new");
 
         logging::initialize();
+        crate::capylog::init();
 
         // Read in configuration file.
         let config_path: String = match env::var("CONFIG_PATH") {
@@ -405,7 +406,7 @@ impl LibOS {
             }
         };
 
-        self.poll();
+        // self.poll();
 
         result
     }
@@ -506,7 +507,7 @@ impl LibOS {
             }
         };
 
-        self.poll();
+        // self.poll();
 
         result
     }
@@ -562,7 +563,7 @@ impl LibOS {
             }
         };
 
-        self.poll();
+        // self.poll();
 
         result
     }
@@ -597,6 +598,20 @@ impl LibOS {
             LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
             #[cfg(feature = "catmem-libos")]
             LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+        }
+    }
+
+    pub fn wait_any_n(&mut self, qts: &[QToken], qrs: &mut [demi_qresult_t], indices: &mut [usize], timeout: Option<Duration>) -> Result<usize, Fail> {
+        // No profiling scope here because we may enter a coroutine scope.
+        match self {
+            #[cfg(any(
+                feature = "catnap-libos",
+                feature = "catnip-libos",
+                feature = "catpowder-libos",
+                feature = "catloop-libos"
+            ))]
+            LibOS::NetworkLibOS(libos) => libos.wait_any_n(qts, qrs, indices, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            _ => { panic!("wait_any_n is supported for NetworkLibOS only") },
         }
     }
 

@@ -284,6 +284,17 @@ impl NetworkLibOSWrapper {
         }
     }
 
+    /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
+    pub fn wait_any_n(&mut self, qts: &[QToken], qrs: &mut [demi_qresult_t], indices: &mut [usize], timeout: Duration) -> Result<usize, Fail> {
+        match self {
+            #[cfg(all(feature = "catnap-libos"))]
+            NetworkLibOSWrapper::Catnap(libos) => libos.wait_any_n(qts, qrs, indices, timeout),
+            #[cfg(feature = "catnip-libos")]
+            NetworkLibOSWrapper::Catnip(libos) => libos.wait_any_n(qts, qrs, indices, timeout),
+            _ => { panic!("wait_any_n is supported for Catnap or Catnip only") },
+        }
+    }
+
     /// Waits in a loop until the next task is complete, passing the result to `acceptor`. This process continues until
     /// either the acceptor returns false (in which case the method returns Ok), or the timeout has expired (in which
     /// the method returns an `Err` indicating timeout).

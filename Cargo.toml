@@ -46,6 +46,9 @@ x86 = "0.52.0"
 lazy_static = "1.4"
 colored = "2.0"
 ctrlc = "3.2.1"
+chrono = "0.4.3"
+arraydeque = "0.4"
+
 
 # Local crates.
 nettest = { path = "nettest" }
@@ -167,6 +170,8 @@ mlx4 = ["dpdk-rs/mlx4"]
 mlx5 = ["dpdk-rs/mlx5"]
 profiler = []
 auto-calibrate = []
+ih-log = []
+capy-log = []
 
 #=======================================================================================================================
 # Profile

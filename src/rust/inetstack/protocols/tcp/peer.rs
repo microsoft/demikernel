@@ -56,6 +56,7 @@ use ::std::{
         DerefMut,
     },
 };
+use crate::capy_log;
 
 //======================================================================================================================
 // Structures
@@ -170,6 +171,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
                     SocketId::Active(socket.local().unwrap(), socket.remote().unwrap()),
                     socket.clone(),
                 );
+                capy_log!("CONN ACCEPTED (from {:?})", socket.remote().unwrap());
                 Ok(socket)
             },
             Err(e) => Err(e),
@@ -285,7 +287,7 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
         debug!("TCP received {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_dest_addr(), tcp_hdr.dst_port);
         let remote: SocketAddrV4 = SocketAddrV4::new(ip_hdr.get_src_addr(), tcp_hdr.src_port);
-
+        capy_log!("TCP {:?} -> {:?}", remote, local);
         if remote.ip().is_broadcast() || remote.ip().is_multicast() || remote.ip().is_unspecified() {
             let cause: String = format!("invalid remote address (remote={})", remote.ip());
             error!("receive(): {}", &cause);
@@ -294,11 +296,18 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
         // Retrieve the queue descriptor based on the incoming segment.
         let socket: &mut SharedTcpSocket<N> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
-            Some(socket) => socket,
+            Some(socket) => {
+                capy_log!("into Active socket");
+                socket
+            },
             None => match self.addresses.get_mut(&SocketId::Passive(local)) {
-                Some(socket) => socket,
+                Some(socket) => {
+                    capy_log!("into Passive socket");
+                    socket
+                },
                 None => {
                     let cause: String = format!("no queue descriptor for remote address (remote={})", remote.ip());
+                    capy_log!("ERROR: {}", &cause);
                     error!("receive(): {}", &cause);
                     return;
                 },

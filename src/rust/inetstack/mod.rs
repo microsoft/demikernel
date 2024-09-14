@@ -64,6 +64,7 @@ use ::std::{
 };
 
 use crate::timer;
+use crate::capy_log;
 
 //======================================================================================================================
 // Exports
@@ -122,6 +123,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             local_ipv4_addr: config.local_ipv4_addr()?,
         }));
         runtime.insert_background_coroutine("bgc::inetstack::poll_recv", Box::pin(me.clone().poll().fuse()))?;
+        capy_log!("[SCHEDULER] insert inetstack poll");
         Ok(me)
     }
 
@@ -134,7 +136,6 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
             for _ in 0..MAX_RECV_ITERS {
                 let batch: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = match {
                     timer!("inetstack::poll_bg_work::for::receive");
-
                     self.network.receive()
                 } {
                     Ok(batch) => batch,
@@ -159,6 +160,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
                 }
             }
             poll_yield().await;
+            // eprintln!("[INETSTACK] POLLED");
         }
     }
 
@@ -195,6 +197,7 @@ impl<N: NetworkRuntime> SharedInetStack<N> {
     }
 
     pub fn receive(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+        capy_log!("[INETSTACK] RECV PKT");
         timer!("inetstack::receive");
 
         let (header, payload) = Ethernet2Header::parse(pkt)?;

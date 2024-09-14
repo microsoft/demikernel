@@ -70,6 +70,8 @@ use ::std::{
 };
 use futures::never::Never;
 
+use crate::capy_log;
+
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -83,7 +85,7 @@ const RECV_QUEUE_SZ: usize = 2048;
 // TODO: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
-const MAX_OUT_OF_ORDER: usize = 16;
+const MAX_OUT_OF_ORDER: usize = 2048;
 
 //======================================================================================================================
 // Structures
@@ -144,6 +146,7 @@ impl Receiver {
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
+        
         let buf: DemiBuffer = if let Some(size) = size {
             let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
             // Split the buffer if it's too big.
@@ -157,7 +160,9 @@ impl Receiver {
         };
 
         self.reader_next = self.reader_next + SeqNumber::from(buf.len() as u32);
-
+        capy_log!("pop() size_limit={:?}, popped size: {} ==> recv_queue.len = {}", size, buf.len(), self.recv_queue.len());
+        // eprintln!();//HERE
+        // eprintln!("rqlen: {}", self.recv_queue.len());
         Ok(buf)
     }
 
@@ -424,8 +429,13 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // Normal data processing in the Established state.
         loop {
             let (header, data): (TcpHeader, DemiBuffer) = match self.recv_queue.pop(None).await {
-                Ok((_, header, data)) if self.state == State::Established => (header, data),
+                Ok((_, header, data)) if self.state == State::Established => {
+                    capy_log!("received {} bytes", data.len());
+                    (header, data)
+                },
                 Ok(result) => {
+                    capy_log!("ending receive polling loop for non-established connection (local={:?}, remote={:?})",
+                        self.local, self.remote);
                     self.recv_queue.push_front(result);
                     let cause: String = format!(
                         "ending receive polling loop for non-established connection (local={:?}, remote={:?})",
@@ -435,6 +445,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                     return Err(Fail::new(libc::ECANCELED, &cause));
                 },
                 Err(e) => {
+                    capy_log!("ending receive polling loop for active connection (local={:?}, remote={:?})",
+                        self.local, self.remote);
                     let cause: String = format!(
                         "ending receive polling loop for active connection (local={:?}, remote={:?})",
                         self.local, self.remote
@@ -489,7 +501,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         if header.urg {
             warn!("Got packet with URG bit set!");
         }
-
+        capy_log!("data: {} bytes", data.len());
         if data.len() > 0 {
             self.process_data(&mut header, data, seg_start, seg_end, seg_len)?;
         }
@@ -735,7 +747,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
                 }
 
                 let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
-                self.ack_queue.push(nbytes);
+                // self.ack_queue.push(nbytes);
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
@@ -804,13 +816,14 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
         header.ack = true;
         header.ack_num = self.receiver.receive_next;
-
+        capy_log!("ACK: {}", header.ack_num);
         // Return this header.
         header
     }
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(&mut self) {
+        capy_log!("2");
         let mut header: TcpHeader = self.tcp_header();
 
         // TODO: Think about moving this to tcp_header() as well.
@@ -1060,6 +1073,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // Push the new segment data onto the end of the receive queue.
         let mut recv_next: SeqNumber = recv_next + SeqNumber::from(buf.len() as u32);
         // This inserts the segment and wakes a waiting pop coroutine.
+        capy_log!("pushing data to receiver");
         self.receiver.push(buf);
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
@@ -1110,6 +1124,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     fn process_remote_close(&mut self, header: &TcpHeader) -> Result<(), Fail> {
         if header.fin {
             trace!("Received FIN");
+            capy_log!("Received FIN");
             // 2. Push empty buffer to indicate EOF.
             // TODO: set err bit and wake.
             self.receiver.push(DemiBuffer::new(0));

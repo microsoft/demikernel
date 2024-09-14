@@ -31,6 +31,7 @@ use ::std::{
         Instant,
     },
 };
+use crate::capy_log;
 
 // Structure of entries on our unacknowledged queue.
 // TODO: We currently allocate these on the fly when we add a buffer to the queue.  Would be more efficient to have a
@@ -212,6 +213,7 @@ impl Sender {
                     cb.congestion_control_on_send(rto, sent_data);
 
                     // Prepare the segment and send it.
+                    capy_log!("3");
                     let mut header: TcpHeader = cb.tcp_header();
                     header.seq_num = send_next;
                     if buf_len == 0 {
@@ -258,7 +260,7 @@ impl Sender {
         }
 
         // Slow path: Delegating sending the data to background processing.
-        trace!("Queueing Send for background processing");
+        eprintln!("Queueing Send for background processing");
         self.unsent_queue.borrow_mut().push_back(buf);
         self.unsent_seq_no.modify(|s| s + SeqNumber::from(buf_len));
 
@@ -280,6 +282,7 @@ impl Sender {
 
             // Prepare and send the segment.
             if let Some(first_hop_link_addr) = cb.arp().try_query(cb.get_remote().ip().clone()) {
+                capy_log!("4");
                 let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = self.send_unacked.get();
                 if data.len() == 0 {

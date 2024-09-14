@@ -75,6 +75,8 @@ use ::std::{
     time::Duration,
 };
 
+use crate::capy_log;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -163,6 +165,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
     pub async fn do_accept(&mut self) -> Result<EstablishedSocket<N>, Fail> {
+        capy_log!("Trying to ACCEPT");
         self.ready.pop(None).await?
     }
 
@@ -234,6 +237,7 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
 
     fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) {
         debug!("Received SYN: {:?}", tcp_hdr);
+        capy_log!("Received SYN from {:?}", remote);
         let inflight_len: usize = self.connections.len();
         // Check backlog. Since we might receive data even on connections that have completed their handshake, all
         // ready sockets are also in the inflight table.
@@ -452,7 +456,8 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
     ) -> Result<EstablishedSocket<N>, Fail> {
         let (ipv4_hdr, tcp_hdr, buf) = recv_queue.pop(None).await?;
         debug!("Received ACK: {:?}", tcp_hdr);
-
+        capy_log!("Received ACK from {:?}", remote);
+        
         // Check the ack sequence number.
         if tcp_hdr.ack_num != local_isn + SeqNumber::from(1) {
             return Err(Fail::new(EBADMSG, "invalid SYN+ACK seq num"));

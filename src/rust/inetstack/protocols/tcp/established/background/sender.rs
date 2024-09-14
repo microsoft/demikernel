@@ -2,22 +2,19 @@
 // Licensed under the MIT license.
 
 use crate::{
-    collections::async_value::SharedAsyncValue,
-    expect_some,
-    inetstack::protocols::tcp::{
+    capy_log, collections::async_value::SharedAsyncValue, expect_some, inetstack::protocols::tcp::{
         established::{
             ctrlblk::SharedControlBlock,
             sender::UnackedSegment,
         },
         segment::TcpHeader,
         SeqNumber,
-    },
-    runtime::{
+    }, runtime::{
         conditional_yield_until,
         fail::Fail,
         memory::DemiBuffer,
         network::NetworkRuntime,
-    },
+    }
 };
 use ::futures::{
     never::Never,
@@ -86,6 +83,7 @@ pub async fn sender<N: NetworkRuntime>(mut cb: SharedControlBlock<N>) -> Result<
             let mut timeout: Duration = Duration::from_secs(1);
             loop {
                 // Create packet.
+                capy_log!("1");
                 let mut header: TcpHeader = cb.tcp_header();
                 header.seq_num = send_next;
                 cb.emit(header, Some(buf.clone()), remote_link_addr);

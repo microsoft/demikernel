@@ -16,6 +16,8 @@ mod pal;
 #[cfg(feature = "profiler")]
 pub mod perftools;
 
+pub mod capylog;
+
 pub mod runtime;
 
 #[cfg(any(

@@ -61,7 +61,7 @@ use ::std::{
         Deref,
         DerefMut,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "windows")]
@@ -70,6 +70,7 @@ use crate::pal::functions::socketaddrv4_to_sockaddr;
 #[cfg(target_os = "linux")]
 use crate::pal::linux::socketaddrv4_to_sockaddr;
 
+use crate::capy_log;
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -539,7 +540,39 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
         let (offset, qt, qd, result) = self.runtime.wait_any(qts, timeout)?;
+        capy_log!("Returning a complte result");
         Ok((offset, self.create_result(result, qd, qt)))
+    }
+
+    /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
+    pub fn wait_any_n(&mut self, qts: &[QToken], qrs: &mut [demi_qresult_t], indices: &mut [usize], timeout: Duration) -> Result<usize, Fail> {
+        capy_log!("START wait_any_n");
+        // eprintln!("START wait_any_n");
+        let mut prev_time: Instant = self.runtime.get_now();
+        loop {
+            self.runtime.poll();
+            let mut completed = 0;
+            for (i, qt) in qts.iter().enumerate() {
+                if completed == qrs.len() {
+                    capy_log!("HERE");
+                    break;
+                }
+                // Put the QToken into a single element array.
+                if let Some((qd, result)) = self.runtime.get_completed_task(&qt) {
+                    qrs[completed] = self.create_result(result, qd, *qt); // Store the completed handle result.
+                    indices[completed] = i; // Store the index of the result.
+                    completed += 1;
+                }
+            }
+            if completed > 0 {
+                capy_log!("Returning {} complte results", completed);
+                return Ok(completed);
+            }
+            
+            if timeout <= prev_time.elapsed() {
+                return Ok(0);
+            }
+        }
     }
 
     /// Waits in a loop until the next task is complete, passing the result to `acceptor`. This process continues until
