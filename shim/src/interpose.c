@@ -96,46 +96,26 @@ static int (*libc_epoll_create1)(int) = NULL;
 static int (*libc_epoll_ctl)(int, int, int, struct epoll_event *) = NULL;
 static int (*libc_epoll_wait)(int, struct epoll_event *, int, int) = NULL;
 
+int initialized_libc = 0;
+
 static inline void init_libc(void);
 static inline void init_demikernel(void);
-
-#define MAX_THREADS_LOG2 10
-
-struct hashset __malloc_reent_guards;
-int hashset_malloc_table[(1 << MAX_THREADS_LOG2)];
-
-static struct hashset __free_reent_guards;
-int hashset_free_table[(1 << MAX_THREADS_LOG2)];
-
-void init_malloc_reent_guards()
-{
-    hashset_init(&__malloc_reent_guards, MAX_THREADS_LOG2, hashset_malloc_table);
-}
-
-int is_reentrant_malloc_call()
-{
-    pid_t tid = gettid();
-    return hashset_contains(&__malloc_reent_guards, tid);
-}
-
-void init_free_reent_guards()
-{
-    hashset_init(&__free_reent_guards, MAX_THREADS_LOG2, hashset_free_table);
-}
-
-int is_reentrant_free_call()
-{
-    pid_t tid = gettid();
-    return hashset_contains(&__free_reent_guards, tid);
-}
 
 // The constructor attribute makes so that this function is
 // the first thing to run when the program is loaded.
 __attribute__((constructor)) void init_shim()
 {
+    DEBUG("initializing");
     init_libc();
-    init_reent_guards();
+    DEBUG("initialized libc");
+    init_demi_reent_guards();
+    DEBUG("initialized demi reent guards");
+    init_malloc_reent_guards();
+    DEBUG("initialized malloc reent guards");
+    init_free_reent_guards();
+    DEBUG("initialized free reent guards");
     init_demikernel();
+    DEBUG("initialized demikernel");
 }
 
 static inline void init_libc(void)
@@ -170,6 +150,10 @@ static inline void init_libc(void)
     assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
     assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
     assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
+    assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
+    assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
+
+    initialized_libc = 1;
 }
 
 static inline void init_demikernel(void)
@@ -399,29 +383,31 @@ ssize_t pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 
 void * malloc(size_t size)
 {
-    TRACE("MALLOC tid=%d pid=%d", gettid(), getpid());
-    init_libc();
+    if (initialized_libc == 0)
+        init_libc();
 
-    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
-    {
-        return (libc_malloc(size));
-    }
-    // init();
+    DEBUG("MALLOC tid=%d pid=%d malloc=%p", gettid(), getpid(), libc_malloc);
 
-    // __malloc(size);
+    // if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
+    // {
+    //     return (libc_malloc(size));
+    // }
+    // // init();
 
-    return libc_malloc(size);
+    // // __malloc(size);
+    void *ret = libc_malloc(size);
+    DEBUG("ran libc");
+    return ret;
 }
 
 void free(void * ptr)
 {
-    TRACE("FREE");
-    init_libc();
+    DEBUG("FREE");
 
-    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_free_call())
-    {
-        return (libc_free(ptr));
-    }
+    // if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_free_call())
+    // {
+    //     return (libc_free(ptr));
+    // }
 
     // init();
 
