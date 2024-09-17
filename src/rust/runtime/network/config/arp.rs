@@ -28,7 +28,7 @@ pub struct ArpConfig {
     request_timeout: Duration,
     retry_count: usize,
     initial_values: HashMap<Ipv4Addr, MacAddress>,
-    disable_arp: bool,
+    is_enabled: bool,
 }
 
 //======================================================================================================================
@@ -43,7 +43,7 @@ impl ArpConfig {
                 request_timeout: config.arp_request_timeout()?,
                 retry_count: config.arp_request_retries()?,
                 initial_values,
-                disable_arp: false,
+                is_enabled: true,
             })
         } else {
             warn!("disabling arp");
@@ -52,7 +52,7 @@ impl ArpConfig {
                 request_timeout: Duration::ZERO,
                 retry_count: 0,
                 initial_values: HashMap::new(),
-                disable_arp: true,
+                is_enabled: false,
             })
         }
     }
@@ -73,8 +73,8 @@ impl ArpConfig {
         &self.initial_values
     }
 
-    pub fn get_disable_arp(&self) -> bool {
-        self.disable_arp
+    pub fn is_enabled(&self) -> bool {
+        self.is_enabled
     }
 }
 
@@ -89,7 +89,7 @@ impl Default for ArpConfig {
             request_timeout: Duration::from_secs(20),
             retry_count: 5,
             initial_values: HashMap::new(),
-            disable_arp: false,
+            is_enabled: true,
         }
     }
 }
@@ -114,7 +114,7 @@ mod tests {
         crate::ensure_eq!(config.get_request_timeout(), Duration::from_secs(20));
         crate::ensure_eq!(config.get_retry_count(), 5);
         crate::ensure_eq!(config.get_initial_values(), &HashMap::new());
-        crate::ensure_eq!(config.get_disable_arp(), false);
+        crate::ensure_eq!(config.is_enabled(), true);
 
         Ok(())
     }

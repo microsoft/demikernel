@@ -90,7 +90,7 @@ impl SharedArpPeer {
             runtime.get_now(),
             Some(arp_config.get_cache_ttl()),
             Some(arp_config.get_initial_values()),
-            arp_config.get_disable_arp(),
+            arp_config.is_enabled(),
         );
 
         let peer: SharedArpPeer = Self(SharedObject::new(ArpPeer {
