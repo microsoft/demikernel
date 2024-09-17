@@ -52,14 +52,10 @@
 
 #define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)                  \
     {                                                                \
-        init_libc();                                                 \
-                                                                     \
-        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call())) \
+        if (UNLIKELY(is_reentrant_demi_call()))                      \
         {                                                            \
             return (fn_libc(__VA_ARGS__));                           \
         }                                                            \
-                                                                     \
-        init();                                                      \
                                                                      \
         INTERPOSE_CALL2(type, fn_libc, fn_demi, __VA_ARGS__);        \
     }
@@ -95,91 +91,57 @@ static int (*libc_epoll_create1)(int) = NULL;
 static int (*libc_epoll_ctl)(int, int, int, struct epoll_event *) = NULL;
 static int (*libc_epoll_wait)(int, struct epoll_event *, int, int) = NULL;
 
-static volatile uint8_t initialized_libc = 0;
-static volatile uint8_t in_init_libc = 0;
+static inline void init_libc(void);
+static inline void init_demikernel(void);
 
-static volatile uint8_t initialized = 0;
-static volatile uint8_t in_init = 0;
+// The constructor attribute makes so that this function is
+// the first thing to run when the program is loaded.
+__attribute__((constructor)) void init_shim()
+{
+    init_libc();
+    init_reent_guards();
+    init_demikernel();
+}
 
 static inline void init_libc(void)
 {
-    if (UNLIKELY(initialized_libc == 0))
-    {
-
-        if (__sync_val_compare_and_swap(&in_init_libc, 0, 1) == 0)
-        {
-            // Initialize libc functions
-            assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
-            assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
-            assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
-            assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
-            assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
-            assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
-            assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
-            assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
-            assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
-            assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
-            assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
-            assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
-            assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
-            assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
-            assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
-            assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
-            assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
-            assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
-            assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
-            assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
-            assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
-            assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
-            assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
-            assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
-            assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
-            assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
-            assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
-            assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
-            assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
-
-            // Initialize this here so that we can use the reentrancy guard
-            init_reent_guards();
-
-            initialized_libc = 1;
-            assert(__sync_val_compare_and_swap(&in_init_libc, 1, 0) == 1);
-            MEM_BARRIER();
-        }
-        else
-        {
-            while (initialized_libc == 0)
-            {
-                sched_yield();
-                MEM_BARRIER();
-            }
-        }
-    }
+    // Initialize libc functions
+    assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
+    assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
+    assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
+    assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
+    assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
+    assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
+    assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
+    assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
+    assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
+    assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
+    assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
+    assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
+    assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
+    assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
+    assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
+    assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
+    assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
+    assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
+    assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
+    assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
+    assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
+    assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
+    assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
+    assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
+    assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
+    assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
+    assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
+    assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
+    assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
 }
 
-static inline void init(void)
+static inline void init_demikernel(void)
 {
-    if (UNLIKELY(initialized == 0))
-    {
-        if (__sync_val_compare_and_swap(&in_init, 0, 1) == 0)
-        {
-            int ret = __init();
-            if (ret != 0 && ret != EEXIST)
-                abort();
-
-            initialized = 1;
-            assert(__sync_val_compare_and_swap(&in_init, 1, 0) == 1);
-            MEM_BARRIER();
-        }
-        else
-        {
-            while (initialized == 0)
-            {
-                sched_yield();
-                MEM_BARRIER();
-            }
-        }
-    }
+    int ret = __init();
+    if (ret != 0)
+        abort();
 }
 
 int close(int sockfd)
@@ -206,8 +168,6 @@ static int vfcntl(int sockfd, int cmd, va_list val)
 {
     int ret = -1;
 
-    init_libc();
-
     // Variadic functions cannot be easily interposed.
     // We need to parse the command and call the underlying function accordingly.
     switch (cmd)
@@ -223,12 +183,10 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     case F_GET_SEALS:
 #endif
     {
-        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd));
         }
-
-        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd);
     }
@@ -250,12 +208,10 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         int arg_i = va_arg(val, int);
 
-        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_i));
         }
-
-        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_i);
     }
@@ -281,12 +237,10 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         void *arg_p = va_arg(val, void *);
 
-        if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_p));
         }
-
-        init();
 
         INTERPOSE_CALL2(int, libc_fcntl, __fcntl, sockfd, cmd, arg_p);
     }
@@ -418,14 +372,10 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    init_libc();
-
-    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_ctl(epfd, op, fd, event));
     }
-
-    init();
 
     int last_errno = errno;
     errno = 0;
@@ -454,14 +404,10 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    init_libc();
-
-    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
-
-    init();
 
     int last_errno = errno;
     errno = 0;
@@ -496,14 +442,10 @@ int socket(int domain, int type, int protocol)
 
 int epoll_create(int size)
 {
-    init_libc();
-
-    if (UNLIKELY(in_init) || UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(is_reentrant_demi_call()))
     {
         return (libc_epoll_create(size));
     }
-
-    init();
 
     // Create epoll on kernel side.
     int ret = libc_epoll_create(size);
