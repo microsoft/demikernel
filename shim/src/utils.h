@@ -16,8 +16,13 @@
 
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
-struct hashset;
+struct hashset
+{
+    int length_log2;
+    int *table;
+};
 extern struct hashset *hashset_create(int);
+extern int hashset_init(struct hashset *h, int length_log2, int *table);
 extern int hashset_insert(struct hashset *, int);
 extern int hashset_contains(struct hashset *h, int val);
 extern void hashset_remove(struct hashset *h, int key);

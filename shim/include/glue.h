@@ -12,7 +12,7 @@
 #include <unistd.h>
 
 extern int is_reentrant_demi_call();
-extern void init_reent_guards();
+extern void init_demi_reent_guards();
 
 extern int __demi_init(const struct demi_args *args);
 extern int __demi_create_pipe(int *memqd_out, const char *name);
@@ -66,6 +66,9 @@ extern ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt);
 extern ssize_t __pread(int sockfd, void *buf, size_t count, off_t offset);
 extern ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset);
 
+extern void * __maloc(size_t size);
+extern void __free(void * ptr);
+
 extern int __epoll_create(int size);
 extern int __epoll_create1(int flags);
 extern int __epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
@@ -89,6 +92,7 @@ extern struct demi_event *queue_man_get_pop_result(int qd);
 
 struct hashset;
 extern struct hashset *hashset_create(int);
+extern int hashset_init(struct hashset *h, int length_log2, int *table);
 extern int hashset_insert(struct hashset *, int);
 extern int hashset_contains(struct hashset *h, int val);
 extern void hashset_remove(struct hashset *h, int key);

@@ -88,7 +88,6 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
                 break;
                 case DEMI_OPC_POP:
                 {
-
                     // Fill in event.
                     events[nret].events = evs[ready_offset]->ev.events;
                     events[nret].data.fd = evs[ready_offset]->sockqd;

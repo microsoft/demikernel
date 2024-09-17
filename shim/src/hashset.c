@@ -9,12 +9,6 @@
 
 #define HASHSET_NULL -1
 
-struct hashset
-{
-    int length_log2;
-    int *table;
-};
-
 struct hashset *hashset_create(int length_log2)
 {
     int *table = NULL;
@@ -34,6 +28,18 @@ struct hashset *hashset_create(int length_log2)
         h->table[i] = HASHSET_NULL;
 
     return (h);
+}
+
+// Pass a pointer to an already located hashset and initialize it.
+// This is needed to init the reentrancy guards. Because we interpose
+// malloc the hashset_create function calls malloc and gets stuck in a loop.
+int hashset_init(struct hashset *h, int length_log2, int *table)
+{
+    h->length_log2 = length_log2;
+    h->table = table;
+
+    for (int i = 0; i < (1 << h->length_log2); i++)
+        h->table[i] = HASHSET_NULL;
 }
 
 int hashset_insert(struct hashset *h, int val)
