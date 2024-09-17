@@ -14,7 +14,7 @@ all: all-libs
 
 all-libs:
 	mkdir -p $(LIBDIR)
-	$(CC) $(CFLAGS) $(SRC) -fPIC -shared -o $(LIBDIR)/$(SHIM_LIB) -L $(LIBDIR)/ -ldemikernel
+	$(CC) $(CFLAGS) $(SRC) -fPIC -shared -o $(LIBDIR)/$(SHIM_LIB) -L $(LIBDIR)/ -ldemikernel -z initfirst
 
 clean:
 	rm -f $(LIBDIR)/$(SHIM_LIB)
