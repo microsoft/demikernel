@@ -78,9 +78,7 @@ use crate::catnap::transport::SharedCatnapTransport;
 // The following value was chosen arbitrarily.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// LibOS
 pub enum LibOS {
-    /// Network LibOS
     #[cfg(any(
         feature = "catnap-libos",
         feature = "catnip-libos",
@@ -88,7 +86,6 @@ pub enum LibOS {
         feature = "catloop-libos"
     ))]
     NetworkLibOS(NetworkLibOSWrapper),
-    /// Memory LibOS
     #[cfg(feature = "catmem-libos")]
     MemoryLibOS(MemoryLibOS),
 }
@@ -97,15 +94,12 @@ pub enum LibOS {
 // Associated Functions
 //======================================================================================================================
 
-/// Associated functions for LibOS.
 impl LibOS {
-    /// Instantiates a new LibOS.
     pub fn new(libos_name: LibOSName, _perf_callback: Option<demi_callback_t>) -> Result<Self, Fail> {
         timer!("demikernel::new");
 
         logging::initialize();
 
-        // Read in configuration file.
         let config_path: String = match env::var("CONFIG_PATH") {
             Ok(config_path) => config_path,
             Err(_) => {
@@ -229,7 +223,6 @@ impl LibOS {
         result
     }
 
-    /// Creates a socket.
     #[allow(unused_variables)]
     pub fn socket(
         &mut self,
@@ -331,7 +324,6 @@ impl LibOS {
         result
     }
 
-    /// Binds a socket to a local address.
     #[allow(unused_variables)]
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
@@ -354,7 +346,7 @@ impl LibOS {
         result
     }
 
-    /// Marks a socket as a passive one.
+    /// This marks the socket as passive.
     #[allow(unused_variables)]
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
@@ -377,7 +369,6 @@ impl LibOS {
         result
     }
 
-    /// Accepts an incoming connection on a TCP socket.
     #[allow(unused_variables)]
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
@@ -400,7 +391,6 @@ impl LibOS {
         result
     }
 
-    /// Initiates a connection with a remote TCP socket.
     #[allow(unused_variables)]
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
@@ -423,8 +413,7 @@ impl LibOS {
         result
     }
 
-    /// Closes an I/O queue.
-    /// async_close() + wait() achieves the same effect as synchronous close.
+    /// Closes an I/O queue. async_close() + wait() achieves the same effect as this synchronous function.
     pub fn close(&mut self, qd: QDesc) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::close");
@@ -613,7 +602,6 @@ impl LibOS {
         }
     }
 
-    /// Allocates a scatter-gather array.
     pub fn sgaalloc(&mut self, size: usize) -> Result<demi_sgarray_t, Fail> {
         let result: Result<demi_sgarray_t, Fail> = {
             timer!("demikernel::sgaalloc");
@@ -633,7 +621,6 @@ impl LibOS {
         result
     }
 
-    /// Releases a scatter-gather array.
     pub fn sgafree(&mut self, sga: demi_sgarray_t) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::sgafree");

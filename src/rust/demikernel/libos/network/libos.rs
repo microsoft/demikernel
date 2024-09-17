@@ -80,9 +80,7 @@ use crate::pal::linux::socketaddrv4_to_sockaddr;
 /// TODO: Move [qtable] into [runtime] so all state is contained in the PosixRuntime.
 pub struct NetworkLibOS<T: NetworkTransport> {
     local_ipv4_addr: Ipv4Addr,
-    /// Underlying runtime.
     runtime: SharedDemiRuntime,
-    /// Underlying network transport.
     transport: T,
 }
 
@@ -93,9 +91,7 @@ pub struct SharedNetworkLibOS<T: NetworkTransport>(SharedObject<NetworkLibOS<T>>
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for Catnap LibOS
 impl<T: NetworkTransport> SharedNetworkLibOS<T> {
-    /// Instantiates a Catnap LibOS.
     pub fn new(local_ipv4_addr: Ipv4Addr, runtime: SharedDemiRuntime, transport: T) -> Self {
         Self(SharedObject::new(NetworkLibOS::<T> {
             local_ipv4_addr,
@@ -104,62 +100,49 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         }))
     }
 
-    /// Creates a socket. This function contains the libOS-level functionality needed to create a SharedNetworkQueue
-    /// that wraps the underlying POSIX socket.
+    /// This function contains the LibOS-level functionality needed to create a SharedNetworkQueue that wraps the
+    /// underlying POSIX socket.
     pub fn socket(&mut self, domain: Domain, typ: Type, _protocol: Protocol) -> Result<QDesc, Fail> {
         trace!("socket() domain={:?}, type={:?}, protocol={:?}", domain, typ, _protocol);
 
-        // Parse communication domain.
         if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "communication domain not supported"));
         }
 
-        // Parse socket type.
         if (typ != Type::STREAM) && (typ != Type::DGRAM) {
             let cause: String = format!("socket type not supported (type={:?})", typ);
             error!("socket(): {}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        // Create underlying queue.
         let queue: SharedNetworkQueue<T> = SharedNetworkQueue::new(domain, typ, &mut self.transport)?;
         let qd: QDesc = self.runtime.alloc_queue(queue);
         Ok(qd)
     }
 
-    /// Sets a socket option on the socket.
     pub fn set_socket_option(&mut self, qd: QDesc, option: SocketOption) -> Result<(), Fail> {
         trace!("set_socket_option() qd={:?}, option={:?}", qd, option);
-
-        // Issue operation.
         self.get_shared_queue(&qd)?.set_socket_option(option)
     }
 
-    /// Sets a SO_* option on the socket referenced by [sockqd].
     pub fn get_socket_option(&mut self, qd: QDesc, option: SocketOption) -> Result<SocketOption, Fail> {
         trace!("get_socket_option() qd={:?}, option={:?}", qd, option);
-
-        // Issue operation.
         self.get_shared_queue(&qd)?.get_socket_option(option)
     }
 
-    /// Gets the peer address connected to the scoket.
     pub fn getpeername(&mut self, qd: QDesc) -> Result<SocketAddrV4, Fail> {
         trace!("getpeername() qd={:?}", qd);
-
-        // Issue operation.
         self.get_shared_queue(&qd)?.getpeername()
     }
 
-    /// Binds a socket to a local endpoint. This function contains the libOS-level functionality needed to bind a
-    /// SharedNetworkQueue to a local address.
+    /// This function contains the LibOS-level functionality needed to bind a SharedNetworkQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, local);
 
-        // We only support IPv4 addresses right now.
+        // We only support IPv4 addresses.
         let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
 
-        // Check address that we are using to bind. We only support the wildcard address for UDP sockets right now.
+        // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
         match *localv4.ip() {
             Ipv4Addr::UNSPECIFIED if self.get_shared_queue(&qd)?.get_qtype() == QType::UdpSocket => (),
@@ -176,13 +159,11 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             _ => (),
         }
 
-        // Check if this is an ephemeral port.
         if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-            // Allocate ephemeral port from the pool.
             self.runtime.reserve_ephemeral_port(local.port())?
         }
 
-        // Check if we are binding to the wildcard port. We only support this for UDP sockets right now.
+        // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
         if local.port() == 0 {
             if self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
@@ -196,16 +177,13 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             }
         }
 
-        // Check wether the address is in use.
         if self.runtime.addr_in_use(localv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
-        // Issue bind operation.
         if let Err(e) = self.get_shared_queue(&qd)?.bind(local) {
-            // Rollback ephemeral port allocation.
             if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
                 if self.runtime.free_ephemeral_port(local.port()).is_err() {
                     warn!("bind(): leaking ephemeral port (port={})", local.port());
@@ -220,7 +198,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         }
     }
 
-    /// Sets a SharedNetworkQueue and its underlying socket as a passive one. This function contains the libOS-level
+    /// Sets a SharedNetworkQueue and its underlying socket as a passive one. This function contains the LibOS-level
     /// functionality to move the SharedNetworkQueue and underlying socket into the listen state.
     pub fn listen(&mut self, qd: QDesc, backlog: usize) -> Result<(), Fail> {
         trace!("listen() qd={:?}, backlog={:?}", qd, backlog);
@@ -237,7 +215,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Synchronous cross-queue code to start accepting a connection. This function schedules the asynchronous
-    /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
+    /// coroutine and performs any necessary synchronous, multi-queue operations at the LibOS-level before beginning
     /// the accept.
     pub fn accept(&mut self, qd: QDesc) -> Result<QToken, Fail> {
         trace!("accept(): qd={:?}", qd);
@@ -254,7 +232,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Asynchronous cross-queue code for accepting a connection. This function returns a coroutine that runs
-    /// asynchronously to accept a connection and performs any necessary multi-queue operations at the libOS-level after
+    /// asynchronously to accept a connection and performs any necessary multi-queue operations at the LibOS-level after
     /// the accept succeeds or fails.
     async fn accept_coroutine(mut self, qd: QDesc) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -287,7 +265,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Synchronous code to establish a connection to a remote endpoint. This function schedules the asynchronous
-    /// coroutine and performs any necessary synchronous, multi-queue operations at the libOS-level before beginning
+    /// coroutine and performs any necessary synchronous, multi-queue operations at the LibOS-level before beginning
     /// the connect.
     pub fn connect(&mut self, qd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("connect() qd={:?}, remote={:?}", qd, remote);
@@ -305,7 +283,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Asynchronous code to establish a connection to a remote endpoint. This function returns a coroutine that runs
-    /// asynchronously to connect a queue and performs any necessary multi-queue operations at the libOS-level after
+    /// asynchronously to connect a queue and performs any necessary multi-queue operations at the LibOS-level after
     /// the connect succeeds or fails.
     async fn connect_coroutine(self, qd: QDesc, remote: SocketAddr) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -345,7 +323,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// Asynchronous code to close a queue. This function returns a coroutine that runs asynchronously to close a queue
-    /// and the underlying POSIX socket and performs any necessary multi-queue operations at the libOS-level after
+    /// and the underlying POSIX socket and performs any necessary multi-queue operations at the LibOS-level after
     /// the close succeeds or fails.
     async fn close_coroutine(mut self, qd: QDesc) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -415,7 +393,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Asynchronous code to push [buf] to a SharedNetworkQueue and its underlying POSIX socket. This function returns a
     /// coroutine that runs asynchronously to push a queue and its underlying POSIX socket and performs any necessary
-    /// multi-queue operations at the libOS-level after the push succeeds or fails.
+    /// multi-queue operations at the LibOS-level after the push succeeds or fails.
     async fn push_coroutine(self, qd: QDesc, mut buf: DemiBuffer) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
@@ -458,7 +436,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Asynchronous code to pushto [buf] to [remote] on a SharedNetworkQueue and its underlying POSIX socket. This function
     /// returns a coroutine that runs asynchronously to pushto a queue and its underlying POSIX socket and performs any
-    /// necessary multi-queue operations at the libOS-level after the pushto succeeds or fails.
+    /// necessary multi-queue operations at the LibOS-level after the pushto succeeds or fails.
     async fn pushto_coroutine(self, qd: QDesc, mut buf: DemiBuffer, remote: SocketAddr) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
@@ -479,7 +457,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Synchronous code to pop data from a SharedNetworkQueue and its underlying POSIX socket of optional [size]. This
     /// function schedules the asynchronous coroutine and performs any necessary synchronous, multi-queue operations
-    /// at the libOS-level before beginning the pop.
+    /// at the LibOS-level before beginning the pop.
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
@@ -489,7 +467,9 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         let mut queue: SharedNetworkQueue<T> = self.get_shared_queue(&qd)?;
         let coroutine_constructor = || -> Result<QToken, Fail> {
             let coroutine = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
-            self.runtime.clone().insert_io_coroutine("ioc::network::libos::pop", coroutine)
+            self.runtime
+                .clone()
+                .insert_io_coroutine("ioc::network::libos::pop", coroutine)
         };
 
         queue.pop(coroutine_constructor)
@@ -497,7 +477,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Asynchronous code to pop data from a SharedNetworkQueue and its underlying POSIX socket of optional [size]. This
     /// function returns a coroutine that asynchronously runs pop and performs any necessary multi-queue operations at
-    /// the libOS-level after the pop succeeds or fails.
+    /// the LibOS-level after the pop succeeds or fails.
     async fn pop_coroutine(self, qd: QDesc, size: Option<usize>) -> (QDesc, OperationResult) {
         // Grab the queue, make sure it hasn't been closed in the meantime.
         // This will bump the Rc refcount so the coroutine can have it's own reference to the shared queue data
