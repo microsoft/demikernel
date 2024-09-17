@@ -14,12 +14,9 @@ use crate::{
 // Structures
 //======================================================================================================================
 
-/// UDP Configuration Descriptor
 #[derive(Clone, Debug)]
 pub struct UdpConfig {
-    /// Offload Checksum to Hardware When Receiving?
     rx_checksum: bool,
-    /// Offload Checksum to Hardware When Sending?
     tx_checksum: bool,
 }
 
@@ -27,9 +24,7 @@ pub struct UdpConfig {
 // Associate Functions
 //======================================================================================================================
 
-/// Associate functions for UDP Configuration Descriptor
 impl UdpConfig {
-    /// Creates a UDP Configuration Descriptor.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let offload = config.udp_checksum_offload()?;
         Ok(Self {
@@ -38,12 +33,10 @@ impl UdpConfig {
         })
     }
 
-    /// Gets the RX hardware checksum offload option in the target [UdpConfig].
     pub fn get_rx_checksum_offload(&self) -> bool {
         self.rx_checksum
     }
 
-    /// Gets the XX hardware checksum offload option in the target [UdpConfig].
     pub fn get_tx_checksum_offload(&self) -> bool {
         self.tx_checksum
     }
@@ -53,9 +46,7 @@ impl UdpConfig {
 // Trait Implementations
 //======================================================================================================================
 
-/// Default Trait Implementation for UDP Configuration Descriptor
 impl Default for UdpConfig {
-    /// Creates a UDP Configuration Descriptor with the default values.
     fn default() -> Self {
         UdpConfig {
             rx_checksum: false,
@@ -73,7 +64,6 @@ mod tests {
     use crate::runtime::network::config::UdpConfig;
     use ::anyhow::Result;
 
-    /// Tests default instantiation for [UdpConfig].
     #[test]
     fn test_udp_config_default() -> Result<()> {
         let config: UdpConfig = UdpConfig::default();

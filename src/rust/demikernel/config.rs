@@ -32,16 +32,15 @@ use yaml_rust::yaml::Array;
 // Constants
 //======================================================================================================================
 
-// Global Demikernel options. These apply to all libOSes
+// These apply to all LibOSes.
 mod global_config {
     pub const SECTION_NAME: &str = "demikernel";
-    // Local IPv4 addr.
     pub const LOCAL_IPV4_ADDR: &str = "local_ipv4_addr";
-    // Local network MAC address.
+    // Local MAC address.
     pub const LOCAL_LINK_ADDR: &str = "local_link_addr";
 }
 
-// Default TCP socket options. These apply to all libOSes.
+// These apply to all LibOSes.
 mod tcp_socket_options {
     pub const SECTION_NAME: &str = "tcp_socket_options";
     pub const KEEP_ALIVE: &str = "keepalive";
@@ -49,7 +48,7 @@ mod tcp_socket_options {
     pub const NO_DELAY: &str = "nodelay";
 }
 
-// TCP stack configurations. These only apply to the inetstack.
+// These only apply to the inetstack.
 mod inetstack_config {
     pub const SECTION_NAME: &str = "inetstack_config";
     pub const ARP_TABLE: &str = "arp_table";
@@ -70,7 +69,7 @@ mod dpdk_config {
     pub const EAL_INIT_ARGS: &str = "eal_init";
 }
 
-// Raw socket option. Local network interface name. This only applies to catpowder right now.
+// Raw socket option. This only applies to catpowder.
 #[cfg(feature = "catpowder-libos")]
 mod raw_socket_config {
     pub const SECTION_NAME: &str = "raw_socket";
@@ -84,7 +83,6 @@ mod raw_socket_config {
 // Structures
 //======================================================================================================================
 
-/// Demikernel configuration.
 #[derive(Clone, Debug)]
 pub struct Config(pub Yaml);
 
@@ -92,9 +90,8 @@ pub struct Config(pub Yaml);
 // Associated Functions
 //======================================================================================================================
 
-/// Common associated functions for Demikernel configuration object.
 impl Config {
-    /// Reads a configuration file into a [Config] object.
+    /// Reads the config file into the [Config] object.
     pub fn new(config_path: String) -> Result<Self, Fail> {
         let mut config_s: String = String::new();
         File::open(config_path).unwrap().read_to_string(&mut config_s).unwrap();
@@ -129,8 +126,7 @@ impl Config {
         Self::get_subsection(&self.0, raw_socket_config::SECTION_NAME)
     }
 
-    /// Global config: Reads the local IPv4 address parameter from the environment variable first and then the
-    /// underlying configuration file.
+    /// Global config: The value from the env var takes precedence over the value from file.
     pub fn local_ipv4_addr(&self) -> Result<Ipv4Addr, Fail> {
         let local_ipv4_addr: Ipv4Addr = if let Some(addr) = Self::get_typed_env_option(global_config::LOCAL_IPV4_ADDR)?
         {
@@ -154,17 +150,15 @@ impl Config {
         Ok(local_ipv4_addr)
     }
 
-    /// Reads the "local link address" parameter from the enviroment variable first and then underlying configuration
-    /// file.
+    /// The value from the env var takes precedence over the value from file.
     pub fn local_link_addr(&self) -> Result<MacAddress, Fail> {
-        // Parse local MAC address.
         if let Some(addr) = Self::get_typed_env_option(global_config::LOCAL_LINK_ADDR)? {
             Ok(addr)
         } else {
             Self::get_typed_str_option(
                 self.get_global_config()?,
                 global_config::LOCAL_LINK_ADDR,
-                |val: &str| match MacAddress::parse_str(val) {
+                |val: &str| match MacAddress::parse_canonical_str(val) {
                     Ok(local_addr) => Some(local_addr),
                     _ => None,
                 },
@@ -233,7 +227,7 @@ impl Config {
                 HashMap::<Ipv4Addr, MacAddress>::with_capacity(arp_table.len());
             for (k, v) in arp_table {
                 let link_addr: MacAddress = match k.as_str() {
-                    Some(link_string) => MacAddress::parse_str(link_string)?,
+                    Some(link_string) => MacAddress::parse_canonical_str(link_string)?,
                     None => {
                         let cause: String = format!("Couldn't parse ARP table link_addr in config");
                         error!("arp_table(): {:?}", cause);
@@ -346,9 +340,7 @@ impl Config {
         Ok(result)
     }
 
-    /// Gets the "MTU" parameter from environment variables.
     pub fn mtu(&self) -> Result<u16, Fail> {
-        // Parse local MAC address.
         if let Some(addr) = Self::get_typed_env_option(inetstack_config::MTU)? {
             Ok(addr)
         } else {
@@ -356,22 +348,18 @@ impl Config {
         }
     }
 
-    /// Gets the "MSS" parameter from environment variables.
     pub fn mss(&self) -> Result<usize, Fail> {
         Self::get_int_option(self.get_inetstack_config()?, inetstack_config::MSS)
     }
 
-    /// Gets the "TCP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn tcp_checksum_offload(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::TCP_CHECKSUM_OFFLOAD)
     }
 
-    /// Gets the "UDP_CHECKSUM_OFFLOAD" parameter from environment variables.
     pub fn udp_checksum_offload(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::UDP_CHECKSUM_OFFLOAD)
     }
 
-    /// Gets the "USE_JUMBO" parameter from environment variables.
     pub fn enable_jumbo_frames(&self) -> Result<bool, Fail> {
         Self::get_bool_option(self.get_inetstack_config()?, inetstack_config::ENABLE_JUMBO_FRAMES)
     }
@@ -436,7 +424,6 @@ impl Config {
 
     /// Get value where the environment value overrides the config file if it exists.
     fn get_typed_env_option<T: FromStr>(index: &str) -> Result<Option<T>, Fail> {
-        // Check for the environment variable.
         if let Ok(var) = ::std::env::var(index.to_uppercase()) {
             if let Ok(value) = var.as_str().parse() {
                 return Ok(Some(value));

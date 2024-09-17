@@ -22,18 +22,12 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// ARP Configuration Descriptor
 #[derive(Clone, Debug)]
 pub struct ArpConfig {
-    /// Time to Live for ARP Cache
     cache_ttl: Duration,
-    /// Timeout for ARP Requests
     request_timeout: Duration,
-    /// Retry Count for ARP Requests
     retry_count: usize,
-    /// Initial Values for ARP Cache
     initial_values: HashMap<Ipv4Addr, MacAddress>,
-    /// Disable ARP?
     disable_arp: bool,
 }
 
@@ -41,9 +35,7 @@ pub struct ArpConfig {
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for ARP Configuration Descriptor
 impl ArpConfig {
-    /// Creates an ARP Configuration Descriptor.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         if let Some(initial_values) = config.arp_table()? {
             Ok(Self {
@@ -65,27 +57,22 @@ impl ArpConfig {
         }
     }
 
-    /// Gets the time to live for entries of the ARP Cache in the target [ArpConfig].
     pub fn get_cache_ttl(&self) -> Duration {
         self.cache_ttl
     }
 
-    /// Gets the request timeout for ARP requests in the target [ArpConfig].
     pub fn get_request_timeout(&self) -> Duration {
         self.request_timeout
     }
 
-    /// Gets the retry count for ARP requests in the target [ArpConfig].
     pub fn get_retry_count(&self) -> usize {
         self.retry_count
     }
 
-    /// Gets the initial values for the ARP Cache in the target [ArpConfig].
     pub fn get_initial_values(&self) -> &HashMap<Ipv4Addr, MacAddress> {
         &self.initial_values
     }
 
-    /// Gets the disable option of the ARP in the target [ArpConfig].
     pub fn get_disable_arp(&self) -> bool {
         self.disable_arp
     }
@@ -95,9 +82,7 @@ impl ArpConfig {
 // Trait Implementations
 //======================================================================================================================
 
-/// Default Trait Implementation for ARP Configuration Descriptor
 impl Default for ArpConfig {
-    /// Creates a ARP Configuration Descriptor with the default values.
     fn default() -> Self {
         ArpConfig {
             cache_ttl: Duration::from_secs(15),
@@ -122,7 +107,6 @@ mod tests {
         time::Duration,
     };
 
-    /// Tests default instantiation for [UdpConfig].
     #[test]
     fn test_arp_config_default() -> Result<()> {
         let config: ArpConfig = ArpConfig::default();

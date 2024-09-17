@@ -13,7 +13,6 @@ use ::std::env;
 //======================================================================================================================
 
 #[derive(Clone, Copy)]
-/// Names of LibOSes.
 pub enum LibOSName {
     Catpowder,
     Catnap,
@@ -26,7 +25,6 @@ pub enum LibOSName {
 // Associated Functions
 //======================================================================================================================
 
-/// Associated functions for LibOSName.
 impl LibOSName {
     pub fn from_env() -> Result<Self, Fail> {
         match env::var("LIBOS") {

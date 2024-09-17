@@ -25,7 +25,6 @@ use crate::runtime::memory::MemoryRuntime;
 // Structures
 //======================================================================================================================
 
-/// Associated functions for Memory LibOSes.
 pub enum MemoryLibOS {
     #[cfg(feature = "catmem-libos")]
     Catmem(SharedCatmemLibOS),
@@ -35,7 +34,6 @@ pub enum MemoryLibOS {
 // Associated Functions
 //======================================================================================================================
 
-/// Associated functions for memory LibOSes
 impl MemoryLibOS {
     /// Creates a memory queue and connects to the consumer/pop-only end.
     #[allow(unreachable_patterns, unused_variables)]
@@ -119,9 +117,8 @@ impl MemoryLibOS {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         acceptor: Acceptor,
-        timeout: Duration
-    ) -> Result<(), Fail>
-    {
+        timeout: Duration,
+    ) -> Result<(), Fail> {
         trace!("wait_next_n(): acceptor, timeout={:?}", timeout);
         match self {
             #[cfg(feature = "catmem-libos")]
@@ -130,8 +127,6 @@ impl MemoryLibOS {
         }
     }
 
-
-    /// Allocates a scatter-gather array.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {
@@ -141,7 +136,6 @@ impl MemoryLibOS {
         }
     }
 
-    /// Releases a scatter-gather array.
     #[allow(unreachable_patterns, unused_variables)]
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         match self {

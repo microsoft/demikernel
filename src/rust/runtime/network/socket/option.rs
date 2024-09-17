@@ -44,7 +44,6 @@ pub enum SocketOption {
     NoDelay(bool),
 }
 
-/// A structure to store the values of the SO_* socket options.
 #[derive(Debug, Clone, Copy)]
 pub struct TcpSocketOptions {
     linger: Option<Duration>,
