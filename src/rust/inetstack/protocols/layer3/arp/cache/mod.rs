@@ -55,12 +55,11 @@ impl ArpCache {
         now: Instant,
         default_ttl: Option<Duration>,
         values: Option<&HashMap<Ipv4Addr, MacAddress>>,
-        disable: bool,
+        is_enabled: bool,
     ) -> ArpCache {
-        ArpCache(if disable {
-            None
-        } else {
-            let mut cache: HashTtlCache<Ipv4Addr, Record> = HashTtlCache::<Ipv4Addr, Record>::new(now, default_ttl);
+        ArpCache(if is_enabled {
+            let hash_ttl_cache = HashTtlCache::<Ipv4Addr, Record>::new(now, default_ttl);
+            let mut cache: HashTtlCache<Ipv4Addr, Record> = hash_ttl_cache;
             if let Some(values) = values {
                 for (&k, &v) in values {
                     if let Some(record) = cache.insert(k, Record { link_addr: v }) {
@@ -73,6 +72,8 @@ impl ArpCache {
                 }
             };
             Some(cache)
+        } else {
+            None
         })
     }
 
