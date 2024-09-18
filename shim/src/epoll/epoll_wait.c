@@ -53,7 +53,9 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
     demi_qtoken_t qts[MAX_EVENTS];
     struct demi_event *evs[MAX_EVENTS];
 
-    int nevents = epoll_get_ready(demikernel_epfd, qts, evs);
+    int nevents = epoll_get_ready(demikernel_epfd, qts, evs, MAX_EVENTS);
+    nevents += epoll_get_ready(SEND_EPFD, qts + nevents, evs + nevents,
+            MAX_EVENTS - nevents);
 
     int nret = 0;
     if (nevents > 0)
@@ -103,8 +105,17 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
                 break;
                 case DEMI_OPC_PUSH:
                 {
-                    // TODO: implement.
-                    UNIMPLEMETED("parse result of demi_push()")
+                    struct demi_event *prev = epoll_get_prev(SEND_EPFD, evs[ready_offset]);
+                    prev->next_ev = evs[ready_offset]->next_ev;
+
+                    struct demi_event *next = epoll_get_next(SEND_EPFD, evs[ready_offset]);
+                    if (next == NULL)
+                        epoll_set_tail(SEND_EPFD, prev->id);
+                    else
+                        next->prev_ev = evs[ready_offset]->prev_ev;
+
+                    epoll_deinit_event(evs[ready_offset]);
+                    assert(__demi_sgafree(&evs[ready_offset]->sga) == 0);
                 }
                 break;
 

@@ -43,10 +43,31 @@ ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
     len = MIN(len, sga.sga_segs[0].sgaseg_len);
     memcpy(sga.sga_segs[0].sgaseg_buf, buf, len);
     assert(__demi_push(&qt, sockfd, &sga) == 0);
-    assert(__demi_wait(&qr, qt, NULL) == 0);
-    assert(qr.qr_opcode == DEMI_OPC_PUSH);
-    __demi_sgafree(&sga);
 
+    // We need to add the send to a special epoll table that gets
+    // polled at epoll_wait. This is because demi_wait
+    // only returns from a push when the demikernel receives an ACK back.
+    // Doing the wait here messes up the behaviour of applications
+    // that expect the send to return immediately after the OS adds
+    // the buffer to the transmit queue.
+    for (int i = 0; i < MAX_EVENTS; i++)
+    {
+        struct demi_event *ev = epoll_get_event(SEND_EPFD, i);
+        if (ev->used == 0)
+        {
+            epoll_init_event(ev, qt, sockfd, &sga);
+
+            struct demi_event *tail = epoll_get_tail(SEND_EPFD);
+            ev->prev_ev = tail->id;
+            tail->next_ev = ev->id;
+            epoll_set_tail(SEND_EPFD, ev->id);
+
+            TRACE("adding send event id=%d qt=%d", ev->id, ev->qt);
+            return len;
+        }
+    }
+
+    UNIMPLEMETED("Deal with case where we run out of send events");
     return (len);
 }
 
