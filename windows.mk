@@ -25,11 +25,12 @@ XDP_PATH = $(USERPROFILE)\xdp
 # Build Configuration
 #=======================================================================================================================
 
-RUST_LOG = none
 BUILD = release
 !if "$(DEBUG)" == "yes"
-RUST_LOG = trace
 BUILD = dev
+!ifndef RUST_LOG
+RUST_LOG = trace
+!endif
 !endif
 
 #=======================================================================================================================
