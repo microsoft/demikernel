@@ -21,6 +21,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        libxdp,
         limits,
     },
 };
@@ -66,16 +67,16 @@ impl RxRing {
         trace!("registering umem region");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_UMEM_REG,
-            mem.borrow().as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
-            std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
+            libxdp::XSK_SOCKOPT_UMEM_REG,
+            mem.borrow().as_ref() as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
+            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
         )?;
 
         // Set rx ring size.
         trace!("setting rx ring size");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_RX_RING_SIZE,
+            libxdp::XSK_SOCKOPT_RX_RING_SIZE,
             &length as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
@@ -84,27 +85,27 @@ impl RxRing {
         trace!("setting rx fill ring size");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_RX_FILL_RING_SIZE,
+            libxdp::XSK_SOCKOPT_RX_FILL_RING_SIZE,
             &length as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
 
         // Bind the rx queue.
         trace!("binding rx queue");
-        socket.bind(api, ifindex, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX)?;
+        socket.bind(api, ifindex, queueid, libxdp::_XSK_BIND_FLAGS_XSK_BIND_FLAG_RX)?;
 
         // Activate socket to enable packet reception.
         trace!("activating xdp socket");
-        socket.activate(api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
+        socket.activate(api, libxdp::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
 
         // Retrieve rx ring info.
         trace!("retrieving rx ring info");
-        let mut ring_info: xdp_rs::XSK_RING_INFO_SET = unsafe { std::mem::zeroed() };
-        let mut option_length: u32 = std::mem::size_of::<xdp_rs::XSK_RING_INFO_SET>() as u32;
+        let mut ring_info: libxdp::XSK_RING_INFO_SET = unsafe { std::mem::zeroed() };
+        let mut option_length: u32 = std::mem::size_of::<libxdp::XSK_RING_INFO_SET>() as u32;
         socket.getsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_RING_INFO,
-            &mut ring_info as *mut xdp_rs::XSK_RING_INFO_SET as *mut core::ffi::c_void,
+            libxdp::XSK_SOCKOPT_RING_INFO,
+            &mut ring_info as *mut libxdp::XSK_RING_INFO_SET as *mut core::ffi::c_void,
             &mut option_length as *mut u32,
         )?;
 
@@ -122,10 +123,10 @@ impl RxRing {
 
         // Create XDP program.
         trace!("creating xdp program");
-        const XDP_INSPECT_RX: xdp_rs::XDP_HOOK_ID = xdp_rs::XDP_HOOK_ID {
-            Layer: xdp_rs::_XDP_HOOK_LAYER_XDP_HOOK_L2,
-            Direction: xdp_rs::_XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_RX,
-            SubLayer: xdp_rs::_XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
+        const XDP_INSPECT_RX: libxdp::XDP_HOOK_ID = libxdp::XDP_HOOK_ID {
+            Layer: libxdp::_XDP_HOOK_LAYER_XDP_HOOK_L2,
+            Direction: libxdp::_XDP_HOOK_DATAPATH_DIRECTION_XDP_HOOK_RX,
+            SubLayer: libxdp::_XDP_HOOK_SUBLAYER_XDP_HOOK_INSPECT,
         };
         let rules: Vec<XdpRule> = vec![XdpRule::new(&socket)];
         let program: XdpProgram = XdpProgram::new(api, &rules, ifindex, &XDP_INSPECT_RX, queueid, 0)?;
@@ -164,7 +165,7 @@ impl RxRing {
     /// Gets the buffer at the target index.
     pub fn get_buffer(&self, idx: u32) -> XdpBuffer {
         XdpBuffer::new(
-            self.rx_ring.get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR,
+            self.rx_ring.get_element(idx) as *mut libxdp::XSK_BUFFER_DESCRIPTOR,
             self.mem.clone(),
         )
     }

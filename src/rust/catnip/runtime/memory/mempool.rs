@@ -8,6 +8,7 @@
 use crate::runtime::{
     fail::Fail,
     libdpdk::{
+        rte_errno,
         rte_mbuf,
         rte_mempool,
         rte_pktmbuf_alloc,
@@ -50,7 +51,7 @@ impl MemoryPool {
 
         // Failed to create memory pool.
         if pool.is_null() {
-            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            let rte_errno: libc::c_int = unsafe { rte_errno() };
             let cause: String = format!("failed to create memory pool: {:?}", rte_errno);
             error!("new(): {}", cause);
             return Err(Fail::new(libc::EAGAIN, &cause));
@@ -72,7 +73,7 @@ impl MemoryPool {
         // Allocate mbuf.
         let mbuf_ptr: *mut rte_mbuf = unsafe { rte_pktmbuf_alloc(self.pool) };
         if mbuf_ptr.is_null() {
-            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            let rte_errno: libc::c_int = unsafe { rte_errno() };
             let cause: String = format!("cannot allocate an mbuf at this time: {:?}", rte_errno);
             warn!("alloc_mbuf(): {}", cause);
 

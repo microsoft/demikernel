@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::fail::Fail;
+use crate::runtime::{
+    fail::Fail,
+    libxdp,
+};
 use ::std::ptr;
 use ::windows::core::{
     Error,
@@ -18,7 +21,7 @@ use ::windows::core::{
 
 /// A wrapper structure for n XDP API endpoint.
 #[repr(C)]
-pub struct XdpApi(*const xdp_rs::XDP_API_TABLE);
+pub struct XdpApi(*const libxdp::XDP_API_TABLE);
 
 //======================================================================================================================
 // Implementations
@@ -27,9 +30,9 @@ pub struct XdpApi(*const xdp_rs::XDP_API_TABLE);
 impl XdpApi {
     /// Opens a new XDP API endpoint.
     pub fn new() -> Result<Self, Fail> {
-        let mut api: *const xdp_rs::XDP_API_TABLE = ptr::null_mut();
+        let mut api: *const libxdp::XDP_API_TABLE = ptr::null_mut();
 
-        let result: HRESULT = unsafe { xdp_rs::XdpOpenApi(xdp_rs::XDP_API_VERSION_1, &mut api) };
+        let result: HRESULT = unsafe { libxdp::XdpOpenApi(libxdp::XDP_API_VERSION_1, &mut api) };
 
         let error: Error = Error::from_hresult(result);
         match error.code().is_ok() {
@@ -43,10 +46,10 @@ impl XdpApi {
     }
 
     /// Gets the API table from the target API endpoint.
-    pub fn get(&self) -> xdp_rs::XDP_API_TABLE {
+    pub fn get(&self) -> libxdp::XDP_API_TABLE {
         unsafe {
             // TODO: consider returning individual function pointers instead of the entire table.
-            let api: *const xdp_rs::XDP_API_TABLE = self.0;
+            let api: *const libxdp::XDP_API_TABLE = self.0;
             *api
         }
     }
@@ -58,8 +61,8 @@ impl XdpApi {
 
 impl Drop for XdpApi {
     fn drop(&mut self) {
-        let api: xdp_rs::XDP_API_TABLE = unsafe {
-            let api: *const xdp_rs::XDP_API_TABLE = self.0;
+        let api: libxdp::XDP_API_TABLE = unsafe {
+            let api: *const libxdp::XDP_API_TABLE = self.0;
             *api
         };
 

@@ -7,7 +7,10 @@
 
 use crate::{
     catpowder::win::api::XdpApi,
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        libxdp,
+    },
 };
 use ::windows::{
     core::{
@@ -35,7 +38,7 @@ pub struct XdpSocket(HANDLE);
 impl XdpSocket {
     /// Creates a XDP socket.
     pub fn create(api: &mut XdpApi) -> Result<Self, Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         let mut socket: HANDLE = HANDLE::default();
         if let Some(create) = api.XskCreate {
@@ -54,7 +57,7 @@ impl XdpSocket {
 
     /// Binds the target socket to a network interface and queue.
     pub fn bind(&self, api: &mut XdpApi, ifindex: u32, queueid: u32, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         if let Some(bind) = api.XskBind {
             let result: HRESULT = unsafe { bind(self.0, ifindex, queueid, flags) };
@@ -81,7 +84,7 @@ impl XdpSocket {
         val: *const std::ffi::c_void,
         len: u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         if let Some(setsocket) = api.XskSetSockopt {
             let result: HRESULT = unsafe { setsocket(self.0, opt, val, len) };
@@ -105,7 +108,7 @@ impl XdpSocket {
         val: *mut std::ffi::c_void,
         len: *mut u32,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         if let Some(getsockopt) = api.XskGetSockopt {
             let result: HRESULT = unsafe { getsockopt(self.0, opt, val, len) };
@@ -123,7 +126,7 @@ impl XdpSocket {
 
     /// Activate the target socket.
     pub fn activate(&self, api: &mut XdpApi, flags: i32) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         if let Some(activate) = api.XskActivate {
             let result: HRESULT = unsafe { activate(self.0, flags) };
@@ -143,11 +146,11 @@ impl XdpSocket {
     pub fn notify(
         &self,
         api: &mut XdpApi,
-        flags: xdp_rs::XSK_NOTIFY_FLAGS,
+        flags: libxdp::XSK_NOTIFY_FLAGS,
         timeout: u32,
-        result: *mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
+        result: *mut libxdp::XSK_NOTIFY_RESULT_FLAGS,
     ) -> Result<(), Fail> {
-        let api: xdp_rs::XDP_API_TABLE = api.get();
+        let api: libxdp::XDP_API_TABLE = api.get();
 
         if let Some(notify) = api.XskNotifySocket {
             let result: HRESULT = unsafe { notify(self.0, flags, timeout, result) };

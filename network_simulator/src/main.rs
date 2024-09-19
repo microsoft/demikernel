@@ -6,10 +6,17 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use clap::{Arg, ArgMatches, Command};
+use clap::{
+    Arg,
+    ArgMatches,
+    Command,
+};
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{
+        BufRead,
+        BufReader,
+    },
 };
 
 //======================================================================================================================
@@ -52,11 +59,11 @@ fn main() -> Result<()> {
         // Process in multiple passes.
         for pass in ["Lexical Analysis", "Syntax Analysis"] {
             match pass {
-                "Lexical Analysis" => match nettest::run_lexer(&line, verbose) {
+                "Lexical Analysis" => match network_simulator::run_lexer(&line, verbose) {
                     Ok(()) => (),
                     Err(_) => println!("Lexical Analysis: FAILED"),
                 },
-                "Syntax Analysis" => match nettest::run_parser(&line, verbose) {
+                "Syntax Analysis" => match network_simulator::run_parser(&line, verbose) {
                     Ok(result) => println!("{:?}", result),
                     Err(_) => println!("Syntax Analysis: FAILED"),
                 },

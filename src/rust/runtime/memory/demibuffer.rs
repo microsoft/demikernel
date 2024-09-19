@@ -28,6 +28,17 @@
 // documentation says that these functions are expected to be deprecated in favor of their respective methods of the
 // "Global" type when it and the "Allocator" trait become stable.
 
+#[cfg(feature = "libdpdk")]
+use crate::runtime::libdpdk::{
+    rte_errno,
+    rte_mbuf,
+    rte_mempool,
+    rte_pktmbuf_adj,
+    rte_pktmbuf_clone,
+    rte_pktmbuf_free,
+    rte_pktmbuf_prepend,
+    rte_pktmbuf_trim,
+};
 use crate::{
     pal::arch,
     runtime::{
@@ -40,16 +51,6 @@ use crate::{
             },
         },
     },
-};
-#[cfg(feature = "libdpdk")]
-use ::dpdk_rs::{
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_adj,
-    rte_pktmbuf_clone,
-    rte_pktmbuf_free,
-    rte_pktmbuf_prepend,
-    rte_pktmbuf_trim,
 };
 use ::std::{
     alloc::{
@@ -562,7 +563,7 @@ impl DemiBuffer {
 
                 // Safety: rte_pktmbuf_adj is a FFI, which is safe since we call it with an actual MBuf pointer.
                 if unsafe { rte_pktmbuf_adj(mbuf, nbytes as u16) } == ptr::null_mut() {
-                    let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+                    let rte_errno: libc::c_int = unsafe { rte_errno() };
                     let cause: String = format!("tried to remove more bytes than are present: {:?}", rte_errno);
                     warn!("adjust(): {}", cause);
                     return Err(Fail::new(libc::EINVAL, &cause));
@@ -641,7 +642,7 @@ impl DemiBuffer {
                 };
 
                 if mbuf.is_null() {
-                    let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+                    let rte_errno: libc::c_int = unsafe { rte_errno() };
                     let cause: String = format!("tried to prepend more bytes than are allowed: {:?}", rte_errno);
                     warn!("prepend(): {}", cause);
 
@@ -1052,7 +1053,7 @@ impl Clone for DemiBuffer {
                 // properly check its return value for null (failure) before using.
                 let mbuf_ptr_clone: *mut rte_mbuf = rte_pktmbuf_clone(mbuf_ptr, mempool_ptr);
                 if mbuf_ptr_clone.is_null() {
-                    let rte_errno: libc::c_int = dpdk_rs::rte_errno();
+                    let rte_errno: libc::c_int = rte_errno();
                     panic!("failed to clone mbuf: {:?}", rte_errno);
                 }
 

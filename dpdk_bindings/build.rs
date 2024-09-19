@@ -2,9 +2,15 @@
 // Licensed under the MIT license.
 
 use anyhow::Result;
-use bindgen::{Bindings, Builder};
+use bindgen::{
+    Bindings,
+    Builder,
+};
 use cc::Build;
-use std::{env, path::Path};
+use std::{
+    env,
+    path::Path,
+};
 
 #[cfg(target_os = "windows")]
 fn os_build() -> Result<()> {
@@ -178,7 +184,14 @@ fn os_build() -> Result<()> {
         .output()
         .unwrap_or_else(|e| panic!("Failed pkg-config cflags: {:?}", e))
         .stdout;
-    let cflags = String::from_utf8(cflags_bytes).unwrap();
+    let mut cflags = String::from_utf8(cflags_bytes).unwrap();
+
+    if cflags.is_empty() {
+        cflags = env::var("CFLAGS").unwrap_or_else(|_| String::from(""));
+        if cflags.is_empty() {
+            panic!("CFLAGS is empty or not set");
+        }
+    }
 
     let mut header_locations = vec![];
 

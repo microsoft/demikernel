@@ -32,7 +32,7 @@ export BUILD_DIR := $(CURDIR)/target/release
 ifeq ($(BUILD),dev)
 export BUILD_DIR := $(CURDIR)/target/debug
 endif
-export INPUT ?= $(CURDIR)/nettest/input
+export INPUT ?= $(CURDIR)/network_simulator/input
 
 #=======================================================================================================================
 # Toolchain Configuration

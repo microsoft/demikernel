@@ -10,7 +10,10 @@ use crate::{
         api::XdpApi,
         ring::rule::rule::XdpRule,
     },
-    runtime::fail::Fail,
+    runtime::{
+        fail::Fail,
+        libxdp,
+    },
 };
 use ::windows::{
     core::{
@@ -41,11 +44,11 @@ impl XdpProgram {
         api: &mut XdpApi,
         rules: &[XdpRule],
         ifindex: u32,
-        hookid: &xdp_rs::XDP_HOOK_ID,
+        hookid: &libxdp::XDP_HOOK_ID,
         queueid: u32,
-        flags: xdp_rs::XDP_CREATE_PROGRAM_FLAGS,
+        flags: libxdp::XDP_CREATE_PROGRAM_FLAGS,
     ) -> Result<XdpProgram, Fail> {
-        let rule: *const xdp_rs::XDP_RULE = rules.as_ptr() as *const xdp_rs::XDP_RULE;
+        let rule: *const libxdp::XDP_RULE = rules.as_ptr() as *const libxdp::XDP_RULE;
         let rule_count: u32 = rules.len() as u32;
         let mut handle: HANDLE = HANDLE::default();
 

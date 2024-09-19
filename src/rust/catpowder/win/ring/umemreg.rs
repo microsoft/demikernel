@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+use crate::runtime::libxdp;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -8,7 +10,7 @@
 /// A wrapper structure for a XDP user memory region.
 #[repr(C)]
 #[derive(Clone)]
-pub struct UmemReg(xdp_rs::XSK_UMEM_REG);
+pub struct UmemReg(libxdp::XSK_UMEM_REG);
 
 //======================================================================================================================
 // Implementations
@@ -20,7 +22,7 @@ impl UmemReg {
         let total_size: u64 = count as u64 * chunk_size as u64;
         let mut buffer: Vec<u8> = Vec::<u8>::with_capacity(total_size as usize);
 
-        let mem: xdp_rs::XSK_UMEM_REG = xdp_rs::XSK_UMEM_REG {
+        let mem: libxdp::XSK_UMEM_REG = libxdp::XSK_UMEM_REG {
             TotalSize: total_size,
             ChunkSize: chunk_size,
             Headroom: 0,
@@ -31,7 +33,7 @@ impl UmemReg {
     }
 
     /// Gets a reference to the underlying XDP user memory region.
-    pub fn as_ref(&self) -> &xdp_rs::XSK_UMEM_REG {
+    pub fn as_ref(&self) -> &libxdp::XSK_UMEM_REG {
         &self.0
     }
 

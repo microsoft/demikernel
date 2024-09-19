@@ -17,6 +17,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        libxdp,
         limits,
     },
 };
@@ -56,16 +57,16 @@ impl TxRing {
         trace!("registering umem region");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_UMEM_REG,
-            mem.borrow().as_ref() as *const xdp_rs::XSK_UMEM_REG as *const core::ffi::c_void,
-            std::mem::size_of::<xdp_rs::XSK_UMEM_REG>() as u32,
+            libxdp::XSK_SOCKOPT_UMEM_REG,
+            mem.borrow().as_ref() as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
+            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
         )?;
 
         // Set tx ring size.
         trace!("setting tx ring size");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_TX_RING_SIZE,
+            libxdp::XSK_SOCKOPT_TX_RING_SIZE,
             &length as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
@@ -74,27 +75,27 @@ impl TxRing {
         trace!("setting tx completion ring size");
         socket.setsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
+            libxdp::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
             &length as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
 
         // Bind tx queue.
         trace!("binding tx queue");
-        socket.bind(api, ifindex, queueid, xdp_rs::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX)?;
+        socket.bind(api, ifindex, queueid, libxdp::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX)?;
 
         // Activate socket to enable packet transmission.
         trace!("activating xdp socket");
-        socket.activate(api, xdp_rs::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
+        socket.activate(api, libxdp::_XSK_ACTIVATE_FLAGS_XSK_ACTIVATE_FLAG_NONE)?;
 
         // Retrieve tx ring info.
         trace!("retrieving tx ring info");
-        let mut ring_info: xdp_rs::XSK_RING_INFO_SET = unsafe { std::mem::zeroed() };
-        let mut option_length: u32 = std::mem::size_of::<xdp_rs::XSK_RING_INFO_SET>() as u32;
+        let mut ring_info: libxdp::XSK_RING_INFO_SET = unsafe { std::mem::zeroed() };
+        let mut option_length: u32 = std::mem::size_of::<libxdp::XSK_RING_INFO_SET>() as u32;
         socket.getsockopt(
             api,
-            xdp_rs::XSK_SOCKOPT_RING_INFO,
-            &mut ring_info as *mut xdp_rs::XSK_RING_INFO_SET as *mut core::ffi::c_void,
+            libxdp::XSK_SOCKOPT_RING_INFO,
+            &mut ring_info as *mut libxdp::XSK_RING_INFO_SET as *mut core::ffi::c_void,
             &mut option_length as *mut u32,
         )?;
 
@@ -116,7 +117,7 @@ impl TxRing {
         api: &mut XdpApi,
         flags: i32,
         count: u32,
-        outflags: &mut xdp_rs::XSK_NOTIFY_RESULT_FLAGS,
+        outflags: &mut libxdp::XSK_NOTIFY_RESULT_FLAGS,
     ) -> Result<(), Fail> {
         self.socket.notify(api, flags, count, outflags)
     }
@@ -144,7 +145,7 @@ impl TxRing {
     /// Gets the buffer at the target index and set its length.
     pub fn get_buffer(&self, idx: u32, len: usize) -> XdpBuffer {
         let mut buf = XdpBuffer::new(
-            self.tx_ring.get_element(idx) as *mut xdp_rs::XSK_BUFFER_DESCRIPTOR,
+            self.tx_ring.get_element(idx) as *mut libxdp::XSK_BUFFER_DESCRIPTOR,
             self.mem.clone(),
         );
         buf.set_len(len);
