@@ -105,17 +105,10 @@ static inline void init_demikernel(void);
 // the first thing to run when the program is loaded.
 __attribute__((constructor)) void init_shim()
 {
-    DEBUG("initializing");
-    init_libc();
-    DEBUG("initialized libc");
-    init_demi_reent_guards();
-    DEBUG("initialized demi reent guards");
-    init_malloc_reent_guards();
-    DEBUG("initialized malloc reent guards");
-    init_free_reent_guards();
-    DEBUG("initialized free reent guards");
+    if (initialized_libc == 0)
+        init_libc();
+
     init_demikernel();
-    DEBUG("initialized demikernel");
 }
 
 static inline void init_libc(void)
@@ -153,7 +146,11 @@ static inline void init_libc(void)
     assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
     assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
 
-    initialized_libc = 1;
+    // We initialize the reentrancy guards here and not
+    // in the regular init because malloc requires it.
+    init_demi_reent_guards();
+    init_malloc_reent_guards();
+    init_free_reent_guards();
 }
 
 static inline void init_demikernel(void)
@@ -383,36 +380,28 @@ ssize_t pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 
 void * malloc(size_t size)
 {
-    if (initialized_libc == 0)
+    // We need this here because malloc is called before the
+    // constructor init function.
+    if (UNLIKELY(initialized_libc == 0))
         init_libc();
 
-    DEBUG("MALLOC tid=%d pid=%d malloc=%p", gettid(), getpid(), libc_malloc);
+    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
+    {
+        return (libc_malloc(size));
+    }
 
-    // if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
-    // {
-    //     return (libc_malloc(size));
-    // }
-    // // init();
-
-    // // __malloc(size);
-    void *ret = libc_malloc(size);
-    DEBUG("ran libc");
-    return ret;
+    // __malloc(size);
+    return libc_malloc(size);
 }
 
 void free(void * ptr)
 {
-    DEBUG("FREE");
-
-    // if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_free_call())
-    // {
-    //     return (libc_free(ptr));
-    // }
-
-    // init();
+    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_free_call())
+    {
+        return (libc_free(ptr));
+    }
 
     // __free(ptr);
-
     libc_free(ptr);
 }
 
