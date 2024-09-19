@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <sched.h>
 #include <execinfo.h>
+#include "log.h"
 
 #define INTERPOSE_CALL2(type, fn_libc, fn_demi, ...) \
     {                                                \
@@ -89,68 +90,81 @@ static ssize_t (*libc_sendto)(int, const void *, size_t, int, const struct socka
 static ssize_t (*libc_sendmsg)(int, const struct msghdr *, int) = NULL;
 static ssize_t (*libc_writev)(int, const struct iovec *, int) = NULL;
 static ssize_t (*libc_pwrite)(int, const void *, size_t, off_t) = NULL;
-static void * (*libc_malloc)(size_t) = NULL;
-static void (*libc_free)(void *) = NULL;
 static int (*libc_epoll_create)(int) = NULL;
 static int (*libc_epoll_create1)(int) = NULL;
 static int (*libc_epoll_ctl)(int, int, int, struct epoll_event *) = NULL;
 static int (*libc_epoll_wait)(int, struct epoll_event *, int, int) = NULL;
 
+// This is defined in a header file so that we can call
+// malloc and free directly
+void * (*libc_malloc)(size_t) = NULL;
+void (*libc_free)(void *) = NULL;
+
 int initialized_libc = 0;
+int initialized_guards = 0;
 
 static inline void init_libc(void);
+static inline void init_guards(void);
 static inline void init_demikernel(void);
 
 // The constructor attribute makes so that this function is
 // the first thing to run when the program is loaded.
-__attribute__((constructor)) void init_shim()
+__attribute__((constructor)) void init_shim(void)
 {
-    if (initialized_libc == 0)
-        init_libc();
-
+    init_libc();
+    init_guards();
     init_demikernel();
 }
 
 static inline void init_libc(void)
 {
     // Initialize libc functions
-    assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
-    assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
-    assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
-    assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
-    assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
-    assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
-    assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
-    assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
-    assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
-    assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
-    assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
-    assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
-    assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
-    assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
-    assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
-    assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
-    assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
-    assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
-    assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
-    assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
-    assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
-    assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
-    assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
-    assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
-    assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
-    assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
-    assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
-    assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
-    assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
-    assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
-    assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
+    if (UNLIKELY(initialized_libc == 0))
+    {
+        assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
+        assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
+        assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
+        assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
+        assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
+        assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
+        assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
+        assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
+        assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
+        assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
+        assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
+        assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
+        assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
+        assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
+        assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
+        assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
+        assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
+        assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
+        assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
+        assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
+        assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
+        assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
+        assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
+        assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
+        assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
+        assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
+        assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
+        assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
+        assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
+        assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
+        assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
+        initialized_libc = 1;
+    }
+}
 
-    // We initialize the reentrancy guards here and not
-    // in the regular init because malloc requires it.
-    init_demi_reent_guards();
-    init_malloc_reent_guards();
-    init_free_reent_guards();
+static inline void init_guards(void)
+{
+    if (initialized_guards == 0)
+    {
+        init_demi_reent_guards();
+        init_malloc_reent_guards();
+        init_free_reent_guards();
+        initialized_guards = 1;
+    }
 }
 
 static inline void init_demikernel(void)
@@ -382,16 +396,15 @@ void * malloc(size_t size)
 {
     // We need this here because malloc is called before the
     // constructor init function.
-    if (UNLIKELY(initialized_libc == 0))
-        init_libc();
+    init_libc();
+    init_guards();
 
     if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
     {
         return (libc_malloc(size));
     }
 
-    // __malloc(size);
-    return libc_malloc(size);
+    return __malloc(size);
 }
 
 void free(void * ptr)
@@ -401,8 +414,7 @@ void free(void * ptr)
         return (libc_free(ptr));
     }
 
-    // __free(ptr);
-    libc_free(ptr);
+    __free(ptr);
 }
 
 int epoll_create1(int flags)

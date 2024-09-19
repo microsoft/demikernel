@@ -3,6 +3,7 @@
 
 #include "error.h"
 #include "utils.h"
+#include "malloc.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stddef.h>
@@ -26,11 +27,11 @@ struct hashtable *hashtable_create(int length_log2)
 
     assert((length_log2 >= 0) && (length_log2 <= 14));
 
-    h = malloc(sizeof(struct hashtable));
+    h = libc_malloc(sizeof(struct hashtable));
     assert(h != NULL);
-    keys = malloc(sizeof(int) * (1 << length_log2));
+    keys = libc_malloc(sizeof(int) * (1 << length_log2));
     assert(keys != NULL);
-    values = malloc(sizeof(uint64_t) * (1 << length_log2));
+    values = libc_malloc(sizeof(uint64_t) * (1 << length_log2));
     assert(values != NULL);
 
     h->length_log2 = length_log2;

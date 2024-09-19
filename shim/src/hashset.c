@@ -3,6 +3,7 @@
 
 #include "error.h"
 #include "utils.h"
+#include "malloc.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -16,9 +17,9 @@ struct hashset *hashset_create(int length_log2)
 
     assert((length_log2 >= 0) && (length_log2 <= 14));
 
-    h = malloc(sizeof(struct hashset));
+    h = libc_malloc(sizeof(struct hashset));
     assert(h != NULL);
-    table = malloc(sizeof(int) * (1 << length_log2));
+    table = libc_malloc(sizeof(int) * (1 << length_log2));
     assert(table != NULL);
 
     h->length_log2 = length_log2;

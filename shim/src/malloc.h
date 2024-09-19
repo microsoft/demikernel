@@ -1,6 +1,7 @@
 #ifndef _MALLOC_H_
 #define _MALLOC_H_
 
+extern void * (*libc_malloc)(size_t);
 extern void init_malloc_reent_guards();
 extern int is_reentrant_malloc_call();
 

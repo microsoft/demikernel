@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
+#include "mngr.h"
 #include "../free.h"
 #include "../utils.h"
 #include "../log.h"
@@ -24,5 +25,10 @@ int is_reentrant_free_call()
 
 void __free(void * ptr)
 {
-    return;
+    pid_t tid = gettid();
+    hashset_insert(&__free_reent_guards, tid);
+    TRACE("ptr=%p", ptr);
+    mngr_del(ptr);
+    libc_free(ptr);
+    hashset_remove(&__free_reent_guards, tid);
 }

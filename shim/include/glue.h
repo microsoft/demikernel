@@ -66,7 +66,7 @@ extern ssize_t __writev(int sockfd, const struct iovec *iov, int iovcnt);
 extern ssize_t __pread(int sockfd, void *buf, size_t count, off_t offset);
 extern ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset);
 
-extern void * __maloc(size_t size);
+extern void * __malloc(size_t size);
 extern void __free(void * ptr);
 
 extern int __epoll_create(int size);
