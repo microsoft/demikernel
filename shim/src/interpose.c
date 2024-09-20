@@ -5,7 +5,8 @@
 #define _GNU_SOURCE
 
 #include "epoll.h"
-#include "malloc.h"
+#include "alloc.h"
+#include "mngr.h"
 #include "free.h"
 #include "error.h"
 #include "qman.h"
@@ -56,7 +57,7 @@
 
 #define INTERPOSE_CALL(type, fn_libc, fn_demi, ...)                  \
     {                                                                \
-        if (UNLIKELY(is_reentrant_demi_call()))                      \
+        if (UNLIKELY(!initialized || is_reentrant_demi_call()))      \
         {                                                            \
             return (fn_libc(__VA_ARGS__));                           \
         }                                                            \
@@ -95,14 +96,20 @@ static int (*libc_epoll_create1)(int) = NULL;
 static int (*libc_epoll_ctl)(int, int, int, struct epoll_event *) = NULL;
 static int (*libc_epoll_wait)(int, struct epoll_event *, int, int) = NULL;
 
-// This is defined in a header file so that we can call
-// malloc and free directly
+// We need to get the libc function directly because dlsym allocates memory
+extern void* __libc_malloc(size_t) __attribute__((weak));
+extern void* __libc_calloc(size_t, size_t) __attribute__((weak));
+extern void* __libc_realloc(void*, size_t) __attribute__((weak));
+extern void __libc_free(void*) __attribute__((weak));
+
+// This is not defined as static so we can reference it
+// internally instead of having to go through our interposition.
 void * (*libc_malloc)(size_t) = NULL;
+void * (*libc_calloc)(size_t, size_t) = NULL;
+void * (*libc_realloc)(void *, size_t) = NULL;
 void (*libc_free)(void *) = NULL;
 
-int initialized_libc = 0;
-int initialized_guards = 0;
-
+int initialized = 0;
 static inline void init_libc(void);
 static inline void init_guards(void);
 static inline void init_demikernel(void);
@@ -111,60 +118,58 @@ static inline void init_demikernel(void);
 // the first thing to run when the program is loaded.
 __attribute__((constructor)) void init_shim(void)
 {
+    malloc_mngr_init();
     init_libc();
     init_guards();
     init_demikernel();
+    initialized = 1;
 }
 
 static inline void init_libc(void)
 {
     // Initialize libc functions
-    if (UNLIKELY(initialized_libc == 0))
-    {
-        assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
-        assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
-        assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
-        assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
-        assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
-        assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
-        assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
-        assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
-        assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
-        assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
-        assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
-        assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
-        assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
-        assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
-        assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
-        assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
-        assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
-        assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
-        assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
-        assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
-        assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
-        assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
-        assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
-        assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
-        assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
-        assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
-        assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
-        assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
-        assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
-        assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
-        assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
-        initialized_libc = 1;
-    }
+    assert((libc_socket = dlsym(RTLD_NEXT, "socket")) != NULL);
+    assert((libc_shutdown = dlsym(RTLD_NEXT, "shutdown")) != NULL);
+    assert((libc_bind = dlsym(RTLD_NEXT, "bind")) != NULL);
+    assert((libc_connect = dlsym(RTLD_NEXT, "connect")) != NULL);
+    assert((libc_fcntl = dlsym(RTLD_NEXT, "fcntl")) != NULL);
+    assert((libc_listen = dlsym(RTLD_NEXT, "listen")) != NULL);
+    assert((libc_accept4 = dlsym(RTLD_NEXT, "accept4")) != NULL);
+    assert((libc_accept = dlsym(RTLD_NEXT, "accept")) != NULL);
+    assert((libc_getsockopt = dlsym(RTLD_NEXT, "getsockopt")) != NULL);
+    assert((libc_setsockopt = dlsym(RTLD_NEXT, "setsockopt")) != NULL);
+    assert((libc_getsockname = dlsym(RTLD_NEXT, "getsockname")) != NULL);
+    assert((libc_getpeername = dlsym(RTLD_NEXT, "getpeername")) != NULL);
+    assert((libc_read = dlsym(RTLD_NEXT, "read")) != NULL);
+    assert((libc_recv = dlsym(RTLD_NEXT, "recv")) != NULL);
+    assert((libc_recvfrom = dlsym(RTLD_NEXT, "recvfrom")) != NULL);
+    assert((libc_recvmsg = dlsym(RTLD_NEXT, "recvmsg")) != NULL);
+    assert((libc_readv = dlsym(RTLD_NEXT, "readv")) != NULL);
+    assert((libc_pread = dlsym(RTLD_NEXT, "pread")) != NULL);
+    assert((libc_write = dlsym(RTLD_NEXT, "write")) != NULL);
+    assert((libc_send = dlsym(RTLD_NEXT, "send")) != NULL);
+    assert((libc_sendto = dlsym(RTLD_NEXT, "sendto")) != NULL);
+    assert((libc_sendmsg = dlsym(RTLD_NEXT, "sendmsg")) != NULL);
+    assert((libc_writev = dlsym(RTLD_NEXT, "writev")) != NULL);
+    assert((libc_pwrite = dlsym(RTLD_NEXT, "pwrite")) != NULL);
+    assert((libc_close = dlsym(RTLD_NEXT, "close")) != NULL);
+    assert((libc_epoll_create = dlsym(RTLD_NEXT, "epoll_create")) != NULL);
+    assert((libc_epoll_create1 = dlsym(RTLD_NEXT, "epoll_create1")) != NULL);
+    assert((libc_epoll_ctl = dlsym(RTLD_NEXT, "epoll_ctl")) != NULL);
+    assert((libc_epoll_wait = dlsym(RTLD_NEXT, "epoll_wait")) != NULL);
+    assert((libc_malloc = dlsym(RTLD_NEXT, "malloc")) != NULL);
+    assert((libc_calloc = dlsym(RTLD_NEXT, "calloc")) != NULL);
+    assert((libc_realloc = dlsym(RTLD_NEXT, "realloc")) != NULL);
+    assert((libc_free = dlsym(RTLD_NEXT, "free")) != NULL);
 }
 
 static inline void init_guards(void)
 {
-    if (initialized_guards == 0)
-    {
-        init_demi_reent_guards();
-        init_malloc_reent_guards();
-        init_free_reent_guards();
-        initialized_guards = 1;
-    }
+    init_demi_reent_guards();
+    init_malloc_reent_guards();
+    init_calloc_reent_guards();
+    init_realloc_reent_guards();
+    init_free_reent_guards();
 }
 
 static inline void init_demikernel(void)
@@ -213,7 +218,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     case F_GET_SEALS:
 #endif
     {
-        if (UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(!initialized || is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd));
         }
@@ -238,7 +243,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         int arg_i = va_arg(val, int);
 
-        if (UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(!initialized || is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_i));
         }
@@ -267,7 +272,7 @@ static int vfcntl(int sockfd, int cmd, va_list val)
     {
         void *arg_p = va_arg(val, void *);
 
-        if (UNLIKELY(is_reentrant_demi_call()))
+        if (UNLIKELY(!initialized || is_reentrant_demi_call()))
         {
             return (libc_fcntl(sockfd, cmd, arg_p));
         }
@@ -394,24 +399,47 @@ ssize_t pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 
 void * malloc(size_t size)
 {
-    // We need this here because malloc is called before the
-    // constructor init function.
-    init_libc();
-    init_guards();
-
-    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_malloc_call())
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()
+            || is_reentrant_malloc_call()))
     {
-        return (libc_malloc(size));
+        assert(__libc_malloc != NULL);
+        return (__libc_malloc(size));
     }
 
     return __malloc(size);
 }
 
+void * calloc(size_t nelem, size_t elsize)
+{
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()
+            || is_reentrant_calloc_call()))
+    {
+        assert(__libc_calloc != NULL);
+        return (__libc_calloc(nelem, elsize));
+    }
+
+    return __calloc(nelem, elsize);
+}
+
+void * realloc(void *ptr, size_t size)
+{
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()
+            || is_reentrant_realloc_call()))
+    {
+        assert(__libc_realloc != NULL);
+        return (__libc_realloc(ptr, size));
+    }
+
+    return __realloc(ptr, size);
+}
+
 void free(void * ptr)
 {
-    if (UNLIKELY(is_reentrant_demi_call()) || is_reentrant_free_call())
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()
+            || is_reentrant_free_call()))
     {
-        return (libc_free(ptr));
+        assert(__libc_free != NULL);
+        return (__libc_free(ptr));
     }
 
     __free(ptr);
@@ -427,7 +455,7 @@ int epoll_create1(int flags)
 
 int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 {
-    if (UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()))
     {
         return (libc_epoll_ctl(epfd, op, fd, event));
     }
@@ -459,7 +487,7 @@ int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)
 
 int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    if (UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()))
     {
         return (libc_epoll_wait(epfd, events, maxevents, timeout));
     }
@@ -497,7 +525,7 @@ int socket(int domain, int type, int protocol)
 
 int epoll_create(int size)
 {
-    if (UNLIKELY(is_reentrant_demi_call()))
+    if (UNLIKELY(!initialized || is_reentrant_demi_call()))
     {
         return (libc_epoll_create(size));
     }

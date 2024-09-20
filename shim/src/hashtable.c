@@ -3,7 +3,7 @@
 
 #include "error.h"
 #include "utils.h"
-#include "malloc.h"
+#include "alloc.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stddef.h>

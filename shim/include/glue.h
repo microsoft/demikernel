@@ -67,7 +67,9 @@ extern ssize_t __pread(int sockfd, void *buf, size_t count, off_t offset);
 extern ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset);
 
 extern void * __malloc(size_t size);
-extern void __free(void * ptr);
+extern void * __calloc(size_t nelem, size_t elsize);
+extern void * __realloc(void *addr, size_t size);
+extern void __free(void * addr);
 
 extern int __epoll_create(int size);
 extern int __epoll_create1(int flags);

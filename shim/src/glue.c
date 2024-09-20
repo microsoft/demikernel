@@ -12,7 +12,6 @@
 #include "utils.h"
 #include "log.h"
 
-#define MAX_THREADS_LOG2 10
 
 static struct hashset __demi_reent_guards;
 int hashset_demi_table[(1 << MAX_THREADS_LOG2)];

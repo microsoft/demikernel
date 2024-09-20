@@ -41,7 +41,9 @@ extern ssize_t __pwrite(int sockfd, const void *buf, size_t count, off_t offset)
 
 // Memory hooks
 extern void * __malloc(size_t size);
-extern void __free(void * ptr);
+extern void * __calloc(size_t nelem, size_t elsize);
+extern void * __realloc(void *addr, size_t size);
+extern void __free(void * addr);
 
 // Epoll hooks
 extern int __epoll_create(int size);

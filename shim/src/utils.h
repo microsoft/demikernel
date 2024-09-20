@@ -16,6 +16,8 @@
 
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
+#define MAX_THREADS_LOG2 6
+
 struct hashset
 {
     int length_log2;
