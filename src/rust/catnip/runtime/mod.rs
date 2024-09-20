@@ -20,10 +20,12 @@ use crate::{
         libdpdk::{
             rte_delay_us_block,
             rte_eal_init,
+            rte_errno,
             rte_eth_conf,
             rte_eth_dev_configure,
             rte_eth_dev_count_avail,
             rte_eth_dev_get_mtu,
+            rte_eth_dev_info,
             rte_eth_dev_info_get,
             rte_eth_dev_is_valid_port,
             rte_eth_dev_set_mtu,
@@ -146,7 +148,7 @@ impl SharedDPDKRuntime {
         let eal_init_refs = eal_init_args.iter().map(|s| s.as_ptr() as *mut u8).collect::<Vec<_>>();
         let ret: libc::c_int = unsafe { rte_eal_init(eal_init_refs.len() as i32, eal_init_refs.as_ptr() as *mut _) };
         if ret < 0 {
-            let rte_errno: libc::c_int = unsafe { dpdk_rs::rte_errno() };
+            let rte_errno: libc::c_int = unsafe { rte_errno() };
             let cause: String = format!("EAL initialization failed (rte_errno={:?})", rte_errno);
             error!("initialize_dpdk(): {}", cause);
             return Err(Fail::new(libc::EIO, &cause));
@@ -227,8 +229,8 @@ impl SharedDPDKRuntime {
         let tx_hthresh: u8 = 0;
         let tx_wthresh: u8 = 0;
 
-        let dev_info: dpdk_rs::rte_eth_dev_info = unsafe {
-            let mut d: MaybeUninit<dpdk_rs::rte_eth_dev_info> = MaybeUninit::zeroed();
+        let dev_info: rte_eth_dev_info = unsafe {
+            let mut d: MaybeUninit<rte_eth_dev_info> = MaybeUninit::zeroed();
             rte_eth_dev_info_get(port_id, d.as_mut_ptr());
             d.assume_init()
         };

@@ -5,7 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::catpowder::win::ring::umemreg::UmemReg;
+use crate::{
+    catpowder::win::ring::umemreg::UmemReg,
+    runtime::libxdp,
+};
 use ::std::{
     cell::RefCell,
     ops::{
@@ -23,7 +26,7 @@ use ::std::{
 /// A structure that represents a buffer in the UMEM region.
 pub struct XdpBuffer {
     /// A pointer to the buffer descriptor.
-    b: *mut xdp_rs::XSK_BUFFER_DESCRIPTOR,
+    b: *mut libxdp::XSK_BUFFER_DESCRIPTOR,
     /// UMEM region that contains the buffer.
     umemreg: Rc<RefCell<UmemReg>>,
 }
@@ -34,7 +37,7 @@ pub struct XdpBuffer {
 
 impl XdpBuffer {
     /// Instantiates a buffer.
-    pub(super) fn new(b: *mut xdp_rs::XSK_BUFFER_DESCRIPTOR, umemreg: Rc<RefCell<UmemReg>>) -> Self {
+    pub(super) fn new(b: *mut libxdp::XSK_BUFFER_DESCRIPTOR, umemreg: Rc<RefCell<UmemReg>>) -> Self {
         Self { b, umemreg }
     }
 

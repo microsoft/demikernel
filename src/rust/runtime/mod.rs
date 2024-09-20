@@ -29,7 +29,10 @@ pub use queue::{
 pub use scheduler::TaskId;
 
 #[cfg(feature = "libdpdk")]
-pub use dpdk_rs as libdpdk;
+pub use demikernel_dpdk_bindings as libdpdk;
+
+#[cfg(feature = "libxdp")]
+pub use demikernel_xdp_bindings as libxdp;
 
 //======================================================================================================================
 // Imports

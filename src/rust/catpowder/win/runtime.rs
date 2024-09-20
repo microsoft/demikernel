@@ -23,6 +23,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
+        libxdp,
         memory::{
             DemiBuffer,
             MemoryRuntime,
@@ -109,9 +110,9 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         self.0.borrow_mut().tx.submit_tx(Self::RING_LENGTH);
 
         // Notify socket.
-        let mut outflags: i32 = xdp_rs::XSK_NOTIFY_RESULT_FLAGS::default();
+        let mut outflags: i32 = libxdp::XSK_NOTIFY_RESULT_FLAGS::default();
         let flags: i32 =
-            xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | xdp_rs::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX;
+            libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX;
 
         if let Err(e) = self.0.borrow_mut().notify_socket(flags, u32::MAX, &mut outflags) {
             let cause = format!("failed to notify socket: {:?}", e);

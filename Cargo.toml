@@ -1,10 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-#=======================================================================================================================
-# Package
-#=======================================================================================================================
-
 [package]
 name = "demikernel"
 version = "1.5.13"
@@ -16,13 +12,8 @@ homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
 license-file = "LICENSE.txt"
 
-#=======================================================================================================================
-# Dependencies
-#=======================================================================================================================
-
 [dependencies]
-
-# Third Party
+# Third-party crates.
 arrayvec = "0.7.4"
 async-trait = "0.1.81"
 anyhow = "1.0.86"
@@ -44,9 +35,9 @@ socket2 = "0.5.7"
 yaml-rust = "0.4.5"
 x86 = "0.52.0"
 
-# Local crates.
-nettest = { path = "nettest" }
-dpdk-rs = { path = "dpdk-rs", optional = true }
+# Demikernel crates (published on crates.io).
+demikernel-dpdk-bindings = { version = "1.1.6", optional = true }
+demikernel-network-simulator = { version = "0.1.0" }
 
 # Windows-specific dependencies.
 [target.'cfg(windows)'.dependencies]
@@ -61,14 +52,11 @@ windows = { version = "0.57.0", features = [
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
-xdp-rs = { path = "xdp-rs", optional = true }
+demikernel-xdp-bindings = { version = "1.0.0", optional = true }
 # for interacting with socket2.
 windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }
 
-#=======================================================================================================================
 # Targets
-#=======================================================================================================================
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 path = "src/rust/lib.rs"
@@ -143,10 +131,6 @@ path = "examples/rust/tcp-push-pop.rs"
 name = "tcp-ping-pong"
 path = "examples/rust/tcp-ping-pong.rs"
 
-#=======================================================================================================================
-# Features
-#=======================================================================================================================
-
 [features]
 default = ["catnap-libos"]
 catnap-libos = []
@@ -154,18 +138,14 @@ catpowder-libos = []
 catmem-libos = []
 catnip-libos = ["libdpdk"]
 catloop-libos = ["catmem-libos"]
-libdpdk = ["dpdk-rs"]
-libxdp = ["xdp-rs"]
-mlx4 = ["dpdk-rs/mlx4"]
-mlx5 = ["dpdk-rs/mlx5"]
+libdpdk = ["demikernel-dpdk-bindings"]
+libxdp = ["demikernel-xdp-bindings"]
+mlx4 = ["demikernel-dpdk-bindings/mlx4"]
+mlx5 = ["demikernel-dpdk-bindings/mlx5"]
 profiler = []
 auto-calibrate = []
 
-#=======================================================================================================================
-# Profile
-#=======================================================================================================================
 
-# Build profile used for releases.
 [profile.release]
 opt-level = 3            # Enable all compiler optimizations.
 debug = false            # Do not include any debug info in the binary.
@@ -177,7 +157,6 @@ incremental = false      # Disable incremental compilation.
 codegen-units = 1        # Produce a single code generation unit (overridden).
 rpath = false            # Disable runtime search path.
 
-# Build profile used for development and debugging.
 [profile.dev]
 opt-level = 0           # Disable all compiler optimizations.
 debug = true            # Output full debug info in the binary.

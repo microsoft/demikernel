@@ -2,13 +2,14 @@
 # Licensed under the MIT license.
 
 [package]
-name = "dpdk-rs"
+name = "demikernel-dpdk-bindings"
 version = "1.1.6"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Rust Bindings for Libdpdk"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
+license = "MIT"
 
 [dependencies]
 cfg-if = "1.0.0"
@@ -19,10 +20,10 @@ bindgen = "0.69.4"
 cc = "1.1.10"
 
 [features]
+default = ["mlx5"]
 mlx4 = []
 mlx5 = []
 
-# Build profile used for releases.
 [profile.release]
 opt-level = 3            # Enable all compiler optimizations.
 debug = false            # Do not include any debug info in the binary.
@@ -34,7 +35,6 @@ incremental = false      # Disable incremental compilation.
 codegen-units = 1        # Produce a single code generation unit (overridden).
 rpath = false            # Disable runtime search path.
 
-# Build profile used for development and debugging.
 [profile.dev]
 opt-level = 0           # Disable all compiler optimizations.
 debug = true            # Output full debug info in the binary.

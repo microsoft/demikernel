@@ -53,7 +53,7 @@ BUILD_DIR = $(MAKEDIR)\target\debug
 !endif
 
 !ifndef INPUT
-INPUT = $(MAKEDIR)\nettest\input
+INPUT = $(MAKEDIR)\network_simulator\input
 !endif
 
 #=======================================================================================================================

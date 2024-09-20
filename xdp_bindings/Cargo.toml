@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 [package]
-name = "xdp-rs"
+name = "demikernel-xdp-bindings"
 version = "1.0.0"
 authors = ["Microsoft Corporation"]
 edition = "2021"

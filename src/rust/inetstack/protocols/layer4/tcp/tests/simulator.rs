@@ -44,7 +44,7 @@ use crate::{
     QToken,
 };
 use anyhow::Result;
-use nettest::glue::{
+use network_simulator::glue::{
     AcceptArgs,
     BindArgs,
     CloseArgs,
@@ -268,7 +268,7 @@ impl Simulation {
                 info!("Line: {:?}", step);
             }
 
-            if let Some(event) = nettest::run_parser(&step, verbose)? {
+            if let Some(event) = network_simulator::run_parser(&step, verbose)? {
                 self.run_event(&event)?;
             }
         }
@@ -291,8 +291,8 @@ impl Simulation {
         self.engine.advance_clock(self.now);
 
         match &event.action {
-            nettest::glue::Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
-            nettest::glue::Action::PacketEvent(packet) => self.run_packet(packet)?,
+            network_simulator::glue::Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
+            network_simulator::glue::Action::PacketEvent(packet) => self.run_packet(packet)?,
         }
 
         Ok(())
@@ -304,17 +304,29 @@ impl Simulation {
         info!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
             // Issue demi_socket().
-            nettest::glue::DemikernelSyscall::Socket(args, ret) => self.run_socket_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
-            nettest::glue::DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::PushTo(args, ret) => self.run_pushto_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
-            nettest::glue::DemikernelSyscall::Unsupported => {
+            network_simulator::glue::DemikernelSyscall::Socket(args, ret) => {
+                self.run_socket_syscall(args, ret.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
+            network_simulator::glue::DemikernelSyscall::Listen(args, ret) => {
+                self.run_listen_syscall(args, ret.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Accept(args, fd) => {
+                self.run_accept_syscall(args, fd.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Connect(args, ret) => {
+                self.run_connect_syscall(args, ret.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
+            network_simulator::glue::DemikernelSyscall::PushTo(args, ret) => {
+                self.run_pushto_syscall(args, ret.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
+            network_simulator::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
+            network_simulator::glue::DemikernelSyscall::Close(args, ret) => {
+                self.run_close_syscall(args, ret.clone())?
+            },
+            network_simulator::glue::DemikernelSyscall::Unsupported => {
                 error!("Unsupported syscall");
             },
         }
@@ -326,11 +338,11 @@ impl Simulation {
     fn run_packet(&mut self, packet: &PacketEvent) -> Result<()> {
         info!("{:?}: {:?}", self.now, packet);
         match packet {
-            nettest::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
+            network_simulator::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_packet(tcp_packet)?,
                 PacketDirection::Outgoing => self.run_outgoing_packet(tcp_packet)?,
             },
-            nettest::glue::PacketEvent::Udp(direction, udp_packet) => match direction {
+            network_simulator::glue::PacketEvent::Udp(direction, udp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_udp_packet(udp_packet)?,
                 PacketDirection::Outgoing => self.run_outgoing_udp_packet(udp_packet)?,
             },
@@ -342,7 +354,7 @@ impl Simulation {
     /// Runs a socket system call.
     fn run_socket_syscall(&mut self, args: &SocketArgs, ret: i32) -> Result<()> {
         // Check for unsupported socket domain.
-        if args.domain != nettest::glue::SocketDomain::AF_INET {
+        if args.domain != network_simulator::glue::SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
             info!("run_socket_syscall(): {:?}", cause);
             anyhow::bail!(cause);
@@ -351,9 +363,9 @@ impl Simulation {
         // Issue demi_socket().
         match args.typ {
             // TCP Socket.
-            nettest::glue::SocketType::SOCK_STREAM => {
+            network_simulator::glue::SocketType::SOCK_STREAM => {
                 // Check for unsupported socket protocol.
-                if args.protocol != nettest::glue::SocketProtocol::IPPROTO_TCP {
+                if args.protocol != network_simulator::glue::SocketProtocol::IPPROTO_TCP {
                     let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
                     info!("run_socket_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
@@ -375,9 +387,9 @@ impl Simulation {
                 }
             },
             // UDP Socket.
-            nettest::glue::SocketType::SOCK_DGRAM => {
+            network_simulator::glue::SocketType::SOCK_DGRAM => {
                 // Check for unsupported socket protocol.
-                if args.protocol != nettest::glue::SocketProtocol::IPPROTO_UDP {
+                if args.protocol != network_simulator::glue::SocketProtocol::IPPROTO_UDP {
                     let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
                     info!("run_socket_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
@@ -604,7 +616,7 @@ impl Simulation {
     }
 
     /// Runs a pop system call.
-    fn run_pop_syscall(&mut self, args: &nettest::glue::PopArgs, ret: i32) -> Result<()> {
+    fn run_pop_syscall(&mut self, args: &network_simulator::glue::PopArgs, ret: i32) -> Result<()> {
         // Extract remote queue descriptor.
         let remote_qd: QDesc = args.qd.into();
 
@@ -642,7 +654,7 @@ impl Simulation {
     }
 
     /// Emulates wait system call.
-    fn run_wait_syscall(&mut self, args: &nettest::glue::WaitArgs, ret: i32) -> Result<()> {
+    fn run_wait_syscall(&mut self, args: &network_simulator::glue::WaitArgs, ret: i32) -> Result<()> {
         // Extract queue descriptor.
         let args_qd: QDesc = match args.qd {
             Some(qd) => QDesc::from(qd),
@@ -760,23 +772,32 @@ impl Simulation {
     }
 
     // Build options list.
-    fn build_tcp_options(&self, options: &Vec<nettest::glue::TcpOption>) -> ([TcpOptions2; MAX_TCP_OPTIONS], usize) {
+    fn build_tcp_options(
+        &self,
+        options: &Vec<network_simulator::glue::TcpOption>,
+    ) -> ([TcpOptions2; MAX_TCP_OPTIONS], usize) {
         let mut option_list: Vec<TcpOptions2> = Vec::new();
 
         // Convert options.
         for option in options {
             match option {
-                nettest::glue::TcpOption::Noop => option_list.push(TcpOptions2::NoOperation),
-                nettest::glue::TcpOption::Mss(mss) => option_list.push(TcpOptions2::MaximumSegmentSize(mss.clone())),
-                nettest::glue::TcpOption::WindowScale(wscale) => {
+                network_simulator::glue::TcpOption::Noop => option_list.push(TcpOptions2::NoOperation),
+                network_simulator::glue::TcpOption::Mss(mss) => {
+                    option_list.push(TcpOptions2::MaximumSegmentSize(mss.clone()))
+                },
+                network_simulator::glue::TcpOption::WindowScale(wscale) => {
                     option_list.push(TcpOptions2::WindowScale(wscale.clone()))
                 },
-                nettest::glue::TcpOption::SackOk => option_list.push(TcpOptions2::SelectiveAcknowlegementPermitted),
-                nettest::glue::TcpOption::Timestamp(sender, echo) => option_list.push(TcpOptions2::Timestamp {
-                    sender_timestamp: sender.clone(),
-                    echo_timestamp: echo.clone(),
-                }),
-                nettest::glue::TcpOption::EndOfOptions => option_list.push(TcpOptions2::EndOfOptionsList),
+                network_simulator::glue::TcpOption::SackOk => {
+                    option_list.push(TcpOptions2::SelectiveAcknowlegementPermitted)
+                },
+                network_simulator::glue::TcpOption::Timestamp(sender, echo) => {
+                    option_list.push(TcpOptions2::Timestamp {
+                        sender_timestamp: sender.clone(),
+                        echo_timestamp: echo.clone(),
+                    })
+                },
+                network_simulator::glue::TcpOption::EndOfOptions => option_list.push(TcpOptions2::EndOfOptionsList),
             }
         }
 
@@ -955,19 +976,19 @@ impl Simulation {
         // Check if options match what we expect.
         for i in 0..tcp_packet.options.len() {
             match tcp_packet.options[i] {
-                nettest::glue::TcpOption::Noop => {
+                network_simulator::glue::TcpOption::Noop => {
                     crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::NoOperation);
                 },
-                nettest::glue::TcpOption::Mss(mss) => {
+                network_simulator::glue::TcpOption::Mss(mss) => {
                     crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::MaximumSegmentSize(mss));
                 },
-                nettest::glue::TcpOption::WindowScale(wscale) => {
+                network_simulator::glue::TcpOption::WindowScale(wscale) => {
                     crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::WindowScale(wscale));
                 },
-                nettest::glue::TcpOption::SackOk => {
+                network_simulator::glue::TcpOption::SackOk => {
                     crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::SelectiveAcknowlegementPermitted);
                 },
-                nettest::glue::TcpOption::Timestamp(sender, echo) => {
+                network_simulator::glue::TcpOption::Timestamp(sender, echo) => {
                     crate::ensure_eq!(
                         tcp_header.option_list[i],
                         TcpOptions2::Timestamp {
@@ -976,7 +997,7 @@ impl Simulation {
                         }
                     );
                 },
-                nettest::glue::TcpOption::EndOfOptions => {
+                network_simulator::glue::TcpOption::EndOfOptions => {
                     crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::EndOfOptionsList);
                 },
             }
