@@ -44,7 +44,8 @@ int malloc_mngr_init()
   }
 }
 
-int malloc_mngr_add(uint64_t addr, size_t size)
+int malloc_mngr_add(uint64_t addr, size_t size,
+    uint64_t io_cnt, uint64_t app_cnt)
 {
   int skip = 0;
   uint64_t hash = 0;
@@ -65,8 +66,8 @@ int malloc_mngr_add(uint64_t addr, size_t size)
       mngr.addrs[hash] = addr;
       mngr.nodes[hash].addr = addr;
       mngr.nodes[hash].size = size;
-      mngr.nodes[hash].io_cnt = 0;
-      mngr.nodes[hash].app_cnt = 0;
+      mngr.nodes[hash].io_cnt = io_cnt;
+      mngr.nodes[hash].app_cnt = app_cnt;
       mngr.nnodes++;
       return hash;
     }
@@ -74,13 +75,12 @@ int malloc_mngr_add(uint64_t addr, size_t size)
     hash = (hash + 1) & mask;
   } while (++skip <= mngr.length);
 
-  WARN("we are going to hit an overflow!");
   PANIC("mngr add overflow addr=%p skip=%d hash=%ld", addr, skip, hash);
 
   return MNGR_NULL;
 }
 
-int malloc_mngr_del(uint64_t addr)
+int malloc_mngr_del(uint64_t addr, struct mem_node_stats *stats)
 {
   int skip = 0;
   uint64_t hash = 0;
@@ -97,6 +97,12 @@ int malloc_mngr_del(uint64_t addr)
     if (mngr.addrs[hash] == addr)
     {
       TRACE("deleting node addr=%p hash=%ld", addr, hash);
+      if (stats != NULL)
+      {
+        stats->io_cnt = mngr.nodes[hash].io_cnt;
+        stats->app_cnt = mngr.nodes[hash].app_cnt;
+      }
+
       mngr.addrs[hash] = MNGR_NULL;
       mngr.nodes[hash].addr = MNGR_NULL;
       mngr.nnodes--;

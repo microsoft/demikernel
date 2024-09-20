@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <execinfo.h>
+#include <assert.h>
 
 #include "../mngr.h"
 #include "../alloc.h"
@@ -67,7 +68,7 @@ void * __malloc(size_t size)
         return NULL;
     }
 
-    malloc_mngr_add((uint64_t) ptr, size);
+    malloc_mngr_add((uint64_t) ptr, size, 0, 0);
     hashset_remove(&__malloc_reent_guards, tid);
     return ptr;
 }
@@ -89,7 +90,7 @@ void * __calloc(size_t nelem, size_t elsize)
         return NULL;
     }
 
-    malloc_mngr_add((uint64_t) ptr, nelem * elsize);
+    malloc_mngr_add((uint64_t) ptr, nelem * elsize, 0, 0);
     hashset_remove(&__calloc_reent_guards, tid);
     return ptr;
 }
@@ -97,7 +98,7 @@ void * __calloc(size_t nelem, size_t elsize)
 void * __realloc(void * addr, size_t size)
 {
     void *raddrs[BACKTRACE_MAX];
-    
+
     TRACE("addr=%ld size=%ld", addr, size);
     pid_t tid = gettid();
     hashset_insert(&__realloc_reent_guards, tid);
@@ -113,9 +114,16 @@ void * __realloc(void * addr, size_t size)
 
     // When realloc gets a NULL addr it behaves like malloc
     if (addr != NULL)
-        malloc_mngr_del((uint64_t) addr);
+    {
+        struct mem_node_stats stats;
+        assert(malloc_mngr_del((uint64_t) addr, &stats) != 0);
+        malloc_mngr_add((uint64_t) new_ptr, size, stats.io_cnt, stats.app_cnt);
+    }
+    else
+    {
+        malloc_mngr_add((uint64_t) new_ptr, size, 0, 0);
+    }
 
-    malloc_mngr_add((uint64_t) new_ptr, size);
     hashset_remove(&__realloc_reent_guards, tid);
     return new_ptr;
 }
