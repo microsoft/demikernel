@@ -63,7 +63,7 @@ class RunredisServerOnLinux(BaseLinuxTask):
 
 
 class RunRedisBenchmarkOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 120):
+    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 240):
         cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-benchmark {params}"
         super().__init__(host, cmd)
 

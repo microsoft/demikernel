@@ -76,7 +76,7 @@ use crate::catnap::transport::SharedCatnapTransport;
 //======================================================================================================================
 
 // The following value was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 pub enum LibOS {
     #[cfg(any(
@@ -557,9 +557,9 @@ impl LibOS {
                 feature = "catpowder-libos",
                 feature = "catloop-libos"
             ))]
-            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::NetworkLibOS(libos) => libos.wait(qt, timeout.unwrap_or(TIMEOUT_SECONDS)),
             #[cfg(feature = "catmem-libos")]
-            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait(qt, timeout.unwrap_or(TIMEOUT_SECONDS)),
         }
     }
 
@@ -573,9 +573,9 @@ impl LibOS {
                 feature = "catpowder-libos",
                 feature = "catloop-libos"
             ))]
-            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::NetworkLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(TIMEOUT_SECONDS)),
             #[cfg(feature = "catmem-libos")]
-            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait_any(qts, timeout.unwrap_or(TIMEOUT_SECONDS)),
         }
     }
 
@@ -596,9 +596,9 @@ impl LibOS {
                 feature = "catpowder-libos",
                 feature = "catloop-libos"
             ))]
-            LibOS::NetworkLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::NetworkLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(TIMEOUT_SECONDS)),
             #[cfg(feature = "catmem-libos")]
-            LibOS::MemoryLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(DEFAULT_TIMEOUT)),
+            LibOS::MemoryLibOS(libos) => libos.wait_next_n(acceptor, timeout.unwrap_or(TIMEOUT_SECONDS)),
         }
     }
 

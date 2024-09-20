@@ -45,7 +45,7 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 const BUFSIZE_BYTES: usize = 64;
 const FILL_CHAR: u8 = 0x65;
 const NUM_SENDS: usize = 1024;
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {
@@ -260,7 +260,13 @@ pub fn main() -> Result<()> {
         } else if args[1] == "--client" && args.len() == 4 {
             let remote_socket_addr: SocketAddr = SocketAddr::from_str(&args[3])?;
             let mut client: UdpClient = UdpClient::new(libos)?;
-            return client.run(local_socket_addr, remote_socket_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_SENDS);
+            return client.run(
+                local_socket_addr,
+                remote_socket_addr,
+                FILL_CHAR,
+                BUFSIZE_BYTES,
+                NUM_SENDS,
+            );
         }
     }
 

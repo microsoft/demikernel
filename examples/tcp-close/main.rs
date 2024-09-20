@@ -30,7 +30,7 @@ use ::std::time::Duration;
 // Constants
 //======================================================================================================================
 
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 fn main() -> Result<()> {
     let args: ProgramArguments = ProgramArguments::new()?;

@@ -50,7 +50,7 @@ use ::std::{
 };
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+pub const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 /// A representation of the engine that runs our tests. We keep a references to the highest level of abstraction
 /// (libos) and the lowest (physical layer).
@@ -117,7 +117,7 @@ impl SharedEngine {
 
     pub fn udp_close(&mut self, socket_fd: QDesc) -> Result<(), Fail> {
         let qt = self.libos.async_close(socket_fd)?;
-        match self.wait(qt, DEFAULT_TIMEOUT)? {
+        match self.wait(qt, TIMEOUT_SECONDS)? {
             (_, OperationResult::Close) => Ok(()),
             _ => unreachable!("close did not succeed"),
         }

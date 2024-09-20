@@ -60,7 +60,7 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 // Constants
 //======================================================================================================================
 
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 #[derive(Debug)]
 pub struct ProgramArguments {

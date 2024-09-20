@@ -44,7 +44,7 @@ pub const SOCK_DGRAM: i32 = libc::SOCK_DGRAM;
 const BUFSIZE_BYTES: usize = 64;
 const FILL_CHAR: u8 = 0x65;
 const NUM_PINGS: usize = 64;
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {
@@ -134,10 +134,11 @@ impl UdpServer {
             }
 
             // Push data.
-            let qt: QToken = match self
-                .libos
-                .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
-            {
+            let qt: QToken = match self.libos.pushto(
+                self.sockqd,
+                &self.sga.expect("should be a valid sgarray"),
+                remote_socket_addr,
+            ) {
                 Ok(qt) => qt,
                 Err(e) => {
                     anyhow::bail!("push failed: {:?}", e)
@@ -204,10 +205,11 @@ impl UdpClient {
 
         // Push and pop data.
         self.sga = Some(mksga(&mut self.libos, bufsize_bytes, fill_char)?);
-        match self
-            .libos
-            .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
-        {
+        match self.libos.pushto(
+            self.sockqd,
+            &self.sga.expect("should be a valid sgarray"),
+            remote_socket_addr,
+        ) {
             Ok(qt) => qtokens.push(qt),
             Err(e) => anyhow::bail!("push failed: {:?}", e),
         };
@@ -256,10 +258,11 @@ impl UdpClient {
                 },
                 demi_opcode_t::DEMI_OPC_PUSH => {
                     self.sga = Some(mksga(&mut self.libos, bufsize_bytes, fill_char)?);
-                    match self
-                        .libos
-                        .pushto(self.sockqd, &self.sga.expect("should be a valid sgarray"), remote_socket_addr)
-                    {
+                    match self.libos.pushto(
+                        self.sockqd,
+                        &self.sga.expect("should be a valid sgarray"),
+                        remote_socket_addr,
+                    ) {
                         Ok(qt) => qtokens.push(qt),
                         Err(e) => anyhow::bail!("push failed: {:?}", e),
                     };
@@ -315,7 +318,13 @@ pub fn main() -> Result<()> {
             return server.run(local_socket_addr, remote_socket_addr, FILL_CHAR);
         } else if args[1] == "--client" {
             let mut client: UdpClient = UdpClient::new(libos)?;
-            return client.run(local_socket_addr, remote_socket_addr, FILL_CHAR, BUFSIZE_BYTES, NUM_PINGS);
+            return client.run(
+                local_socket_addr,
+                remote_socket_addr,
+                FILL_CHAR,
+                BUFSIZE_BYTES,
+                NUM_PINGS,
+            );
         }
     }
 

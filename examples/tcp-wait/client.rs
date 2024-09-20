@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::DEFAULT_TIMEOUT;
+use crate::TIMEOUT_SECONDS;
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -76,14 +76,14 @@ impl TcpClient {
             let async_close_qt: QToken = self.libos.async_close(self.sockqd.expect("should be a valid socket"))?;
 
             // Wait for async_close().
-            match self.libos.wait(async_close_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(async_close_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => self.sockqd = None,
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }
 
             // Wait for push().
-            match self.libos.wait(push_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(push_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
@@ -102,14 +102,14 @@ impl TcpClient {
             let async_close_qt: QToken = self.libos.async_close(self.sockqd.expect("should be a valid socket"))?;
 
             // Wait for async_close().
-            match self.libos.wait(async_close_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(async_close_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => self.sockqd = None,
                 Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
                 Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
             }
 
             // Wait for pop().
-            match self.libos.wait(pop_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(pop_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
@@ -148,7 +148,7 @@ impl TcpClient {
             }
 
             // Wait for push().
-            match self.libos.wait(push_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(push_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
@@ -174,7 +174,7 @@ impl TcpClient {
             }
 
             // Wait for pop().
-            match self.libos.wait(pop_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(pop_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
@@ -207,7 +207,7 @@ impl TcpClient {
             let async_close_qt: QToken = self.libos.async_close(self.sockqd.expect("should be a valid socket"))?;
 
             // Wait for push().
-            match self.libos.wait(push_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(push_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH && qr.qr_ret == 0 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::ECANCELED as i64 => {},
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
@@ -215,7 +215,7 @@ impl TcpClient {
             }
 
             // Wait for async_close().
-            match self.libos.wait(async_close_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(async_close_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {
                     self.sockqd = None;
                 },
@@ -235,7 +235,7 @@ impl TcpClient {
             let async_close_qt: QToken = self.libos.async_close(self.sockqd.expect("should be a valid socket"))?;
 
             // Wait for pop().
-            match self.libos.wait(pop_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(pop_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP && qr.qr_ret == 0 => {
                     let sga: demi_sgarray_t = unsafe { qr.qr_value.sga };
                     let sgaseg_len: u32 = sga.sga_segs[0].sgaseg_len;
@@ -256,7 +256,7 @@ impl TcpClient {
             }
 
             // Wait for async_close().
-            match self.libos.wait(async_close_qt, Some(DEFAULT_TIMEOUT)) {
+            match self.libos.wait(async_close_qt, Some(TIMEOUT_SECONDS)) {
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {
                     self.sockqd = None;
                 },
@@ -303,7 +303,7 @@ impl TcpClient {
         let qt: QToken = self
             .libos
             .connect(self.sockqd.expect("should be a valid socket"), self.remote)?;
-        let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
+        let qr: demi_qresult_t = self.libos.wait(qt, Some(TIMEOUT_SECONDS))?;
         match qr.qr_opcode {
             demi_opcode_t::DEMI_OPC_CONNECT => {
                 println!("{} clients connected", num_clients + 1);

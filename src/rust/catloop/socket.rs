@@ -54,8 +54,8 @@ use ::std::{
 /// Seed number for generating request IDs.
 #[cfg(debug_assertions)]
 const REQUEST_ID_SEED: u64 = 95;
-/// Amount of time to wait for the other end in milliseconds. This was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+/// This was chosen arbitrarily.
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(120);
 
 //======================================================================================================================
 // Structures
@@ -155,8 +155,7 @@ impl SharedMemorySocket {
                 let cause: String = format!("socket is not connected");
                 error!("getpeername(): {:?}", &cause);
                 Err(Fail::new(libc::ENOTCONN, &cause))
-            }
-
+            },
         }
     }
 
@@ -466,7 +465,7 @@ async fn get_port(
     send_connection_request(catmem.clone(), connect_qd, request_id).await?;
 
     // Wait for response until some timeout.
-    match conditional_yield_with_timeout(catmem.pop_coroutine(connect_qd, Some(size)), DEFAULT_TIMEOUT).await? {
+    match conditional_yield_with_timeout(catmem.pop_coroutine(connect_qd, Some(size)), TIMEOUT_SECONDS).await? {
         // We expect a successful completion for previous pop().
         (_, OperationResult::Pop(_, incoming)) => extract_port_number(incoming),
         // We may get some error.
