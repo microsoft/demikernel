@@ -50,7 +50,7 @@ use ::std::{
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be quite small to make
 /// timeouts fast.
-const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1);
+const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(1);
 
 //======================================================================================================================
 // Structures
@@ -101,7 +101,7 @@ impl DummyLibOS {
         // Put the QToken into a single element array.
         let qt_array: [QToken; 1] = [qt];
         let mut prev: Instant = Instant::now();
-        let mut remaining_time: Duration = timeout.unwrap_or(DEFAULT_TIMEOUT);
+        let mut remaining_time: Duration = timeout.unwrap_or(TIMEOUT_MILLISECONDS);
 
         // Call run_any() until the task finishes.
         loop {

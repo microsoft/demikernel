@@ -59,8 +59,8 @@ mod test {
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
-    const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
-    const BAD_WAIT_TIMEOUT: Duration = Duration::from_millis(1);
+    const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(100);
+    const BAD_WAIT_TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(1);
 
     use std::{
         net::{
@@ -713,7 +713,7 @@ mod test {
             let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
             let sockqd: QDesc = safe_socket(&mut libos)?;
             let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
-            match libos.wait(qt, Some(BAD_WAIT_TIMEOUT)) {
+            match libos.wait(qt, Some(BAD_WAIT_TIMEOUT_MILLISECONDS)) {
                 Err(e) if e.errno == libc::ETIMEDOUT => (),
                 Ok((_, OperationResult::Connect)) => {
                     // Close socket if not error because this test cannot continue.
@@ -1198,7 +1198,7 @@ mod test {
     /// Safe call to `wait2()`.
     fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
         // Set this to something reasonably high because it should eventually complete.
-        match libos.wait(qt, Some(DEFAULT_TIMEOUT)) {
+        match libos.wait(qt, Some(TIMEOUT_MILLISECONDS)) {
             Ok(result) => Ok(result),
             Err(e) => anyhow::bail!("wait failed: {:?}", e),
         }

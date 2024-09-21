@@ -40,7 +40,7 @@ mod test {
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
-    const DEFAULT_TIMEOUT: Duration = Duration::from_millis(100);
+    const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(100);
 
     use ::socket2::{
         Domain,
@@ -529,7 +529,7 @@ mod test {
         // Put the QToken into a single element array.
         let qt_array: [QToken; 1] = [qt];
         let mut prev: Instant = Instant::now();
-        let mut remaining_time: Duration = DEFAULT_TIMEOUT;
+        let mut remaining_time: Duration = TIMEOUT_MILLISECONDS;
 
         // Call run_any() until the task finishes.
         loop {

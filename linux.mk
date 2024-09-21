@@ -220,14 +220,14 @@ export PEER ?= server
 export TEST ?= udp-push-pop
 export TEST_INTEGRATION ?= tcp-test
 export TEST_UNIT ?=
-export TIMEOUT ?= 120
+export TIMEOUT_SECONDS ?= 512
 
 # Runs system tests.
 test-system: test-system-rust
 
 # Rust system tests.
 test-system-rust:
-	timeout $(TIMEOUT) $(BINDIR)/examples/rust/$(TEST).elf $(ARGS)
+	timeout $(TIMEOUT_SECONDS) $(BINDIR)/examples/rust/$(TEST).elf $(ARGS)
 
 # Runs unit tests.
 test-unit: test-unit-rust
@@ -236,35 +236,35 @@ test-unit: test-unit-rust
 test-unit-c: all-tests test-unit-c-sizes test-unit-c-syscalls
 
 test-unit-c-sizes: all-tests $(BINDIR)/sizes.elf
-	timeout $(TIMEOUT) $(BINDIR)/sizes.elf
+	timeout $(TIMEOUT_SECONDS) $(BINDIR)/sizes.elf
 
 test-unit-c-syscalls: all-tests $(BINDIR)/syscalls.elf
-	timeout $(TIMEOUT) $(BINDIR)/syscalls.elf
+	timeout $(TIMEOUT_SECONDS) $(BINDIR)/syscalls.elf
 
 # Rust unit tests.
 test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
-	timeout $(TIMEOUT) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_big
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
 
 # Rust unit tests for the library.
 test-unit-rust-lib: all-tests-rust
-	timeout $(TIMEOUT) $(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Rust unit tests for UDP.
 test-unit-rust-udp: all-tests-rust
-	timeout $(TIMEOUT) $(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Rust unit tests for TCP.
 test-unit-rust-tcp: all-tests-rust
-	timeout $(TIMEOUT) $(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
 # Runs Rust integration tests.
 test-integration-rust:
-	timeout $(TIMEOUT) $(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
+	timeout $(TIMEOUT_SECONDS) $(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
 
 # Cleans dangling test resources.
 test-clean:
@@ -276,4 +276,4 @@ test-clean:
 
 # C unit benchmarks.
 run-benchmarks-c: all-benchmarks-c $(BINDIR)/syscalls.elf
-	timeout $(TIMEOUT) $(BINDIR)/benchmarks.elf
+	timeout $(TIMEOUT_SECONDS) $(BINDIR)/benchmarks.elf

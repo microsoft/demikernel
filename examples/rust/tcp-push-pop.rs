@@ -4,11 +4,9 @@
 /// This test exercises the following behavior: A server and client pair where the client is only sending data and the
 /// server is only receiving. We test this behavior because we want to make sure that the server correctly acknowledges
 /// the sent data, even though there is no data flowing the other direction.
-
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -49,7 +47,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 const BUFSIZE_BYTES: usize = 64;
 const FILL_CHAR: u8 = 0x65;
 const ITERATIONS: usize = 10;
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {

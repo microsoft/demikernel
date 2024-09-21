@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::DEFAULT_TIMEOUT;
+use crate::TIMEOUT_SECONDS;
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
@@ -101,7 +101,7 @@ impl TcpEchoServer {
         // Accept first connection.
         {
             let qt: QToken = self.libos.accept(self.sockqd)?;
-            let qr: demi_qresult_t = self.libos.wait(qt, Some(DEFAULT_TIMEOUT))?;
+            let qr: demi_qresult_t = self.libos.wait(qt, Some(TIMEOUT_SECONDS))?;
             if qr.qr_opcode != demi_opcode_t::DEMI_OPC_ACCEPT {
                 anyhow::bail!("failed to accept connection")
             }
@@ -125,7 +125,7 @@ impl TcpEchoServer {
 
             // Wait for any operation to complete.
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(DEFAULT_TIMEOUT))?;
+                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(TIMEOUT_SECONDS))?;
                 self.unregister_operation(index)?;
                 qr
             };

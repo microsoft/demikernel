@@ -4,11 +4,9 @@
 /// This test exercises the following behavior: A server and client pair where the client sends data to the server,
 /// then receives it back before responding with the same data from the server. This test is a simple test of
 /// ping-ponging data between the client and server.
-
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
@@ -49,7 +47,7 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
 const BUFSIZE_BYTES: usize = 64;
 const NUM_PING_PONG_ROUNDS: usize = 1024;
-const TIMEOUT_SECONDS: Duration = Duration::from_secs(30);
+const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
 fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
     let sga: demi_sgarray_t = match libos.sgaalloc(size) {

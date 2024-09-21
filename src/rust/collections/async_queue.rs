@@ -31,7 +31,7 @@ use ::std::{
 //======================================================================================================================
 
 // The following value was chosen arbitrarily.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+const TIMEOUT_MILLISECONDS: Duration = Duration::from_secs(120);
 
 //======================================================================================================================
 // Structures
@@ -83,7 +83,7 @@ impl<T> AsyncQueue<T> {
                 }
             }
         };
-        conditional_yield_with_timeout(wait_condition, timeout.unwrap_or(DEFAULT_TIMEOUT)).await
+        conditional_yield_with_timeout(wait_condition, timeout.unwrap_or(TIMEOUT_MILLISECONDS)).await
     }
 
     /// Try to get the head of the queue.

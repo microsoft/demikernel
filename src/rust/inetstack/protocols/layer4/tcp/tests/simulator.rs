@@ -30,7 +30,7 @@ use crate::{
             self,
             engine::{
                 SharedEngine,
-                DEFAULT_TIMEOUT,
+                TIMEOUT_SECONDS,
             },
             physical_layer::SharedTestPhysicalLayer,
         },
@@ -1019,7 +1019,7 @@ impl Simulation {
     /// Checks if an operation has completed.
     fn operation_has_completed(&mut self) -> Result<(QDesc, OperationResult)> {
         match self.inflight.take() {
-            Some(qt) => Ok(self.engine.wait(qt, DEFAULT_TIMEOUT)?),
+            Some(qt) => Ok(self.engine.wait(qt, TIMEOUT_SECONDS)?),
             None => anyhow::bail!("should have an inflight queue token"),
         }
     }
