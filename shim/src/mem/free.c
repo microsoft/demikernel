@@ -28,7 +28,7 @@ void __free(void * addr)
     hashset_insert(&__free_reent_guards, tid);
 
     if (addr != NULL)
-        malloc_mngr_del((uint64_t) addr, NULL);
+        malloc_mngr_del_addr((uint64_t) addr, NULL);
 
     libc_free(addr);
     hashset_remove(&__free_reent_guards, tid);

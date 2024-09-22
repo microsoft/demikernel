@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "../epoll.h"
+#include "../mngr.h"
 #include "../error.h"
 #include "../log.h"
 #include "../qman.h"
@@ -11,6 +12,7 @@
 #include <demi/sga.h>
 #include <errno.h>
 #include <string.h>
+#include <execinfo.h>
 #include <sys/types.h>
 #include <glue.h>
 
@@ -34,6 +36,15 @@ ssize_t __read(int sockfd, void *buf, size_t count)
     {
         TRACE("sockfd=%d, buf=%p, count=%zu", sockfd, buf, count);
         struct demi_event *ev = NULL;
+
+        struct mem_node *node = malloc_mngr_get_addr((uint64_t) buf);
+        if (node !=NULL && !node->is_io)
+        {
+            node->stats->io_cnt++;
+            node->is_io = 1;
+            TRACE("io_cnt=%d app_cnt=%d",
+                    node->stats->io_cnt, node->stats->app_cnt);
+        }
 
         // Check if read operation has completed.
         if ((ev = queue_man_get_pop_result(sockfd)) != NULL)

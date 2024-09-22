@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "../epoll.h"
+#include "../mngr.h"
 #include "../error.h"
 #include "../log.h"
 #include "../qman.h"
@@ -12,6 +13,7 @@
 #include <demi/wait.h>
 #include <errno.h>
 #include <string.h>
+#include <execinfo.h>
 #include <sys/types.h>
 #include <glue.h>
 
@@ -31,7 +33,14 @@ ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
         return (-1);
     }
 
-    TRACE("sockfd=%d, buf=%p, len=%zu, flags=%x", sockfd, buf, len, flags);
+    struct mem_node *node = malloc_mngr_get_addr((uint64_t) buf);
+    if (node != MN && !node->is_io)
+    {
+        node->stats->io_cnt++;
+        node->is_io = 1;
+        TRACE("io_cnt=%d app_cnt=%d",
+                node->stats->io_cnt, node->stats->app_cnt);
+    }
 
     // TODO: check if flags are supported.
     UNUSED(flags);
