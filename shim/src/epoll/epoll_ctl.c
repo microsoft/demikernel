@@ -42,11 +42,7 @@ static int __do_demi_epoll_ctl_add(int epfd, int fd, struct epoll_event *event)
         if (ev->used == 0)
         {
             memcpy(&ev->ev, event, sizeof(struct epoll_event));
-            ev->used = 1;
-            ev->qt = -1;
-            ev->sockqd = fd;
-            ev->next_ev = INVALID_EV;
-            ev->prev_ev = INVALID_EV;
+            epoll_init_event(ev, -1, fd, NULL);
 
             struct demi_event *tail = epoll_get_tail(epfd);
             ev->prev_ev = tail->id;
@@ -153,11 +149,7 @@ static int __do_demi_epoll_ctl_del(int epfd, int fd)
                 next->prev_ev = ev->prev_ev;
 
             queue_man_unlink_fd_epfd(fd);
-            ev->used = 0;
-            ev->sockqd = -1;
-            ev->qt = (demi_qtoken_t)-1;
-            ev->next_ev = INVALID_EV;
-            ev->prev_ev = INVALID_EV;
+            epoll_deinit_event(ev);
 
             return (0);
         }
