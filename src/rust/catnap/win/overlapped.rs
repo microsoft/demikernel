@@ -5,39 +5,19 @@
 // Imports
 //======================================================================================================================
 
-use std::{
-    cell::Cell,
-    marker::PhantomData,
-    pin::Pin,
-};
+use std::{cell::Cell, marker::PhantomData, pin::Pin};
 
 use windows::Win32::{
-    Foundation::{
-        CloseHandle,
-        FALSE,
-        HANDLE,
-        INVALID_HANDLE_VALUE,
-        NTSTATUS,
-        WAIT_TIMEOUT,
-        WIN32_ERROR,
-    },
+    Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, NTSTATUS, WAIT_TIMEOUT, WIN32_ERROR},
     Networking::WinSock::SOCKET,
-    System::IO::{
-        CreateIoCompletionPort,
-        GetQueuedCompletionStatusEx,
-        OVERLAPPED,
-        OVERLAPPED_ENTRY,
-    },
+    System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatusEx, OVERLAPPED, OVERLAPPED_ENTRY},
 };
 
 use crate::{
     catnap::transport::error::translate_ntstatus,
     collections::pin_slab::PinSlab,
     expect_some,
-    runtime::{
-        fail::Fail,
-        SharedConditionVariable,
-    },
+    runtime::{fail::Fail, SharedConditionVariable},
 };
 
 //======================================================================================================================
@@ -334,13 +314,8 @@ impl<S: Unpin> Drop for IoCompletionPort<S> {
 mod tests {
     use crate::{
         ensure_eq,
-        runtime::{
-            conditional_yield_with_timeout,
-            SharedDemiRuntime,
-        },
-        OperationResult,
-        QDesc,
-        QToken,
+        runtime::{conditional_yield_with_timeout, SharedDemiRuntime},
+        OperationResult, QDesc, QToken,
     };
     use futures::pin_mut;
     use std::{
@@ -348,57 +323,26 @@ mod tests {
         iter,
         ptr::NonNull,
         rc::Rc,
-        sync::atomic::{
-            AtomicU32,
-            Ordering,
-        },
-        task::{
-            Context,
-            Poll,
-        },
-        time::{
-            Duration,
-            Instant,
-        },
+        sync::atomic::{AtomicU32, Ordering},
+        task::{Context, Poll},
+        time::{Duration, Instant},
     };
 
     use super::*;
     use ::futures::FutureExt;
-    use anyhow::{
-        anyhow,
-        bail,
-        ensure,
-        Result,
-    };
+    use anyhow::{anyhow, bail, ensure, Result};
     use futures::Future;
     use windows::{
-        core::{
-            s,
-            HRESULT,
-            PCSTR,
-        },
+        core::{s, HRESULT, PCSTR},
         Win32::{
-            Foundation::{
-                ERROR_IO_PENDING,
-                GENERIC_WRITE,
-            },
+            Foundation::{ERROR_IO_PENDING, GENERIC_WRITE},
             Storage::FileSystem::{
-                CreateFileA,
-                ReadFile,
-                WriteFile,
-                FILE_FLAGS_AND_ATTRIBUTES,
-                FILE_FLAG_FIRST_PIPE_INSTANCE,
-                FILE_FLAG_OVERLAPPED,
-                FILE_SHARE_NONE,
-                OPEN_EXISTING,
-                PIPE_ACCESS_DUPLEX,
+                CreateFileA, ReadFile, WriteFile, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_FIRST_PIPE_INSTANCE,
+                FILE_FLAG_OVERLAPPED, FILE_SHARE_NONE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
             },
             System::{
                 Pipes::{
-                    ConnectNamedPipe,
-                    CreateNamedPipeA,
-                    PIPE_READMODE_MESSAGE,
-                    PIPE_REJECT_REMOTE_CLIENTS,
+                    ConnectNamedPipe, CreateNamedPipeA, PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS,
                     PIPE_TYPE_MESSAGE,
                 },
                 IO::PostQueuedCompletionStatus,

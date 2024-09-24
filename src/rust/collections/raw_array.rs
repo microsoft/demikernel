@@ -8,12 +8,8 @@
 use crate::runtime::fail::Fail;
 use ::core::{
     alloc::Layout,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    ptr,
-    slice,
+    ops::{Deref, DerefMut},
+    ptr, slice,
 };
 use ::std::alloc;
 

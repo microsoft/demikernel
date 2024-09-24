@@ -9,8 +9,4 @@ mod udp;
 // Exports
 //======================================================================================================================
 
-pub use self::{
-    arp::ArpConfig,
-    tcp::TcpConfig,
-    udp::UdpConfig,
-};
+pub use self::{arp::ArpConfig, tcp::TcpConfig, udp::UdpConfig};

@@ -8,42 +8,26 @@
 use crate::{
     catmem::SharedCatmemLibOS,
     demikernel::config::Config,
-    expect_ok,
-    expect_some,
+    expect_ok, expect_some,
     runtime::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
         network::{
-            socket::option::{
-                SocketOption,
-                TcpSocketOptions,
-            },
+            socket::option::{SocketOption, TcpSocketOptions},
             unwrap_socketaddr,
         },
         queue::QDesc,
-        OperationResult,
-        SharedObject,
+        OperationResult, SharedObject,
     },
 };
-use ::rand::{
-    rngs::SmallRng,
-    RngCore,
-    SeedableRng,
-};
+use ::rand::{rngs::SmallRng, RngCore, SeedableRng};
 use ::std::{
     collections::HashSet,
     fmt::Debug,
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

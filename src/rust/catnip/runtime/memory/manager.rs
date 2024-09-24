@@ -10,15 +10,9 @@ use crate::{
     inetstack::protocols::MAX_HEADER_SIZE,
     runtime::{
         fail::Fail,
-        libdpdk::{
-            rte_mbuf,
-            rte_mempool,
-        },
+        libdpdk::{rte_mbuf, rte_mempool},
         memory::DemiBuffer,
-        types::{
-            demi_sgarray_t,
-            demi_sgaseg_t,
-        },
+        types::{demi_sgarray_t, demi_sgaseg_t},
     },
 };
 use ::anyhow::Error;
@@ -26,10 +20,7 @@ use ::libc::c_void;
 use ::std::{
     ffi::CString,
     mem,
-    ptr::{
-        self,
-        NonNull,
-    },
+    ptr::{self, NonNull},
 };
 
 //======================================================================================================================

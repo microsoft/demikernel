@@ -10,39 +10,18 @@ use crate::runtime::{
     limits,
     memory::DemiBuffer,
     network::{
-        socket::{
-            operation::SocketOp,
-            option::SocketOption,
-            state::SocketStateMachine,
-        },
+        socket::{operation::SocketOp, option::SocketOption, state::SocketStateMachine},
         transport::NetworkTransport,
     },
-    queue::{
-        IoQueue,
-        QType,
-    },
-    QToken,
-    SharedObject,
+    queue::{IoQueue, QType},
+    QToken, SharedObject,
 };
-use ::futures::{
-    pin_mut,
-    select_biased,
-    FutureExt,
-};
-use ::socket2::{
-    Domain,
-    Type,
-};
+use ::futures::{pin_mut, select_biased, FutureExt};
+use ::socket2::{Domain, Type};
 use ::std::{
     any::Any,
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

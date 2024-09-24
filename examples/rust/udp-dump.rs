@@ -8,26 +8,12 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    LibOSName,
-    QDesc,
-    QToken,
-};
+use ::clap::{Arg, ArgMatches, Command};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, LibOSName, QDesc, QToken};
 use ::std::{
     net::SocketAddr,
     str::FromStr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "windows")]

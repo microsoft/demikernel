@@ -29,10 +29,7 @@ use crate::catpowder::SharedCatpowderRuntime;
     feature = "catpowder-libos",
     feature = "catloop-libos"
 ))]
-use crate::demikernel::libos::network::{
-    libos::SharedNetworkLibOS,
-    NetworkLibOSWrapper,
-};
+use crate::demikernel::libos::network::{libos::SharedNetworkLibOS, NetworkLibOSWrapper};
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
 #[cfg(feature = "profiler")]
@@ -41,26 +38,16 @@ use crate::{
     demikernel::config::Config,
     runtime::{
         fail::Fail,
-        limits,
-        logging,
+        limits, logging,
         network::socket::option::SocketOption,
-        types::{
-            demi_callback_t,
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
-        QDesc,
-        QToken,
-        SharedDemiRuntime,
+        types::{demi_callback_t, demi_qresult_t, demi_sgarray_t},
+        QDesc, QToken, SharedDemiRuntime,
     },
     timer,
 };
 use ::std::{
     env,
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
     time::Duration,
 };
 

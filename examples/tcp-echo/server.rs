@@ -9,24 +9,13 @@ use crate::TIMEOUT_SECONDS;
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
-    },
-    LibOS,
-    QDesc,
-    QToken,
+    runtime::types::{demi_opcode_t, demi_qresult_t},
+    LibOS, QDesc, QToken,
 };
 use std::{
-    collections::{
-        HashMap,
-        HashSet,
-    },
+    collections::{HashMap, HashSet},
     net::SocketAddr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "windows")]

@@ -14,36 +14,17 @@ mod test {
     //======================================================================================================================
     // Imports
     //======================================================================================================================
-    use crate::common::{
-        libos::*,
-        ALICE_CONFIG_PATH,
-        ALICE_IP,
-        BOB_CONFIG_PATH,
-        BOB_IP,
-        PORT_BASE,
-    };
+    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_BASE};
     use ::anyhow::Result;
     use ::demikernel::{
         demi_sgarray_t,
         runtime::{
-            memory::{
-                DemiBuffer,
-                MemoryRuntime,
-            },
-            OperationResult,
-            QDesc,
-            QToken,
+            memory::{DemiBuffer, MemoryRuntime},
+            OperationResult, QDesc, QToken,
         },
     };
-    use ::socket2::{
-        Domain,
-        Protocol,
-        Type,
-    };
-    use crossbeam_channel::{
-        Receiver,
-        Sender,
-    };
+    use ::socket2::{Domain, Protocol, Type};
+    use crossbeam_channel::{Receiver, Sender};
 
     #[cfg(target_os = "windows")]
     pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;
@@ -63,21 +44,9 @@ mod test {
     const BAD_WAIT_TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(1);
 
     use std::{
-        net::{
-            IpAddr,
-            Ipv4Addr,
-            Ipv6Addr,
-            SocketAddr,
-            SocketAddrV6,
-        },
-        sync::{
-            Arc,
-            Barrier,
-        },
-        thread::{
-            self,
-            JoinHandle,
-        },
+        net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6},
+        sync::{Arc, Barrier},
+        thread::{self, JoinHandle},
         time::Duration,
     };
     #[cfg(target_os = "windows")]

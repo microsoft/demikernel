@@ -6,22 +6,12 @@
 //======================================================================================================================
 
 use crate::runtime::{
-    conditional_yield_until,
-    conditional_yield_with_timeout,
-    fail::Fail,
-    SharedConditionVariable,
-    SharedObject,
+    conditional_yield_until, conditional_yield_with_timeout, fail::Fail, SharedConditionVariable, SharedObject,
 };
 use ::std::{
     fmt,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    ops::{Deref, DerefMut},
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================

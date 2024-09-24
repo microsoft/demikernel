@@ -12,23 +12,13 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        id_map::IdMap,
-        pin_slab::PinSlab,
-    },
+    collections::{id_map::IdMap, pin_slab::PinSlab},
     expect_some,
     runtime::scheduler::{
-        page::{
-            WakerPageRef,
-            WakerRef,
-        },
+        page::{WakerPageRef, WakerRef},
         scheduler::InternalId,
-        waker64::{
-            WAKER_BIT_LENGTH,
-            WAKER_BIT_LENGTH_SHIFT,
-        },
-        Task,
-        TaskId,
+        waker64::{WAKER_BIT_LENGTH, WAKER_BIT_LENGTH_SHIFT},
+        Task, TaskId,
     },
 };
 use ::bit_iter::BitIter;
@@ -36,11 +26,7 @@ use ::futures::Future;
 use ::std::{
     pin::Pin,
     ptr::NonNull,
-    task::{
-        Context,
-        Poll,
-        Waker,
-    },
+    task::{Context, Poll, Waker},
 };
 
 //======================================================================================================================

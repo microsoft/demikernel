@@ -7,28 +7,13 @@
 
 use crate::{
     collections::async_queue::AsyncQueue,
-    inetstack::protocols::{
-        layer3::SharedLayer3Endpoint,
-        layer4::udp::header::UdpHeader,
-    },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        network::unwrap_socketaddr,
-        SharedObject,
-    },
+    inetstack::protocols::{layer3::SharedLayer3Endpoint, layer4::udp::header::UdpHeader},
+    runtime::{fail::Fail, memory::DemiBuffer, network::unwrap_socketaddr, SharedObject},
 };
 use ::std::{
     fmt::Debug,
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

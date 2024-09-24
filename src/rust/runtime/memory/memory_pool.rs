@@ -6,21 +6,12 @@
 //======================================================================================================================
 
 use std::{
-    alloc::{
-        Layout,
-        LayoutError,
-    },
+    alloc::{Layout, LayoutError},
     cell::UnsafeCell,
     marker::PhantomData,
-    mem::{
-        ManuallyDrop,
-        MaybeUninit,
-    },
+    mem::{ManuallyDrop, MaybeUninit},
     num::NonZeroUsize,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     ptr::NonNull,
     rc::Rc,
 };
@@ -338,25 +329,14 @@ impl<'a> Iterator for PackingIterator<'a> {
 // Unit tests for `BufferPool` type.
 #[cfg(test)]
 mod tests {
-    use std::{
-        mem::MaybeUninit,
-        num::NonZeroUsize,
-        ptr::NonNull,
-        rc::Rc,
-    };
+    use std::{mem::MaybeUninit, num::NonZeroUsize, ptr::NonNull, rc::Rc};
 
-    use ::anyhow::{
-        anyhow,
-        Result,
-    };
+    use ::anyhow::{anyhow, Result};
     use anyhow::ensure;
 
     use crate::{
         ensure_eq,
-        runtime::memory::memory_pool::{
-            MemoryPool,
-            PoolBuf,
-        },
+        runtime::memory::memory_pool::{MemoryPool, PoolBuf},
     };
 
     fn alloc_page_buf(page_size: usize, alloc_size: usize, store: &mut Vec<MaybeUninit<u8>>) -> &mut [MaybeUninit<u8>] {

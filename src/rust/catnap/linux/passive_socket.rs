@@ -9,10 +9,7 @@ use crate::{
     catnap::transport::get_libc_err,
     collections::async_queue::AsyncQueue,
     expect_some,
-    runtime::{
-        fail::Fail,
-        DemiRuntime,
-    },
+    runtime::{fail::Fail, DemiRuntime},
 };
 use ::socket2::Socket;
 use ::std::net::SocketAddr;

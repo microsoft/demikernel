@@ -8,13 +8,7 @@
 use crate::runtime::{
     fail::Fail,
     libdpdk::{
-        rte_errno,
-        rte_mbuf,
-        rte_mempool,
-        rte_pktmbuf_alloc,
-        rte_pktmbuf_free,
-        rte_pktmbuf_pool_create,
-        rte_socket_id,
+        rte_errno, rte_mbuf, rte_mempool, rte_pktmbuf_alloc, rte_pktmbuf_free, rte_pktmbuf_pool_create, rte_socket_id,
     },
 };
 use ::std::ffi::CString;

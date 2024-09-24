@@ -9,18 +9,10 @@ use crate::TIMEOUT_SECONDS;
 use ::anyhow::Result;
 use ::demikernel::{
     demi_sgarray_t,
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
-    },
-    LibOS,
-    QDesc,
-    QToken,
+    runtime::types::{demi_opcode_t, demi_qresult_t},
+    LibOS, QDesc, QToken,
 };
-use ::std::{
-    net::SocketAddr,
-    slice,
-};
+use ::std::{net::SocketAddr, slice};
 
 //======================================================================================================================
 // Constants

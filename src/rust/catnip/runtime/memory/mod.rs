@@ -20,10 +20,7 @@ use crate::{
     catnip::runtime::SharedDPDKRuntime,
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         types::demi_sgarray_t,
     },
 };

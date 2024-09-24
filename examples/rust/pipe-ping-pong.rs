@@ -6,14 +6,7 @@
 
 use ::anyhow::Result;
 use ::core::slice;
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    LibOSName,
-    QDesc,
-    QToken,
-};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, LibOSName, QDesc, QToken};
 use ::std::env;
 
 //======================================================================================================================

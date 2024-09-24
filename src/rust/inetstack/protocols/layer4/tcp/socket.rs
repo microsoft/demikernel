@@ -11,11 +11,8 @@ use crate::{
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
         layer4::tcp::{
-            active_open::SharedActiveOpenSocket,
-            established::EstablishedSocket,
-            header::TcpHeader,
-            passive_open::SharedPassiveSocket,
-            SeqNumber,
+            active_open::SharedActiveOpenSocket, established::EstablishedSocket, header::TcpHeader,
+            passive_open::SharedPassiveSocket, SeqNumber,
         },
     },
     runtime::{
@@ -24,29 +21,18 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::{
-                option::{
-                    SocketOption,
-                    TcpSocketOptions,
-                },
+                option::{SocketOption, TcpSocketOptions},
                 SocketId,
             },
         },
-        QDesc,
-        SharedDemiRuntime,
-        SharedObject,
+        QDesc, SharedDemiRuntime, SharedObject,
     },
 };
 use ::futures::channel::mpsc;
 use ::std::{
     fmt::Debug,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

@@ -30,13 +30,7 @@
 
 #[cfg(feature = "libdpdk")]
 use crate::runtime::libdpdk::{
-    rte_errno,
-    rte_mbuf,
-    rte_mempool,
-    rte_pktmbuf_adj,
-    rte_pktmbuf_clone,
-    rte_pktmbuf_free,
-    rte_pktmbuf_prepend,
+    rte_errno, rte_mbuf, rte_mempool, rte_pktmbuf_adj, rte_pktmbuf_clone, rte_pktmbuf_free, rte_pktmbuf_prepend,
     rte_pktmbuf_trim,
 };
 use crate::{
@@ -45,37 +39,17 @@ use crate::{
         fail::Fail,
         memory::{
             buffer_pool::BufferPool,
-            memory_pool::{
-                MemoryPool,
-                PoolBuf,
-            },
+            memory_pool::{MemoryPool, PoolBuf},
         },
     },
 };
 use ::std::{
-    alloc::{
-        alloc,
-        dealloc,
-        handle_alloc_error,
-        Layout,
-    },
+    alloc::{alloc, dealloc, handle_alloc_error, Layout},
     marker::PhantomData,
-    mem::{
-        self,
-        size_of,
-        MaybeUninit,
-    },
+    mem::{self, size_of, MaybeUninit},
     num::NonZeroUsize,
-    ops::{
-        BitOr,
-        Deref,
-        DerefMut,
-    },
-    ptr::{
-        self,
-        null_mut,
-        NonNull,
-    },
+    ops::{BitOr, Deref, DerefMut},
+    ptr::{self, null_mut, NonNull},
     slice,
 };
 use std::rc::Rc;

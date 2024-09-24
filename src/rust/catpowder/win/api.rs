@@ -5,15 +5,9 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    libxdp,
-};
+use crate::runtime::{fail::Fail, libxdp};
 use ::std::ptr;
-use ::windows::core::{
-    Error,
-    HRESULT,
-};
+use ::windows::core::{Error, HRESULT};
 
 //======================================================================================================================
 // Structures

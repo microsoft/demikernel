@@ -5,24 +5,13 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    conditional_yield_with_timeout,
-    fail::Fail,
-    SharedConditionVariable,
-    SharedObject,
-};
+use crate::runtime::{conditional_yield_with_timeout, fail::Fail, SharedConditionVariable, SharedObject};
 use ::std::{
     collections::{
-        vec_deque::{
-            Iter,
-            IterMut,
-        },
+        vec_deque::{Iter, IterMut},
         VecDeque,
     },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

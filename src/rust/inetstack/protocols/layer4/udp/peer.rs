@@ -9,31 +9,16 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        layer4::udp::{
-            header::UdpHeader,
-            socket::SharedUdpSocket,
-        },
+        layer4::udp::{header::UdpHeader, socket::SharedUdpSocket},
     },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        SharedDemiRuntime,
-        SharedObject,
-    },
+    runtime::{fail::Fail, memory::DemiBuffer, SharedDemiRuntime, SharedObject},
     timer,
 };
 
 use ::std::{
     collections::HashMap,
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

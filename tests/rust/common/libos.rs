@@ -6,42 +6,22 @@
 //======================================================================================================================
 
 use crate::common::runtime::SharedDummyRuntime;
-use ::crossbeam_channel::{
-    Receiver,
-    Sender,
-};
+use ::crossbeam_channel::{Receiver, Sender};
 use ::demikernel::{
     demi_sgarray_t,
-    demikernel::{
-        config::Config,
-        libos::network::libos::SharedNetworkLibOS,
-    },
-    inetstack::{
-        protocols::MAX_HEADER_SIZE,
-        SharedInetStack,
-    },
+    demikernel::{config::Config, libos::network::libos::SharedNetworkLibOS},
+    inetstack::{protocols::MAX_HEADER_SIZE, SharedInetStack},
     runtime::{
         fail::Fail,
         logging,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        QDesc,
-        QToken,
-        SharedDemiRuntime,
+        memory::{DemiBuffer, MemoryRuntime},
+        QDesc, QToken, SharedDemiRuntime,
     },
     OperationResult,
 };
 use ::std::{
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    ops::{Deref, DerefMut},
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================

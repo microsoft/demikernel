@@ -17,10 +17,7 @@ mod tests;
 //======================================================================================================================
 
 use crate::{
-    perftools::profiler::scope::{
-        Guard,
-        Scope,
-    },
+    perftools::profiler::scope::{Guard, Scope},
     runtime::types::demi_callback_t,
 };
 use ::futures::future::FusedFuture;
@@ -29,10 +26,7 @@ use ::std::{
     io,
     pin::Pin,
     rc::Rc,
-    time::{
-        Duration,
-        SystemTime,
-    },
+    time::{Duration, SystemTime},
 };
 use std::thread;
 

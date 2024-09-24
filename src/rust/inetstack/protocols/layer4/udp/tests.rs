@@ -6,35 +6,19 @@ use crate::{
         protocols::MAX_HEADER_SIZE,
         test_helpers::{
             self,
-            engine::{
-                SharedEngine,
-                TIMEOUT_SECONDS,
-            },
+            engine::{SharedEngine, TIMEOUT_SECONDS},
         },
     },
     runtime::{
         memory::DemiBuffer,
-        queue::{
-            OperationResult,
-            QDesc,
-            QToken,
-        },
+        queue::{OperationResult, QDesc, QToken},
     },
 };
 use ::anyhow::Result;
-use ::libc::{
-    EADDRINUSE,
-    EBADF,
-};
+use ::libc::{EADDRINUSE, EBADF};
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================

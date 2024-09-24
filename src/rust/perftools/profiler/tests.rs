@@ -1,24 +1,13 @@
 // Copyright(c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-use crate::{
-    async_timer,
-    perftools::profiler,
-    timer,
-};
+use crate::{async_timer, perftools::profiler, timer};
 use ::anyhow::Result;
 use ::std::{
     future::Future,
-    task::{
-        Context,
-        Poll,
-        Waker,
-    },
+    task::{Context, Poll, Waker},
 };
-use std::pin::{
-    pin,
-    Pin,
-};
+use std::pin::{pin, Pin};
 
 #[test]
 fn test_multiple_roots() -> Result<()> {

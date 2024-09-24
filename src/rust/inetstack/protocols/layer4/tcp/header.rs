@@ -2,21 +2,12 @@
 // Licensed under the MIT license.
 
 use crate::{
-    inetstack::protocols::{
-        layer3::ip::IpProtocol,
-        layer4::tcp::SeqNumber,
-    },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-    },
+    inetstack::protocols::{layer3::ip::IpProtocol, layer4::tcp::SeqNumber},
+    runtime::{fail::Fail, memory::DemiBuffer},
 };
 use ::libc::EBADMSG;
 use ::std::{
-    io::{
-        Cursor,
-        Read,
-    },
+    io::{Cursor, Read},
     net::Ipv4Addr,
     slice::ChunksExact,
 };

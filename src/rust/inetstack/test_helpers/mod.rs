@@ -7,10 +7,7 @@ pub use engine::SharedEngine;
 pub use physical_layer::SharedTestPhysicalLayer;
 
 use crate::MacAddress;
-use ::std::{
-    net::Ipv4Addr,
-    time::Instant,
-};
+use ::std::{net::Ipv4Addr, time::Instant};
 
 //======================================================================================================================
 // Constants

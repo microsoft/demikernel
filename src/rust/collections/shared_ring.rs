@@ -6,15 +6,8 @@
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-use crate::{
-    collections::ring::Ring,
-    pal::linux::shm::SharedMemory,
-    runtime::fail::Fail,
-};
-use ::std::ops::{
-    Deref,
-    DerefMut,
-};
+use crate::{collections::ring::Ring, pal::linux::shm::SharedMemory, runtime::fail::Fail};
+use ::std::ops::{Deref, DerefMut};
 
 //======================================================================================================================
 // Structures
@@ -76,17 +69,11 @@ impl<T: Ring> DerefMut for SharedRingBuffer<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::collections::{
-        ring::RingBuffer,
-        shared_ring::SharedRingBuffer,
-    };
+    use crate::collections::{ring::RingBuffer, shared_ring::SharedRingBuffer};
     use ::anyhow::Result;
     use ::std::{
         sync::Barrier,
-        thread::{
-            self,
-            ScopedJoinHandle,
-        },
+        thread::{self, ScopedJoinHandle},
     };
 
     /// Number of rounds to run the tests.

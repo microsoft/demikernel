@@ -8,12 +8,7 @@
 use std::slice;
 
 use anyhow::Result;
-use demikernel::{
-    demi_sgarray_t,
-    LibOS,
-    QDesc,
-    QToken,
-};
+use demikernel::{demi_sgarray_t, LibOS, QDesc, QToken};
 
 //======================================================================================================================
 // Structures

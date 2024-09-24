@@ -7,18 +7,11 @@
 
 use ::arrayvec::ArrayVec;
 use ::demikernel::{
-    demi_sgarray_t,
-    demi_sgaseg_t,
-    inetstack::protocols::{
-        layer1::PhysicalLayer,
-        MAX_HEADER_SIZE,
-    },
+    demi_sgarray_t, demi_sgaseg_t,
+    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::consts::RECEIVE_BATCH_SIZE,
         SharedObject,
     },
@@ -27,10 +20,7 @@ use ::libc::c_void;
 use ::log::error;
 use ::std::{
     mem,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

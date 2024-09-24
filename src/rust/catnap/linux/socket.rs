@@ -6,28 +6,15 @@
 //======================================================================================================================
 
 use crate::{
-    catnap::transport::{
-        active_socket::ActiveSocketData,
-        passive_socket::PassiveSocketData,
-    },
+    catnap::transport::{active_socket::ActiveSocketData, passive_socket::PassiveSocketData},
     expect_some,
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        SharedObject,
-    },
+    runtime::{fail::Fail, memory::DemiBuffer, SharedObject},
 };
 use ::socket2::Socket;
 use ::std::{
     net::SocketAddr,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    os::fd::{
-        AsRawFd,
-        RawFd,
-    },
+    ops::{Deref, DerefMut},
+    os::fd::{AsRawFd, RawFd},
 };
 
 //======================================================================================================================

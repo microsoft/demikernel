@@ -8,13 +8,7 @@
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    net::{
-        Ipv4Addr,
-        Ipv6Addr,
-        SocketAddr,
-        SocketAddrV4,
-        SocketAddrV6,
-    },
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     rc::Rc,
     time::Duration,
@@ -23,74 +17,25 @@ use std::{
 use windows::{
     core::PSTR,
     Win32::{
-        Foundation::{
-            BOOL,
-            ERROR_NOT_FOUND,
-            FALSE,
-            HANDLE,
-            TRUE,
-        },
+        Foundation::{BOOL, ERROR_NOT_FOUND, FALSE, HANDLE, TRUE},
         Networking::WinSock::{
-            bind,
-            closesocket,
-            listen,
-            shutdown,
-            tcp_keepalive,
-            WSAGetLastError,
-            WSARecvFrom,
-            WSASendTo,
-            FROM_PROTOCOL_INFO,
-            INVALID_SOCKET,
-            IPPROTO_TCP,
-            LINGER,
-            SD_BOTH,
-            SIO_KEEPALIVE_VALS,
-            SOCKADDR,
-            SOCKADDR_IN,
-            SOCKADDR_IN6,
-            SOCKADDR_INET,
-            SOCKADDR_STORAGE,
-            SOCKET,
-            SOCKET_ERROR,
-            SOL_SOCKET,
-            SO_KEEPALIVE,
-            SO_LINGER,
-            SO_PROTOCOL_INFOW,
-            SO_UPDATE_ACCEPT_CONTEXT,
-            SO_UPDATE_CONNECT_CONTEXT,
-            TCP_NODELAY,
-            WSABUF,
-            WSAEINVAL,
-            WSAPROTOCOL_INFOW,
-            WSA_FLAG_OVERLAPPED,
+            bind, closesocket, listen, shutdown, tcp_keepalive, WSAGetLastError, WSARecvFrom, WSASendTo,
+            FROM_PROTOCOL_INFO, INVALID_SOCKET, IPPROTO_TCP, LINGER, SD_BOTH, SIO_KEEPALIVE_VALS, SOCKADDR,
+            SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_INET, SOCKADDR_STORAGE, SOCKET, SOCKET_ERROR, SOL_SOCKET, SO_KEEPALIVE,
+            SO_LINGER, SO_PROTOCOL_INFOW, SO_UPDATE_ACCEPT_CONTEXT, SO_UPDATE_CONNECT_CONTEXT, TCP_NODELAY, WSABUF,
+            WSAEINVAL, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED,
         },
-        System::IO::{
-            CancelIoEx,
-            OVERLAPPED,
-        },
+        System::IO::{CancelIoEx, OVERLAPPED},
     },
 };
 
 use crate::{
     catnap::transport::{
-        error::{
-            expect_last_wsa_error,
-            get_overlapped_api_result,
-        },
-        overlapped::{
-            IoCompletionPort,
-            OverlappedResult,
-        },
-        winsock::{
-            SocketExtensions,
-            WinsockRuntime,
-        },
+        error::{expect_last_wsa_error, get_overlapped_api_result},
+        overlapped::{IoCompletionPort, OverlappedResult},
+        winsock::{SocketExtensions, WinsockRuntime},
     },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        network::socket::option::TcpSocketOptions,
-    },
+    runtime::{fail::Fail, memory::DemiBuffer, network::socket::option::TcpSocketOptions},
 };
 
 //======================================================================================================================

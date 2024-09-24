@@ -9,43 +9,26 @@ use crate::{
         layer2::SharedLayer2Endpoint,
         layer3::arp::{
             cache::ArpCache,
-            header::{
-                ArpHeader,
-                ArpOperation,
-            },
+            header::{ArpHeader, ArpOperation},
         },
     },
     runtime::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::ArpConfig,
-            types::MacAddress,
-        },
-        SharedDemiRuntime,
-        SharedObject,
+        network::{config::ArpConfig, types::MacAddress},
+        SharedDemiRuntime, SharedObject,
     },
 };
 use ::futures::{
-    channel::oneshot::{
-        channel,
-        Receiver,
-        Sender,
-    },
+    channel::oneshot::{channel, Receiver, Sender},
     FutureExt,
 };
 use ::libc::ETIMEDOUT;
 use ::std::{
-    collections::{
-        HashMap,
-        LinkedList,
-    },
+    collections::{HashMap, LinkedList},
     net::Ipv4Addr,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

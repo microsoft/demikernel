@@ -7,25 +7,12 @@
 
 use crate::{
     catnap::transport::get_libc_err,
-    collections::{
-        async_queue::AsyncQueue,
-        async_value::SharedAsyncValue,
-    },
+    collections::{async_queue::AsyncQueue, async_value::SharedAsyncValue},
     expect_ok,
-    runtime::{
-        fail::Fail,
-        limits,
-        memory::DemiBuffer,
-        DemiRuntime,
-    },
+    runtime::{fail::Fail, limits, memory::DemiBuffer, DemiRuntime},
 };
 use ::socket2::Socket;
-use ::std::{
-    cmp::min,
-    io,
-    mem::MaybeUninit,
-    net::SocketAddr,
-};
+use ::std::{cmp::min, io, mem::MaybeUninit, net::SocketAddr};
 
 //======================================================================================================================
 // Structures

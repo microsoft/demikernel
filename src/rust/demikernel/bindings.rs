@@ -6,62 +6,28 @@
 //======================================================================================================================
 
 use crate::{
-    demikernel::libos::{
-        name::LibOSName,
-        LibOS,
-    },
+    demikernel::libos::{name::LibOSName, LibOS},
     pal::{
-        constants::{
-            AF_INET,
-            AF_INET6,
-            SOL_SOCKET,
-            SO_LINGER,
-        },
-        data_structures::{
-            self,
-            AddressFamily,
-            Linger,
-            SockAddrIn,
-            SockAddrIn6,
-            SockAddrStorage,
-            Socklen,
-        },
+        constants::{AF_INET, AF_INET6, SOL_SOCKET, SO_LINGER},
+        data_structures::{self, AddressFamily, Linger, SockAddrIn, SockAddrIn6, SockAddrStorage, Socklen},
         functions::socketaddrv4_to_sockaddr,
     },
     runtime::{
         fail::Fail,
         logging,
-        types::{
-            demi_args_t,
-            demi_callback_t,
-            demi_qresult_t,
-            demi_qtoken_t,
-            demi_sgarray_t,
-            demi_sgaseg_t,
-        },
+        types::{demi_args_t, demi_callback_t, demi_qresult_t, demi_qtoken_t, demi_sgarray_t, demi_sgaseg_t},
         QToken,
     },
     SocketOption,
 };
-use ::libc::{
-    c_int,
-    c_void,
-    sockaddr,
-};
+use ::libc::{c_int, c_void, sockaddr};
 use ::socket2::SockAddr;
 use ::std::{
     cell::RefCell,
     ffi::CStr,
-    mem::{
-        self,
-        MaybeUninit,
-    },
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ptr,
-    slice,
+    mem::{self, MaybeUninit},
+    net::{SocketAddr, SocketAddrV4},
+    ptr, slice,
     time::Duration,
 };
 
@@ -960,49 +926,18 @@ fn sockaddr_to_socketaddr(saddr: *const sockaddr, size: Socklen) -> Result<Socke
 
 #[cfg(test)]
 mod test {
-    use ::std::net::{
-        Ipv4Addr,
-        Ipv6Addr,
-        SocketAddrV4,
-        SocketAddrV6,
-    };
-    use std::{
-        mem,
-        net::SocketAddr,
-        os::raw::c_void,
-        ptr,
-    };
+    use ::std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+    use std::{mem, net::SocketAddr, os::raw::c_void, ptr};
 
     use libc::c_int;
-    use socket2::{
-        Domain,
-        Protocol,
-        SockAddr,
-        Type,
-    };
+    use socket2::{Domain, Protocol, SockAddr, Type};
 
     use crate::{
-        demikernel::bindings::{
-            demi_getsockopt,
-            demi_init,
-            demi_setsockopt,
-            demi_socket,
-            sockaddr_to_socketaddr,
-        },
-        ensure_eq,
-        ensure_neq,
+        demikernel::bindings::{demi_getsockopt, demi_init, demi_setsockopt, demi_socket, sockaddr_to_socketaddr},
+        ensure_eq, ensure_neq,
         pal::{
-            constants::{
-                AF_INET,
-                SOL_SOCKET,
-                SO_LINGER,
-            },
-            data_structures::{
-                AddressFamily,
-                Linger,
-                SockAddrStorage,
-                Socklen,
-            },
+            constants::{AF_INET, SOL_SOCKET, SO_LINGER},
+            data_structures::{AddressFamily, Linger, SockAddrStorage, Socklen},
         },
     };
 

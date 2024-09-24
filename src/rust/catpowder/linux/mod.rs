@@ -8,42 +8,24 @@ mod rawsocket;
 //======================================================================================================================
 
 use crate::{
-    catpowder::linux::rawsocket::{
-        RawSocket,
-        RawSocketAddr,
-    },
-    demi_sgarray_t,
-    demi_sgaseg_t,
+    catpowder::linux::rawsocket::{RawSocket, RawSocketAddr},
+    demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
     expect_ok,
-    inetstack::protocols::{
-        layer1::PhysicalLayer,
-        layer2::Ethernet2Header,
-        MAX_HEADER_SIZE,
-    },
+    inetstack::protocols::{layer1::PhysicalLayer, layer2::Ethernet2Header, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
         limits,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            types::MacAddress,
-        },
-        Runtime,
-        SharedObject,
+        memory::{DemiBuffer, MemoryRuntime},
+        network::{consts::RECEIVE_BATCH_SIZE, types::MacAddress},
+        Runtime, SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::std::{
     fs,
-    mem::{
-        self,
-        MaybeUninit,
-    },
+    mem::{self, MaybeUninit},
     net::Ipv4Addr,
     num::ParseIntError,
 };

@@ -3,50 +3,21 @@
 
 use crate::{
     demi_sgarray_t,
-    demikernel::{
-        config::Config,
-        libos::network::libos::SharedNetworkLibOS,
-    },
-    inetstack::{
-        test_helpers::SharedTestPhysicalLayer,
-        SharedInetStack,
-    },
+    demikernel::{config::Config, libos::network::libos::SharedNetworkLibOS},
+    inetstack::{test_helpers::SharedTestPhysicalLayer, SharedInetStack},
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::types::MacAddress,
-        OperationResult,
-        QDesc,
-        QToken,
-        SharedDemiRuntime,
-        SharedObject,
+        OperationResult, QDesc, QToken, SharedDemiRuntime, SharedObject,
     },
 };
-use ::socket2::{
-    Domain,
-    Protocol,
-    Type,
-};
+use ::socket2::{Domain, Protocol, Type};
 use ::std::{
-    collections::{
-        HashMap,
-        VecDeque,
-    },
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    collections::{HashMap, VecDeque},
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::{Deref, DerefMut},
+    time::{Duration, Instant},
 };
 
 /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily.

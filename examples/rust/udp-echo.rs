@@ -8,32 +8,14 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    LibOSName,
-    QDesc,
-    QToken,
-};
+use ::clap::{Arg, ArgMatches, Command};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, LibOSName, QDesc, QToken};
 #[cfg(target_os = "linux")]
 use ::std::mem;
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     str::FromStr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::Networking::WinSock::SOCKADDR;

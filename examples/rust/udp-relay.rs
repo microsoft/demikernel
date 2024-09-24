@@ -8,26 +8,12 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    LibOSName,
-    QDesc,
-    QToken,
-};
+use ::clap::{Arg, ArgMatches, Command};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, LibOSName, QDesc, QToken};
 use ::std::{
     net::SocketAddr,
     str::FromStr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 #[cfg(target_os = "windows")]
@@ -140,7 +126,11 @@ impl Application {
         println!("Local Address:  {:?}", local_socket_addr);
         println!("Remote Address: {:?}", remote_socket_addr);
 
-        Ok(Self { libos, sockqd, remote_socket_addr })
+        Ok(Self {
+            libos,
+            sockqd,
+            remote_socket_addr,
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {

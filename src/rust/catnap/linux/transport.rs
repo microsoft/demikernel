@@ -14,56 +14,28 @@ mod socket;
 //======================================================================================================================
 
 use crate::{
-    catnap::transport::socket::{
-        SharedSocketData,
-        SocketData,
-    },
+    catnap::transport::socket::{SharedSocketData, SocketData},
     demikernel::config::Config,
-    expect_ok,
-    expect_some,
+    expect_ok, expect_some,
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::{
-            socket::option::{
-                SocketOption,
-                TcpSocketOptions,
-            },
+            socket::option::{SocketOption, TcpSocketOptions},
             transport::NetworkTransport,
         },
-        poll_yield,
-        DemiRuntime,
-        SharedDemiRuntime,
-        SharedObject,
+        poll_yield, DemiRuntime, SharedDemiRuntime, SharedObject,
     },
     timer,
 };
 use ::futures::FutureExt;
 use ::slab::Slab;
-use ::socket2::{
-    Domain,
-    Protocol,
-    Socket,
-    Type,
-};
+use ::socket2::{Domain, Protocol, Socket, Type};
 use ::std::{
     io,
-    net::{
-        Shutdown,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    os::fd::{
-        AsRawFd,
-        RawFd,
-    },
+    net::{Shutdown, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
+    os::fd::{AsRawFd, RawFd},
 };
 
 //======================================================================================================================

@@ -7,31 +7,19 @@
 // immediately closes the connection. The server then waits for the client to close the connection. The server will
 // close the local socket after all connections have been closed.
 
-
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use crate::{
-    helper_functions,
-    TIMEOUT_SECONDS,
-};
+use crate::{helper_functions, TIMEOUT_SECONDS};
 use anyhow::Result;
 use demikernel::{
     demi_sgarray_t,
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
-    },
-    LibOS,
-    QDesc,
-    QToken,
+    runtime::types::{demi_opcode_t, demi_qresult_t},
+    LibOS, QDesc, QToken,
 };
 use std::{
-    collections::{
-        HashMap,
-        HashSet,
-    },
+    collections::{HashMap, HashSet},
     net::SocketAddr,
 };
 
@@ -112,7 +100,8 @@ impl TcpServer {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.pending_qtokens, Some(TIMEOUT_SECONDS))?;
+                let (index, qr): (usize, demi_qresult_t) =
+                    self.libos.wait_any(&self.pending_qtokens, Some(TIMEOUT_SECONDS))?;
                 self.mark_completed_operation(index)?;
                 qr
             };
@@ -190,7 +179,8 @@ impl TcpServer {
             }
 
             let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.pending_qtokens, Some(TIMEOUT_SECONDS))?;
+                let (index, qr): (usize, demi_qresult_t) =
+                    self.libos.wait_any(&self.pending_qtokens, Some(TIMEOUT_SECONDS))?;
                 self.mark_completed_operation(index)?;
                 qr
             };
@@ -234,7 +224,10 @@ impl TcpServer {
 
     fn cancel_pending_operations(&mut self, qd: QDesc) -> Vec<QToken> {
         let qts_drained: HashMap<QToken, QDesc> = self.qtokens_to_qdesc_map.extract_if(|_k, v| *v == qd).collect();
-        let qts_dropped: Vec<QToken> = self.pending_qtokens.extract_if(|x| qts_drained.contains_key(x)).collect();
+        let qts_dropped: Vec<QToken> = self
+            .pending_qtokens
+            .extract_if(|x| qts_drained.contains_key(x))
+            .collect();
         qts_dropped
     }
 

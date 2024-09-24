@@ -10,24 +10,11 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
+use clap::{Arg, ArgMatches, Command};
 use client::TcpEchoClient;
-use demikernel::{
-    LibOS,
-    LibOSName,
-};
+use demikernel::{LibOS, LibOSName};
 use server::TcpEchoServer;
-use std::{
-    net::SocketAddr,
-    str::FromStr,
-    thread,
-    thread::JoinHandle,
-    time::Duration,
-};
+use std::{net::SocketAddr, str::FromStr, thread, thread::JoinHandle, time::Duration};
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;

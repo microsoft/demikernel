@@ -10,10 +10,7 @@ mod waker_ref;
 //======================================================================================================================
 
 pub use self::{
-    page::{
-        WakerPage,
-        WAKER_PAGE_SIZE,
-    },
+    page::{WakerPage, WAKER_PAGE_SIZE},
     page_ref::WakerPageRef,
     waker_ref::WakerRef,
 };

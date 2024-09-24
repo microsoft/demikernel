@@ -8,17 +8,11 @@ mod tests;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    collections::hashttlcache::HashTtlCache,
-    runtime::network::types::MacAddress,
-};
+use crate::{collections::hashttlcache::HashTtlCache, runtime::network::types::MacAddress};
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================

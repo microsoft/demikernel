@@ -7,12 +7,8 @@
 
 use crate::runtime::{
     fail::Fail,
-    types::{
-        demi_qresult_t,
-        demi_sgarray_t,
-    },
-    QDesc,
-    QToken,
+    types::{demi_qresult_t, demi_sgarray_t},
+    QDesc, QToken,
 };
 use ::std::time::Duration;
 

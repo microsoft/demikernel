@@ -22,10 +22,7 @@ mod wait;
 
 use self::args::ProgramArguments;
 use anyhow::Result;
-use demikernel::{
-    LibOS,
-    LibOSName,
-};
+use demikernel::{LibOS, LibOSName};
 
 //======================================================================================================================
 // Standalone Functions

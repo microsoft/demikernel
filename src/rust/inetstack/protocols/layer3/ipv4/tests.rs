@@ -7,14 +7,8 @@
 
 use crate::{
     inetstack::{
-        protocols::layer3::{
-            ip::IpProtocol,
-            ipv4::Ipv4Header,
-        },
-        test_helpers::{
-            ALICE_IPV4,
-            BOB_IPV4,
-        },
+        protocols::layer3::{ip::IpProtocol, ipv4::Ipv4Header},
+        test_helpers::{ALICE_IPV4, BOB_IPV4},
     },
     runtime::memory::DemiBuffer,
 };

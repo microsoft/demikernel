@@ -6,21 +6,9 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    QDesc,
-    QToken,
-};
-use ::log::{
-    error,
-    warn,
-};
-use ::std::{
-    slice,
-    time::Duration,
-};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
+use ::log::{error, warn};
+use ::std::{slice, time::Duration};
 
 //======================================================================================================================
 // Structures

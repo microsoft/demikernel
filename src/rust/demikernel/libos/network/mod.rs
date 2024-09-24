@@ -18,19 +18,12 @@ use crate::{
     runtime::{
         fail::Fail,
         network::socket::option::SocketOption,
-        types::{
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
-        QDesc,
-        QToken,
+        types::{demi_qresult_t, demi_sgarray_t},
+        QDesc, QToken,
     },
 };
 use ::std::{
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
     time::Duration,
 };
 

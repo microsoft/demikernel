@@ -10,30 +10,16 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    scheduler::TaskWithResult,
-};
+use crate::runtime::{fail::Fail, scheduler::TaskWithResult};
 use ::futures::future::FusedFuture;
-use ::slab::{
-    Iter,
-    Slab,
-};
-use ::std::{
-    any::Any,
-    net::SocketAddrV4,
-};
+use ::slab::{Iter, Slab};
+use ::std::{any::Any, net::SocketAddrV4};
 
 //======================================================================================================================
 // Exports
 //======================================================================================================================
 
-pub use self::{
-    operation_result::OperationResult,
-    qdesc::QDesc,
-    qtoken::QToken,
-    qtype::QType,
-};
+pub use self::{operation_result::OperationResult, qdesc::QDesc, qtoken::QToken, qtype::QType};
 
 // Coroutine for running an operation on an I/O Queue.
 pub type Operation = dyn FusedFuture<Output = (QDesc, OperationResult)>;
@@ -258,18 +244,11 @@ impl Default for IoQueueTable {
 mod tests {
     use crate::{
         expect_ok,
-        runtime::{
-            IoQueue,
-            IoQueueTable,
-        },
-        QDesc,
-        QType,
+        runtime::{IoQueue, IoQueueTable},
+        QDesc, QType,
     };
     use ::std::any::Any;
-    use ::test::{
-        black_box,
-        Bencher,
-    };
+    use ::test::{black_box, Bencher};
     pub struct TestQueue {}
 
     impl IoQueue for TestQueue {

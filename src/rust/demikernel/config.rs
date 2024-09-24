@@ -5,26 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    pal::data_structures::KeepAlive,
-    runtime::fail::Fail,
-    MacAddress,
-};
+use crate::{pal::data_structures::KeepAlive, runtime::fail::Fail, MacAddress};
 #[cfg(any(feature = "catnip-libos"))]
 use ::std::ffi::CString;
-use ::std::{
-    collections::HashMap,
-    fs::File,
-    io::Read,
-    net::Ipv4Addr,
-    ops::Index,
-    str::FromStr,
-    time::Duration,
-};
-use ::yaml_rust::{
-    Yaml,
-    YamlLoader,
-};
+use ::std::{collections::HashMap, fs::File, io::Read, net::Ipv4Addr, ops::Index, str::FromStr, time::Duration};
+use ::yaml_rust::{Yaml, YamlLoader};
 #[cfg(any(feature = "catnip-libos"))]
 use yaml_rust::yaml::Array;
 

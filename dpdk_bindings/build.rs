@@ -2,15 +2,9 @@
 // Licensed under the MIT license.
 
 use anyhow::Result;
-use bindgen::{
-    Bindings,
-    Builder,
-};
+use bindgen::{Bindings, Builder};
 use cc::Build;
-use std::{
-    env,
-    path::Path,
-};
+use std::{env, path::Path};
 
 #[cfg(target_os = "windows")]
 fn os_build() -> Result<()> {

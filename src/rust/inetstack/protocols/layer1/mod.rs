@@ -14,10 +14,7 @@ use arrayvec::ArrayVec;
 
 use crate::runtime::{
     fail::Fail,
-    memory::{
-        DemiBuffer,
-        MemoryRuntime,
-    },
+    memory::{DemiBuffer, MemoryRuntime},
     network::consts::RECEIVE_BATCH_SIZE,
 };
 

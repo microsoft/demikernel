@@ -7,28 +7,15 @@
 //======================================================================================================================
 // Imports
 //======================================================================================================================
-use crate::{
-    expect_some,
-    runtime::SharedObject,
-};
+use crate::{expect_some, runtime::SharedObject};
 use ::core::cmp::Reverse;
 use ::std::{
     collections::BinaryHeap,
     future::Future,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     pin::Pin,
-    task::{
-        Context,
-        Poll,
-        Waker,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    task::{Context, Poll, Waker},
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================
@@ -260,20 +247,14 @@ impl Drop for YieldPoint {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::timer::{
-        global_advance_clock,
-        wait,
-    };
+    use crate::runtime::timer::{global_advance_clock, wait};
     use ::anyhow::Result;
     use futures::task::noop_waker_ref;
     use std::{
         future::Future,
         pin::Pin,
         task::Context,
-        time::{
-            Duration,
-            Instant,
-        },
+        time::{Duration, Instant},
     };
 
     #[test]

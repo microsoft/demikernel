@@ -15,52 +15,24 @@ mod test {
     // Imports
     //==========================================================================
 
-    use crate::common::{
-        libos::*,
-        ALICE_CONFIG_PATH,
-        ALICE_IP,
-        BOB_CONFIG_PATH,
-        BOB_IP,
-        PORT_BASE,
-    };
+    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_BASE};
     use ::anyhow::Result;
     use ::demikernel::runtime::{
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        OperationResult,
-        QDesc,
-        QToken,
+        memory::{DemiBuffer, MemoryRuntime},
+        OperationResult, QDesc, QToken,
     };
-    use crossbeam_channel::{
-        Receiver,
-        Sender,
-    };
+    use crossbeam_channel::{Receiver, Sender};
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
     const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(100);
 
-    use ::socket2::{
-        Domain,
-        Protocol,
-        Type,
-    };
+    use ::socket2::{Domain, Protocol, Type};
     use std::{
         net::SocketAddr,
-        sync::{
-            Arc,
-            Barrier,
-        },
-        thread::{
-            self,
-            JoinHandle,
-        },
-        time::{
-            Duration,
-            Instant,
-        },
+        sync::{Arc, Barrier},
+        thread::{self, JoinHandle},
+        time::{Duration, Instant},
     };
 
     //==============================================================================

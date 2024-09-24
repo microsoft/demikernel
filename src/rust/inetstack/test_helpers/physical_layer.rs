@@ -6,22 +6,14 @@
 //======================================================================================================================
 
 use crate::{
-    demi_sgarray_t,
-    demi_sgaseg_t,
-    inetstack::protocols::{
-        layer1::PhysicalLayer,
-        MAX_HEADER_SIZE,
-    },
+    demi_sgarray_t, demi_sgaseg_t,
+    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
         logging,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::consts::RECEIVE_BATCH_SIZE,
-        SharedDemiRuntime,
-        SharedObject,
+        SharedDemiRuntime, SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
@@ -29,10 +21,7 @@ use ::libc::c_void;
 use ::std::{
     collections::VecDeque,
     mem,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     time::Instant,
 };
 

@@ -9,12 +9,7 @@ use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
-        layer4::tcp::{
-            header::TcpHeader,
-            isn_generator::IsnGenerator,
-            socket::SharedTcpSocket,
-            SeqNumber,
-        },
+        layer4::tcp::{header::TcpHeader, isn_generator::IsnGenerator, socket::SharedTcpSocket, SeqNumber},
     },
     runtime::{
         fail::Fail,
@@ -22,36 +17,20 @@ use crate::{
         network::{
             config::TcpConfig,
             socket::{
-                option::{
-                    SocketOption,
-                    TcpSocketOptions,
-                },
+                option::{SocketOption, TcpSocketOptions},
                 SocketId,
             },
         },
-        QDesc,
-        SharedDemiRuntime,
-        SharedObject,
+        QDesc, SharedDemiRuntime, SharedObject,
     },
 };
 use ::futures::channel::mpsc;
-use ::rand::{
-    prelude::SmallRng,
-    Rng,
-    SeedableRng,
-};
+use ::rand::{prelude::SmallRng, Rng, SeedableRng};
 
 use ::std::{
     collections::HashMap,
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

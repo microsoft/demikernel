@@ -7,16 +7,9 @@
 
 use crate::{
     inetstack::protocols::layer2::ETHERNET2_HEADER_SIZE,
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-        network::types::MacAddress,
-    },
+    runtime::{fail::Fail, memory::DemiBuffer, network::types::MacAddress},
 };
-use ::libc::{
-    EBADMSG,
-    ENOTSUP,
-};
+use ::libc::{EBADMSG, ENOTSUP};
 use ::std::net::Ipv4Addr;
 
 //======================================================================================================================

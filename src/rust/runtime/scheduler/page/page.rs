@@ -5,10 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::scheduler::waker64::{
-    Waker64,
-    WAKER_BIT_LENGTH,
-};
+use crate::runtime::scheduler::waker64::{Waker64, WAKER_BIT_LENGTH};
 
 //======================================================================================================================
 // Constants
@@ -117,18 +114,11 @@ impl Default for WakerPage {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::scheduler::page::page::{
-        WakerPage,
-        WAKER_BIT_LENGTH,
-        WAKER_PAGE_SIZE,
-    };
+    use crate::runtime::scheduler::page::page::{WakerPage, WAKER_BIT_LENGTH, WAKER_PAGE_SIZE};
     use ::anyhow::Result;
     use ::rand::Rng;
     use ::std::mem;
-    use ::test::{
-        black_box,
-        Bencher,
-    };
+    use ::test::{black_box, Bencher};
 
     #[test]
     fn test_sizes() -> Result<()> {

@@ -6,16 +6,10 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        concurrent_ring::ConcurrentRingBuffer,
-        shared_ring::SharedRingBuffer,
-    },
+    collections::{concurrent_ring::ConcurrentRingBuffer, shared_ring::SharedRingBuffer},
     runtime::{
         fail::Fail,
-        network::ring::{
-            operation::RingControlOperation,
-            state::RingStateMachine,
-        },
+        network::ring::{operation::RingControlOperation, state::RingStateMachine},
     },
 };
 use ::std::ptr::copy;

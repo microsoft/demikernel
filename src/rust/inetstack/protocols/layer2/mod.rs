@@ -7,11 +7,7 @@
 
 pub mod ethernet2;
 pub use self::ethernet2::{
-    header::{
-        Ethernet2Header,
-        ETHERNET2_HEADER_SIZE,
-        MIN_PAYLOAD_SIZE,
-    },
+    header::{Ethernet2Header, ETHERNET2_HEADER_SIZE, MIN_PAYLOAD_SIZE},
     protocol::EtherType2,
 };
 
@@ -25,22 +21,13 @@ use crate::{
     inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            types::MacAddress,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
+        network::{consts::RECEIVE_BATCH_SIZE, types::MacAddress},
         SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
-use ::std::ops::{
-    Deref,
-    DerefMut,
-};
+use ::std::ops::{Deref, DerefMut};
 
 //======================================================================================================================
 // Structures

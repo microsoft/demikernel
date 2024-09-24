@@ -35,12 +35,7 @@
 // Imports
 //======================================================================================================================
 
-use ::std::{
-    mem,
-    pin::Pin,
-    ptr,
-    ptr::NonNull,
-};
+use ::std::{mem, pin::Pin, ptr, ptr::NonNull};
 
 //======================================================================================================================
 // Constants
@@ -321,17 +316,10 @@ fn slot_sizes() -> impl Iterator<Item = usize> {
 mod tests {
     use crate::collections::{
         pin_slab,
-        pin_slab::{
-            calculate_key,
-            PinSlab,
-            FIRST_SLOT_SIZE,
-        },
+        pin_slab::{calculate_key, PinSlab, FIRST_SLOT_SIZE},
     };
     use ::anyhow::Result;
-    use ::std::{
-        mem,
-        pin::Pin,
-    };
+    use ::std::{mem, pin::Pin};
 
     #[test]
     fn slot_sizes() -> Result<()> {

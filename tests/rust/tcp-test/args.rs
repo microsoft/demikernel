@@ -6,16 +6,9 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
+use clap::{Arg, ArgMatches, Command};
 use std::{
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
     str::FromStr,
 };
 

@@ -8,7 +8,4 @@ mod portnum;
 // Exports
 //======================================================================================================================
 
-pub use self::{
-    macaddr::MacAddress,
-    portnum::Port16,
-};
+pub use self::{macaddr::MacAddress, portnum::Port16};

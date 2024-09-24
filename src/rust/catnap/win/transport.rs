@@ -11,56 +11,31 @@ mod winsock;
 //======================================================================================================================
 
 use std::{
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
     pin::Pin,
 };
 
 use windows::Win32::{
-    Networking::WinSock::{
-        WSAGetLastError,
-        IPPROTO,
-        IPPROTO_TCP,
-        IPPROTO_UDP,
-    },
+    Networking::WinSock::{WSAGetLastError, IPPROTO, IPPROTO_TCP, IPPROTO_UDP},
     System::IO::OVERLAPPED,
 };
 
 use crate::{
     catnap::transport::{
-        overlapped::{
-            IoCompletionPort,
-            OverlappedResult,
-        },
-        socket::{
-            AcceptState,
-            PopState,
-            Socket,
-            SocketOpState,
-        },
+        overlapped::{IoCompletionPort, OverlappedResult},
+        socket::{AcceptState, PopState, Socket, SocketOpState},
         winsock::WinsockRuntime,
     },
     demikernel::config::Config,
     expect_ok,
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::{
-            socket::option::{
-                SocketOption,
-                TcpSocketOptions,
-            },
+            socket::option::{SocketOption, TcpSocketOptions},
             transport::NetworkTransport,
         },
-        poll_yield,
-        DemiRuntime,
-        SharedDemiRuntime,
-        SharedObject,
+        poll_yield, DemiRuntime, SharedDemiRuntime, SharedObject,
     },
 };
 use ::futures::FutureExt;

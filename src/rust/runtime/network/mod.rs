@@ -18,18 +18,12 @@ pub mod types;
 //======================================================================================================================
 
 use crate::{
-    runtime::{
-        network::socket::SocketId,
-        Fail,
-    },
+    runtime::{network::socket::SocketId, Fail},
     QDesc,
 };
 use ::std::{
     collections::HashMap,
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
 };
 
 //======================================================================================================================

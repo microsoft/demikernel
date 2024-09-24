@@ -7,16 +7,8 @@
 
 use crate::check_for_network_error;
 use anyhow::Result;
-use demikernel::{
-    runtime::types::demi_opcode_t,
-    LibOS,
-    QDesc,
-    QToken,
-};
-use std::{
-    net::SocketAddr,
-    time::Duration,
-};
+use demikernel::{runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
+use std::{net::SocketAddr, time::Duration};
 
 //======================================================================================================================
 // Constants

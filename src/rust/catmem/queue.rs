@@ -6,29 +6,15 @@
 //======================================================================================================================
 
 use crate::{
-    catmem::ring::{
-        Ring,
-        MAX_RETRIES_PUSH_EOF,
-    },
+    catmem::ring::{Ring, MAX_RETRIES_PUSH_EOF},
     expect_ok,
     runtime::{
-        fail::Fail,
-        limits,
-        memory::DemiBuffer,
-        poll_yield,
-        queue::IoQueue,
-        DemiRuntime,
-        QToken,
-        QType,
-        SharedObject,
+        fail::Fail, limits, memory::DemiBuffer, poll_yield, queue::IoQueue, DemiRuntime, QToken, QType, SharedObject,
     },
 };
 use ::std::{
     any::Any,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

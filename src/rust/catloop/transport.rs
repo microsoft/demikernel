@@ -8,33 +8,15 @@ use crate::{
     demikernel::config::Config,
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            socket::option::SocketOption,
-            transport::NetworkTransport,
-            unwrap_socketaddr,
-        },
-        SharedDemiRuntime,
-        SharedObject,
+        memory::{DemiBuffer, MemoryRuntime},
+        network::{socket::option::SocketOption, transport::NetworkTransport, unwrap_socketaddr},
+        SharedDemiRuntime, SharedObject,
     },
 };
-use ::socket2::{
-    Domain,
-    Type,
-};
+use ::socket2::{Domain, Type};
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================
@@ -102,10 +84,7 @@ impl NetworkTransport for SharedCatloopTransport {
     }
 
     /// Gets the address of the peer connected to this socket.
-    fn getpeername(
-        &mut self,
-        sd: &mut Self::SocketDescriptor
-    ) -> Result<SocketAddrV4, Fail> {
+    fn getpeername(&mut self, sd: &mut Self::SocketDescriptor) -> Result<SocketAddrV4, Fail> {
         sd.getpeername()
     }
 

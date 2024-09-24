@@ -12,44 +12,25 @@ pub mod ipv4;
 
 use arrayvec::ArrayVec;
 
-pub use self::{
-    arp::SharedArpPeer,
-    icmpv4::SharedIcmpv4Peer,
-    ip::IpProtocol,
-    ipv4::Ipv4Header,
-};
+pub use self::{arp::SharedArpPeer, icmpv4::SharedIcmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header};
 
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::layer2::{
-        EtherType2,
-        SharedLayer2Endpoint,
-    },
+    inetstack::protocols::layer2::{EtherType2, SharedLayer2Endpoint},
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::consts::RECEIVE_BATCH_SIZE,
-        SharedDemiRuntime,
-        SharedObject,
+        SharedDemiRuntime, SharedObject,
     },
     MacAddress,
 };
 #[cfg(test)]
-use ::std::{
-    collections::HashMap,
-    hash::RandomState,
-    time::Duration,
-};
+use ::std::{collections::HashMap, hash::RandomState, time::Duration};
 use ::std::{
     net::Ipv4Addr,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

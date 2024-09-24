@@ -17,16 +17,9 @@ mod server;
 // Imports
 //======================================================================================================================
 
-use crate::{
-    args::ProgramArguments,
-    client::TcpClient,
-    server::TcpServer,
-};
+use crate::{args::ProgramArguments, client::TcpClient, server::TcpServer};
 use ::anyhow::Result;
-use ::demikernel::{
-    LibOS,
-    LibOSName,
-};
+use ::demikernel::{LibOS, LibOSName};
 use ::std::time::Duration;
 
 //======================================================================================================================

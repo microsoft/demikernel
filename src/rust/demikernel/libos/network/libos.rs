@@ -7,60 +7,29 @@
 
 use crate::{
     demikernel::libos::network::queue::SharedNetworkQueue,
-    expect_ok,
-    expect_some,
-    pal::{
-        constants::SOMAXCONN,
-        data_structures::SockAddr,
-    },
+    expect_ok, expect_some,
+    pal::{constants::SOMAXCONN, data_structures::SockAddr},
     runtime::{
         fail::Fail,
         limits,
         memory::DemiBuffer,
         network::{
-            socket::{
-                option::SocketOption,
-                SocketId,
-            },
+            socket::{option::SocketOption, SocketId},
             transport::NetworkTransport,
             unwrap_socketaddr,
         },
-        queue::{
-            downcast_queue,
-            IoQueue,
-            OperationResult,
-        },
-        types::{
-            demi_accept_result_t,
-            demi_opcode_t,
-            demi_qr_value_t,
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
-        QDesc,
-        QToken,
-        SharedDemiRuntime,
-        SharedObject,
+        queue::{downcast_queue, IoQueue, OperationResult},
+        types::{demi_accept_result_t, demi_opcode_t, demi_qr_value_t, demi_qresult_t, demi_sgarray_t},
+        QDesc, QToken, SharedDemiRuntime, SharedObject,
     },
     QType,
 };
 use ::futures::FutureExt;
-use ::socket2::{
-    Domain,
-    Protocol,
-    Type,
-};
+use ::socket2::{Domain, Protocol, Type};
 use ::std::{
     mem,
-    net::{
-        Ipv4Addr,
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

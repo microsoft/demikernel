@@ -7,10 +7,7 @@
 
 use crate::{
     collections::async_value::SharedAsyncValue,
-    runtime::{
-        fail::Fail,
-        network::socket::operation::SocketOp,
-    },
+    runtime::{fail::Fail, network::socket::operation::SocketOp},
 };
 use ::socket2::Type;
 use ::std::time::Duration;

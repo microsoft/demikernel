@@ -6,15 +6,9 @@
 //======================================================================================================================
 
 use std::{
-    collections::{
-        hash_map::Entry as HashMapEntry,
-        HashMap,
-    },
+    collections::{hash_map::Entry as HashMapEntry, HashMap},
     hash::Hash,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================
@@ -185,10 +179,7 @@ where
 mod test {
     use crate::collections::hashttlcache::HashTtlCache;
     use ::anyhow::Result;
-    use ::std::time::{
-        Duration,
-        Instant,
-    };
+    use ::std::time::{Duration, Instant};
 
     /// Tests that objects with an explicit TTL get evicted at the right time.
     #[test]

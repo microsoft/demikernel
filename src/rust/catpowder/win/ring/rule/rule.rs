@@ -6,10 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    catpowder::win::{
-        ring::rule::params::XdpRedirectParams,
-        socket::XdpSocket,
-    },
+    catpowder::win::{ring::rule::params::XdpRedirectParams, socket::XdpSocket},
     runtime::libxdp,
 };
 use ::std::mem;

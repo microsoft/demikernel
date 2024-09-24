@@ -3,8 +3,7 @@
 
 use crate::{
     collections::async_value::SharedAsyncValue,
-    inetstack::protocols::layer4::tcp::established::background::SharedControlBlock,
-    runtime::fail::Fail,
+    inetstack::protocols::layer4::tcp::established::background::SharedControlBlock, runtime::fail::Fail,
 };
 use ::futures::never::Never;
 use ::std::time::Instant;

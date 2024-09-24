@@ -3,11 +3,7 @@
 
 use crate::inetstack::protocols::layer4::tcp::SeqNumber;
 #[allow(unused_imports)]
-use std::{
-    hash::Hasher,
-    net::SocketAddrV4,
-    num::Wrapping,
-};
+use std::{hash::Hasher, net::SocketAddrV4, num::Wrapping};
 
 #[allow(dead_code)]
 pub struct IsnGenerator {

@@ -8,38 +8,23 @@
 use crate::{
     catpowder::win::{
         api::XdpApi,
-        ring::{
-            RxRing,
-            TxRing,
-            XdpBuffer,
-        },
+        ring::{RxRing, TxRing, XdpBuffer},
     },
-    demi_sgarray_t,
-    demi_sgaseg_t,
+    demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::{
-        layer1::PhysicalLayer,
-        MAX_HEADER_SIZE,
-    },
+    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
         libxdp,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         network::consts::RECEIVE_BATCH_SIZE,
-        Runtime,
-        SharedObject,
+        Runtime, SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::std::{
-    borrow::{
-        Borrow,
-        BorrowMut,
-    },
+    borrow::{Borrow, BorrowMut},
     mem,
 };
 

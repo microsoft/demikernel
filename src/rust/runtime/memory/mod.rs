@@ -11,28 +11,19 @@ mod memory_pool;
 
 use crate::runtime::{
     fail::Fail,
-    types::{
-        demi_sgarray_t,
-        demi_sgaseg_t,
-    },
+    types::{demi_sgarray_t, demi_sgaseg_t},
 };
 use ::libc::c_void;
 use ::std::{
     mem,
-    ptr::{
-        self,
-        NonNull,
-    },
+    ptr::{self, NonNull},
 };
 
 //======================================================================================================================
 // Exports
 //======================================================================================================================
 
-pub use self::{
-    buffer_pool::*,
-    demibuffer::*,
-};
+pub use self::{buffer_pool::*, demibuffer::*};
 
 //======================================================================================================================
 // Traits
