@@ -21,6 +21,8 @@ use crate::runtime::{
     network::consts::RECEIVE_BATCH_SIZE,
 };
 
+use crate::autokernel::parameters::{MAX_RECEIVE_BATCH_SIZE};
+
 //======================================================================================================================
 // Traits
 //======================================================================================================================
@@ -32,5 +34,5 @@ pub trait PhysicalLayer: 'static + MemoryRuntime {
     fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail>;
 
     /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_RECEIVE_BATCH_SIZE>, Fail>;
 }

@@ -87,6 +87,8 @@ use ::std::{
 };
 use std::pin::Pin;
 
+use crate::autokernel::parameters::AK_PARMS;
+
 //======================================================================================================================
 // Constants
 //======================================================================================================================
@@ -219,7 +221,7 @@ impl SharedDemiRuntime {
         self.advance_clock_to_now();
 
         loop {
-            if let Some(boxed_task) = self.scheduler.get_next_completed_task(TIMER_RESOLUTION) {
+            if let Some(boxed_task) = self.scheduler.get_next_completed_task(AK_PARMS.timer_resolution) {
                 // Perform bookkeeping for the completed and removed task.
                 trace!("Removing coroutine: {:?}", boxed_task.get_name());
                 let completed_qt: QToken = boxed_task.get_id().into();
@@ -362,8 +364,8 @@ impl SharedDemiRuntime {
     /// the clock.
     fn run_next(&mut self, timeout: Duration) -> Option<(QToken, QDesc, OperationResult)> {
         let iterations: usize = match timeout {
-            timeout if timeout.as_secs() > 0 => TIMER_RESOLUTION,
-            _ => TIMER_FINER_RESOLUTION,
+            timeout if timeout.as_secs() > 0 => AK_PARMS.timer_resolution,
+            _ => AK_PARMS.timer_finer_resolution,
         };
         if let Some(boxed_task) = self.scheduler.get_next_completed_task(iterations) {
             // Perform bookkeeping for the completed and removed task.
@@ -489,7 +491,7 @@ impl SharedDemiRuntime {
         if self.ts_iters == 0 {
             self.advance_clock(Instant::now());
         }
-        self.ts_iters = (self.ts_iters + 1) % TIMER_RESOLUTION;
+        self.ts_iters = (self.ts_iters + 1) % AK_PARMS.timer_resolution;
     }
 
     /// Gets the current time according to our internal timer.

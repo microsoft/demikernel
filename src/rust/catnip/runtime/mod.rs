@@ -12,10 +12,7 @@ use self::memory::{
     MemoryManager,
 };
 use crate::{
-    demikernel::config::Config,
-    expect_some,
-    inetstack::protocols::layer1::PhysicalLayer,
-    runtime::{
+    autokernel, demikernel::config::Config, expect_some, inetstack::protocols::layer1::PhysicalLayer, runtime::{
         fail::Fail,
         libdpdk::{
             rte_delay_us_block,
@@ -64,8 +61,7 @@ use crate::{
             types::MacAddress,
         },
         SharedObject,
-    },
-    timer,
+    }, timer
 };
 use ::arrayvec::ArrayVec;
 use ::std::{
@@ -79,6 +75,8 @@ use ::std::{
     },
     time::Duration,
 };
+
+use crate::autokernel::parameters::{AK_PARMS, MAX_RECEIVE_BATCH_SIZE};
 
 //======================================================================================================================
 // Structures
@@ -102,6 +100,7 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 /// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
     pub fn new(config: &Config) -> Result<Self, Fail> {
+        eprintln!("\n\n\n*****ak_recv_batch_size: {}", AK_PARMS.receive_batch_size);
         let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
             Ok(offload) => Some(offload),
             Err(_) => {
@@ -420,13 +419,15 @@ impl PhysicalLayer for SharedDPDKRuntime {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_RECEIVE_BATCH_SIZE>, Fail> {
+        // inho: we can use Vec to dynamically determnine the size of the array at runtime
+        // but Vec is heap allocated, so I avoid using it here.  
         timer!("catnip::runtime::receive");
 
         let mut out = ArrayVec::new();
-        let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
-        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
-        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
+        let mut packets: [*mut rte_mbuf; MAX_RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
+        let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), AK_PARMS.receive_batch_size as u16) };
+        assert!(nb_rx as usize <= AK_PARMS.receive_batch_size);
 
         {
             for &packet in &packets[..nb_rx as usize] {

@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use crate::autokernel::parameters::AK_PARMS;
+
 // TCP Retransmission Timeout (RTO) Calculator.
 // See RFC 6298 for details.
 
@@ -54,12 +56,12 @@ impl RtoCalculator {
             self.received_sample = true;
         } else {
             // Subsequent sample formula from RFC 6298 Section 2.3:
-            self.rttvar = (1.0 - BETA) * self.rttvar + BETA * (self.srtt - rtt).abs();
-            self.srtt = (1.0 - ALPHA) * self.srtt + ALPHA * rtt;
+            self.rttvar = (1.0 - AK_PARMS.rto_beta) * self.rttvar + AK_PARMS.rto_beta * (self.srtt - rtt).abs();
+            self.srtt = (1.0 - AK_PARMS.rto_alpha) * self.srtt + AK_PARMS.rto_alpha * rtt;
         }
 
         // The new RTO value is the smoothed RTT plus the maximum of the clock granularity and 4 times the RTT variance.
-        let rto: f64 = self.srtt + GRANULARITY.max(4.0 * self.rttvar);
+        let rto: f64 = self.srtt + AK_PARMS.rto_granularity.max(4.0 * self.rttvar);
 
         // Store the updated RTT value.
         self.update_rto(rto);
@@ -75,7 +77,7 @@ impl RtoCalculator {
         // Note: We use clamp() below as it is clearer in intent than a min/max combination.  However, if we were
         // concerned that new_rto could be NaN here (we're not) we wouldn't want to use clamp() as it would pass NaN
         // through.  We'd use "self.rto = f64::min(new_rto.max(LOWER_BOUND_SEC), UPPER_BOUND_SEC);" below instead.
-        self.rto = new_rto.clamp(LOWER_BOUND_SEC, UPPER_BOUND_SEC);
+        self.rto = new_rto.clamp(AK_PARMS.rto_lower_bound_sec, AK_PARMS.rto_upper_bound_sec);
     }
 
     /// Performs an exponential "back off" of the RTO (doubles the current timeout).

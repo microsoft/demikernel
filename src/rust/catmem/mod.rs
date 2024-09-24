@@ -44,6 +44,8 @@ use ::std::{
     time::Duration,
 };
 
+use crate::autokernel::parameters::AK_PARMS;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -186,7 +188,7 @@ impl SharedCatmemLibOS {
         trace!("pop() qd={:?}, size={:?}", qd, size);
 
         // We just assert 'size' here, because it was previously checked at PDPIX layer.
-        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= limits::POP_SIZE_MAX)));
+        debug_assert!(size.is_none() || ((size.unwrap() > 0) && (size.unwrap() <= AK_PARMS::receive_batch_size)));
 
         let coroutine = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
 

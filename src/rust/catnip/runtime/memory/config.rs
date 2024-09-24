@@ -11,6 +11,8 @@ use crate::catnip::runtime::memory::consts::{
     DEFAULT_MAX_BODY_SIZE,
 };
 
+use crate::autokernel::parameters::AK_PARMS;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -80,8 +82,8 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             max_body_size: DEFAULT_MAX_BODY_SIZE,
-            body_pool_size: DEFAULT_BODY_POOL_SIZE,
-            cache_size: DEFAULT_CACHE_SIZE,
+            body_pool_size: AK_PARMS.default_body_pool_size,
+            cache_size: AK_PARMS.default_cache_size,
         }
     }
 }
