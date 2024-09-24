@@ -7,28 +7,13 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    collections::raw_array,
-    runtime::fail::Fail,
-};
+use crate::{collections::raw_array, runtime::fail::Fail};
 use ::std::alloc;
 use std::{
     alloc::Layout,
     mem,
-    ops::{
-        Add,
-        BitAnd,
-        Range,
-        Sub,
-    },
-    sync::atomic::{
-        self,
-        AtomicU16,
-        AtomicU32,
-        AtomicU64,
-        AtomicU8,
-        AtomicUsize,
-    },
+    ops::{Add, BitAnd, Range, Sub},
+    sync::atomic::{self, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize},
 };
 
 use crate::timer;
@@ -531,19 +516,11 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::collections::ring::{
-        Ring,
-        RingBuffer,
-        RingConsumer,
-        RingProducer,
-    };
+    use crate::collections::ring::{Ring, RingBuffer, RingConsumer, RingProducer};
     use ::anyhow::Result;
     use ::core::mem;
     use ::std::thread;
-    use std::sync::{
-        Arc,
-        Barrier,
-    };
+    use std::sync::{Arc, Barrier};
 
     /// Capacity for ring buffer.
     const RING_BUFFER_CAPACITY: usize = 4096;

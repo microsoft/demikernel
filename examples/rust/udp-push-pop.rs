@@ -6,25 +6,9 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::demikernel::{
-    demi_sgarray_t,
-    runtime::types::demi_opcode_t,
-    LibOS,
-    LibOSName,
-    QDesc,
-    QToken,
-};
-use ::std::{
-    env,
-    net::SocketAddr,
-    slice,
-    str::FromStr,
-    time::Duration,
-};
-use log::{
-    error,
-    warn,
-};
+use ::demikernel::{demi_sgarray_t, runtime::types::demi_opcode_t, LibOS, LibOSName, QDesc, QToken};
+use ::std::{env, net::SocketAddr, slice, str::FromStr, time::Duration};
+use log::{error, warn};
 
 #[cfg(target_os = "windows")]
 pub const AF_INET: i32 = windows::Win32::Networking::WinSock::AF_INET.0 as i32;

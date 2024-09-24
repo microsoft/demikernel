@@ -8,39 +8,20 @@
 use crate::{
     inetstack::{
         protocols::{
-            layer2::{
-                EtherType2,
-                Ethernet2Header,
-            },
-            layer3::arp::header::{
-                ArpHeader,
-                ArpOperation,
-            },
+            layer2::{EtherType2, Ethernet2Header},
+            layer3::arp::header::{ArpHeader, ArpOperation},
         },
-        test_helpers::{
-            self,
-            SharedEngine,
-            SharedTestPhysicalLayer,
-        },
+        test_helpers::{self, SharedEngine, SharedTestPhysicalLayer},
         SharedInetStack,
     },
-    runtime::{
-        memory::DemiBuffer,
-        network::types::MacAddress,
-    },
+    runtime::{memory::DemiBuffer, network::types::MacAddress},
 };
 use ::anyhow::Result;
 use ::futures::FutureExt;
 use ::std::{
-    collections::{
-        HashMap,
-        VecDeque,
-    },
+    collections::{HashMap, VecDeque},
     net::Ipv4Addr,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 //======================================================================================================================

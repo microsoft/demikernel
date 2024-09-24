@@ -10,53 +10,24 @@ use crate::runtime::network::types::MacAddress;
 use crate::{
     demi_sgarray_t,
     demikernel::config::Config,
-    inetstack::protocols::layer4::{
-        Peer,
-        Socket,
-    },
+    inetstack::protocols::layer4::{Peer, Socket},
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            socket::option::SocketOption,
-            transport::NetworkTransport,
-        },
-        poll_yield,
-        SharedDemiRuntime,
-        SharedObject,
+        memory::{DemiBuffer, MemoryRuntime},
+        network::{socket::option::SocketOption, transport::NetworkTransport},
+        poll_yield, SharedDemiRuntime, SharedObject,
     },
 };
-use ::socket2::{
-    Domain,
-    Type,
-};
+use ::socket2::{Domain, Type};
 #[cfg(test)]
-use ::std::{
-    collections::HashMap,
-    hash::RandomState,
-    net::Ipv4Addr,
-    time::Duration,
-};
-use protocols::{
-    layer1::PhysicalLayer,
-    layer2::SharedLayer2Endpoint,
-    layer3::SharedLayer3Endpoint,
-};
+use ::std::{collections::HashMap, hash::RandomState, net::Ipv4Addr, time::Duration};
+use protocols::{layer1::PhysicalLayer, layer2::SharedLayer2Endpoint, layer3::SharedLayer3Endpoint};
 
 use ::futures::FutureExt;
 use ::std::{
     fmt::Debug,
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 use crate::timer;

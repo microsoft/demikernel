@@ -7,17 +7,10 @@
 
 use crate::{
     catpowder::linux::RawSocketAddr,
-    pal::data_structures::{
-        SockAddr,
-        SockAddrIn,
-        Socklen,
-    },
+    pal::data_structures::{SockAddr, SockAddrIn, Socklen},
     runtime::fail::Fail,
 };
-use ::std::{
-    mem,
-    mem::MaybeUninit,
-};
+use ::std::{mem, mem::MaybeUninit};
 
 //======================================================================================================================
 // Constants & Structures

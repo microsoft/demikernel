@@ -5,16 +5,10 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    catpowder::win::ring::umemreg::UmemReg,
-    runtime::libxdp,
-};
+use crate::{catpowder::win::ring::umemreg::UmemReg, runtime::libxdp};
 use ::std::{
     cell::RefCell,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     rc::Rc,
     vec::Vec,
 };

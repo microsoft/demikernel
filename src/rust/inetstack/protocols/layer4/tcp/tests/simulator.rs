@@ -8,78 +8,35 @@
 use crate::{
     inetstack::{
         protocols::{
-            layer2::{
-                EtherType2,
-                Ethernet2Header,
-            },
-            layer3::{
-                ip::IpProtocol,
-                ipv4::Ipv4Header,
-            },
+            layer2::{EtherType2, Ethernet2Header},
+            layer3::{ip::IpProtocol, ipv4::Ipv4Header},
             layer4::{
-                tcp::header::{
-                    TcpHeader,
-                    TcpOptions2,
-                    MAX_TCP_OPTIONS,
-                },
+                tcp::header::{TcpHeader, TcpOptions2, MAX_TCP_OPTIONS},
                 udp::header::UdpHeader,
             },
             MAX_HEADER_SIZE,
         },
         test_helpers::{
             self,
-            engine::{
-                SharedEngine,
-                TIMEOUT_SECONDS,
-            },
+            engine::{SharedEngine, TIMEOUT_SECONDS},
             physical_layer::SharedTestPhysicalLayer,
         },
     },
-    runtime::{
-        memory::DemiBuffer,
-        OperationResult,
-    },
-    MacAddress,
-    QDesc,
-    QToken,
+    runtime::{memory::DemiBuffer, OperationResult},
+    MacAddress, QDesc, QToken,
 };
 use anyhow::Result;
 use network_simulator::glue::{
-    AcceptArgs,
-    BindArgs,
-    CloseArgs,
-    ConnectArgs,
-    Event,
-    ListenArgs,
-    PacketDirection,
-    PacketEvent,
-    PushArgs,
-    PushToArgs,
-    SocketArgs,
-    SyscallEvent,
-    TcpPacket,
-    UdpPacket,
+    AcceptArgs, BindArgs, CloseArgs, ConnectArgs, Event, ListenArgs, PacketDirection, PacketEvent, PushArgs,
+    PushToArgs, SocketArgs, SyscallEvent, TcpPacket, UdpPacket,
 };
 use std::{
     collections::VecDeque,
     env,
-    fs::{
-        DirEntry,
-        File,
-    },
-    io::{
-        BufRead,
-        BufReader,
-    },
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    path::{
-        self,
-        Path,
-        PathBuf,
-    },
+    fs::{DirEntry, File},
+    io::{BufRead, BufReader},
+    net::{Ipv4Addr, SocketAddrV4},
+    path::{self, Path, PathBuf},
     time::Instant,
 };
 

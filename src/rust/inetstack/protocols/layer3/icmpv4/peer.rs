@@ -5,58 +5,31 @@ use crate::{
     collections::async_queue::AsyncQueue,
     demikernel::config::Config,
     inetstack::protocols::{
-        layer2::{
-            SharedLayer2Endpoint,
-            ETHERNET2_HEADER_SIZE,
-        },
+        layer2::{SharedLayer2Endpoint, ETHERNET2_HEADER_SIZE},
         layer3::{
             arp::SharedArpPeer,
             icmpv4::{
-                header::{
-                    Icmpv4Header,
-                    ICMPV4_HEADER_SIZE,
-                },
-                protocol::{
-                    Icmpv4Type2,
-                    ICMPV4_ECHO_REQUEST_MESSAGE_SIZE,
-                },
+                header::{Icmpv4Header, ICMPV4_HEADER_SIZE},
+                protocol::{Icmpv4Type2, ICMPV4_ECHO_REQUEST_MESSAGE_SIZE},
             },
             ip::IpProtocol,
-            ipv4::{
-                Ipv4Header,
-                IPV4_HEADER_MIN_SIZE,
-            },
+            ipv4::{Ipv4Header, IPV4_HEADER_MIN_SIZE},
         },
     },
     runtime::{
-        conditional_yield_with_timeout,
-        fail::Fail,
-        memory::DemiBuffer,
-        network::types::MacAddress,
-        SharedConditionVariable,
-        SharedDemiRuntime,
-        SharedObject,
+        conditional_yield_with_timeout, fail::Fail, memory::DemiBuffer, network::types::MacAddress,
+        SharedConditionVariable, SharedDemiRuntime, SharedObject,
     },
 };
 use ::futures::FutureExt;
-use ::rand::{
-    prelude::SmallRng,
-    Rng,
-    SeedableRng,
-};
+use ::rand::{prelude::SmallRng, Rng, SeedableRng};
 use ::std::{
     collections::HashMap,
     net::Ipv4Addr,
     num::Wrapping,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     process,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 /// Arbitrary time out for waiting for pings.

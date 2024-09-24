@@ -49,26 +49,14 @@ mod catmem;
 #[cfg(feature = "catloop-libos")]
 mod catloop;
 
-pub use self::demikernel::libos::{
-    name::LibOSName,
-    LibOS,
-};
+pub use self::demikernel::libos::{name::LibOSName, LibOS};
 pub use crate::runtime::{
     network::{
         socket::option::SocketOption,
-        types::{
-            MacAddress,
-            Port16,
-        },
+        types::{MacAddress, Port16},
     },
-    types::{
-        demi_sgarray_t,
-        demi_sgaseg_t,
-    },
-    OperationResult,
-    QDesc,
-    QToken,
-    QType,
+    types::{demi_sgarray_t, demi_sgaseg_t},
+    OperationResult, QDesc, QToken, QType,
 };
 
 pub mod demikernel;

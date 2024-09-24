@@ -18,7 +18,4 @@ mod tests;
 // Exports
 //======================================================================================================================
 
-pub use self::{
-    peer::SharedUdpPeer,
-    socket::SharedUdpSocket,
-};
+pub use self::{peer::SharedUdpPeer, socket::SharedUdpSocket};

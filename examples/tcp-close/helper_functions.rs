@@ -3,12 +3,7 @@
 
 use crate::TIMEOUT_SECONDS;
 use anyhow::Result;
-use demikernel::{
-    runtime::types::demi_opcode_t,
-    LibOS,
-    QDesc,
-    QToken,
-};
+use demikernel::{runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
 
 pub fn is_closed(ret: i64) -> bool {
     match ret as i32 {

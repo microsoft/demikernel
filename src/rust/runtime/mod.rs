@@ -17,15 +17,7 @@ pub mod types;
 pub use condition_variable::SharedConditionVariable;
 mod poll;
 mod timer;
-pub use queue::{
-    BackgroundTask,
-    Operation,
-    OperationResult,
-    OperationTask,
-    QDesc,
-    QToken,
-    QType,
-};
+pub use queue::{BackgroundTask, Operation, OperationResult, OperationTask, QDesc, QToken, QType};
 pub use scheduler::TaskId;
 
 #[cfg(feature = "libdpdk")]
@@ -38,11 +30,7 @@ pub use demikernel_xdp_bindings as libxdp;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::network::{
-    ephemeral::EphemeralPorts,
-    socket::SocketId,
-    NetworkQueueTable,
-};
+use crate::runtime::network::{ephemeral::EphemeralPorts, socket::SocketId, NetworkQueueTable};
 
 #[cfg(feature = "profiler")]
 use crate::coroutine_timer;
@@ -52,38 +40,20 @@ use crate::{
     runtime::{
         fail::Fail,
         poll::PollFuture,
-        queue::{
-            IoQueue,
-            IoQueueTable,
-        },
-        scheduler::{
-            SharedScheduler,
-            TaskWithResult,
-        },
+        queue::{IoQueue, IoQueueTable},
+        scheduler::{SharedScheduler, TaskWithResult},
     },
 };
-use ::futures::{
-    future::FusedFuture,
-    select_biased,
-    Future,
-    FutureExt,
-};
+use ::futures::{future::FusedFuture, select_biased, Future, FutureExt};
 
 use ::std::{
     any::Any,
     collections::HashMap,
     net::SocketAddrV4,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     pin::pin,
     rc::Rc,
-    time::{
-        Duration,
-        Instant,
-        SystemTime,
-    },
+    time::{Duration, Instant, SystemTime},
 };
 use std::pin::Pin;
 
@@ -698,13 +668,7 @@ pub trait Runtime: Clone + Unpin + 'static {}
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::{
-        poll_yield,
-        OperationResult,
-        QDesc,
-        QToken,
-        SharedDemiRuntime,
-    };
+    use crate::runtime::{poll_yield, OperationResult, QDesc, QToken, SharedDemiRuntime};
     use ::std::time::Duration;
     use futures::FutureExt;
     use test::Bencher;

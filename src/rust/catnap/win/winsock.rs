@@ -6,68 +6,29 @@
 //======================================================================================================================
 
 use std::{
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
     collections::HashMap,
     mem,
     mem::MaybeUninit,
-    rc::{
-        Rc,
-        Weak,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    rc::{Rc, Weak},
 };
 
 use crate::{
     catnap::transport::{
         error::expect_last_wsa_error,
         overlapped::IoCompletionPort,
-        socket::{
-            Socket,
-            SocketOpState,
-        },
+        socket::{Socket, SocketOpState},
     },
-    runtime::{
-        fail::Fail,
-        network::socket::option::TcpSocketOptions,
-    },
+    runtime::{fail::Fail, network::socket::option::TcpSocketOptions},
 };
 use windows::{
-    core::{
-        GUID,
-        PSTR,
-    },
+    core::{GUID, PSTR},
     Win32::Networking::WinSock::{
-        closesocket,
-        getsockopt,
-        setsockopt,
-        getpeername,
-        WSACleanup,
-        WSAIoctl,
-        WSASocketW,
-        WSAStartup,
-        INVALID_SOCKET,
-        LPFN_ACCEPTEX,
-        LPFN_CONNECTEX,
-        LPFN_DISCONNECTEX,
-        LPFN_GETACCEPTEXSOCKADDRS,
-        RIO_EXTENSION_FUNCTION_TABLE,
-        SIO_GET_EXTENSION_FUNCTION_POINTER,
-        SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER,
-        SOCKET,
-        SOCKADDR,
-        SOCKADDR_IN,
-        IN_ADDR_0_0,
-        SOL_SOCKET,
-        SO_PROTOCOL_INFOW,
-        WSADATA,
-        WSAID_ACCEPTEX,
-        WSAID_CONNECTEX,
-        WSAID_DISCONNECTEX,
-        WSAID_GETACCEPTEXSOCKADDRS,
-        WSAPROTOCOL_INFOW,
-        WSA_FLAG_OVERLAPPED,
+        closesocket, getpeername, getsockopt, setsockopt, WSACleanup, WSAIoctl, WSASocketW, WSAStartup, INVALID_SOCKET,
+        IN_ADDR_0_0, LPFN_ACCEPTEX, LPFN_CONNECTEX, LPFN_DISCONNECTEX, LPFN_GETACCEPTEXSOCKADDRS,
+        RIO_EXTENSION_FUNCTION_TABLE, SIO_GET_EXTENSION_FUNCTION_POINTER, SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER,
+        SOCKADDR, SOCKADDR_IN, SOCKET, SOL_SOCKET, SO_PROTOCOL_INFOW, WSADATA, WSAID_ACCEPTEX, WSAID_CONNECTEX,
+        WSAID_DISCONNECTEX, WSAID_GETACCEPTEXSOCKADDRS, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED,
     },
 };
 
@@ -306,16 +267,15 @@ impl WinsockRuntime {
     /// Gets ip and port from SOCKADDR_IN and converts to SocketAddrV4
     pub fn getpeername(s: SOCKET) -> Result<SocketAddrV4, Fail> {
         let mut sockaddr_in: SOCKADDR_IN = SOCKADDR_IN::default();
-        let sockaddr_ptr: &mut SOCKADDR =  &mut unsafe { mem::transmute::<SOCKADDR_IN, SOCKADDR>(sockaddr_in) };
+        let sockaddr_ptr: &mut SOCKADDR = &mut unsafe { mem::transmute::<SOCKADDR_IN, SOCKADDR>(sockaddr_in) };
         let mut namelen: i32 = std::mem::size_of::<SOCKADDR>() as i32;
 
         if unsafe { getpeername(s, sockaddr_ptr, &mut namelen) } == 0 {
             sockaddr_in = unsafe { mem::transmute::<SOCKADDR, SOCKADDR_IN>(*sockaddr_ptr) };
             let port: u16 = sockaddr_in.sin_port;
             let addr: IN_ADDR_0_0 = unsafe { sockaddr_in.sin_addr.S_un.S_un_b };
-            let addrv4: SocketAddrV4 = SocketAddrV4::new(
-                    Ipv4Addr::new(addr.s_b1, addr.s_b2, addr.s_b3, addr.s_b4),
-                    port);
+            let addrv4: SocketAddrV4 =
+                SocketAddrV4::new(Ipv4Addr::new(addr.s_b1, addr.s_b2, addr.s_b3, addr.s_b4), port);
             Ok(addrv4)
         } else {
             Err(expect_last_wsa_error())

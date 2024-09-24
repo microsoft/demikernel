@@ -6,11 +6,7 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
+use clap::{Arg, ArgMatches, Command};
 use std::net::SocketAddr;
 
 #[derive(Debug)]

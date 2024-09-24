@@ -24,12 +24,8 @@ mod wait;
 use anyhow::Result;
 use args::ProgramArguments;
 use demikernel::{
-    runtime::types::{
-        demi_opcode_t,
-        demi_qresult_t,
-    },
-    LibOS,
-    LibOSName,
+    runtime::types::{demi_opcode_t, demi_qresult_t},
+    LibOS, LibOSName,
 };
 
 //======================================================================================================================

@@ -19,51 +19,24 @@ use crate::{
     demikernel::config::Config,
     expect_some,
     inetstack::protocols::{
-        layer3::{
-            ip::IpProtocol,
-            SharedLayer3Endpoint,
-        },
+        layer3::{ip::IpProtocol, SharedLayer3Endpoint},
         layer4::{
-            tcp::{
-                SharedTcpPeer,
-                SharedTcpSocket,
-            },
-            udp::{
-                SharedUdpPeer,
-                SharedUdpSocket,
-            },
+            tcp::{SharedTcpPeer, SharedTcpSocket},
+            udp::{SharedUdpPeer, SharedUdpSocket},
         },
     },
     runtime::{
         fail::Fail,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
-        network::{
-            consts::RECEIVE_BATCH_SIZE,
-            unwrap_socketaddr,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
+        network::{consts::RECEIVE_BATCH_SIZE, unwrap_socketaddr},
         SharedDemiRuntime,
     },
-    timer,
-    SocketOption,
+    timer, SocketOption,
 };
-use ::socket2::{
-    Domain,
-    Type,
-};
-use ::std::net::{
-    Ipv4Addr,
-    SocketAddr,
-    SocketAddrV4,
-};
+use ::socket2::{Domain, Type};
+use ::std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[cfg(test)]
-use ::std::{
-    collections::HashMap,
-    hash::RandomState,
-    time::Duration,
-};
+use ::std::{collections::HashMap, hash::RandomState, time::Duration};
 
 use arrayvec::ArrayVec;
 

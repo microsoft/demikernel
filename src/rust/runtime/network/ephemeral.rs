@@ -6,13 +6,9 @@
 //======================================================================================================================
 
 use crate::runtime::fail::Fail;
-use ::std::collections::VecDeque;
 #[cfg(not(debug_assertions))]
-use ::rand::prelude::{
-    SeedableRng,
-    SliceRandom,
-    SmallRng,
-};
+use ::rand::prelude::{SeedableRng, SliceRandom, SmallRng};
+use ::std::collections::VecDeque;
 
 //======================================================================================================================
 // Constants
@@ -103,7 +99,9 @@ impl Default for EphemeralPorts {
             let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
             ports.shuffle(&mut rng);
         }
-        Self { ports: VecDeque::from(ports) }
+        Self {
+            ports: VecDeque::from(ports),
+        }
     }
 }
 
@@ -113,11 +111,7 @@ impl Default for EphemeralPorts {
 
 #[cfg(test)]
 mod test {
-    use crate::runtime::network::ephemeral::{
-        EphemeralPorts,
-        FIRST_PRIVATE_PORT,
-        LAST_PRIVATE_PORT,
-    };
+    use crate::runtime::network::ephemeral::{EphemeralPorts, FIRST_PRIVATE_PORT, LAST_PRIVATE_PORT};
     use ::anyhow::Result;
 
     /// Attempts to allocate any ephemeral port and then release it.

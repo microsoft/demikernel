@@ -7,10 +7,7 @@
 
 use crate::runtime::fail::Fail;
 use ::libc::EINVAL;
-use ::std::{
-    fmt,
-    str::FromStr,
-};
+use ::std::{fmt, str::FromStr};
 
 //======================================================================================================================
 // Structures

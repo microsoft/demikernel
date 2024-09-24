@@ -6,28 +6,15 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        raw_array,
-        ring::Ring,
-    },
-    runtime::{
-        fail::Fail,
-        DemiRuntime,
-    },
+    collections::{raw_array, ring::Ring},
+    runtime::{fail::Fail, DemiRuntime},
 };
 use ::core::{
     alloc::Layout,
     mem,
-    sync::atomic::{
-        self,
-        AtomicU16,
-        AtomicUsize,
-    },
+    sync::atomic::{self, AtomicU16, AtomicUsize},
 };
-use ::std::{
-    alloc,
-    ptr::copy,
-};
+use ::std::{alloc, ptr::copy};
 
 use crate::timer;
 
@@ -449,18 +436,11 @@ impl Drop for ConcurrentRingBuffer {
 
 #[cfg(test)]
 mod test {
-    use crate::collections::concurrent_ring::{
-        ConcurrentRingBuffer,
-        Ring,
-        HEADER_SIZE,
-    };
+    use crate::collections::concurrent_ring::{ConcurrentRingBuffer, Ring, HEADER_SIZE};
     use ::anyhow::Result;
     use ::core::mem;
     use ::std::thread;
-    use std::{
-        ops::Range,
-        time::Duration,
-    };
+    use std::{ops::Range, time::Duration};
 
     /// Capacity for ring buffer in bytes.
     const RING_BUFFER_CAPACITY: usize = 4096;

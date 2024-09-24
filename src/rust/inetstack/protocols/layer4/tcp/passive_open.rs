@@ -7,10 +7,7 @@
 
 use crate::{
     collections::{
-        async_queue::{
-            AsyncQueue,
-            SharedAsyncQueue,
-        },
+        async_queue::{AsyncQueue, SharedAsyncQueue},
         async_value::SharedAsyncValue,
     },
     expect_some,
@@ -19,16 +16,10 @@ use crate::{
         layer4::tcp::{
             constants::FALLBACK_MSS,
             established::{
-                congestion_control::{
-                    self,
-                    CongestionControl,
-                },
+                congestion_control::{self, CongestionControl},
                 EstablishedSocket,
             },
-            header::{
-                TcpHeader,
-                TcpOptions2,
-            },
+            header::{TcpHeader, TcpOptions2},
             isn_generator::IsnGenerator,
             SeqNumber,
         },
@@ -38,35 +29,17 @@ use crate::{
         conditional_yield_with_timeout,
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::TcpConfig,
-            consts::MAX_WINDOW_SCALE,
-            socket::option::TcpSocketOptions,
-        },
-        QDesc,
-        SharedDemiRuntime,
-        SharedObject,
+        network::{config::TcpConfig, consts::MAX_WINDOW_SCALE, socket::option::TcpSocketOptions},
+        QDesc, SharedDemiRuntime, SharedObject,
     },
     QToken,
 };
-use ::futures::{
-    channel::mpsc,
-    FutureExt,
-};
-use ::libc::{
-    EBADMSG,
-    ETIMEDOUT,
-};
+use ::futures::{channel::mpsc, FutureExt};
+use ::libc::{EBADMSG, ETIMEDOUT};
 use ::std::{
     collections::HashMap,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 

@@ -7,24 +7,15 @@
 // Imports
 //======================================================================================================================
 
-use crate::{
-    perftools::profiler::PROFILER,
-    runtime::types::demi_callback_t,
-};
+use crate::{perftools::profiler::PROFILER, runtime::types::demi_callback_t};
 use ::std::{
     cell::RefCell,
-    fmt::{
-        self,
-        Debug,
-    },
+    fmt::{self, Debug},
     future::Future,
     io,
     pin::Pin,
     rc::Rc,
-    task::{
-        Context,
-        Poll,
-    },
+    task::{Context, Poll},
     thread,
 };
 

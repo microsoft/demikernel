@@ -5,13 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use ::std::{
-    marker::PhantomData,
-    mem,
-    mem::ManuallyDrop,
-    ptr::NonNull,
-    rc::Rc,
-};
+use ::std::{marker::PhantomData, mem, mem::ManuallyDrop, ptr::NonNull, rc::Rc};
 
 //======================================================================================================================
 // Structures
@@ -152,16 +146,10 @@ impl<T: IntrusivelyQueueable> Drop for IntrusiveQueue<T> {
 // Unit tests for IntrusiveQueue type and IntrusivelyQueueable trait.
 #[cfg(test)]
 mod tests {
-    use crate::collections::intrusive::intrusive_queue::{
-        IntrusiveQueue,
-        IntrusivelyQueueable,
-    };
+    use crate::collections::intrusive::intrusive_queue::{IntrusiveQueue, IntrusivelyQueueable};
     use ::anyhow::Result;
     use core::cell::Cell;
-    use std::{
-        ptr::NonNull,
-        rc::Rc,
-    };
+    use std::{ptr::NonNull, rc::Rc};
 
     // A test element.
     // This supports the IntrusivelyQueueable trait, so it can be put on an IntrusiveQueue.

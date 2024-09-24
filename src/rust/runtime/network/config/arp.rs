@@ -7,16 +7,9 @@
 
 use crate::{
     demikernel::config::Config,
-    runtime::{
-        fail::Fail,
-        network::types::MacAddress,
-    },
+    runtime::{fail::Fail, network::types::MacAddress},
 };
-use ::std::{
-    collections::HashMap,
-    net::Ipv4Addr,
-    time::Duration,
-};
+use ::std::{collections::HashMap, net::Ipv4Addr, time::Duration};
 
 //======================================================================================================================
 // Structures
@@ -102,10 +95,7 @@ impl Default for ArpConfig {
 mod tests {
     use crate::runtime::network::config::ArpConfig;
     use ::anyhow::Result;
-    use ::std::{
-        collections::HashMap,
-        time::Duration,
-    };
+    use ::std::{collections::HashMap, time::Duration};
 
     #[test]
     fn test_arp_config_default() -> Result<()> {

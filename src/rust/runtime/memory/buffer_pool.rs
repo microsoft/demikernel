@@ -5,18 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use std::{
-    alloc::LayoutError,
-    num::NonZeroUsize,
-    rc::Rc,
-};
+use std::{alloc::LayoutError, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     pal::arch::CPU_DATA_CACHE_LINE_SIZE,
-    runtime::memory::{
-        demibuffer::MetaData,
-        memory_pool::MemoryPool,
-    },
+    runtime::memory::{demibuffer::MetaData, memory_pool::MemoryPool},
 };
 
 //======================================================================================================================
@@ -49,25 +42,14 @@ impl BufferPool {
 // Unit tests for `BufferPool` type.
 #[cfg(test)]
 mod tests {
-    use std::{
-        mem::MaybeUninit,
-        num::NonZeroUsize,
-        ptr::NonNull,
-    };
+    use std::{mem::MaybeUninit, num::NonZeroUsize, ptr::NonNull};
 
     use ::anyhow::Result;
-    use anyhow::{
-        anyhow,
-        ensure,
-    };
+    use anyhow::{anyhow, ensure};
 
     use crate::{
         ensure_eq,
-        runtime::memory::{
-            BufferPool,
-            DemiBuffer,
-            MetaData,
-        },
+        runtime::memory::{BufferPool, DemiBuffer, MetaData},
     };
 
     #[test]

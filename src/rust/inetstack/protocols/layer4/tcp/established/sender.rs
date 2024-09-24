@@ -4,31 +4,15 @@
 use crate::{
     collections::async_value::SharedAsyncValue,
     expect_ok,
-    inetstack::protocols::layer4::tcp::{
-        established::SharedControlBlock,
-        header::TcpHeader,
-        SeqNumber,
-    },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-    },
+    inetstack::protocols::layer4::tcp::{established::SharedControlBlock, header::TcpHeader, SeqNumber},
+    runtime::{fail::Fail, memory::DemiBuffer},
 };
-use ::libc::{
-    EBUSY,
-    EINVAL,
-};
+use ::libc::{EBUSY, EINVAL};
 use ::std::{
-    cell::{
-        Cell,
-        RefCell,
-    },
+    cell::{Cell, RefCell},
     collections::VecDeque,
     fmt,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 // Structure of entries on our unacknowledged queue.

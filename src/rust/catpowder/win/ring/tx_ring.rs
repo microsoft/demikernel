@@ -8,23 +8,12 @@
 use crate::{
     catpowder::win::{
         api::XdpApi,
-        ring::{
-            buffer::XdpBuffer,
-            generic::XdpRing,
-            umemreg::UmemReg,
-        },
+        ring::{buffer::XdpBuffer, generic::XdpRing, umemreg::UmemReg},
         socket::XdpSocket,
     },
-    runtime::{
-        fail::Fail,
-        libxdp,
-        limits,
-    },
+    runtime::{fail::Fail, libxdp, limits},
 };
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use ::std::{cell::RefCell, rc::Rc};
 
 //======================================================================================================================
 // Structures

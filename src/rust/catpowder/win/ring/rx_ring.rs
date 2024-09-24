@@ -11,24 +11,14 @@ use crate::{
         ring::{
             buffer::XdpBuffer,
             generic::XdpRing,
-            rule::{
-                XdpProgram,
-                XdpRule,
-            },
+            rule::{XdpProgram, XdpRule},
             umemreg::UmemReg,
         },
         socket::XdpSocket,
     },
-    runtime::{
-        fail::Fail,
-        libxdp,
-        limits,
-    },
+    runtime::{fail::Fail, libxdp, limits},
 };
-use ::std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use ::std::{cell::RefCell, rc::Rc};
 
 //======================================================================================================================
 // Structures

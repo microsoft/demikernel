@@ -5,21 +5,9 @@ mod acknowledger;
 mod retransmitter;
 mod sender;
 
-use self::{
-    acknowledger::acknowledger,
-    retransmitter::retransmitter,
-    sender::sender,
-};
-use crate::{
-    async_timer,
-    inetstack::protocols::layer4::tcp::established::ctrlblk::SharedControlBlock,
-    runtime::QDesc,
-};
-use ::futures::{
-    channel::mpsc,
-    pin_mut,
-    FutureExt,
-};
+use self::{acknowledger::acknowledger, retransmitter::retransmitter, sender::sender};
+use crate::{async_timer, inetstack::protocols::layer4::tcp::established::ctrlblk::SharedControlBlock, runtime::QDesc};
+use ::futures::{channel::mpsc, pin_mut, FutureExt};
 
 pub async fn background(cb: SharedControlBlock, _dead_socket_tx: mpsc::UnboundedSender<QDesc>) {
     let acknowledger = async_timer!("tcp::established::background::acknowledger", acknowledger(cb.clone())).fuse();

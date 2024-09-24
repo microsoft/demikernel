@@ -7,20 +7,11 @@
 
 use crate::{
     catpowder::win::api::XdpApi,
-    runtime::{
-        fail::Fail,
-        libxdp,
-    },
+    runtime::{fail::Fail, libxdp},
 };
 use ::windows::{
-    core::{
-        Error,
-        HRESULT,
-    },
-    Win32::{
-        Foundation,
-        Foundation::HANDLE,
-    },
+    core::{Error, HRESULT},
+    Win32::{Foundation, Foundation::HANDLE},
 };
 
 //======================================================================================================================

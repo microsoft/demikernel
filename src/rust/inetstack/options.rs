@@ -2,17 +2,10 @@
 // Licensed under the MIT license.
 
 use crate::runtime::network::{
-    config::{
-        ArpConfig,
-        TcpConfig,
-        UdpConfig,
-    },
+    config::{ArpConfig, TcpConfig, UdpConfig},
     types::MacAddress,
 };
-use ::rand::{
-    thread_rng,
-    Rng,
-};
+use ::rand::{thread_rng, Rng};
 use ::std::net::Ipv4Addr;
 
 #[derive(Clone, Debug)]

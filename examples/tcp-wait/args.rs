@@ -2,15 +2,8 @@
 // Licensed under the MIT license.
 
 use anyhow::Result;
-use clap::{
-    Arg,
-    ArgMatches,
-    Command,
-};
-use std::{
-    net::SocketAddr,
-    str::FromStr,
-};
+use clap::{Arg, ArgMatches, Command};
+use std::{net::SocketAddr, str::FromStr};
 
 #[derive(Debug)]
 pub struct ProgramArguments {

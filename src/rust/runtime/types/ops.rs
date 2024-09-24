@@ -9,10 +9,7 @@
 
 use crate::{
     pal::data_structures::SockAddr,
-    runtime::types::{
-        memory::demi_sgarray_t,
-        queue::demi_qtoken_t,
-    },
+    runtime::types::{memory::demi_sgarray_t, queue::demi_qtoken_t},
 };
 
 //======================================================================================================================

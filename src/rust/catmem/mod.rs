@@ -16,31 +16,17 @@ use crate::{
     runtime::{
         fail::Fail,
         limits,
-        memory::{
-            DemiBuffer,
-            MemoryRuntime,
-        },
+        memory::{DemiBuffer, MemoryRuntime},
         queue::downcast_queue,
-        types::{
-            demi_opcode_t,
-            demi_qr_value_t,
-            demi_qresult_t,
-            demi_sgarray_t,
-        },
-        OperationResult,
-        SharedDemiRuntime,
-        SharedObject,
+        types::{demi_opcode_t, demi_qr_value_t, demi_qresult_t, demi_sgarray_t},
+        OperationResult, SharedDemiRuntime, SharedObject,
     },
-    QDesc,
-    QToken,
+    QDesc, QToken,
 };
 use ::futures::FutureExt;
 use ::std::{
     mem,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 
@@ -220,11 +206,11 @@ impl SharedCatmemLibOS {
     pub fn wait_next_n<Acceptor: FnMut(demi_qresult_t) -> bool>(
         &mut self,
         mut acceptor: Acceptor,
-        timeout: Duration
-    ) -> Result<(), Fail>
-    {
-        self.runtime.clone().wait_next_n(
-            |qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
+        timeout: Duration,
+    ) -> Result<(), Fail> {
+        self.runtime
+            .clone()
+            .wait_next_n(|qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
     }
 
     /// Waits for any operation in an I/O queue.

@@ -15,20 +15,13 @@ use crate::{
     collections::id_map::IdMap,
     expect_some,
     runtime::{
-        scheduler::{
-            group::TaskGroup,
-            Task,
-            TaskId,
-        },
+        scheduler::{group::TaskGroup, Task, TaskId},
         SharedObject,
     },
 };
 use ::slab::Slab;
 use ::std::{
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
     task::Waker,
 };
 
@@ -346,10 +339,7 @@ mod tests {
     use crate::{
         expect_some,
         runtime::scheduler::{
-            scheduler::{
-                Scheduler,
-                TaskId,
-            },
+            scheduler::{Scheduler, TaskId},
             task::TaskWithResult,
         },
     };
@@ -358,16 +348,9 @@ mod tests {
     use ::std::{
         future::Future,
         pin::Pin,
-        task::{
-            Context,
-            Poll,
-            Waker,
-        },
+        task::{Context, Poll, Waker},
     };
-    use ::test::{
-        black_box,
-        Bencher,
-    };
+    use ::test::{black_box, Bencher};
 
     /// This should never be used but ensures that the tests do not run forever.
     const MAX_ITERATIONS: usize = 100;

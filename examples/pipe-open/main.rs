@@ -12,10 +12,7 @@
 use anyhow::Result;
 use args::ProgramArguments;
 use client::PipeClient;
-use demikernel::{
-    LibOS,
-    LibOSName,
-};
+use demikernel::{LibOS, LibOSName};
 use server::PipeServer;
 
 mod args;

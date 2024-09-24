@@ -6,15 +6,8 @@
 //======================================================================================================================
 
 use crate::{
-    inetstack::protocols::{
-        compute_generic_checksum,
-        fold16,
-        layer3::icmpv4::protocol::Icmpv4Type2,
-    },
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-    },
+    inetstack::protocols::{compute_generic_checksum, fold16, layer3::icmpv4::protocol::Icmpv4Type2},
+    runtime::{fail::Fail, memory::DemiBuffer},
 };
 use ::libc::EBADMSG;
 

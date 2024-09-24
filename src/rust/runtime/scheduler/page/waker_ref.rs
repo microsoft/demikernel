@@ -5,18 +5,11 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::scheduler::page::{
-    page::WakerPage,
-    WakerPageRef,
-    WAKER_PAGE_SIZE,
-};
+use crate::runtime::scheduler::page::{page::WakerPage, WakerPageRef, WAKER_PAGE_SIZE};
 use ::std::{
     mem,
     ptr::NonNull,
-    task::{
-        RawWaker,
-        RawWakerVTable,
-    },
+    task::{RawWaker, RawWakerVTable},
 };
 
 //======================================================================================================================
@@ -144,19 +137,13 @@ pub const VTABLE: RawWakerVTable =
 #[cfg(test)]
 mod tests {
     use crate::runtime::scheduler::{
-        page::{
-            WakerPageRef,
-            WakerRef,
-        },
+        page::{WakerPageRef, WakerRef},
         waker64::WAKER_BIT_LENGTH,
     };
     use ::anyhow::Result;
     use ::rand::Rng;
     use ::std::ptr::NonNull;
-    use ::test::{
-        black_box,
-        Bencher,
-    };
+    use ::test::{black_box, Bencher};
 
     #[test]
     fn test_refcount() -> Result<()> {

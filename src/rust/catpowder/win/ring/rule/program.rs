@@ -6,24 +6,12 @@
 //======================================================================================================================
 
 use crate::{
-    catpowder::win::{
-        api::XdpApi,
-        ring::rule::rule::XdpRule,
-    },
-    runtime::{
-        fail::Fail,
-        libxdp,
-    },
+    catpowder::win::{api::XdpApi, ring::rule::rule::XdpRule},
+    runtime::{fail::Fail, libxdp},
 };
 use ::windows::{
-    core::{
-        Error,
-        HRESULT,
-    },
-    Win32::{
-        Foundation,
-        Foundation::HANDLE,
-    },
+    core::{Error, HRESULT},
+    Win32::{Foundation, Foundation::HANDLE},
 };
 
 //======================================================================================================================

@@ -7,10 +7,7 @@
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use ::std::os::raw::{
-    c_char,
-    c_int,
-};
+use ::std::os::raw::{c_char, c_int};
 
 #[link(name = "inlined")]
 extern "C" {

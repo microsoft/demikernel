@@ -5,15 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use ::rand::{
-    rngs::SmallRng,
-    RngCore,
-    SeedableRng,
-};
-use ::std::{
-    collections::HashMap,
-    hash::Hash,
-};
+use ::rand::{rngs::SmallRng, RngCore, SeedableRng};
+use ::std::{collections::HashMap, hash::Hash};
 
 //======================================================================================================================
 // Constants

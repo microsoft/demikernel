@@ -4,21 +4,10 @@
 use crate::{
     collections::async_value::SharedAsyncValue,
     inetstack::protocols::layer4::tcp::established::ctrlblk::SharedControlBlock,
-    runtime::{
-        conditional_yield_until,
-        fail::Fail,
-    },
+    runtime::{conditional_yield_until, fail::Fail},
 };
-use ::futures::{
-    never::Never,
-    pin_mut,
-    select_biased,
-    FutureExt,
-};
-use ::std::time::{
-    Duration,
-    Instant,
-};
+use ::futures::{never::Never, pin_mut, select_biased, FutureExt};
+use ::std::time::{Duration, Instant};
 
 pub async fn retransmitter(mut cb: SharedControlBlock) -> Result<Never, Fail> {
     // Watch the retransmission deadline.

@@ -6,16 +6,8 @@
 //======================================================================================================================
 
 use anyhow::Result;
-use demikernel::{
-    LibOS,
-    QDesc,
-};
-use std::net::{
-    IpAddr,
-    Ipv4Addr,
-    SocketAddr,
-    SocketAddrV4,
-};
+use demikernel::{LibOS, QDesc};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
 //======================================================================================================================
 // Constants

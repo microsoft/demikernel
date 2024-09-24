@@ -6,12 +6,7 @@
 //======================================================================================================================
 
 use ::anyhow::Result;
-use ::demikernel::{
-    runtime::types::demi_opcode_t,
-    LibOS,
-    QDesc,
-    QToken,
-};
+use ::demikernel::{runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
 use ::std::time::Duration;
 
 //======================================================================================================================

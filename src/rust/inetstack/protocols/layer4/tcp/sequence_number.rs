@@ -10,10 +10,7 @@
 // the situation that a < b < c < a.  For this reason, we define sequence numbers to be their own type.
 //
 
-use std::{
-    cmp::Ordering,
-    fmt,
-};
+use std::{cmp::Ordering, fmt};
 
 // Internally, we store sequence numbers as unsigned 32-bit integers.
 //

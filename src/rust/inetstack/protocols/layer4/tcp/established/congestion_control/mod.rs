@@ -5,22 +5,13 @@ mod cubic;
 mod none;
 mod options;
 
-use crate::{
-    collections::async_value::SharedAsyncValue,
-    inetstack::protocols::layer4::tcp::SeqNumber,
-};
-use ::std::{
-    fmt::Debug,
-    time::Duration,
-};
+use crate::{collections::async_value::SharedAsyncValue, inetstack::protocols::layer4::tcp::SeqNumber};
+use ::std::{fmt::Debug, time::Duration};
 
 pub use self::{
     cubic::Cubic,
     none::None,
-    options::{
-        OptionValue,
-        Options,
-    },
+    options::{OptionValue, Options},
 };
 
 pub trait SlowStartCongestionAvoidance {

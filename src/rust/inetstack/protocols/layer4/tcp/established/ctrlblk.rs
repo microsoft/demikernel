@@ -7,10 +7,7 @@
 
 use crate::{
     collections::{
-        async_queue::{
-            AsyncQueue,
-            SharedAsyncQueue,
-        },
+        async_queue::{AsyncQueue, SharedAsyncQueue},
         async_value::SharedAsyncValue,
     },
     expect_ok,
@@ -19,15 +16,9 @@ use crate::{
         layer4::tcp::{
             constants::MSL,
             established::{
-                congestion_control::{
-                    self,
-                    CongestionControlConstructor,
-                },
+                congestion_control::{self, CongestionControlConstructor},
                 rto::RtoCalculator,
-                sender::{
-                    Sender,
-                    UnackedSegment,
-                },
+                sender::{Sender, UnackedSegment},
             },
             header::TcpHeader,
             SeqNumber,
@@ -37,29 +28,15 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::TcpConfig,
-            socket::option::TcpSocketOptions,
-        },
-        yield_with_timeout,
-        SharedDemiRuntime,
-        SharedObject,
+        network::{config::TcpConfig, socket::option::TcpSocketOptions},
+        yield_with_timeout, SharedDemiRuntime, SharedObject,
     },
 };
 use ::std::{
     collections::VecDeque,
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::{Deref, DerefMut},
+    time::{Duration, Instant},
 };
 use futures::never::Never;
 

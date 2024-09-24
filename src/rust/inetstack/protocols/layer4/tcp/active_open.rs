@@ -6,29 +6,17 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{
-        async_queue::SharedAsyncQueue,
-        async_value::SharedAsyncValue,
-    },
+    collections::{async_queue::SharedAsyncQueue, async_value::SharedAsyncValue},
     expect_some,
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
         layer4::tcp::{
-            constants::{
-                FALLBACK_MSS,
-                MAX_WINDOW_SCALE,
-            },
+            constants::{FALLBACK_MSS, MAX_WINDOW_SCALE},
             established::{
-                congestion_control::{
-                    self,
-                    CongestionControl,
-                },
+                congestion_control::{self, CongestionControl},
                 EstablishedSocket,
             },
-            header::{
-                TcpHeader,
-                TcpOptions2,
-            },
+            header::{TcpHeader, TcpOptions2},
             SeqNumber,
         },
         MAX_HEADER_SIZE,
@@ -36,29 +24,14 @@ use crate::{
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::TcpConfig,
-            socket::option::TcpSocketOptions,
-        },
-        QDesc,
-        SharedDemiRuntime,
-        SharedObject,
+        network::{config::TcpConfig, socket::option::TcpSocketOptions},
+        QDesc, SharedDemiRuntime, SharedObject,
     },
 };
-use ::futures::{
-    channel::mpsc,
-    select_biased,
-    FutureExt,
-};
+use ::futures::{channel::mpsc, select_biased, FutureExt};
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 //======================================================================================================================

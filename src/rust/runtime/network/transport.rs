@@ -7,23 +7,14 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::{
-        DemiBuffer,
-        MemoryRuntime,
-    },
+    memory::{DemiBuffer, MemoryRuntime},
     network::socket::option::SocketOption,
     SharedDemiRuntime,
 };
-use ::socket2::{
-    Domain,
-    Type,
-};
+use ::socket2::{Domain, Type};
 use ::std::{
     fmt::Debug,
-    net::{
-        SocketAddr,
-        SocketAddrV4,
-    },
+    net::{SocketAddr, SocketAddrV4},
 };
 
 //======================================================================================================================

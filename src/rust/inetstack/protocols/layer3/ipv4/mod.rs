@@ -10,8 +10,4 @@ mod tests;
 // Exports
 //======================================================================================================================
 
-pub use self::header::{
-    Ipv4Header,
-    IPV4_HEADER_MAX_SIZE,
-    IPV4_HEADER_MIN_SIZE,
-};
+pub use self::header::{Ipv4Header, IPV4_HEADER_MAX_SIZE, IPV4_HEADER_MIN_SIZE};

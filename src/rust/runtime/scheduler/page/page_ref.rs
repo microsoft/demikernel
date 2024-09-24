@@ -8,25 +8,15 @@
 use crate::{
     expect_ok,
     runtime::scheduler::{
-        page::{
-            WakerPage,
-            WAKER_PAGE_SIZE,
-        },
+        page::{WakerPage, WAKER_PAGE_SIZE},
         waker64::WAKER_BIT_LENGTH,
     },
 };
 use ::std::{
-    alloc::{
-        Allocator,
-        Global,
-        Layout,
-    },
+    alloc::{Allocator, Global, Layout},
     mem,
     ops::Deref,
-    ptr::{
-        self,
-        NonNull,
-    },
+    ptr::{self, NonNull},
 };
 
 //======================================================================================================================

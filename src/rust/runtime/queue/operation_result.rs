@@ -5,15 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{
-    fail::Fail,
-    memory::DemiBuffer,
-    QDesc,
-};
-use ::std::{
-    fmt,
-    net::SocketAddrV4,
-};
+use crate::runtime::{fail::Fail, memory::DemiBuffer, QDesc};
+use ::std::{fmt, net::SocketAddrV4};
 
 //======================================================================================================================
 // Structures

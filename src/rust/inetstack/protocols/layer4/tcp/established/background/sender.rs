@@ -5,30 +5,14 @@ use crate::{
     collections::async_value::SharedAsyncValue,
     expect_some,
     inetstack::protocols::layer4::tcp::{
-        established::{
-            ctrlblk::SharedControlBlock,
-            sender::UnackedSegment,
-        },
+        established::{ctrlblk::SharedControlBlock, sender::UnackedSegment},
         header::TcpHeader,
         SeqNumber,
     },
-    runtime::{
-        conditional_yield_until,
-        fail::Fail,
-        memory::DemiBuffer,
-    },
+    runtime::{conditional_yield_until, fail::Fail, memory::DemiBuffer},
 };
-use ::futures::{
-    never::Never,
-    pin_mut,
-    select_biased,
-    FutureExt,
-};
-use ::std::{
-    cmp,
-    pin::pin,
-    time::Duration,
-};
+use ::futures::{never::Never, pin_mut, select_biased, FutureExt};
+use ::std::{cmp, pin::pin, time::Duration};
 
 pub async fn sender(mut cb: SharedControlBlock) -> Result<Never, Fail> {
     'top: loop {

@@ -5,11 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::catnip::runtime::memory::consts::{
-    DEFAULT_BODY_POOL_SIZE,
-    DEFAULT_CACHE_SIZE,
-    DEFAULT_MAX_BODY_SIZE,
-};
+use crate::catnip::runtime::memory::consts::{DEFAULT_BODY_POOL_SIZE, DEFAULT_CACHE_SIZE, DEFAULT_MAX_BODY_SIZE};
 
 //======================================================================================================================
 // Structures

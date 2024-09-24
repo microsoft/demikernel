@@ -18,6 +18,4 @@ format_strings = true
 imports_granularity="Crate"
 reorder_impl_items = true
 empty_item_single_line = true
-imports_indent = "Block"
-imports_layout = "Vertical"
 indent_style = "Block"

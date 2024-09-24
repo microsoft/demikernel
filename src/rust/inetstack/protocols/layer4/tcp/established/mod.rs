@@ -12,33 +12,21 @@ use crate::{
     inetstack::protocols::{
         layer3::SharedLayer3Endpoint,
         layer4::tcp::{
-            congestion_control::CongestionControlConstructor,
-            established::ctrlblk::SharedControlBlock,
-            header::TcpHeader,
-            SeqNumber,
+            congestion_control::CongestionControlConstructor, established::ctrlblk::SharedControlBlock,
+            header::TcpHeader, SeqNumber,
         },
     },
     runtime::{
         fail::Fail,
         memory::DemiBuffer,
-        network::{
-            config::TcpConfig,
-            socket::option::TcpSocketOptions,
-        },
-        QDesc,
-        SharedDemiRuntime,
+        network::{config::TcpConfig, socket::option::TcpSocketOptions},
+        QDesc, SharedDemiRuntime,
     },
     QToken,
 };
-use ::futures::{
-    channel::mpsc,
-    FutureExt,
-};
+use ::futures::{channel::mpsc, FutureExt};
 use ::std::{
-    net::{
-        Ipv4Addr,
-        SocketAddrV4,
-    },
+    net::{Ipv4Addr, SocketAddrV4},
     time::Duration,
 };
 

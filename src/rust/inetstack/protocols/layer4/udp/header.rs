@@ -7,16 +7,10 @@
 
 use crate::{
     inetstack::protocols::layer3::ip::IpProtocol,
-    runtime::{
-        fail::Fail,
-        memory::DemiBuffer,
-    },
+    runtime::{fail::Fail, memory::DemiBuffer},
 };
 use ::libc::EBADMSG;
-use ::std::{
-    net::Ipv4Addr,
-    slice::ChunksExact,
-};
+use ::std::{net::Ipv4Addr, slice::ChunksExact};
 
 //======================================================================================================================
 // Constants
