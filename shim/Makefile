@@ -38,6 +38,7 @@ all-shim:
 # Builds all tests.
 all-tests: all-shim
 	$(MAKE) -C test/hello all
+	$(MAKE) -C test/mngr all
 
 # Copies build artifacts to the INSTALL_PREFIX directory.
 install: all
@@ -58,4 +59,5 @@ clean-shim:
 
 # Cleans up all tests.
 clean-tests:
-	$(MAKE) -C test/hello clean
+	$(MAKE) -C test/hello test/mngr clean
+	$(MAKE) -C test/mngr clean
