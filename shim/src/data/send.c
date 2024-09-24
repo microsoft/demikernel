@@ -34,12 +34,12 @@ ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
     }
 
     struct mem_node *node = malloc_mngr_get_addr((uint64_t) buf);
-    if (node != MN && !node->is_io)
+    if (node != NULL && !node->is_io)
     {
         node->stats->io_cnt++;
         node->is_io = 1;
-        TRACE("io_cnt=%d app_cnt=%d",
-                node->stats->io_cnt, node->stats->app_cnt);
+        TRACE("app_cnt=%d io_cnt",
+                node->stats->app_cnt, node->stats->io_cnt);
     }
 
     // TODO: check if flags are supported.

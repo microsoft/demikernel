@@ -5,10 +5,13 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
+#include <string.h>
 
 // MNGR_SIZE must be a power of 2
 #define MNGR_SIZE 4096
-#define MNGR_NULL 0
+
+// Prime integer to better disperse keys in hash table
+#define R 7
 
 struct malloc_mngr
 {
@@ -19,14 +22,16 @@ struct malloc_mngr
   uint64_t addrs[MNGR_SIZE];
   struct mem_node nodes[MNGR_SIZE];
 
-  uint64_t bts[MNGR_SIZE];
   struct bt_stats stats[MNGR_SIZE];
 };
 
 static int initialized = 0;
 static struct malloc_mngr mngr;
 
-int malloc_mngr_init()
+static inline uint64_t hash_bt(void *bt[], int n);
+static inline uint8_t equal_bt(void *a[], int a_n, void *b[], int b_n);
+
+void malloc_mngr_init()
 {
   if (initialized == 0)
   {
@@ -41,7 +46,7 @@ int malloc_mngr_init()
 
     for (int i = 0; i < MNGR_SIZE; i++)
     {
-      mngr.bts[i] = MNGR_NULL;
+      mngr.stats[i].hash = MNGR_NULL;
     }
 
     initialized = 1;
@@ -51,7 +56,7 @@ int malloc_mngr_init()
 int malloc_mngr_add_addr(uint64_t addr,
     struct bt_stats *stats, size_t size)
 {
-  int skip = 0;
+  uint64_t skip = 0;
   uint64_t hash = 0;
   const uint64_t mask = (mngr.length - 1);
 
@@ -86,9 +91,9 @@ int malloc_mngr_add_addr(uint64_t addr,
 
 int malloc_mngr_del_addr(uint64_t addr, struct bt_stats *stats)
 {
-  int skip = 0;
+  uint64_t skip = 0;
   uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  const uint64_t mask = (mngr.length - 1);
 
   assert(addr != MNGR_NULL);
 
@@ -124,9 +129,9 @@ int malloc_mngr_del_addr(uint64_t addr, struct bt_stats *stats)
 
 struct mem_node *malloc_mngr_get_addr(uint64_t addr)
 {
-  int skip = 0;
+  uint64_t skip = 0;
   uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  const uint64_t mask = (mngr.length - 1);
 
   assert(addr != MNGR_NULL);
 
@@ -150,34 +155,36 @@ struct mem_node *malloc_mngr_get_addr(uint64_t addr)
   return 0;
 }
 
-struct bt_stats *malloc_mngr_add_bt(uint64_t bt)
+struct bt_stats *malloc_mngr_add_bt(void *bt[], int n)
 {
-  int skip = 0;
-  uint64_t hash = 0;
+  uint64_t skip = 0;
   const uint64_t mask = (mngr.length - 1);
 
   assert(bt != MNGR_NULL);
 
-  hash = bt & mask;
-  TRACE("bt=%p hash=%ld nbts=%ld length=%ld",
-      bt, hash, mngr.nbts, mngr.length);
+  uint64_t hash = hash_bt(bt, n);
+  TRACE("hash=%ld nbts=%ld length=%ld", hash, mngr.nbts, mngr.length);
 
   do
   {
-    if (mngr.bts[hash] == bt)
+    if ((mngr.stats[hash].hash != MNGR_NULL) &&
+        equal_bt(mngr.stats[hash].bt, mngr.stats[hash].bt_n, bt, n))
     {
-      TRACE("backtrace already in manager bt=%ld hash=%ld app_cnt=%ld",
-        bt, hash, mngr.stats[hash].app_cnt);
       mngr.stats[hash].app_cnt++;
+      TRACE("backtrace already in manager hash=%ld app_cnt=%d io_cnt=%d",
+          hash, mngr.stats[hash].app_cnt, mngr.stats[hash].io_cnt);
       return &mngr.stats[hash];
     }
-    else if (mngr.bts[hash] == MNGR_NULL)
+    else if (mngr.stats[hash].hash == MNGR_NULL)
     {
-      TRACE("adding backtrace bt=%p hash=%ld", bt, hash);
-      mngr.bts[hash] = bt;
-      mngr.stats[hash].bt = bt;
+      TRACE("adding backtrace hash=%ld", hash);
       mngr.stats[hash].io_cnt = 0;
       mngr.stats[hash].app_cnt = 0;
+      mngr.stats[hash].hash = hash;
+
+      mngr.stats[hash].bt_n = n;
+      memcpy(mngr.stats[hash].bt, bt, n * sizeof(void *));
+
       mngr.nbts++;
       return &mngr.stats[hash];
     }
@@ -190,30 +197,29 @@ struct bt_stats *malloc_mngr_add_bt(uint64_t bt)
   return NULL;
 }
 
-int malloc_mngr_del_bt(uint64_t bt, struct bt_stats *stats)
+int malloc_mngr_del_bt(void *bt[], int n, struct bt_stats *stats)
 {
-  int skip = 0;
-  uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  uint64_t skip = 0;
+  const uint64_t mask = (mngr.length - 1);
 
   assert(bt != MNGR_NULL);
 
-  hash = bt & mask;
+  uint64_t hash = hash_bt(bt, n);
   TRACE("bt=%p hash=%ld nbts=%ld length=%ld",
       bt, hash, mngr.nbts, mngr.length);
 
   do
   {
-    if (mngr.bts[hash] == bt)
+    if ((mngr.stats[hash].hash != MNGR_NULL) &&
+        equal_bt(mngr.stats[hash].bt, mngr.stats[hash].bt_n, bt, n))
     {
       TRACE("deleting backtrace bt=%p hash=%ld", bt, hash);
-
-      stats->bt = bt;
+      stats->bt_n = n;
+      memcpy(stats->bt, mngr.stats[hash].bt, n * sizeof(void *));
       stats->io_cnt = mngr.stats[hash].io_cnt;
       stats->app_cnt = mngr.stats[hash].app_cnt;
 
-      mngr.bts[hash] = MNGR_NULL;
-      mngr.stats[hash].bt = MNGR_NULL;
+      mngr.stats[hash].hash = MNGR_NULL;
       mngr.stats[hash].io_cnt = 0;
       mngr.stats[hash].app_cnt = 0;
       mngr.nbts--;
@@ -228,88 +234,39 @@ int malloc_mngr_del_bt(uint64_t bt, struct bt_stats *stats)
   return 0;
 }
 
-struct bt_stats *malloc_mngr_get_bt(uint64_t bt)
+struct bt_stats *malloc_mngr_get_bt(uint64_t hash)
 {
-  int skip = 0;
-  uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  TRACE("bt_hash=%p nbts=%ld length=%ld", hash, mngr.nbts, mngr.length);
 
-  assert(bt != MNGR_NULL);
+  if (mngr.stats[hash].hash != MNGR_NULL)
+    return &mngr.stats[hash];
 
-  hash = bt & mask;
-  TRACE("bt=%p hash=%ld nbts=%ld length=%ld",
-      bt, hash, mngr.nbts, mngr.length);
-
-  do
-  {
-    if (mngr.bts[hash] == bt)
-    {
-      TRACE("getting backtrace bt=%p hash=%ld", bt, hash);
-      return &mngr.stats[hash];
-    }
-
-    hash = (hash + 1) & mask;
-  } while (++skip <= mngr.length);
-
-  WARN("did not find bt=%p skip=%d hash=%ld", bt, skip, hash);
-
-  return 0;
+  return NULL;
 }
 
-struct bt_stats *malloc_mngr_increment_io(uint64_t bt)
+static inline uint64_t hash_bt(void *bt[], int n)
 {
-  int skip = 0;
   uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  const uint64_t mask = MNGR_SIZE - 1;
 
-  assert(bt != MNGR_NULL);
-
-  hash = bt & mask;
-  TRACE("bt=%p hash=%ld nbts=%ld length=%ld",
-      bt, hash, mngr.nbts, mngr.length);
-
-  do
+  for (int i = 0; i < n; i++)
   {
-    if (mngr.bts[hash] == bt)
-    {
-      TRACE("incrementing io count bt=%p hash=%ld io_cnt=%ld",
-          bt, hash, mngr.stats[hash].io_cnt);
-      mngr.stats[hash].io_cnt++;
-      return &mngr.stats[hash];
-    }
+    hash = (R * hash + ((uint64_t) bt[i])) & mask;
+  }
 
-    hash = (hash + 1) & mask;
-  } while (++skip <= mngr.length);
-
-  WARN("did not find bt=%p skip=%d hash=%ld", bt, skip, hash);
-
-  return 0;
+  return hash;
 }
 
-struct bt_stats *malloc_mngr_increment_app(uint64_t bt)
+static inline uint8_t equal_bt(void *a[], int a_n, void *b[], int b_n)
 {
-  int skip = 0;
-  uint64_t hash = 0;
-  const int mask = (mngr.length - 1);
+  if (a_n != b_n)
+    return 0;
 
-  assert(bt != MNGR_NULL);
-
-  hash = bt & mask;
-  TRACE("bt=%p hash=%ld nbts=%ld length=%ld",
-      bt, hash, mngr.nbts, mngr.length);
-
-  do
+  for (int i = 0; i < a_n; i++)
   {
-    if (mngr.bts[hash] == bt)
-    {
-      TRACE("incrementing app count bt=%p hash=%ld", bt, hash);
-      return &mngr.stats[hash];
-    }
+    if (a[i] != b[i])
+      return 0;
+  }
 
-    hash = (hash + 1) & mask;
-  } while (++skip <= mngr.length);
-
-  WARN("did not find bt=%p skip=%d hash=%ld", bt, skip, hash);
-
-  return 0;
+  return 1;
 }

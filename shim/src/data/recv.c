@@ -42,8 +42,8 @@ ssize_t __read(int sockfd, void *buf, size_t count)
         {
             node->stats->io_cnt++;
             node->is_io = 1;
-            TRACE("io_cnt=%d app_cnt=%d",
-                    node->stats->io_cnt, node->stats->app_cnt);
+            TRACE("app_cnt=%d io_cnt=%d",
+                    node->stats->app_cnt, node->stats->io_cnt);
         }
 
         // Check if read operation has completed.

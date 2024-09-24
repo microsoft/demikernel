@@ -57,7 +57,7 @@ void * __malloc(size_t size)
     hashset_insert(&__malloc_reent_guards, tid);
     void *bt[BACKTRACE_MAX];
 
-    backtrace(bt, BACKTRACE_MAX);
+    int bt_ret = backtrace(bt, BACKTRACE_MAX);
 
     void *ptr = libc_malloc(size);
     if (ptr == NULL)
@@ -66,8 +66,7 @@ void * __malloc(size_t size)
         return NULL;
     }
 
-    struct bt_stats *stats = malloc_mngr_add_bt((uint64_t) bt[0]);
-    stats->app_cnt++;
+    struct bt_stats *stats = malloc_mngr_add_bt(bt, bt_ret);
     malloc_mngr_add_addr((uint64_t) ptr, stats, size);
     hashset_remove(&__malloc_reent_guards, tid);
     return ptr;
@@ -81,7 +80,7 @@ void * __calloc(size_t nelem, size_t elsize)
     pid_t tid = gettid();
     hashset_insert(&__calloc_reent_guards, tid);
 
-    backtrace(bt, BACKTRACE_MAX);
+    int bt_ret = backtrace(bt, BACKTRACE_MAX);
 
     void *ptr = libc_calloc(nelem, elsize);
     if (ptr == NULL)
@@ -90,8 +89,7 @@ void * __calloc(size_t nelem, size_t elsize)
         return NULL;
     }
 
-    struct bt_stats *stats = malloc_mngr_add_bt((uint64_t) bt[0]);
-    stats->app_cnt++;
+    struct bt_stats *stats = malloc_mngr_add_bt(bt, bt_ret);
     malloc_mngr_add_addr((uint64_t) ptr, stats, nelem * elsize);
     hashset_remove(&__calloc_reent_guards, tid);
     return ptr;
@@ -105,7 +103,7 @@ void * __realloc(void * addr, size_t size)
     pid_t tid = gettid();
     hashset_insert(&__realloc_reent_guards, tid);
 
-    backtrace(bt, BACKTRACE_MAX);
+    int bt_ret = backtrace(bt, BACKTRACE_MAX);
 
     void *new_ptr = libc_realloc(addr, size);
     if (new_ptr == NULL)
@@ -118,8 +116,7 @@ void * __realloc(void * addr, size_t size)
     if (addr != NULL)
         assert(malloc_mngr_del_addr((uint64_t) addr, NULL) != 0);
 
-    struct bt_stats *stats = malloc_mngr_add_bt((uint64_t)  bt[0]);
-    stats->app_cnt++;
+    struct bt_stats *stats = malloc_mngr_add_bt(bt, bt_ret);
     malloc_mngr_add_addr((uint64_t) new_ptr, stats, size);
 
     hashset_remove(&__realloc_reent_guards, tid);
