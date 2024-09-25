@@ -102,74 +102,75 @@ def run_eval():
     result_header = "EXPT_ID," + ",".join(parameters.keys())
     result_header += ',#flows,frame_size,#queues,Rate,Throughput,Median,p90,p95,p99,p99.9'
                 
+    for pps in CLIENT_PPS:
+        for conn in NUM_CONNECTIONS:
+            for param_name, values in parameters.items():
+                for value in values:
+                    # Create a copy of the default values
+                    test_values = default_values.copy()
+                    # Update the current parameter being tested
+                    test_values[param_name] = value
+                    # Run the test with the updated values
+                    if test_values['RTO_UPPER_BOUND_SEC'] < test_values['RTO_LOWER_BOUND_SEC']:
+                        continue
+                    kill_procs()
+                    experiment_id = datetime.datetime.now().strftime('%Y%m%d-%H%M%S.%f')
+                    with open(f'{AUTOKERNEL_PATH}/demikernel/eval/test_config.py', 'r') as file:
+                        print(f'================ RUNNING TEST =================')
+                        print(f'\n\nEXPTID: {experiment_id}')
+                        with open(f'{DATA_PATH}/{experiment_id}.test_config', 'w') as output_file:
+                            output_file.write(file.read())
+                    run_server(test_values)
+                    
+                    host = pyrem.host.RemoteHost(CLIENT_NODE)
+                    cmd = [f'cd {AUTOKERNEL_PATH}/tcp_generator && \
+                            sudo ./build/tcp-generator \
+                            -a 31:00.1 \
+                            -n 4 \
+                            -c 0xffff -- \
+                            -d exponential \
+                            -r {pps} \
+                            -f {conn} \
+                            -s 128 \
+                            -t {RUNTIME} \
+                            -q 1 \
+                            -c addr.cfg \
+                            -o {DATA_PATH}/{experiment_id}.lat \
+                            > {DATA_PATH}/{experiment_id}.client 2>&1']
+                    task = host.run(cmd, quiet=False)
+                    print('Running client\n')
+                    pyrem.task.Parallel([task], aggregate=True).start(wait=False)
+                    time.sleep(RUNTIME + 10)
+                    print('================ TEST COMPLETE =================\n')
+                    
+                    try:
+                        cmd = f'cat {DATA_PATH}/{experiment_id}.client | grep "\[RESULT\]" | tail -1'
+                        client_result = subprocess.run(
+                            cmd,
+                            shell=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            check=True,
+                        ).stdout.decode()
+                        if client_result == '':
+                            client_result = '[RESULT] N/A\n'
+                        
+                        
+                        # Generate the result string with the values
+                        result = f'{experiment_id},' + ",".join(map(str, test_values.values()))
+                        result += f',{client_result[len("[RESULT]"):]}'
+                        
+                        print('\n\n' + "***TEST RESULT***\n" + result_header + '\n' + result)
+                        
+                        final_result += result + '\n'
+                        
+                    except subprocess.CalledProcessError as e:
+                        # Handle the exception for a failed command execution
+                        print("EXPERIMENT FAILED\n\n")
 
-    for param_name, values in parameters.items():
-        for value in values:
-            # Create a copy of the default values
-            test_values = default_values.copy()
-            # Update the current parameter being tested
-            test_values[param_name] = value
-            # Run the test with the updated values
-            if test_values['RTO_UPPER_BOUND_SEC'] < test_values['RTO_LOWER_BOUND_SEC']:
-                continue
-            kill_procs()
-            experiment_id = datetime.datetime.now().strftime('%Y%m%d-%H%M%S.%f')
-            with open(f'{AUTOKERNEL_PATH}/demikernel/eval/test_config.py', 'r') as file:
-                print(f'================ RUNNING TEST =================')
-                print(f'\n\nEXPTID: {experiment_id}')
-                with open(f'{DATA_PATH}/{experiment_id}.test_config', 'w') as output_file:
-                    output_file.write(file.read())
-            run_server(test_values)
-            
-            host = pyrem.host.RemoteHost(CLIENT_NODE)
-            cmd = [f'cd {AUTOKERNEL_PATH}/tcp_generator && \
-                    sudo ./build/tcp-generator \
-                    -a 31:00.1 \
-                    -n 4 \
-                    -c 0xffff -- \
-                    -r exponential \
-                    -r 70000 \
-                    -f 32 \
-                    -s 128 \
-                    -t 5 \
-                    -q 1 \
-                    -c addr.cfg \
-                    -o {DATA_PATH}/{experiment_id}.lat \
-                    > {DATA_PATH}/{experiment_id}.client 2>&1']
-            task = host.run(cmd, quiet=False)
-            print('Running client\n')
-            pyrem.task.Parallel([task], aggregate=True).start(wait=False)
-            time.sleep(RUNTIME + 10)
-            print('================ TEST COMPLETE =================\n')
-            
-            try:
-                cmd = f'cat {DATA_PATH}/{experiment_id}.client | grep "\[RESULT\]" | tail -1'
-                client_result = subprocess.run(
-                    cmd,
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    check=True,
-                ).stdout.decode()
-                if client_result == '':
-                    client_result = '[RESULT] N/A\n'
-                
-                
-                # Generate the result string with the values
-                result = f'{experiment_id},' + ",".join(map(str, test_values.values()))
-                result += f',{client_result[len("[RESULT]"):]}'
-                
-                print('\n\n' + "***TEST RESULT***\n" + result_header + '\n' + result)
-                
-                final_result += result + '\n'
-                
-            except subprocess.CalledProcessError as e:
-                # Handle the exception for a failed command execution
-                print("EXPERIMENT FAILED\n\n")
-
-            except Exception as e:
-                # Handle any other unexpected exceptions
-                print("EXPERIMENT FAILED\n\n")
+                    except Exception as e:
+                        # Handle any other unexpected exceptions
+                        print("EXPERIMENT FAILED\n\n")
                                     
 def exiting():
     

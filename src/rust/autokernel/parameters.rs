@@ -77,8 +77,6 @@ pub static AK_PARMS: Lazy<AutokernelParameters> = Lazy::new(|| {
     eprintln!("DEFAULT_BODY_POOL_SIZE: {}", default_body_pool_size);
     eprintln!("DEFAULT_CACHE_SIZE: {}", default_cache_size);
 
-
-
     AutokernelParameters {
         receive_batch_size,
         timer_resolution,

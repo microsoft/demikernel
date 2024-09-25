@@ -35,9 +35,9 @@ REPEAT_NUM = 1
 
 ################## VARS #####################
 ### CLIENT ###
-CLIENT_PPS = [i for i in range(10000, 250000 + 1, 30000)]#[i for i in range(100000, 1_300_001, 100000)]
-NUM_CONNECTIONS = [100]
-RUNTIME = 10
+CLIENT_PPS = [i for i in range(90000, 90000 + 1, 30000)]#[i for i in range(100000, 1_300_001, 100000)]
+NUM_CONNECTIONS = [32]
+RUNTIME = 5
 
 ### SERVER ###
 # CAPY_LOG = 'all' # 'all', 'mig'
