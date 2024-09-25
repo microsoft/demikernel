@@ -285,7 +285,7 @@ export ELF_DIR ?= $(CURDIR)/bin/examples/rust
 # ENV += IH_LOG=1
 # ENV += CAPY_LOG=all
 ENV += LIBOS=catnip
-ENV += RECEIVE_BATCH_SIZE=111
+
 tcp-ping-pong-server9:
 	sudo -E \
 	CONFIG_PATH=$(CONFIG_DIR)/node9_config.yaml \
@@ -306,8 +306,8 @@ tcp-ping-pong-client:
 tcp-echo-server9:
 	sudo -E \
 	CONFIG_PATH=$(CONFIG_DIR)/node9_config.yaml \
-	$(ENV) \
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) \
+	$(ENV) \
 	taskset --cpu-list 0 numactl -m0 \
 	$(ELF_DIR)/tcp-echo.elf --address 10.0.1.9:10000 --peer server
 

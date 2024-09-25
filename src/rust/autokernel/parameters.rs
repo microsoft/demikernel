@@ -65,6 +65,20 @@ pub static AK_PARMS: Lazy<AutokernelParameters> = Lazy::new(|| {
         .and_then(|val| val.parse().ok())
         .unwrap_or(250);
 
+
+    eprintln!("RECEIVE_BATCH_SIZE: {}", receive_batch_size);
+    eprintln!("TIMER_RESOLUTION: {}", timer_resolution);
+    eprintln!("TIMER_FINER_RESOLUTION: {}", timer_finer_resolution);
+    eprintln!("RTO_ALPHA: {}", rto_alpha);
+    eprintln!("RTO_BETA: {}", rto_beta);
+    eprintln!("RTO_GRANULARITY: {}", rto_granularity);
+    eprintln!("RTO_LOWER_BOUND_SEC: {}", rto_lower_bound_sec);
+    eprintln!("RTO_UPPER_BOUND_SEC: {}", rto_upper_bound_sec);
+    eprintln!("DEFAULT_BODY_POOL_SIZE: {}", default_body_pool_size);
+    eprintln!("DEFAULT_CACHE_SIZE: {}", default_cache_size);
+
+
+
     AutokernelParameters {
         receive_batch_size,
         timer_resolution,

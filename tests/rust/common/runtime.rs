@@ -32,6 +32,7 @@ use ::std::{
         DerefMut,
     },
 };
+use demikernel::autokernel::parameters::MAX_RECEIVE_BATCH_SIZE;
 
 //======================================================================================================================
 // Structures
@@ -87,7 +88,7 @@ impl PhysicalLayer for SharedDummyRuntime {
         }
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.try_recv().ok() {
             out.push(buf);

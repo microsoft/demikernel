@@ -52,6 +52,8 @@ use ::std::{
     },
 };
 
+use crate::autokernel::parameters::MAX_RECEIVE_BATCH_SIZE;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -87,8 +89,8 @@ impl SharedLayer3Endpoint {
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    pub fn receive(&mut self) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), MAX_RECEIVE_BATCH_SIZE>, Fail> {
+        let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), MAX_RECEIVE_BATCH_SIZE> = ArrayVec::new();
         for (eth2_type, mut packet) in self.layer2_endpoint.receive()? {
             match eth2_type {
                 EtherType2::Arp => {

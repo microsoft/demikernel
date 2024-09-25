@@ -66,6 +66,7 @@ use ::std::{
 };
 
 use arrayvec::ArrayVec;
+use crate::autokernel::parameters::MAX_RECEIVE_BATCH_SIZE;
 
 //======================================================================================================================
 // Structures
@@ -117,7 +118,7 @@ impl Peer {
         }
     }
 
-    fn receive_batch(&mut self, batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>) {
+    fn receive_batch(&mut self, batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), MAX_RECEIVE_BATCH_SIZE>) {
         timer!("inetstack::poll_bg_work::for::for");
         trace!("found packets: {:?}", batch.len());
         for (src_ipv4_addr, ip_type, payload) in batch {

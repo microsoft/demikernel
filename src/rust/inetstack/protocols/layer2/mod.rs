@@ -42,6 +42,8 @@ use ::std::ops::{
     DerefMut,
 };
 
+use crate::autokernel::parameters::MAX_RECEIVE_BATCH_SIZE;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -66,8 +68,8 @@ impl SharedLayer2Endpoint {
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), MAX_RECEIVE_BATCH_SIZE>, Fail> {
+        let mut batch: ArrayVec<(EtherType2, DemiBuffer), MAX_RECEIVE_BATCH_SIZE> = ArrayVec::new();
         for mut pkt in self.layer1_endpoint.receive()? {
             let header: Ethernet2Header = match Ethernet2Header::parse_and_strip(&mut pkt) {
                 Ok(result) => result,
