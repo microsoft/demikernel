@@ -14,26 +14,26 @@ license-file = "LICENSE.txt"
 
 [dependencies]
 # Third-party crates.
-arrayvec = "0.7.4"
-async-trait = "0.1.81"
-anyhow = "1.0.86"
+anyhow = "1.0.89"
+arrayvec = "0.7.6"
+async-trait = "0.1.83"
 bit-iter = "1.2.0"
 cfg-if = "1.0.0"
+clap = "4.5.18"
 crc = "3.2.1"
-clap = "4.5.15"
 crossbeam-channel = "0.5.13"
 eui48 = "1.1.0"
-flexi_logger = "0.28.5"
+flexi_logger = "0.29.0"
 futures = "0.3.30"
 histogram = "0.11.0"
-libc = "0.2.155"
+libc = "0.2.159"
 log = "0.4.22"
 mimalloc = { version = "0.1.43", default-features = false }
 rand = { version = "0.8.5", features = ["small_rng"] }
 slab = "0.4.9"
 socket2 = "0.5.7"
-yaml-rust = "0.4.5"
 x86 = "0.52.0"
+yaml-rust = "0.4.5"
 
 # Demikernel crates (published on crates.io).
 demikernel-dpdk-bindings = { version = "1.1.6", optional = true }

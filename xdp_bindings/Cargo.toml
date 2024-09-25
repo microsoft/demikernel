@@ -22,9 +22,9 @@ windows = { version = "0.57.0", features = [
 ] }
 
 [build-dependencies]
-anyhow = "1.0.86"
-bindgen = "0.69.4"
-cc = "1.1.10"
+anyhow = "1.0.89"
+bindgen = "0.70.1"
+cc = "1.1.21"
 
 [profile.release]
 opt-level = 3            # Enable all compiler optimizations.
