@@ -11,15 +11,12 @@
 extern crate windows;
 
 use windows::{
-    Win32::{
-        System::IO::OVERLAPPED,
-        Foundation::HANDLE,
-        Networking::WinSock::{
-            IN_ADDR,
-            IN6_ADDR,
-        }
-    },
     core::HRESULT,
+    Win32::{
+        Foundation::HANDLE,
+        Networking::WinSock::{IN6_ADDR, IN_ADDR},
+        System::IO::OVERLAPPED,
+    },
 };
 
 // Redefining this type prevents bindgen from having to wrap the whole union. Since this is a
