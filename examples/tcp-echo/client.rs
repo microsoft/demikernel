@@ -450,7 +450,6 @@ fn is_closed(ret: i64) -> bool {
 //======================================================================================================================
 
 impl Drop for TcpEchoClient {
-    // Releases all resources allocated to a pipe client.
     fn drop(&mut self) {
         // Close all connections.
         for (qd, _) in self.clients.drain().collect::<Vec<_>>() {

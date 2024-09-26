@@ -11,7 +11,6 @@ homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
 
 [dependencies]
-cfg-if = "1.0.0"
 windows = { version = "0.57.0", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
@@ -27,7 +26,6 @@ anyhow = "1.0.86"
 bindgen = "0.69.4"
 cc = "1.1.10"
 
-# Build profile used for releases.
 [profile.release]
 opt-level = 3            # Enable all compiler optimizations.
 debug = false            # Do not include any debug info in the binary.
@@ -39,7 +37,6 @@ incremental = false      # Disable incremental compilation.
 codegen-units = 1        # Produce a single code generation unit (overridden).
 rpath = false            # Disable runtime search path.
 
-# Build profile used for development and debugging.
 [profile.dev]
 opt-level = 0           # Disable all compiler optimizations.
 debug = true            # Output full debug info in the binary.

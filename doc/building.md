@@ -25,12 +25,6 @@ instructions in the `README.md` file.
 # This defaults to LIBOS=catnap.
 make
 
-# Build Demikernel with TCP Socket Loopback LibOS.
-make LIBOS=catloop
-
-# Build Demikernel with Shared Memory LibOS.
-make LIBOS=catmem
-
 # Build Demikernel with Linux Sockets LibOS.
 make LIBOS=catnap
 

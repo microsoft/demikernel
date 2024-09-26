@@ -28,8 +28,6 @@ All arguments supported by Demikernel are listed in the table below. Arguments t
 
 | ID      | Argument      | Description                       | Supported OS |
 | ------- | ------------- | --------------------------------- | ------------ |
-| `ARG-2` | `--catloop`   | Enables TCP Socket Loopback LibOS | Linux        |
-| `ARG-3` | `--catmem`    | Enables Shared Memory LibOS       | Linux        |
 | `ARG-4` | `--catnap`    | Enables Linux Sockets LibOS       | Linux        |
 | `ARG-5` | `--catnip`    | Enables DPDK LibOS                | Linux        |
 | `ARG-6` | `--catpowder` | Enables Linux Raw Sockets LibOS   | Linux        |

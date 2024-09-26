@@ -18,21 +18,13 @@ pub mod perftools;
 
 pub mod runtime;
 
-#[cfg(any(
-    feature = "catnap-libos",
-    feature = "catnip-libos",
-    feature = "catpowder-libos",
-    feature = "catloop-libos"
-))]
+#[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
 pub mod inetstack;
 
 extern crate test;
 
 #[macro_use]
 extern crate log;
-
-#[macro_use]
-extern crate cfg_if;
 
 #[cfg(feature = "catnip-libos")]
 mod catnip;
@@ -42,12 +34,6 @@ mod catpowder;
 
 #[cfg(all(feature = "catnap-libos"))]
 mod catnap;
-
-#[cfg(feature = "catmem-libos")]
-mod catmem;
-
-#[cfg(feature = "catloop-libos")]
-mod catloop;
 
 pub use self::demikernel::libos::{name::LibOSName, LibOS};
 pub use crate::runtime::{
