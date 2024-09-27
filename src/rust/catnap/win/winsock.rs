@@ -5,14 +5,6 @@
 // Imports
 //======================================================================================================================
 
-use std::{
-    collections::HashMap,
-    mem,
-    mem::MaybeUninit,
-    net::{Ipv4Addr, SocketAddrV4},
-    rc::{Rc, Weak},
-};
-
 use crate::{
     catnap::transport::{
         error::expect_last_wsa_error,
@@ -20,6 +12,13 @@ use crate::{
         socket::{Socket, SocketOpState},
     },
     runtime::{fail::Fail, network::socket::option::TcpSocketOptions},
+};
+use std::{
+    collections::HashMap,
+    mem,
+    mem::MaybeUninit,
+    net::{Ipv4Addr, SocketAddrV4},
+    rc::{Rc, Weak},
 };
 use windows::{
     core::{GUID, PSTR},

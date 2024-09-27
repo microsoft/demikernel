@@ -5,6 +5,14 @@
 // Imports
 //======================================================================================================================
 
+use crate::{
+    catnap::transport::{
+        error::{expect_last_wsa_error, get_overlapped_api_result},
+        overlapped::{IoCompletionPort, OverlappedResult},
+        winsock::{SocketExtensions, WinsockRuntime},
+    },
+    runtime::{fail::Fail, memory::DemiBuffer, network::socket::option::TcpSocketOptions},
+};
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
@@ -13,7 +21,6 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-
 use windows::{
     core::PSTR,
     Win32::{
@@ -27,15 +34,6 @@ use windows::{
         },
         System::IO::{CancelIoEx, OVERLAPPED},
     },
-};
-
-use crate::{
-    catnap::transport::{
-        error::{expect_last_wsa_error, get_overlapped_api_result},
-        overlapped::{IoCompletionPort, OverlappedResult},
-        winsock::{SocketExtensions, WinsockRuntime},
-    },
-    runtime::{fail::Fail, memory::DemiBuffer, network::socket::option::TcpSocketOptions},
 };
 
 //======================================================================================================================

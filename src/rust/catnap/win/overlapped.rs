@@ -5,19 +5,17 @@
 // Imports
 //======================================================================================================================
 
-use std::{cell::Cell, marker::PhantomData, pin::Pin};
-
-use windows::Win32::{
-    Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, NTSTATUS, WAIT_TIMEOUT, WIN32_ERROR},
-    Networking::WinSock::SOCKET,
-    System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatusEx, OVERLAPPED, OVERLAPPED_ENTRY},
-};
-
 use crate::{
     catnap::transport::error::translate_ntstatus,
     collections::pin_slab::PinSlab,
     expect_some,
     runtime::{fail::Fail, SharedConditionVariable},
+};
+use std::{cell::Cell, marker::PhantomData, pin::Pin};
+use windows::Win32::{
+    Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, NTSTATUS, WAIT_TIMEOUT, WIN32_ERROR},
+    Networking::WinSock::SOCKET,
+    System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatusEx, OVERLAPPED, OVERLAPPED_ENTRY},
 };
 
 //======================================================================================================================
