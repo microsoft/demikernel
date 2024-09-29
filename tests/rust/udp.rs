@@ -10,7 +10,7 @@ mod test {
     // Imports
     //==========================================================================
 
-    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_BASE};
+    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_NUMBER};
     use ::anyhow::Result;
     use ::demikernel::runtime::{
         memory::{DemiBuffer, MemoryRuntime},
@@ -36,7 +36,7 @@ mod test {
 
     /// Opens and closes a socket using a non-ephemeral port.
     fn do_udp_setup(libos: &mut DummyLibOS) -> Result<()> {
-        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
         let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
             Ok(qd) => qd,
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
@@ -135,8 +135,7 @@ mod test {
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
-        let port: u16 = PORT_BASE;
-        let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
         // Open and close a connection.
         let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
@@ -172,10 +171,8 @@ mod test {
         let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
         let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-        let bob_port: u16 = PORT_BASE;
-        let bob_addr: SocketAddr = SocketAddr::new(BOB_IP, bob_port);
-        let alice_port: u16 = PORT_BASE;
-        let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
+        let bob_addr: SocketAddr = SocketAddr::new(BOB_IP, PORT_NUMBER);
+        let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
         let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
@@ -334,10 +331,8 @@ mod test {
         let (alice_tx, alice_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
         let (bob_tx, bob_rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
 
-        let bob_port: u16 = PORT_BASE;
-        let bob_addr: SocketAddr = SocketAddr::new(ALICE_IP, bob_port);
-        let alice_port: u16 = PORT_BASE;
-        let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, alice_port);
+        let bob_addr: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
+        let alice_addr: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
         let bob_barrier: Arc<Barrier> = Arc::new(Barrier::new(2));
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
