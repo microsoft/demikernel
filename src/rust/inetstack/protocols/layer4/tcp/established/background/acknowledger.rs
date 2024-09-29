@@ -9,7 +9,7 @@ use ::futures::never::Never;
 use ::std::time::Instant;
 
 pub async fn acknowledger(mut cb: SharedControlBlock) -> Result<Never, Fail> {
-    let mut ack_deadline: SharedAsyncValue<Option<Instant>> = cb.get_ack_deadline();
+    let mut ack_deadline: SharedAsyncValue<Option<Instant>> = cb.get_receive_ack_deadline();
     let mut deadline: Option<Instant> = ack_deadline.get();
     loop {
         // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
