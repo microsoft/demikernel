@@ -24,7 +24,6 @@ use ::libc::{c_int, c_void, sockaddr};
 use ::socket2::SockAddr;
 use ::std::{
     cell::RefCell,
-    ffi::CStr,
     mem::{self, MaybeUninit},
     net::{SocketAddr, SocketAddrV4},
     ptr, slice,
@@ -76,80 +75,6 @@ pub extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
     };
 
     0
-}
-
-#[no_mangle]
-pub extern "C" fn demi_create_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
-    trace!("demi_create_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
-
-    if memqd_out.is_null() {
-        warn!("demi_create_pipe() memqd_out is a null pointer");
-        return libc::EINVAL;
-    }
-
-    if name.is_null() {
-        warn!("demi_create_pipe() name is a null pointer");
-        return libc::EINVAL;
-    }
-
-    // Convert C string to a Rust one.
-    let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return libc::EINVAL,
-    };
-
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.create_pipe(name) {
-        Ok(qd) => {
-            unsafe { *memqd_out = qd.into() };
-            0
-        },
-        Err(e) => {
-            trace!("demi_create_pipe() failed: {:?}", e);
-            e.errno
-        },
-    });
-
-    match ret {
-        Ok(ret) => ret,
-        Err(e) => e.errno,
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn demi_open_pipe(memqd_out: *mut c_int, name: *const libc::c_char) -> c_int {
-    trace!("demi_open_pipe() memqd_out={:?}, name={:?}", memqd_out, name);
-
-    if memqd_out.is_null() {
-        warn!("demi_open_pipe() memqd_out is a null pointer");
-        return libc::EINVAL;
-    }
-
-    if name.is_null() {
-        warn!("demi_open_pipe() name is a null pointer");
-        return libc::EINVAL;
-    }
-
-    // Convert C string to a Rust one.
-    let name: &str = match unsafe { CStr::from_ptr(name) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return libc::EINVAL,
-    };
-
-    let ret: Result<i32, Fail> = do_syscall(|libos| match libos.open_pipe(name) {
-        Ok(qd) => {
-            unsafe { *memqd_out = qd.into() };
-            0
-        },
-        Err(e) => {
-            trace!("demi_open_pipe() failed: {:?}", e);
-            e.errno
-        },
-    });
-
-    match ret {
-        Ok(ret) => ret,
-        Err(e) => e.errno,
-    }
 }
 
 #[no_mangle]
@@ -1009,12 +934,7 @@ mod test {
         };
     }
 
-    #[cfg(any(
-        feature = "catnap-libos",
-        feature = "catnip-libos",
-        feature = "catpowder-libos",
-        feature = "catloop-libos"
-    ))]
+    #[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
     #[test]
     fn test_set_and_get_linger() -> anyhow::Result<()> {
         // Initialize Demikernel

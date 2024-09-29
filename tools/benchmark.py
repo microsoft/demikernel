@@ -18,7 +18,7 @@ def run_pipeline(
         repository: str, branch: str, libos: str, is_debug: bool, server: str, client: str,
         server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool) -> int:
-    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
+    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     status: dict[str, bool] = {}
 
     # Create folder for test logs

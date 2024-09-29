@@ -102,7 +102,7 @@ install:
 #=======================================================================================================================
 
 # Builds all libraries.
-all-libs: all-shim all-libs-demikernel
+all-libs: all-libs-demikernel
 
 all-libs-demikernel:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
@@ -111,19 +111,13 @@ all-libs-demikernel:
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 	cp -f $(BUILD_DIR)/$(DEMIKERNEL_LIB) $(LIBDIR)/$(DEMIKERNEL_LIB)
 
-all-shim: all-libs-demikernel
-	$(MAKE) -C shim all BINDIR=$(BINDIR)/shim
-
-clean-libs: clean-shim clean-libs-demikernel
+clean-libs: clean-libs-demikernel
 
 clean-libs-demikernel:
 	rm -f $(LIBDIR)/$(DEMIKERNEL_LIB)
 	rm -rf target ; \
 	rm -f Cargo.lock ; \
 	$(CARGO) clean
-
-clean-shim:
-	$(MAKE) -C shim clean BINDIR=$(BINDIR)/shim
 
 #=======================================================================================================================
 # Tests

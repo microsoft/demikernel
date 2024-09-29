@@ -46,35 +46,3 @@ class CloneOnLinux(BaseLinuxTask):
     def __init__(self, host: str, path: str, repository: str, branch: str):
         cmd: str = f"cd {path} && git clone {repository} --branch {branch}"
         super().__init__(host, cmd)
-
-
-class MakeRedisOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, path: str):
-        cmd: str = f"cd {path}/redis  && make MALLOC=libc all"
-        super().__init__(host, cmd)
-
-
-class RunredisServerOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, is_sudo: str, env: str, params: str):
-        sudo_cmd: str = "sudo -E" if is_sudo else ""
-        redis_cmd: str = f"{sudo_cmd} {env} ./src/redis-server {params} --daemonize yes"
-        cmd: str = f"cd {redis_path} && {redis_cmd}"
-        super().__init__(host, cmd)
-
-
-class RunRedisBenchmarkOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 240):
-        cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-benchmark {params}"
-        super().__init__(host, cmd)
-
-
-class StopRedisServerOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, redis_path: str, params: str, timeout: int = 10):
-        cmd: str = f"cd {redis_path} && timeout {timeout} ./src/redis-cli {params} shutdown"
-        super().__init__(host, cmd)
-
-
-class CleanupRedisOnLinux(BaseLinuxTask):
-    def __init__(self, host: str, process_name: str, redis_path: str):
-        cmd: str = f"sudo pkill -e {process_name} ; rm -rf {redis_path}"
-        super().__init__(host, cmd)

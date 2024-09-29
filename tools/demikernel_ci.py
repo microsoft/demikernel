@@ -22,7 +22,7 @@ def run_pipeline(
         bool, server: str, client: str, test_unit: bool, test_integration: bool,
         test_system: str, server_addr: str, client_addr: str, delay: float, config_path: str,
         output_dir: str, enable_nfs: bool, install_prefix: str) -> int:
-    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
+    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" else False
     status: dict[str, bool] = {}
 
     config: dict = {
@@ -72,30 +72,13 @@ def run_pipeline(
     # STEP 4: Run integration tests.
     if test_integration:
         if status["checkout"] and status["compile"]:
-            if libos in ["catnap", "catloop", "catnip", "catpowder"]:
+            if libos in ["catnap", "catnip", "catpowder"]:
                 status["integration_tests"] = factory.integration_test().execute()
-            elif libos == "catmem":
-                status["integration_tests"] = factory.integration_test("standalone").execute()
-                status["integration_tests"] = factory.integration_test("push-wait").execute()
-                status["integration_tests"] = factory.integration_test("pop-wait").execute()
-                status["integration_tests"] = factory.integration_test("push-wait-async").execute()
-                status["integration_tests"] = factory.integration_test("pop-wait-async").execute()
 
     # STEP 5: Run system tests.
     if test_system and config["platform"]:
         if status["checkout"] and status["compile"]:
             ci_map = read_yaml(platform, libos)
-            # Run pipe-open test.
-            if __should_run(ci_map[libos], "pipe_open", test_system):
-                scenario = ci_map[libos]['pipe_open']
-                status["pipe-open"] = factory.system_test(test_name="open-close",
-                                                          niterations=scenario['niterations']).execute()
-            # Run pipe-ping-pong test.
-            if __should_run(ci_map[libos], "pipe_ping_pong", test_system):
-                status["pipe-ping-pong"] = factory.system_test(test_name="ping-pong").execute()
-            # Run pipe-push-pop test.
-            if __should_run(ci_map[libos], "pipe_push_pop", test_system):
-                status["pipe-push-pop"] = factory.system_test(test_name="push-pop").execute()
             if __should_run(ci_map[libos], "tcp_echo", test_system):
                 status["tcp_echo"] = True
                 test_config = ci_map[libos]['tcp_echo']
@@ -142,50 +125,6 @@ def run_pipeline(
     status["cleanup"] = factory.cleanup().execute()
 
     return status
-
-
-# Runs the CI pipeline.
-def run_redis_pipeline(
-        platform: str,
-        log_directory: str, branch: str, libos: str, server: str,
-        client: str, server_addr: str, client_addr: str, delay: float, output_dir: str,
-        libshim_path: str, ld_library_path: str, config_path: str) -> int:
-    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
-    status: dict[str, bool] = {}
-
-    config: dict = {
-        "server": server,
-        "server_name": server,
-        "client": client,
-        "libos": libos,
-        "path": "\$HOME",
-        "client_name": client,
-        "repository": "https://github.com/redis/redis.git",
-        "branch": "7.0",
-        "server_addr": server_addr,
-        "client_addr": client_addr,
-        "delay": delay,
-        "output_dir": output_dir,
-        "log_directory": log_directory,
-        "is_sudo": is_sudo,
-        "platform": platform,
-        "libshim_path": libshim_path,
-        "ld_library_path": ld_library_path,
-        "config_path": config_path,
-    }
-
-    factory: JobFactory = JobFactory(config)
-
-    status["clone-redis"] = factory.clone_redis().execute()
-    status["make-redis"] = factory.make_redis().execute()
-    status["run-redis"] = factory.run_redis_server().execute()
-    status["run-redis-benchmark"] = factory.run_redis_benchmark().execute()
-    factory.stop_redis_server().execute()
-    # NOTE: we do not report status od stopping redis server.
-    status["cleanup-redis"] = factory.cleanup_redis().execute()
-
-    return status
-
 
 # Recursively builds all combinations
 def build_combinations(scenario: dict, names: list, params: dict) -> list:
@@ -255,7 +194,6 @@ def read_args() -> argparse.Namespace:
                         required=False, help="run integration tests")
     parser.add_argument("--test-system", type=str,
                         required=False, help="run system tests")
-    parser.add_argument("--test-redis", action='store_true', required=False, help="run redis tests")
     parser.add_argument("--server-addr", required="--test-system" in sys.argv,
                         help="sets server address in tests")
     parser.add_argument("--client-addr", required="--test-system" in sys.argv,
@@ -295,7 +233,6 @@ def main():
     test_unit: bool = args.test_unit
     test_integration: bool = args.test_integration
     test_system: str = args.test_system
-    test_redis: bool = args.test_redis
     server_addr: str = args.server_addr
     client_addr: str = args.client_addr
 
@@ -325,15 +262,6 @@ def main():
     status: dict = run_pipeline(platform, log_directory, repository, branch, libos, is_debug, server,
                                 client, test_unit, test_integration, test_system, server_addr,
                                 client_addr, delay, config_path, output_dir, enable_nfs, install_prefix)
-
-    if test_redis:
-        libshim_path: str = f"{install_prefix}/lib/libshim.so"
-        ld_library_path: str = f"{install_prefix}/lib"
-        if libos == "catnip":
-            ld_library_path = f"\$HOME/lib/x86_64-linux-gnu:{install_prefix}/lib"
-        status |= run_redis_pipeline(platform, log_directory, branch, libos, server,
-                                     client, server_addr,
-                                     client_addr, delay, output_dir, libshim_path, ld_library_path, config_path)
 
     if False in status.values():
         sys.exit(-1)

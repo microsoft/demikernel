@@ -67,11 +67,6 @@ path = "tests/rust/tcp-test/main.rs"
 harness = false
 
 [[test]]
-name = "pipe-test"
-path = "tests/rust/pipe-test/main.rs"
-harness = false
-
-[[test]]
 name = "tcp"
 path = "tests/rust/tcp.rs"
 
@@ -98,14 +93,6 @@ path = "examples/rust/udp-pktgen.rs"
 [[example]]
 name = "udp-relay"
 path = "examples/rust/udp-relay.rs"
-
-[[example]]
-name = "pipe-ping-pong"
-path = "examples/rust/pipe-ping-pong.rs"
-
-[[example]]
-name = "pipe-push-pop"
-path = "examples/rust/pipe-push-pop.rs"
 
 [[example]]
 name = "udp-push-pop"
@@ -135,9 +122,7 @@ path = "examples/rust/tcp-ping-pong.rs"
 default = ["catnap-libos"]
 catnap-libos = []
 catpowder-libos = []
-catmem-libos = []
 catnip-libos = ["libdpdk"]
-catloop-libos = ["catmem-libos"]
 libdpdk = ["demikernel-dpdk-bindings"]
 libxdp = ["demikernel-xdp-bindings"]
 mlx4 = ["demikernel-dpdk-bindings/mlx4"]

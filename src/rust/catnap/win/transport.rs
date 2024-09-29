@@ -10,16 +10,6 @@ mod winsock;
 // Imports
 //======================================================================================================================
 
-use std::{
-    net::{SocketAddr, SocketAddrV4},
-    pin::Pin,
-};
-
-use windows::Win32::{
-    Networking::WinSock::{WSAGetLastError, IPPROTO, IPPROTO_TCP, IPPROTO_UDP},
-    System::IO::OVERLAPPED,
-};
-
 use crate::{
     catnap::transport::{
         overlapped::{IoCompletionPort, OverlappedResult},
@@ -39,6 +29,14 @@ use crate::{
     },
 };
 use ::futures::FutureExt;
+use std::{
+    net::{SocketAddr, SocketAddrV4},
+    pin::Pin,
+};
+use windows::Win32::{
+    Networking::WinSock::{WSAGetLastError, IPPROTO, IPPROTO_TCP, IPPROTO_UDP},
+    System::IO::OVERLAPPED,
+};
 
 //======================================================================================================================
 // Structures

@@ -92,13 +92,6 @@ These tests are located in `demikernel/examples/` and detailed in the following 
 | `udp-push-pop`  | Tests for fixed size, unidirectional data transfers using UDP.            |
 | `udp-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers using UDP. |
 
-**The following system-level tests are supported by `catmem`.**
-
-| Test Name        | Description                                                     |
-| ---------------- | --------------------------------------------------------------- |
-| `pipe-push-pop`  | Tests for fixed size, unidirectional data transfers.            |
-| `pipe-ping-pong` | Tests for fixed size, bi-directional, symmetric data transfers. |
-
 ## How to Run System-Level Tests
 
 System-level tests may be run in multiple ways:
@@ -173,19 +166,6 @@ make test-system-rust TEST=udp-push-pop ARGS='--client $CLIENT_IPV4_ADDR $SERVER
 make test-system-rust TEST=udp-ping-pong ARGS='--server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR' # Run this on server host.
 make test-system-rust TEST=udp-ping-pong ARGS='--client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR' # Run this on client host.
 
-# Run pipe-push-pop.
-# - Note 1: Both commands should be executed on the same host.
-# - Note 2: The 'demikernel-pipe-name' parameter is used to name the underlying pipe.
-# - Note 3: You may change the pipe name to whatever you want but both ends should agree on the same name.
-make test-system-rust LIBOS=catmem TEST=pipe-push-pop ARGS='--server demikernel-pipe-name'
-make test-system-rust LIBOS=catmem TEST=pipe-push-pop ARGS='--client demikernel-pipe-name'
-
-# Run pipe-ping-pong.
-# - Note 1: Both commands should be executed on the same host.
-# - Note 2: The 'demikernel-pipe-name' parameter is used to name the underlying pipe.
-# - Note 3: You may change the pipe name to whatever you want but both ends should agree on the same name.
-make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--server demikernel-pipe-name'
-make test-system-rust LIBOS=catmem TEST=pipe-ping-pong ARGS='--client demikernel-pipe-name'
 ```
 
 ### Running System-Level Tests from the Shell (_i.e.,_ `bash`)
@@ -219,19 +199,5 @@ bin/examples/rust/udp-push-pop.elf --client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR 
 # Run udp-ping-pong.
 bin/examples/rust/udp-ping-pong.elf --server $SERVER_IPV4_ADDR $CLIENT_IPV4_ADDR # Run this on server host.
 bin/examples/rust/udp-ping-pong.elf --client $CLIENT_IPV4_ADDR $SERVER_IPV4_ADDR # Run this on client host.
-
-# Run pipe-push-pop.
-# - Note 1: Both commands should be executed on the same host.
-# - Note 2: The 'demikernel-pipe-name' parameter is used to name the underlying pipe.
-# - Note 3: You may change the pipe name to whatever you want but both ends should agree on the same name.
-LIBOS=catmem bin/examples/rust/pipe-push-pop.elf --server demikernel-pipe-name
-LIBOS=catmem bin/examples/rust/pipe-push-pop.elf --client demikernel-pipe-name
-
-# Run pipe-ping-pong.
-# - Note 1: Both commands should be executed on the same host.
-# - Note 2: The 'demikernel-pipe-name' parameter is used to name the underlying pipe.
-# - Note 3: You may change the pipe name to whatever you want but both ends should agree on the same name.
-LIBOS=catmem bin/examples/rust/pipe-ping-pong.elf --server demikernel-pipe-name
-LIBOS=catmem bin/examples/rust/pipe-ping-pong.elf --client demikernel-pipe-name
 
 ```

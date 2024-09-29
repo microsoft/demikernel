@@ -33,28 +33,6 @@ extern "C"
     extern int demi_init(_In_ const struct demi_args *args);
 
     /**
-     * @brief Creates a new memory I/O queue.
-     *
-     * @param memqd_out Storage location for the memory I/O queue descriptor
-     * @param name      Name of the target memory I/O queue.
-     *
-     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
-     */
-    ATTR_NONNULL(1, 2)
-    extern int demi_create_pipe(_Out_ int *memqd_out, _In_z_ const char *name);
-
-    /**
-     * @brief Opens an existing memory I/O queue.
-     *
-     * @param memqd_out Storage location for the memory I/O queue descriptor
-     * @param name      Name of the target memory I/O queue.
-     *
-     * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
-     */
-    ATTR_NONNULL(1, 2)
-    extern int demi_open_pipe(_Out_ int *memqd_out, _In_z_ const char *name);
-
-    /**
      * @brief Creates a socket I/O queue.
      *
      * @param sockqd_out Storage location for the socket I/O queue descriptor.

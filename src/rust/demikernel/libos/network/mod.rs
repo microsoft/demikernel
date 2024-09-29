@@ -30,8 +30,6 @@ use ::std::{
 #[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
 use crate::inetstack::SharedInetStack;
 
-#[cfg(feature = "catloop-libos")]
-use crate::catloop::transport::SharedCatloopTransport;
 #[cfg(all(feature = "catnap-libos"))]
 use crate::catnap::transport::SharedCatnapTransport;
 
@@ -47,8 +45,6 @@ pub enum NetworkLibOSWrapper {
     Catnap(SharedNetworkLibOS<SharedCatnapTransport>),
     #[cfg(feature = "catnip-libos")]
     Catnip(SharedNetworkLibOS<SharedInetStack>),
-    #[cfg(feature = "catloop-libos")]
-    Catloop(SharedNetworkLibOS<SharedCatloopTransport>),
 }
 
 //======================================================================================================================
@@ -71,8 +67,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.socket(domain.into(), socket_type.into(), protocol.into()),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.socket(domain.into(), socket_type.into(), protocol.into()),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.socket(domain.into(), socket_type.into(), protocol.into()),
         }
     }
 
@@ -85,8 +79,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.set_socket_option(sockqd, option),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.set_socket_option(sockqd, option),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.set_socket_option(sockqd, option),
         }
     }
 
@@ -99,8 +91,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.get_socket_option(sockqd, option),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.get_socket_option(sockqd, option),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.get_socket_option(sockqd, option),
         }
     }
 
@@ -113,8 +103,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.getpeername(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.getpeername(sockqd),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.getpeername(sockqd),
         }
     }
 
@@ -127,8 +115,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.bind(sockqd, local),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.bind(sockqd, local),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.bind(sockqd, local),
         }
     }
 
@@ -156,8 +142,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.listen(sockqd, backlog),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.listen(sockqd, backlog),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.listen(sockqd, backlog),
         }
     }
 
@@ -170,8 +154,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.accept(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.accept(sockqd),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.accept(sockqd),
         }
     }
 
@@ -184,8 +166,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.connect(sockqd, remote),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.connect(sockqd, remote),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.connect(sockqd, remote),
         }
     }
 
@@ -197,8 +177,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.async_close(sockqd),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.async_close(sockqd),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.async_close(sockqd),
         }
     }
 
@@ -211,8 +189,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.push(sockqd, sga),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.push(sockqd, sga),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.push(sockqd, sga),
         }
     }
 
@@ -226,8 +202,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.pushto(sockqd, sga, to),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.pushto(sockqd, sga, to),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(_) => Err(Fail::new(libc::ENOTSUP, "operation not supported")),
         }
     }
 
@@ -240,8 +214,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.pop(sockqd, size),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.pop(sockqd, size),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.pop(sockqd, size),
         }
     }
 
@@ -268,8 +240,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.wait_any(qts, timeout),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.wait_any(qts, timeout),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.wait_any(qts, timeout),
         }
     }
 
@@ -288,8 +258,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.wait_next_n(acceptor, timeout),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.wait_next_n(acceptor, timeout),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.wait_next_n(acceptor, timeout),
         }
     }
 
@@ -302,8 +270,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.poll(),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.poll(),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.poll(),
         }
     }
 
@@ -320,8 +286,6 @@ impl NetworkLibOSWrapper {
             // TODO: Move this over to the transport once we set that up.
             // FIXME: https://github.com/microsoft/demikernel/issues/1057
             NetworkLibOSWrapper::Catnip(libos) => libos.sgaalloc(size),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.sgaalloc(size),
         }
     }
 
@@ -334,8 +298,6 @@ impl NetworkLibOSWrapper {
             NetworkLibOSWrapper::Catnap(libos) => libos.sgafree(sga),
             #[cfg(feature = "catnip-libos")]
             NetworkLibOSWrapper::Catnip(libos) => libos.sgafree(sga),
-            #[cfg(feature = "catloop-libos")]
-            NetworkLibOSWrapper::Catloop(libos) => libos.sgafree(sga),
         }
     }
 }

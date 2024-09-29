@@ -1,20 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#[cfg(any(
-    feature = "catnap-libos",
-    feature = "catnip-libos",
-    feature = "catpowder-libos",
-    feature = "catloop-libos"
-))]
+#[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
 pub mod libos;
 
-#[cfg(any(
-    feature = "catnap-libos",
-    feature = "catnip-libos",
-    feature = "catpowder-libos",
-    feature = "catloop-libos"
-))]
+#[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
 pub mod runtime;
 
 use ::std::net::{IpAddr, Ipv4Addr};
