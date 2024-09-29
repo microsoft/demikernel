@@ -342,7 +342,9 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// coroutine that asynchronously runs the push and any synchronous multi-queue functionality before the push
     /// begins.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        let buf: DemiBuffer = self.transport.clone_sgarray(sga)?;
+        trace!("push() qd={:?}", qd);
+
+        let buf: DemiBuffer = self.transport.into_buf(sga)?;
         if buf.len() == 0 {
             let cause: String = format!("zero-length buffer");
             warn!("push(): {}", cause);
@@ -387,7 +389,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        let buf: DemiBuffer = self.transport.clone_sgarray(sga)?;
+        let buf: DemiBuffer = self.transport.into_buf(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
