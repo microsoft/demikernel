@@ -44,16 +44,14 @@ use futures::never::Never;
 // Constants
 //======================================================================================================================
 
-// TODO: Review this value (and its purpose).  It (2048 segments) of 8 KB jumbo packets would limit the unread data to
-// just 16 MB.  If we don't want to lie, that is also about the max window size we should ever advertise.  Whereas TCP
-// with the window scale option allows for window sizes of up to 1 GB.  This value appears to exist more because of the
-// mechanism used to manage the receive queue (a VecDeque) than anything else.
-const RECV_QUEUE_SZ: usize = 2048;
+// TODO: We should probably have a max for this value as well. This is just the number that we allocate initially and
+// we never need to allocate more memory as long as the receive queue remains below this number.
+const MIN_RECV_QUEUE_SIZE_FRAMES: usize = 2048;
 
 // TODO: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
-const MAX_OUT_OF_ORDER: usize = 16;
+const MAX_OUT_OF_ORDER_SIZE_FRAMES: usize = 16;
 
 //======================================================================================================================
 // Structures
@@ -86,7 +84,7 @@ struct Receiver {
     //                     |<---------------receive_buffer_size---------------->|
     //                     |                                                    |
     //                     |                         |<-----receive window----->|
-    //                reader_next              receive_next       receive_next + receive window
+    //                 read_next               receive_next       receive_next + receive window
     //                     v                         v                          v
     // ... ----------------|-------------------------|--------------------------|------------------------------
     //      read by user   |  received but not read  |    willing to receive    | future sequence number space
@@ -109,7 +107,7 @@ impl Receiver {
         Self {
             reader_next,
             receive_next,
-            recv_queue: AsyncQueue::with_capacity(RECV_QUEUE_SZ),
+            recv_queue: AsyncQueue::with_capacity(MIN_RECV_QUEUE_SIZE_FRAMES),
         }
     }
 
@@ -134,6 +132,7 @@ impl Receiver {
     pub fn push(&mut self, buf: DemiBuffer) {
         let buf_len: u32 = buf.len() as u32;
         self.recv_queue.push(buf);
+        // TODO: Does this need to roll over?
         self.receive_next = self.receive_next + SeqNumber::from(buf_len as u32);
     }
 }
@@ -154,56 +153,86 @@ pub struct ControlBlock {
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
 
-    // Send-side state information.  TODO: Consider incorporating this directly into ControlBlock.
-    sender: Sender,
-
     // TCP Connection State.
     state: State,
 
-    ack_delay_timeout: Duration,
+    // Send Sequence Variables from RFC 793.
 
-    ack_deadline: SharedAsyncValue<Option<Instant>>,
+    // SND.UNA - send unacknowledged
+    // SND.NXT - send next
+    // SND.WND - send window
+    // SND.UP  - send urgent pointer - not implemented
+    // SND.WL1 - segment sequence number used for last window update
+    // SND.WL2 - segment acknowledgment number used for last window
+    //           update
+    // ISS     - initial send sequence number
+
+    // Send queues
+    // SND.retrasmission_queue - queue of unacknowledged sent data.
+    // SND.unsent - queue of unsent data that we do not have the windows for.
+    // Previous send variables and queues.
+    // TODO: Consider incorporating this directly into ControlBlock.
+    sender: Sender,
+
+    // Send timers
+    // Current retransmission timer expiration time.
+    // TODO: Consider storing this directly in the RtoCalculator.
+    send_retransmit_deadline_time_secs: SharedAsyncValue<Option<Instant>>,
+
+    // Retransmission Timeout (RTO) calculator.
+    send_rto_calculator: RtoCalculator,
+
+    // Receive Sequence Variables from RFC 793.
+
+    // RCV.NXT - receive next
+    // RCV.WND - receive window
+    // RCV.UP  - receive urgent pointer - not implemented
+    // IRS     - initial receive sequence number
+    // Receive-side state information.  TODO: Consider incorporating this directly into ControlBlock.
+    receiver: Receiver,
+
+    // Recieve timers
+    receive_ack_delay_timeout_secs: Duration,
+
+    receive_ack_deadline_time_secs: SharedAsyncValue<Option<Instant>>,
 
     // This is our receive buffer size, which is also the maximum size of our receive window.
     // Note: The maximum possible advertised window is 1 GiB with window scaling and 64 KiB without.
-    receive_buffer_size: u32,
+    receive_buffer_size_frames: u32,
 
     // TODO: Review how this is used.  We could have separate window scale factors, so there should be one for the
     // receiver and one for the sender.
     // This is the receive-side window scale factor.
     // This is the number of bits to shift to convert to/from the scaled value, and has a maximum value of 14.
     // TODO: Keep this as a u8?
-    window_scale: u32,
+    receive_window_scale_shift_bits: u32,
+
+    // Receive queues
+    // Incoming packets for this connection.
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
 
     // Queue of out-of-order segments.  This is where we hold onto data that we've received (because it was within our
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
     // and what we've already presented to the user.
     //
-    out_of_order: VecDeque<(SeqNumber, DemiBuffer)>,
-
-    // The sequence number of the FIN, if we received it out-of-order.
-    // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
-    pub out_of_order_fin: Option<SeqNumber>,
-
-    // Receive-side state information.  TODO: Consider incorporating this directly into ControlBlock.
-    receiver: Receiver,
+    receive_out_of_order_frames: VecDeque<(SeqNumber, DemiBuffer)>,
 
     // Congestion control trait implementation we're currently using.
     // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
-    cc: Box<dyn congestion_control::CongestionControl>,
+    congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
 
-    // Current retransmission timer expiration time.
-    // TODO: Consider storing this directly in the RtoCalculator.
-    retransmit_deadline: SharedAsyncValue<Option<Instant>>,
+    // This data structure stores the number of bytes acked for each outgoing frame.
+    // TODO: Change this to a single number for SND.UNA
+    receive_ack_queue_frame_bytes: SharedAsyncQueue<usize>,
 
-    // Retransmission Timeout (RTO) calculator.
-    rto_calculator: RtoCalculator,
+    // The sequence number of the FIN, if we received it out-of-order.
+    // Note: This could just be a boolean to remember if we got a FIN; the sequence number is for checking correctness.
+    receive_out_of_order_fin: Option<SeqNumber>,
 
-    // Incoming packets for this connection.
-    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
-
-    ack_queue: SharedAsyncQueue<usize>,
-    socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
+    // This queue notifies the parent passive socket that created the socket that the socket is closing. This is /
+    // necessary because routing for this socket goes through the parent socket if the connection set up is still
+    // inflight (but also after the connection is established for some reason).
+    parent_passive_socket_close_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
 }
 
 #[derive(Clone)]
@@ -218,21 +247,28 @@ impl SharedControlBlock {
         layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
-        receiver_seq_no: SeqNumber,
-        ack_delay_timeout: Duration,
-        receiver_window_size: u32,
-        receiver_window_scale: u32,
-        sender_seq_no: SeqNumber,
-        sender_window_size: u32,
-        sender_window_scale: u8,
+        // In RFC 793, this is IRS.
+        receive_initial_seq_no: SeqNumber,
+        receive_ack_delay_timeout_secs: Duration,
+        receive_window_size_frames: u32,
+        receive_window_scale_shift_bits: u32,
+        // In RFC 793, this ISS.
+        sender_initial_seq_no: SeqNumber,
+        send_window_size_frames: u32,
+        send_window_scale_shift_bits: u8,
         sender_mss: usize,
-        cc_constructor: CongestionControlConstructor,
+        congestion_control_algorithm_constructor: CongestionControlConstructor,
         congestion_control_options: Option<congestion_control::Options>,
         recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
-        ack_queue: SharedAsyncQueue<usize>,
-        socket_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
+        receive_ack_queue_frame_bytes: SharedAsyncQueue<usize>,
+        parent_passive_socket_close_queue: Option<SharedAsyncQueue<SocketAddrV4>>,
     ) -> Self {
-        let sender: Sender = Sender::new(sender_seq_no, sender_window_size, sender_window_scale, sender_mss);
+        let sender: Sender = Sender::new(
+            sender_initial_seq_no,
+            send_window_size_frames,
+            send_window_scale_shift_bits,
+            sender_mss,
+        );
         Self(SharedObject::<ControlBlock>::new(ControlBlock {
             local,
             remote,
@@ -242,19 +278,23 @@ impl SharedControlBlock {
             socket_options: default_socket_options,
             sender,
             state: State::Established,
-            ack_delay_timeout,
-            ack_deadline: SharedAsyncValue::new(None),
-            receive_buffer_size: receiver_window_size,
-            window_scale: receiver_window_scale,
-            out_of_order: VecDeque::new(),
-            out_of_order_fin: Option::None,
-            receiver: Receiver::new(receiver_seq_no, receiver_seq_no),
-            cc: cc_constructor(sender_mss, sender_seq_no, congestion_control_options),
-            retransmit_deadline: SharedAsyncValue::new(None),
-            rto_calculator: RtoCalculator::new(),
+            receive_ack_delay_timeout_secs,
+            receive_ack_deadline_time_secs: SharedAsyncValue::new(None),
+            receive_buffer_size_frames: receive_window_size_frames,
+            receive_window_scale_shift_bits,
+            receive_out_of_order_frames: VecDeque::new(),
+            receive_out_of_order_fin: Option::None,
+            receiver: Receiver::new(receive_initial_seq_no, receive_initial_seq_no),
+            congestion_control_algorithm: congestion_control_algorithm_constructor(
+                sender_mss,
+                sender_initial_seq_no,
+                congestion_control_options,
+            ),
+            send_retransmit_deadline_time_secs: SharedAsyncValue::new(None),
+            send_rto_calculator: RtoCalculator::new(),
             recv_queue,
-            ack_queue,
-            socket_queue,
+            receive_ack_queue_frame_bytes,
+            parent_passive_socket_close_queue,
         }))
     }
 
@@ -276,31 +316,31 @@ impl SharedControlBlock {
     }
 
     pub fn congestion_control_watch_retransmit_now_flag(&self) -> SharedAsyncValue<bool> {
-        self.cc.get_retransmit_now_flag()
+        self.congestion_control_algorithm.get_retransmit_now_flag()
     }
 
     pub fn congestion_control_on_fast_retransmit(&mut self) {
-        self.cc.on_fast_retransmit()
+        self.congestion_control_algorithm.on_fast_retransmit()
     }
 
     pub fn congestion_control_on_rto(&mut self, send_unacknowledged: SeqNumber) {
-        self.cc.on_rto(send_unacknowledged)
+        self.congestion_control_algorithm.on_rto(send_unacknowledged)
     }
 
     pub fn congestion_control_on_send(&mut self, rto: Duration, num_sent_bytes: u32) {
-        self.cc.on_send(rto, num_sent_bytes)
+        self.congestion_control_algorithm.on_send(rto, num_sent_bytes)
     }
 
     pub fn congestion_control_on_cwnd_check_before_send(&mut self) {
-        self.cc.on_cwnd_check_before_send()
+        self.congestion_control_algorithm.on_cwnd_check_before_send()
     }
 
     pub fn congestion_control_get_cwnd(&self) -> SharedAsyncValue<u32> {
-        self.cc.get_cwnd()
+        self.congestion_control_algorithm.get_cwnd()
     }
 
     pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> SharedAsyncValue<u32> {
-        self.cc.get_limited_transmit_cwnd_increase()
+        self.congestion_control_algorithm.get_limited_transmit_cwnd_increase()
     }
 
     pub fn get_mss(&self) -> usize {
@@ -328,15 +368,15 @@ impl SharedControlBlock {
     }
 
     pub fn get_retransmit_deadline(&self) -> Option<Instant> {
-        self.retransmit_deadline.get()
+        self.send_retransmit_deadline_time_secs.get()
     }
 
     pub fn set_retransmit_deadline(&mut self, when: Option<Instant>) {
-        self.retransmit_deadline.set(when);
+        self.send_retransmit_deadline_time_secs.set(when);
     }
 
     pub fn watch_retransmit_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
-        self.retransmit_deadline.clone()
+        self.send_retransmit_deadline_time_secs.clone()
     }
 
     pub fn push_unacked_segment(&self, segment: UnackedSegment) {
@@ -344,15 +384,15 @@ impl SharedControlBlock {
     }
 
     pub fn rto_add_sample(&mut self, rtt: Duration) {
-        self.rto_calculator.add_sample(rtt)
+        self.send_rto_calculator.add_sample(rtt)
     }
 
     pub fn rto(&self) -> Duration {
-        self.rto_calculator.rto()
+        self.send_rto_calculator.rto()
     }
 
     pub fn rto_back_off(&mut self) {
-        self.rto_calculator.back_off()
+        self.send_rto_calculator.back_off()
     }
 
     pub fn unsent_top_size(&self) -> Option<usize> {
@@ -410,7 +450,7 @@ impl SharedControlBlock {
             match self.process_packet(header, data) {
                 Ok(()) => (),
                 Err(e) if e.errno == libc::ECONNRESET => {
-                    if let Some(mut socket_tx) = self.socket_queue.take() {
+                    if let Some(mut socket_tx) = self.parent_passive_socket_close_queue.take() {
                         socket_tx.push(self.remote);
                     }
                     self.state = State::CloseWait;
@@ -452,15 +492,15 @@ impl SharedControlBlock {
         self.process_remote_close(&header)?;
         // We should ACK this segment, preferably via piggybacking on a response.
         // TODO: Consider replacing the delayed ACK timer with a simple flag.
-        if self.ack_deadline.get().is_none() {
+        if self.receive_ack_deadline_time_secs.get().is_none() {
             // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
-            let timeout: Duration = self.ack_delay_timeout;
+            let timeout: Duration = self.receive_ack_delay_timeout_secs;
             // Getting the current time is extremely cheap as it is just a variable lookup.
             let now: Instant = self.get_now();
-            self.ack_deadline.set(Some(now + timeout));
+            self.receive_ack_deadline_time_secs.set(Some(now + timeout));
         } else {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
-            self.ack_deadline.set(None);
+            self.receive_ack_deadline_time_secs.set(None);
             trace!("process_packet(): sending ack on deadline expiration");
             self.send_ack();
         }
@@ -654,8 +694,8 @@ impl SharedControlBlock {
         // TODO: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
-        let rto: Duration = self.rto_calculator.rto();
-        self.cc
+        let rto: Duration = self.send_rto_calculator.rto();
+        self.congestion_control_algorithm
             .on_ack_received(rto, send_unacknowledged, send_next, header.ack_num);
 
         if send_unacknowledged < header.ack_num {
@@ -681,17 +721,17 @@ impl SharedControlBlock {
                     // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
 
                     // Since we no longer have anything outstanding, we can turn off the retransmit timer.
-                    self.retransmit_deadline.set(None);
+                    self.send_retransmit_deadline_time_secs.set(None);
                 } else {
                     // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
                     // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
                     // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
-                    let deadline: Instant = now + self.rto_calculator.rto();
-                    self.retransmit_deadline.set(Some(deadline));
+                    let deadline: Instant = now + self.send_rto_calculator.rto();
+                    self.send_retransmit_deadline_time_secs.set(Some(deadline));
                 }
 
                 let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
-                self.ack_queue.push(nbytes);
+                self.receive_ack_queue_frame_bytes.push(nbytes);
             } else {
                 // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
                 // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
@@ -815,7 +855,7 @@ impl SharedControlBlock {
         // Review: We perform these after the send, in order to keep send latency as low as possible.
 
         // Since we sent an ACK, cancel any outstanding delayed ACK request.
-        self.set_ack_deadline(None);
+        self.set_receive_ack_deadline(None);
 
         // If we sent a FIN, update our protocol state.
         if sent_fin {
@@ -836,37 +876,40 @@ impl SharedControlBlock {
         self.sender.remote_mss()
     }
 
-    pub fn get_ack_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
-        self.ack_deadline.clone()
+    pub fn get_receive_ack_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
+        self.receive_ack_deadline_time_secs.clone()
     }
 
-    pub fn set_ack_deadline(&mut self, when: Option<Instant>) {
-        self.ack_deadline.set(when);
+    pub fn set_receive_ack_deadline(&mut self, when: Option<Instant>) {
+        self.receive_ack_deadline_time_secs.set(when);
     }
 
     pub fn get_receive_window_size(&self) -> u32 {
         let bytes_unread: u32 = (self.receiver.receive_next - self.receiver.reader_next).into();
-        self.receive_buffer_size - bytes_unread
+        self.receive_buffer_size_frames - bytes_unread
     }
 
     fn hdr_window_size(&self) -> u16 {
         let window_size: u32 = self.get_receive_window_size();
-        let hdr_window_size: u16 = expect_ok!((window_size >> self.window_scale).try_into(), "Window size overflow");
+        let hdr_window_size: u16 = expect_ok!(
+            (window_size >> self.receive_window_scale_shift_bits).try_into(),
+            "Window size overflow"
+        );
         debug!(
             "Window size -> {} (hdr {}, scale {})",
-            (hdr_window_size as u32) << self.window_scale,
+            (hdr_window_size as u32) << self.receive_window_scale_shift_bits,
             hdr_window_size,
-            self.window_scale
+            self.receive_window_scale_shift_bits,
         );
         hdr_window_size
     }
 
     pub async fn push(&mut self, mut nbytes: usize) -> Result<(), Fail> {
         loop {
-            let n: usize = self.ack_queue.pop(None).await?;
+            let n: usize = self.receive_ack_queue_frame_bytes.pop(None).await?;
 
             if n > nbytes {
-                self.ack_queue.push_front(n - nbytes);
+                self.receive_ack_queue_frame_bytes.push_front(n - nbytes);
                 break Ok(());
             }
 
@@ -892,7 +935,7 @@ impl SharedControlBlock {
     // This routine remembers that we have received an out-of-order FIN.
     //
     fn store_out_of_order_fin(&mut self, fin: SeqNumber) {
-        self.out_of_order_fin = Some(fin);
+        self.receive_out_of_order_fin = Some(fin);
     }
 
     // This routine takes an incoming TCP segment and adds it to the out-of-order receive queue.
@@ -900,7 +943,7 @@ impl SharedControlBlock {
     // Note: Since this is not the "fast path", this is written for clarity over efficiency.
     //
     fn store_out_of_order_segment(&mut self, mut new_start: SeqNumber, mut new_end: SeqNumber, mut buf: DemiBuffer) {
-        let mut action_index: usize = self.out_of_order.len();
+        let mut action_index: usize = self.receive_out_of_order_frames.len();
         let mut another_pass_neeeded: bool = true;
 
         while another_pass_neeeded {
@@ -908,9 +951,9 @@ impl SharedControlBlock {
 
             // Find the new segment's place in the out-of-order store.
             // The out-of-order store is sorted by starting sequence number, and contains no duplicate data.
-            action_index = self.out_of_order.len();
-            for index in 0..self.out_of_order.len() {
-                let stored_segment: &(SeqNumber, DemiBuffer) = &self.out_of_order[index];
+            action_index = self.receive_out_of_order_frames.len();
+            for index in 0..self.receive_out_of_order_frames.len() {
+                let stored_segment: &(SeqNumber, DemiBuffer) = &self.receive_out_of_order_frames[index];
 
                 // Properties of the segment stored at this index.
                 let stored_start: SeqNumber = stored_segment.0;
@@ -983,18 +1026,18 @@ impl SharedControlBlock {
 
             if another_pass_neeeded {
                 // The new segment completely encompassed an existing segment, which we will now remove.
-                self.out_of_order.remove(action_index);
+                self.receive_out_of_order_frames.remove(action_index);
             }
         }
 
         // Insert the new segment into the correct position.
-        self.out_of_order.insert(action_index, (new_start, buf));
+        self.receive_out_of_order_frames.insert(action_index, (new_start, buf));
 
         // If the out-of-order store now contains too many entries, delete the later entries.
         // TODO: The out-of-order store is already limited (in size) by our receive window, while the below check
         // imposes a limit on the number of entries.  Do we need this?  Presumably for attack mitigation?
-        while self.out_of_order.len() > MAX_OUT_OF_ORDER {
-            self.out_of_order.pop_back();
+        while self.receive_out_of_order_frames.len() > MAX_OUT_OF_ORDER_SIZE_FRAMES {
+            self.receive_out_of_order_frames.pop_back();
         }
     }
 
@@ -1020,13 +1063,13 @@ impl SharedControlBlock {
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
         // the out-of-order queue is now in-order.  If so, we can move it to the receive queue.
         let mut added_out_of_order: bool = false;
-        while !self.out_of_order.is_empty() {
-            if let Some(stored_entry) = self.out_of_order.front() {
+        while !self.receive_out_of_order_frames.is_empty() {
+            if let Some(stored_entry) = self.receive_out_of_order_frames.front() {
                 if stored_entry.0 == recv_next {
                     // Move this entry's buffer from the out-of-order store to the receive queue.
                     // This data is now considered to be "received" by TCP, and included in our RCV.NXT calculation.
                     debug!("Recovering out-of-order packet at {}", recv_next);
-                    if let Some(temp) = self.out_of_order.pop_front() {
+                    if let Some(temp) = self.receive_out_of_order_frames.pop_front() {
                         recv_next = recv_next + SeqNumber::from(temp.1.len() as u32);
                         // This inserts the segment and wakes a waiting pop coroutine.
                         self.receiver.push(temp.1);
@@ -1050,7 +1093,7 @@ impl SharedControlBlock {
         // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
         // TODO: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
         if added_out_of_order {
-            match self.out_of_order_fin {
+            match self.receive_out_of_order_fin {
                 Some(fin) => {
                     debug_assert_eq!(fin, recv_next);
                     return true;
@@ -1078,7 +1121,7 @@ impl SharedControlBlock {
             self.send_ack();
             let cause: String = format!("connection received FIN");
             info!("process_remote_close(): {}", cause);
-            if let Some(mut socket_tx) = self.socket_queue.take() {
+            if let Some(mut socket_tx) = self.parent_passive_socket_close_queue.take() {
                 socket_tx.push(self.remote);
             }
             return Err(Fail::new(libc::ECONNRESET, &cause));

@@ -67,7 +67,7 @@ pub struct Sender {
     send_window_last_update_ack: Cell<SeqNumber>, // SND.WL2
 
     // RFC 1323: Number of bits to shift advertised window, defaults to zero.
-    window_scale: u8,
+    send_window_scale_shift_bits: u8,
 
     // Maximum Segment Size currently in use for this connection.
     // TODO: Revisit this once we support path MTU discovery.
@@ -81,14 +81,14 @@ impl fmt::Debug for Sender {
             .field("send_next", &self.send_next)
             .field("unsent_seq_no", &self.unsent_seq_no)
             .field("send_window", &self.send_window)
-            .field("window_scale", &self.window_scale)
+            .field("window_scale", &self.send_window_scale_shift_bits)
             .field("mss", &self.mss)
             .finish()
     }
 }
 
 impl Sender {
-    pub fn new(seq_no: SeqNumber, send_window: u32, window_scale: u8, mss: usize) -> Self {
+    pub fn new(seq_no: SeqNumber, send_window: u32, send_window_scale_shift_bits: u8, mss: usize) -> Self {
         Self {
             send_unacked: SharedAsyncValue::new(seq_no),
             unacked_queue: RefCell::new(VecDeque::new()),
@@ -100,7 +100,7 @@ impl Sender {
             send_window_last_update_seq: Cell::new(seq_no),
             send_window_last_update_ack: Cell::new(seq_no),
 
-            window_scale,
+            send_window_scale_shift_bits,
             mss,
         }
     }
@@ -375,7 +375,8 @@ impl Sender {
                 && self.send_window_last_update_ack.get() <= header.ack_num)
         {
             // Update our send window.
-            self.send_window.set((header.window_size as u32) << self.window_scale);
+            self.send_window
+                .set((header.window_size as u32) << self.send_window_scale_shift_bits);
             self.send_window_last_update_seq.set(header.seq_num);
             self.send_window_last_update_ack.set(header.ack_num);
         }
@@ -384,7 +385,7 @@ impl Sender {
             "Updating window size -> {} (hdr {}, scale {})",
             self.send_window.get(),
             header.window_size,
-            self.window_scale
+            self.send_window_scale_shift_bits,
         );
     }
 
