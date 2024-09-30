@@ -17,9 +17,7 @@ pub const ALICE_IP: IpAddr = IpAddr::V4(ALICE_IPV4);
 pub const BOB_IPV4: Ipv4Addr = Ipv4Addr::new(192, 168, 1, 2);
 pub const BOB_IP: IpAddr = IpAddr::V4(BOB_IPV4);
 
-// Config paths for Alice and Bob.
 pub const ALICE_CONFIG_PATH: &str = "./tests/rust/common/alice.yaml";
 pub const BOB_CONFIG_PATH: &str = "./tests/rust/common/bob.yaml";
 
-// Port Number used for Tests
-pub const PORT_BASE: u16 = 1234;
+pub const PORT_NUMBER: u16 = 1234;

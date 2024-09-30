@@ -9,7 +9,7 @@ mod test {
     //======================================================================================================================
     // Imports
     //======================================================================================================================
-    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_BASE};
+    use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_NUMBER};
     use ::anyhow::Result;
     use ::demikernel::{
         demi_sgarray_t,
@@ -53,7 +53,7 @@ mod test {
 
     /// Opens and closes a passive socket using a non-ephemeral port.
     fn do_passive_connection_setup(mut libos: &mut DummyLibOS) -> Result<()> {
-        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
         let sockqd: QDesc = safe_socket(&mut libos)?;
         safe_bind(&mut libos, sockqd, local)?;
         safe_listen(&mut libos, sockqd)?;
@@ -105,7 +105,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -137,7 +137,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -183,7 +183,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -216,8 +216,8 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let local: SocketAddr = SocketAddr::new(BOB_IP, PORT_BASE);
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_BASE);
+            let local: SocketAddr = SocketAddr::new(BOB_IP, PORT_NUMBER);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -267,8 +267,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -310,8 +309,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -477,11 +475,9 @@ mod test {
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
-        let port: u16 = PORT_BASE;
-        let port2: u16 = PORT_BASE + 1;
-        let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
-        let local2: SocketAddr = SocketAddr::new(ALICE_IP, port2);
-        let localv6: SocketAddr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0));
+        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
+        let local2: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER + 1);
+        let localv6: SocketAddr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, PORT_NUMBER, 0, 0));
 
         // IPv6 unsupported
         let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -520,10 +516,8 @@ mod test {
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
 
-        let port: u16 = PORT_BASE;
-        let port2: u16 = PORT_BASE + 1;
-        let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
-        let local2: SocketAddr = SocketAddr::new(ALICE_IP, port2);
+        let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
+        let local2: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER + 1);
 
         // Invalid queue descriptor.
         match libos.listen(QDesc::from(0), SOMAXCONN as usize) {
@@ -629,8 +623,7 @@ mod test {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
-            let port: u16 = PORT_BASE;
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -660,8 +653,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Bad queue descriptor.
             match libos.connect(QDesc::from(0), remote) {
@@ -674,7 +666,7 @@ mod test {
             };
 
             // Bad endpoint.
-            let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+            let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), PORT_NUMBER);
             let sockqd: QDesc = safe_socket(&mut libos)?;
             let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
             match libos.wait(qt, Some(BAD_WAIT_TIMEOUT_MILLISECONDS)) {
@@ -688,7 +680,7 @@ mod test {
             }
 
             // Close connection.
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
             let sockqd: QDesc = safe_socket(&mut libos)?;
             let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
@@ -734,8 +726,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -778,8 +769,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -842,8 +832,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -886,8 +875,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -977,8 +965,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let local: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let local: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
@@ -1031,8 +1018,7 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            let port: u16 = PORT_BASE;
-            let remote: SocketAddr = SocketAddr::new(ALICE_IP, port);
+            let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Open connection.
             let sockqd: QDesc = safe_socket(&mut libos)?;
