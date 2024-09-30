@@ -18,16 +18,16 @@ use crate::{
             rte_delay_us_block, rte_eal_init, rte_errno, rte_eth_conf, rte_eth_dev_configure, rte_eth_dev_count_avail,
             rte_eth_dev_get_mtu, rte_eth_dev_info, rte_eth_dev_info_get, rte_eth_dev_is_valid_port,
             rte_eth_dev_set_mtu, rte_eth_dev_start, rte_eth_find_next_owned_by, rte_eth_link, rte_eth_link_get_nowait,
-            rte_eth_macaddr_get, rte_eth_promiscuous_enable, rte_eth_rss_ip, rte_eth_rx_burst,
+            rte_eth_promiscuous_enable, rte_eth_rss_ip, rte_eth_rx_burst,
             rte_eth_rx_mq_mode_RTE_ETH_MQ_RX_RSS as RTE_ETH_MQ_RX_RSS, rte_eth_rx_offload_tcp_cksum,
             rte_eth_rx_offload_udp_cksum, rte_eth_rx_queue_setup, rte_eth_rxconf, rte_eth_tx_burst,
             rte_eth_tx_mq_mode_RTE_ETH_MQ_TX_NONE as RTE_ETH_MQ_TX_NONE, rte_eth_tx_offload_multi_segs,
             rte_eth_tx_offload_tcp_cksum, rte_eth_tx_offload_udp_cksum, rte_eth_tx_queue_setup, rte_eth_txconf,
-            rte_ether_addr, rte_mbuf, RTE_ETHER_MAX_JUMBO_FRAME_LEN, RTE_ETHER_MAX_LEN, RTE_ETH_DEV_NO_OWNER,
-            RTE_ETH_LINK_FULL_DUPLEX, RTE_ETH_LINK_UP, RTE_PKTMBUF_HEADROOM,
+            rte_mbuf, RTE_ETHER_MAX_JUMBO_FRAME_LEN, RTE_ETHER_MAX_LEN, RTE_ETH_DEV_NO_OWNER, RTE_ETH_LINK_FULL_DUPLEX,
+            RTE_ETH_LINK_UP, RTE_PKTMBUF_HEADROOM,
         },
         memory::DemiBuffer,
-        network::{consts::RECEIVE_BATCH_SIZE, types::MacAddress},
+        network::consts::RECEIVE_BATCH_SIZE,
         SharedObject,
     },
     timer,
@@ -37,7 +37,6 @@ use ::std::{
     ffi::CString,
     mem,
     mem::MaybeUninit,
-    net::Ipv4Addr,
     ops::{Deref, DerefMut},
     time::Duration,
 };
@@ -46,12 +45,9 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// DPDK Runtime
 pub struct DPDKRuntime {
     mm: MemoryManager,
     port_id: u16,
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
@@ -61,7 +57,6 @@ pub struct SharedDPDKRuntime(SharedObject<DPDKRuntime>);
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for DPDK Runtime
 impl SharedDPDKRuntime {
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let tcp_offload: Option<bool> = match config.tcp_checksum_offload() {
@@ -80,7 +75,7 @@ impl SharedDPDKRuntime {
             },
         };
 
-        let (mm, port_id, link_addr): (MemoryManager, u16, MacAddress) = Self::initialize_dpdk(
+        let (mm, port_id): (MemoryManager, u16) = Self::initialize_dpdk(
             &config.eal_init_args()?,
             config.enable_jumbo_frames()?,
             config.mtu()?,
@@ -88,22 +83,16 @@ impl SharedDPDKRuntime {
             udp_offload.unwrap_or(false),
         )?;
 
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
-            mm,
-            port_id,
-            link_addr,
-            ipv4_addr: config.local_ipv4_addr()?,
-        })))
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime { mm, port_id })))
     }
 
-    /// Initializes DPDK.
     fn initialize_dpdk(
         eal_init_args: &[CString],
         use_jumbo_frames: bool,
         mtu: u16,
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
-    ) -> Result<(MemoryManager, u16, MacAddress), Fail> {
+    ) -> Result<(MemoryManager, u16), Fail> {
         std::env::set_var("MLX5_SHUT_UP_BF", "1");
         std::env::set_var("MLX5_SINGLE_THREADED", "1");
         std::env::set_var("MLX4_SINGLE_THREADED", "1");
@@ -152,22 +141,9 @@ impl SharedDPDKRuntime {
         //     eprintln!("WARNING: Too many lcores enabled. Only 1 used.");
         // }
 
-        let local_link_addr: MacAddress = unsafe {
-            let mut m: MaybeUninit<rte_ether_addr> = MaybeUninit::zeroed();
-            // TODO: Why does bindgen say this function doesn't return an int?
-            rte_eth_macaddr_get(port_id, m.as_mut_ptr());
-            MacAddress::new(m.assume_init().addr_bytes)
-        };
-        if local_link_addr.is_nil() || !local_link_addr.is_unicast() {
-            let cause: String = format!("Invalid mac address: {:?}", local_link_addr);
-            error!("initialize_dpdk(): {}", cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        Ok((memory_manager, port_id, local_link_addr))
+        Ok((memory_manager, port_id))
     }
 
-    /// Initializes a DPDK port.
     fn initialize_dpdk_port(
         port_id: u16,
         memory_manager: &MemoryManager,
@@ -192,9 +168,9 @@ impl SharedDPDKRuntime {
         let tx_wthresh: u8 = 0;
 
         let dev_info: rte_eth_dev_info = unsafe {
-            let mut d: MaybeUninit<rte_eth_dev_info> = MaybeUninit::zeroed();
-            rte_eth_dev_info_get(port_id, d.as_mut_ptr());
-            d.assume_init()
+            let mut dev_info: MaybeUninit<rte_eth_dev_info> = MaybeUninit::zeroed();
+            rte_eth_dev_info_get(port_id, dev_info.as_mut_ptr());
+            dev_info.assume_init()
         };
 
         println!("dev_info: {:?}", dev_info);
@@ -330,19 +306,7 @@ impl SharedDPDKRuntime {
 
         Ok(())
     }
-
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
-    }
 }
-
-//======================================================================================================================
-// Imports
-//======================================================================================================================
 
 impl Deref for SharedDPDKRuntime {
     type Target = DPDKRuntime;
@@ -358,7 +322,6 @@ impl DerefMut for SharedDPDKRuntime {
     }
 }
 
-/// Network Runtime Trait Implementation for DPDK Runtime
 impl PhysicalLayer for SharedDPDKRuntime {
     fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         timer!("catnip::runtime::transmit");
