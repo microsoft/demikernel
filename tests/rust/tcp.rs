@@ -3,7 +3,6 @@
 
 mod common;
 
-#[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
 mod test {
 
     //======================================================================================================================

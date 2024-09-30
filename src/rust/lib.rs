@@ -11,15 +11,12 @@
 #![feature(hash_extract_if)]
 
 mod collections;
+pub mod inetstack;
 mod pal;
+pub mod runtime;
 
 #[cfg(feature = "profiler")]
 pub mod perftools;
-
-pub mod runtime;
-
-#[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
-pub mod inetstack;
 
 extern crate test;
 

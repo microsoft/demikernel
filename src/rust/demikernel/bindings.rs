@@ -934,7 +934,6 @@ mod test {
         };
     }
 
-    #[cfg(any(feature = "catnap-libos", feature = "catnip-libos", feature = "catpowder-libos",))]
     #[test]
     fn test_set_and_get_linger() -> anyhow::Result<()> {
         // Initialize Demikernel
