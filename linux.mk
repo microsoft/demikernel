@@ -222,8 +222,8 @@ clean: clean-examples clean-tests clean-libs
 #=======================================================================================================================
 
 export CONFIG_PATH ?= $(HOME)/config.yaml
-export CONFIG_DIR = $(HOME)/Capybara/demikernel/scripts/config
-export ELF_DIR ?= $(HOME)/Capybara/demikernel/bin/examples/rust
+export CONFIG_DIR = $(CURDIR)/scripts/config
+export ELF_DIR ?= $(CURDIR)/bin/examples/rust
 export MTU ?= 1500
 export MSS ?= 1500
 export PEER ?= server
@@ -290,6 +290,7 @@ run-benchmarks-c: all-benchmarks-c $(BINDIR)/syscalls.elf
 
 ENV += CAPY_LOG=all 
 ENV += LIBOS=catnip
+ENV += RUST_LOG=trace
  
 tcp-ping-pong-server8:
 	sudo -E \

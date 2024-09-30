@@ -348,7 +348,10 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     }
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
-        self.receiver.mig_unlock();
+        #[cfg(feature = "tcp-migration")]{
+            self.receiver.mig_unlock();
+        }
+        
         let self_: Self = self.clone();
         self.sender.send(buf, self_)
     }

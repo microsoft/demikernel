@@ -322,7 +322,9 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             // Closing an active socket.
             SocketState::Established(ref mut socket) => {
                 // TODO: Send a RST or something?
-                socket.remove_background_task();
+                #[cfg(feature = "tcp-migration")]{
+                    socket.remove_background_task();
+                }
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.
@@ -343,13 +345,6 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
             },
             SocketState::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
             SocketState::Unbound => Ok(None),
-        }
-    }
-    
-    pub fn get_mig_lock(&mut self) -> bool {
-        match self.state {
-            SocketState::Established(ref mut socket) => socket.cb.get_mig_lock(),
-            _ => true, // Only Estbalished sockets can be migrated
         }
     }
 
@@ -475,5 +470,12 @@ impl<N: NetworkRuntime> SharedTcpSocket<N> {
         }
         
         Ok(())
+    }
+
+    pub fn get_mig_lock(&mut self) -> bool {
+        match self.state {
+            SocketState::Established(ref mut socket) => socket.cb.get_mig_lock(),
+            _ => true, // Only Estbalished sockets can be migrated
+        }
     }
 }

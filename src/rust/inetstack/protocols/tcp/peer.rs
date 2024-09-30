@@ -240,20 +240,28 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
 
     /// Pushes immediately to the socket and returns the result asynchronously.
     pub async fn push(&mut self, socket: &mut SharedTcpSocket<N>, buf: &mut DemiBuffer) -> Result<(), Fail> {
-        // TODO: Remove this copy after merging with the transport trait.
-        // Wait for push to complete.
-        if socket.is_migrated == false{
-            socket.push(buf.clone()).await?;
+        #[cfg(feature = "tcp-migration")]
+        {
+            if socket.is_migrated == false{
+                socket.push(buf.clone()).await?;
 
-            if socket.is_mig_prepared && socket.get_mig_lock() == false {
-                let state = socket.get_tcp_state()?;
-                capy_log_mig!("TcpState: {:#?}", state.cb);
-                self.tcpmig.send_tcp_state(state);
-                self.hard_close(socket);
-                socket.is_migrated = true;
+                if socket.is_mig_prepared && socket.get_mig_lock() == false {
+                    let state = socket.get_tcp_state()?;
+                    capy_log_mig!("TcpState: {:#?}", state.cb);
+                    self.tcpmig.send_tcp_state(state);
+                    self.hard_close(socket);
+                    socket.is_migrated = true;
+                }
             }
+            buf.trim(buf.len())
         }
-        buf.trim(buf.len())
+        #[cfg(not(feature = "tcp-migration"))]
+        {
+            // TODO: Remove this copy after merging with the transport trait.
+            // Wait for push to complete.
+            socket.push(buf.clone()).await?;
+            buf.trim(buf.len())
+        }
     }
 
     /// Sets up a coroutine for popping data from the socket.
