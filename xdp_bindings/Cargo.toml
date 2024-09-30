@@ -3,7 +3,7 @@
 
 [package]
 name = "demikernel-xdp-bindings"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Rust Bindings for XDP"
