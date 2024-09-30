@@ -8,11 +8,6 @@ from ci.task.linux import BaseLinuxTask, CheckoutOnLinux, CompileOnLinux, RunOnL
 from ci.job.utils import wait_and_report
 from ci.job.generic import BaseJob
 
-# ======================================================================================================================
-# Generic Jobs for Linux
-# ======================================================================================================================
-
-
 class BaseLinuxJob(BaseJob):
     def __init__(self, config, name):
         super().__init__(config, name)
@@ -203,25 +198,17 @@ class UdpPushPopTest(SystemTestJobOnLinux):
 
 
 class IntegrationTestJobOnLinux(BaseLinuxJob):
-    def __init__(self, config: dict, name: str):
-        super().__init__(config, name)
+    def __init__(self, config: dict, test_name: str):
+        config["all_pass"] = True
+        super().__init__(config, f"integration-test ({test_name})")
+        self.server_args: str = f"--local-address {super().server_addr()}:12345 --remote-address {super().client_addr()}:23456"
+        self.test_name: str = test_name
 
-    def execute(self, server_cmd: str) -> bool:
+    def execute(self) -> bool:
+        server_cmd: str = f"test-integration-rust TEST_INTEGRATION={self.test_name} LIBOS={super().libos()} ARGS=\\\"{self.server_args}\\\""
         serverTask: RunOnLinux = RunOnLinux(
             super().server(), super().repository(), server_cmd, super().is_debug(), super().is_sudo(), super().config_path())
         return super().execute(serverTask)
-
-
-class TcpIntegrationTestJobOnLinux(IntegrationTestJobOnLinux):
-
-    def __init__(self, config: dict):
-        config["all_pass"] = True
-        super().__init__(config, "integration-test")
-        self.server_args: str = f"--local-address {super().server_addr()}:12345 --remote-address {super().client_addr()}:23456"
-
-    def execute(self) -> bool:
-        server_cmd: str = f"test-integration-rust TEST_INTEGRATION=tcp-test LIBOS={super().libos()} ARGS=\\\"{self.server_args}\\\""
-        return super().execute(server_cmd)
 
 
 def job_test_system_rust(

@@ -1,5 +1,5 @@
-// // Copyright (c) Microsoft Corporation.
-// // Licensed under the MIT license.
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
 
 use crate::{
     inetstack::{
@@ -15,7 +15,7 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::libc::{EADDRINUSE, EBADF};
+use ::libc::EBADF;
 use ::std::{
     net::{Ipv4Addr, SocketAddrV4},
     time::{Duration, Instant},
@@ -431,83 +431,6 @@ fn udp_loop2_ping_pong() -> Result<()> {
     // Close peers.
     bob.udp_close(bob_fd)?;
     carrie.udp_close(carrie_fd)?;
-
-    Ok(())
-}
-
-//======================================================================================================================
-// Bad Bind
-//======================================================================================================================
-
-#[test]
-fn udp_bind_address_in_use() -> Result<()> {
-    let now = Instant::now();
-
-    // Setup Bob.
-    let mut bob: SharedEngine = test_helpers::new_bob(now);
-    let bob_port = 80;
-    let bob_addr = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
-    let bob_fd: QDesc = bob.udp_socket()?;
-    bob.udp_bind(bob_fd, bob_addr)?;
-
-    // Try to bind Bob again.
-    match bob.udp_bind(bob_fd, bob_addr) {
-        Err(e) if e.errno == EADDRINUSE => {},
-        _ => anyhow::bail!("bind should have failed"),
-    };
-
-    // Close peers.
-    bob.udp_close(bob_fd)?;
-
-    Ok(())
-}
-
-#[test]
-fn udp_bind_bad_file_descriptor() -> Result<()> {
-    let now = Instant::now();
-
-    // Setup Bob.
-    let mut bob: SharedEngine = test_helpers::new_bob(now);
-    let bob_port: u16 = 80;
-    let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
-    let bob_fd: QDesc = QDesc::try_from(u32::MAX)?;
-
-    // Try to bind Bob.
-    match bob.udp_bind(bob_fd, bob_addr) {
-        Err(e) if e.errno == libc::EBADF => {},
-        _ => anyhow::bail!("bind should have failed"),
-    };
-
-    Ok(())
-}
-
-//======================================================================================================================
-// Bad Close
-//======================================================================================================================
-
-#[test]
-fn udp_udp_close_bad_file_descriptor() -> Result<()> {
-    let now = Instant::now();
-
-    // Setup Bob.
-    let mut bob: SharedEngine = test_helpers::new_bob(now);
-    let bob_fd: QDesc = bob.udp_socket()?;
-    let bob_port: u16 = 80;
-    let bob_addr: SocketAddrV4 = SocketAddrV4::new(test_helpers::BOB_IPV4, bob_port);
-    bob.udp_bind(bob_fd, bob_addr)?;
-
-    // Try to udp_close bad file descriptor.
-    match bob.udp_close(QDesc::try_from(u32::MAX)?) {
-        Err(e) if e.errno == EBADF => {},
-        _ => anyhow::bail!("close should have failed"),
-    };
-
-    // Try to udp_close Bob two times.
-    bob.udp_close(bob_fd)?;
-    match bob.udp_close(bob_fd) {
-        Err(e) if e.errno == EBADF => {},
-        _ => anyhow::bail!("close should have failed"),
-    };
 
     Ok(())
 }

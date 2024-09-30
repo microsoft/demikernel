@@ -107,6 +107,8 @@ CARGO_FEATURES = $(CARGO_FEATURES) --features=profiler
 CARGO_FEATURES = $(CARGO_FEATURES) $(FEATURES)
 
 #=======================================================================================================================
+# Targets
+#=======================================================================================================================
 
 all: all-libs all-tests all-examples
 
@@ -192,7 +194,7 @@ clean-examples-rust:
 	$(MAKE) /C /F examples/rust/windows.mk clean
 
 #=======================================================================================================================
-# Check
+# Code formatting
 #=======================================================================================================================
 
 check-fmt: check-fmt-rust
@@ -211,7 +213,7 @@ clean: clean-examples clean-tests
 	$(CARGO) clean
 
 #=======================================================================================================================
-# Tests section
+# Tests
 #=======================================================================================================================
 
 !ifndef CONFIG_PATH
@@ -235,7 +237,7 @@ TEST = udp-push-pop
 !endif
 
 !ifndef TEST_INTEGRATION
-TEST_INTEGRATION = tcp-test
+TEST_INTEGRATION = tcp-tests
 !endif
 
 test-system: test-system-rust

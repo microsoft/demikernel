@@ -5,11 +5,6 @@ import subprocess
 from ci.job.utils import wait_and_report
 from ci.task.generic import BaseTask
 
-# ======================================================================================================================
-# Generic Jobs
-# ======================================================================================================================
-
-
 class BaseJob:
     def __init__(self, config, name):
         self.name = name
