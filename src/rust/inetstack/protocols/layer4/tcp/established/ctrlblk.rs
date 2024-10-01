@@ -308,7 +308,8 @@ impl SharedControlBlock {
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         let self_: Self = self.clone();
-        self.sender.immediate_send(buf, self_)
+        self.sender.immediate_send(buf, self_)?;
+        Ok(())
     }
 
     pub async fn background_retransmitter(mut self) -> Result<Never, Fail> {
@@ -654,8 +655,8 @@ impl SharedControlBlock {
         // Start by checking that the ACK acknowledges something new.
         // TODO: Look into removing Watched types.
         //
-        let send_unacknowledged: SeqNumber = self.sender.get_send_unacked().get();
-        let send_next: SeqNumber = self.sender.get_send_next().get();
+        let send_unacknowledged: SeqNumber = self.sender.get_unacked_seq_no();
+        let send_next: SeqNumber = self.sender.get_next_seq_no();
 
         // TODO: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
@@ -669,20 +670,10 @@ impl SharedControlBlock {
                 // Does not matter when we get this since the clock will not move between the beginning of packet
                 // processing and now without a call to advance_clock.
                 let now: Instant = self.get_now();
-
-                // This segment acknowledges new data (possibly and/or FIN).
-                let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
-
-                // Remove the now acknowledged data from the unacknowledged queue.
                 let cb: Self = self.clone();
-                self.sender.remove_acknowledged_data(cb, bytes_acknowledged, now);
-
-                // Update SND.UNA to SEG.ACK.
-                self.sender.send_unacked.set(header.ack_num);
-
-                // Update our send window (SND.WND).
-                self.sender.update_send_window(&header);
-
+                // Remove the now acknowledged data from the unacknowledged queue, update the acked sequence number
+                // and update the sender window.
+                self.sender.process_ack(cb, header, now);
                 if header.ack_num == send_next {
                     // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
 
@@ -777,7 +768,7 @@ impl SharedControlBlock {
         let mut header: TcpHeader = self.tcp_header();
 
         // TODO: Think about moving this to tcp_header() as well.
-        let seq_num: SeqNumber = self.sender.get_send_next().get();
+        let seq_num: SeqNumber = self.sender.get_next_seq_no();
         header.seq_num = seq_num;
         self.emit(header, None);
     }
@@ -836,10 +827,6 @@ impl SharedControlBlock {
                 state => unreachable!("Sent FIN while in nonsensical TCP state {:?}", state),
             }
         }
-    }
-
-    pub fn remote_mss(&self) -> usize {
-        self.sender.remote_mss()
     }
 
     pub fn get_receive_ack_deadline(&self) -> SharedAsyncValue<Option<Instant>> {

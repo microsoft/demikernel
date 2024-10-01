@@ -298,13 +298,6 @@ impl SharedTcpSocket {
         }
     }
 
-    pub fn remote_mss(&self) -> Result<usize, Fail> {
-        match self.state {
-            SocketState::Established(ref socket) => Ok(socket.remote_mss()),
-            _ => Err(Fail::new(libc::ENOTCONN, "connection not established")),
-        }
-    }
-
     pub fn current_rto(&self) -> Result<Duration, Fail> {
         match self.state {
             SocketState::Established(ref socket) => Ok(socket.current_rto()),
