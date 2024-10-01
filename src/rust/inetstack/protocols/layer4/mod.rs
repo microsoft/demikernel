@@ -305,10 +305,6 @@ impl Peer {
 
 #[cfg(test)]
 impl Peer {
-    pub fn tcp_mss(&self, socket: &SharedTcpSocket) -> Result<usize, Fail> {
-        socket.remote_mss()
-    }
-
     pub fn tcp_rto(&self, socket: &SharedTcpSocket) -> Result<Duration, Fail> {
         socket.current_rto()
     }

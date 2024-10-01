@@ -56,7 +56,7 @@ pub struct Sender {
     //
 
     // Sequence Number of the oldest byte of unacknowledged sent data.  In RFC 793 terms, this is SND.UNA.
-    pub send_unacked: SharedAsyncValue<SeqNumber>,
+    send_unacked: SharedAsyncValue<SeqNumber>,
 
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: SharedAsyncQueue<UnackedSegment>,
@@ -107,18 +107,6 @@ impl Sender {
             send_window_scale_shift_bits,
             mss,
         }
-    }
-
-    pub fn get_send_unacked(&self) -> SharedAsyncValue<SeqNumber> {
-        self.send_unacked.clone()
-    }
-
-    pub fn get_send_next(&self) -> SharedAsyncValue<SeqNumber> {
-        self.send_next.clone()
-    }
-
-    pub fn push_unacked_segment(&mut self, segment: UnackedSegment) {
-        self.unacked_queue.push(segment)
     }
 
     // This is the main TCP send routine.
@@ -253,7 +241,7 @@ impl Sender {
                     bytes: buf.clone(),
                     initial_tx: Some(cb.get_now()),
                 };
-                self.push_unacked_segment(unacked_segment);
+                self.unacked_queue.push(unacked_segment);
 
                 // Note that we loop here *forever*, exponentially backing off.
                 // TODO: Use the correct PERSIST mode timer here.
@@ -288,7 +276,7 @@ impl Sender {
             let ltci: u32 = ltci_watched.get();
 
             let effective_cwnd: u32 = cwnd + ltci;
-            let next_buf_size: usize = expect_some!(self.top_size_unsent(), "no buffer in unsent queue");
+            let next_buf_size: usize = expect_some!(self.unsent_queue.get_front(), "no buffer in unsent queue").len();
 
             let sent_data: u32 = (self.send_next.get() - send_unacked).into();
             if win_sz <= (sent_data + next_buf_size as u32)
@@ -368,7 +356,7 @@ impl Sender {
                 bytes: segment_data,
                 initial_tx: Some(cb.get_now()),
             };
-            self.push_unacked_segment(unacked_segment);
+            self.unacked_queue.push(unacked_segment);
 
             // Set the retransmit timer.
             // TODO: Fix how the retransmit timer works.
@@ -466,11 +454,11 @@ impl Sender {
         cb.emit(header, Some(data));
     }
 
-    // Remove acknowledged data from the unacknowledged (a.k.a. retransmission) queue.
-    //
-    pub fn remove_acknowledged_data(&mut self, mut cb: SharedControlBlock, bytes_acknowledged: u32, now: Instant) {
+    // This segment acknowledges new data, so process the ack.
+    pub fn process_ack(&mut self, mut cb: SharedControlBlock, header: &TcpHeader, now: Instant) {
+        let bytes_acknowledged: u32 = (header.ack_num - self.send_unacked.get()).into();
         let mut bytes_remaining: usize = bytes_acknowledged as usize;
-
+        // Remove bytes from the unacked queue.
         while bytes_remaining != 0 {
             if let Some(mut segment) = self.unacked_queue.try_pop() {
                 // Add sample for RTO if we have an initial transmit time.
@@ -505,15 +493,11 @@ impl Sender {
                 debug_assert!(false); // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
             }
         }
-    }
 
-    pub fn top_size_unsent(&self) -> Option<usize> {
-        Some(self.unsent_queue.get_front()?.len())
-    }
+        // Update SND.UNA to SEG.ACK.
+        self.send_unacked.set(header.ack_num);
 
-    // Update our send window to the value advertised by our peer.
-    //
-    pub fn update_send_window(&mut self, header: &TcpHeader) {
+        // Update send window.
         // Check that the ACK we're using to update the window isn't older than the last one used to update it.
         if self.send_window_last_update_seq < header.seq_num
             || (self.send_window_last_update_seq == header.seq_num
@@ -534,7 +518,13 @@ impl Sender {
         );
     }
 
-    pub fn remote_mss(&self) -> usize {
-        self.mss
+    // Get SND.UNA.
+    pub fn get_unacked_seq_no(&self) -> SeqNumber {
+        self.send_unacked.get()
+    }
+
+    // Get SND.NXT.
+    pub fn get_next_seq_no(&self) -> SeqNumber {
+        self.send_next.get()
     }
 }

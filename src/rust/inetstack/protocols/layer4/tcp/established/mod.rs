@@ -120,10 +120,6 @@ impl EstablishedSocket {
         self.cb.close().await
     }
 
-    pub fn remote_mss(&self) -> usize {
-        self.cb.remote_mss()
-    }
-
     pub fn current_rto(&self) -> Duration {
         self.cb.rto()
     }
