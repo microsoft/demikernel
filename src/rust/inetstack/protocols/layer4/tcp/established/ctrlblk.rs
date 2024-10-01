@@ -308,7 +308,8 @@ impl SharedControlBlock {
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         let self_: Self = self.clone();
-        self.sender.immediate_send(buf, self_)
+        self.sender.immediate_send(buf, self_)?;
+        Ok(())
     }
 
     pub async fn background_retransmitter(mut self) -> Result<Never, Fail> {
