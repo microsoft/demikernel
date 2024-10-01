@@ -196,8 +196,7 @@ mod test {
                 },
             }
 
-            // Cook some data and push.
-            let bytes = libos.cook_data(32)?;
+            let bytes = libos.prepare_dummy_buffer(32)?;
             let qt: QToken = match libos.pushto(sockfd, &bytes, bob_addr) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -342,11 +341,11 @@ mod test {
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
 
-            // Open connection.
             let sockfd: QDesc = match libos.socket(Domain::IPV4, Type::DGRAM, Protocol::UDP) {
                 Ok(qd) => qd,
                 Err(e) => anyhow::bail!("failed to create socket: {:?}", e),
             };
+
             match libos.bind(sockfd, alice_addr) {
                 Ok(_) => (),
                 Err(e) => {
@@ -355,8 +354,8 @@ mod test {
                     anyhow::bail!("bind() failed: {:?}", e)
                 },
             };
-            // Cook some data and push.
-            let bytes = libos.cook_data(32)?;
+
+            let bytes = libos.prepare_dummy_buffer(32)?;
             let qt: QToken = match libos.pushto(sockfd, &bytes, bob_addr) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -365,6 +364,7 @@ mod test {
                     anyhow::bail!("push() failed: {:?}", e)
                 },
             };
+
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {
                 OperationResult::Push => (),
@@ -375,7 +375,6 @@ mod test {
                 },
             }
 
-            // Pop data.
             let qt: QToken = match libos.pop(sockfd, None) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -384,6 +383,7 @@ mod test {
                     anyhow::bail!("pop() failed: {:?}", e)
                 },
             };
+
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {
                 OperationResult::Pop(_, _) => (),
@@ -394,7 +394,6 @@ mod test {
                 },
             }
 
-            // Close connection.
             match libos.async_close(sockfd) {
                 Ok(qt) => {
                     safe_wait(&mut libos, qt)?;
