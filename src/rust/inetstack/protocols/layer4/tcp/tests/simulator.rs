@@ -1,11 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+// TODO: Move this component to the `network-simulator` crate.
+
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
 use crate::{
+    ensure_eq,
     inetstack::{
         protocols::{
             layer2::{EtherType2, Ethernet2Header},
@@ -27,8 +30,9 @@ use crate::{
 };
 use anyhow::Result;
 use network_simulator::glue::{
-    AcceptArgs, BindArgs, CloseArgs, ConnectArgs, Event, ListenArgs, PacketDirection, PacketEvent, PushArgs,
-    PushToArgs, SocketArgs, SyscallEvent, TcpPacket, UdpPacket,
+    AcceptArgs, Action, BindArgs, CloseArgs, ConnectArgs, DemikernelSyscall, Event, ListenArgs, PacketDirection,
+    PacketEvent, PopArgs, PushArgs, PushToArgs, SocketArgs, SocketDomain, SocketProtocol, SocketType, SyscallEvent,
+    TcpOption, TcpPacket, UdpPacket, WaitArgs,
 };
 use std::{
     collections::VecDeque,
@@ -44,7 +48,6 @@ use std::{
 // Constants
 //======================================================================================================================
 
-/// Maximum number of retries for a pop operation.
 /// This value was empirically chosen so as to have operations to successfully complete.
 const MAX_POP_RETRIES: usize = 5;
 
@@ -53,17 +56,14 @@ const MAX_POP_RETRIES: usize = 5;
 //======================================================================================================================
 
 #[test]
-/// Runs the network test suite.
-fn test_simulation() -> Result<()> {
+fn test_run_simulation() -> Result<()> {
     let verbose: bool = false;
     let local_mac: MacAddress = test_helpers::ALICE_MAC;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
     let local_port: u16 = 12345;
-    // let local_ephemeral_port: u16 = 49152;
     let local_ephemeral_port: u16 = 65535;
     let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
     let remote_port: u16 = 23456;
-    // let remote_ephemeral_port: u16 = 49152;
     let remote_ephemeral_port: u16 = 65535;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
 
@@ -104,24 +104,23 @@ fn test_simulation() -> Result<()> {
     Ok(())
 }
 
-// Collect all files under 'test_path'.
 fn collect_tests(test_path: &str) -> Result<Vec<String>> {
     let mut files: Vec<String> = Vec::new();
     let path: &Path = path::Path::new(test_path);
-    // Check if path is a directory.
+
     if path.is_dir() {
-        // It is, so recursively collect all files under it.
         let mut directories: Vec<String> = Vec::new();
         directories.push(test_path.to_string());
+
         // Recurse through all directories.
         while directories.len() > 0 {
             let directory: String = directories.pop().unwrap();
             for entry in std::fs::read_dir(&directory)? {
                 let entry: DirEntry = entry?;
                 let path: PathBuf = entry.path();
-                // Check if path is a directory.
+
                 if path.is_dir() {
-                    // It is, so add it to the list of directories to be processed.
+                    // It is a directory, so add it to the list of directories to be processed.
                     directories.push(path.to_str().unwrap().to_string());
                 } else {
                     // It is not a directory, so just add the file to the list of files.
@@ -145,7 +144,6 @@ fn collect_tests(test_path: &str) -> Result<Vec<String>> {
 // Standalone Functions
 //======================================================================================================================
 
-/// A simulation of the network stack.
 struct Simulation {
     protocol: Option<IpProtocol>,
     local_mac: MacAddress,
@@ -159,11 +157,10 @@ struct Simulation {
     engine: SharedEngine,
     now: Instant,
     inflight: Option<QToken>,
-    steps: Vec<String>,
+    lines: Vec<String>,
 }
 
 impl Simulation {
-    /// Creates a new simulation.
     pub fn new(
         filename: &str,
         local_mac: &MacAddress,
@@ -183,7 +180,7 @@ impl Simulation {
         info!("Local: sockaddr={:?}, macaddr={:?}", local_ipv4, local_mac);
         info!("Remote: sockaddr={:?}, macaddr={:?}", remote_ipv4, remote_mac);
 
-        let steps: Vec<String> = Self::read_input_file(&filename)?;
+        let lines: Vec<String> = Self::read_input_file(&filename)?;
         Ok(Simulation {
             protocol: None,
             local_mac: local_mac.clone(),
@@ -197,17 +194,15 @@ impl Simulation {
             local_port,
             remote_sockaddr: SocketAddrV4::new(remote_ipv4.clone(), remote_ephemeral_port),
             remote_port,
-            steps,
+            lines,
         })
     }
 
-    /// Reads the input file.
     fn read_input_file(filename: &str) -> Result<Vec<String>> {
         let mut lines: Vec<String> = Vec::new();
         let file: File = File::open(filename)?;
         let reader: BufReader<File> = BufReader::new(file);
 
-        // Read all lines of the input file.
         for line in reader.lines() {
             if let Ok(line) = line {
                 lines.push(line);
@@ -217,15 +212,13 @@ impl Simulation {
         Ok(lines)
     }
 
-    /// Runs the simulation.
     pub fn run(&mut self, verbose: bool) -> Result<()> {
-        // Process all lines of the source file.
-        for step in &self.steps.clone() {
+        for line in &self.lines.clone() {
             if verbose {
-                info!("Line: {:?}", step);
+                info!("Line: {:?}", line);
             }
 
-            if let Some(event) = network_simulator::run_parser(&step, verbose)? {
+            if let Some(event) = network_simulator::run_parser(&line, verbose)? {
                 self.run_event(&event)?;
             }
         }
@@ -242,48 +235,33 @@ impl Simulation {
         Ok(())
     }
 
-    /// Runs an event.
     fn run_event(&mut self, event: &Event) -> Result<()> {
         self.now += event.time;
         self.engine.advance_clock(self.now);
 
         match &event.action {
-            network_simulator::glue::Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
-            network_simulator::glue::Action::PacketEvent(packet) => self.run_packet(packet)?,
+            Action::SyscallEvent(syscall) => self.run_syscall(syscall)?,
+            Action::PacketEvent(packet) => self.run_packet(packet)?,
         }
 
         Ok(())
     }
 
-    /// Runs a system call.
     #[allow(unused_variables)]
     fn run_syscall(&mut self, syscall: &SyscallEvent) -> Result<()> {
         info!("{:?}: {:?}", self.now, syscall);
         match &syscall.syscall {
-            // Issue demi_socket().
-            network_simulator::glue::DemikernelSyscall::Socket(args, ret) => {
-                self.run_socket_syscall(args, ret.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
-            network_simulator::glue::DemikernelSyscall::Listen(args, ret) => {
-                self.run_listen_syscall(args, ret.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Accept(args, fd) => {
-                self.run_accept_syscall(args, fd.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Connect(args, ret) => {
-                self.run_connect_syscall(args, ret.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
-            network_simulator::glue::DemikernelSyscall::PushTo(args, ret) => {
-                self.run_pushto_syscall(args, ret.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
-            network_simulator::glue::DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
-            network_simulator::glue::DemikernelSyscall::Close(args, ret) => {
-                self.run_close_syscall(args, ret.clone())?
-            },
-            network_simulator::glue::DemikernelSyscall::Unsupported => {
+            DemikernelSyscall::Socket(args, ret) => self.run_socket_syscall(args, ret.clone())?,
+            DemikernelSyscall::Bind(args, ret) => self.run_bind_syscall(args, ret.clone())?,
+            DemikernelSyscall::Listen(args, ret) => self.run_listen_syscall(args, ret.clone())?,
+            DemikernelSyscall::Accept(args, fd) => self.run_accept_syscall(args, fd.clone())?,
+            DemikernelSyscall::Connect(args, ret) => self.run_connect_syscall(args, ret.clone())?,
+            DemikernelSyscall::Push(args, ret) => self.run_push_syscall(args, ret.clone())?,
+            DemikernelSyscall::PushTo(args, ret) => self.run_pushto_syscall(args, ret.clone())?,
+            DemikernelSyscall::Pop(args, ret) => self.run_pop_syscall(args, ret.clone())?,
+            DemikernelSyscall::Wait(args, ret) => self.run_wait_syscall(args, ret.clone())?,
+            DemikernelSyscall::Close(args, ret) => self.run_close_syscall(args, ret.clone())?,
+            DemikernelSyscall::Unsupported => {
                 error!("Unsupported syscall");
             },
         }
@@ -291,15 +269,14 @@ impl Simulation {
         Ok(())
     }
 
-    /// Runs a packet.
     fn run_packet(&mut self, packet: &PacketEvent) -> Result<()> {
         info!("{:?}: {:?}", self.now, packet);
         match packet {
-            network_simulator::glue::PacketEvent::Tcp(direction, tcp_packet) => match direction {
+            PacketEvent::Tcp(direction, tcp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_packet(tcp_packet)?,
                 PacketDirection::Outgoing => self.run_outgoing_packet(tcp_packet)?,
             },
-            network_simulator::glue::PacketEvent::Udp(direction, udp_packet) => match direction {
+            PacketEvent::Udp(direction, udp_packet) => match direction {
                 PacketDirection::Incoming => self.run_incoming_udp_packet(udp_packet)?,
                 PacketDirection::Outgoing => self.run_outgoing_udp_packet(udp_packet)?,
             },
@@ -308,27 +285,24 @@ impl Simulation {
         Ok(())
     }
 
-    /// Runs a socket system call.
     fn run_socket_syscall(&mut self, args: &SocketArgs, ret: i32) -> Result<()> {
         // Check for unsupported socket domain.
-        if args.domain != network_simulator::glue::SocketDomain::AF_INET {
+        if args.domain != SocketDomain::AF_INET {
             let cause: String = format!("unsupported domain socket domain (domain={:?})", args.domain);
             info!("run_socket_syscall(): {:?}", cause);
             anyhow::bail!(cause);
         }
 
-        // Issue demi_socket().
         match args.typ {
-            // TCP Socket.
-            network_simulator::glue::SocketType::SOCK_STREAM => {
-                // Check for unsupported socket protocol.
-                if args.protocol != network_simulator::glue::SocketProtocol::IPPROTO_TCP {
+            // TCP Socket
+            SocketType::SOCK_STREAM => {
+                // Check for unsupported socket protocol
+                if args.protocol != SocketProtocol::IPPROTO_TCP {
                     let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
                     info!("run_socket_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
                 }
 
-                // Issue demi_socket().
                 match self.engine.tcp_socket() {
                     Ok(qd) => {
                         self.local_qd = Some((ret as u32, qd));
@@ -343,16 +317,15 @@ impl Simulation {
                     },
                 }
             },
-            // UDP Socket.
-            network_simulator::glue::SocketType::SOCK_DGRAM => {
-                // Check for unsupported socket protocol.
-                if args.protocol != network_simulator::glue::SocketProtocol::IPPROTO_UDP {
+            // UDP Socket
+            SocketType::SOCK_DGRAM => {
+                // Check for unsupported socket protocol
+                if args.protocol != SocketProtocol::IPPROTO_UDP {
                     let cause: String = format!("unsupported socket protocol (protocol={:?})", args.protocol);
                     info!("run_socket_syscall(): {:?}", cause);
                     anyhow::bail!(cause);
                 }
 
-                // Issue demi_socket().
                 match self.engine.udp_socket() {
                     Ok(qd) => {
                         self.local_qd = Some((ret as u32, qd));
@@ -371,10 +344,8 @@ impl Simulation {
         }
     }
 
-    /// Runs a bind system call.
     fn run_bind_syscall(&mut self, args: &BindArgs, ret: i32) -> Result<()> {
-        // Extract bind address.
-        let local_addr: SocketAddrV4 = match args.addr {
+        let local_bind_addr: SocketAddrV4 = match args.addr {
             None => {
                 self.local_sockaddr.set_port(self.local_port);
                 self.local_sockaddr
@@ -388,7 +359,6 @@ impl Simulation {
             },
         };
 
-        // Extract local queue descriptor.
         let local_qd: QDesc = match args.qd {
             Some(local_fd) => match self.local_qd {
                 Some((fd, qd)) if fd == local_fd => qd,
@@ -405,8 +375,7 @@ impl Simulation {
             },
         };
 
-        // Issue demi_bind().
-        match self.engine.tcp_bind(local_qd, local_addr) {
+        match self.engine.tcp_bind(local_qd, local_bind_addr) {
             Ok(()) if ret == 0 => Ok(()),
             Err(err) if ret as i32 == err.errno => Ok(()),
             _ => {
@@ -417,9 +386,7 @@ impl Simulation {
         }
     }
 
-    /// Runs a listen system call.
     fn run_listen_syscall(&mut self, args: &ListenArgs, ret: i32) -> Result<()> {
-        // Check if backlog length was informed.
         let backlog: usize = match args.backlog {
             Some(backlog) => backlog,
             None => {
@@ -429,7 +396,6 @@ impl Simulation {
             },
         };
 
-        // Extract local queue descriptor.
         let local_qd: QDesc = match args.qd {
             Some(local_fd) => match self.local_qd {
                 Some((fd, qd)) if fd == local_fd => qd,
@@ -446,7 +412,6 @@ impl Simulation {
             },
         };
 
-        // Issue demi_listen().
         match self.engine.tcp_listen(local_qd, backlog) {
             Ok(()) if ret == 0 => Ok(()),
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -458,9 +423,7 @@ impl Simulation {
         }
     }
 
-    /// Runs an accept system call.
     fn run_accept_syscall(&mut self, args: &AcceptArgs, ret: i32) -> Result<()> {
-        // Extract local queue descriptor.
         let local_qd: QDesc = match args.qd {
             Some(local_fd) => match self.local_qd {
                 Some((fd, qd)) if fd == local_fd => qd,
@@ -477,7 +440,6 @@ impl Simulation {
             },
         };
 
-        // Issue demi_accept().
         match self.engine.tcp_accept(local_qd) {
             Ok(accept_qt) => {
                 self.remote_qd = Some((ret as u32, None));
@@ -493,9 +455,7 @@ impl Simulation {
         }
     }
 
-    /// Runs a connect system call.
     fn run_connect_syscall(&mut self, args: &ConnectArgs, ret: i32) -> Result<()> {
-        // Extract local queue descriptor.
         let local_qd: QDesc = match self.local_qd {
             Some((_, qd)) => qd,
             None => {
@@ -505,7 +465,6 @@ impl Simulation {
             },
         };
 
-        // Extract remote address.
         let remote_addr: SocketAddrV4 = match args.addr {
             None => {
                 self.remote_sockaddr = SocketAddrV4::new(self.remote_sockaddr.ip().clone(), self.remote_port);
@@ -533,10 +492,8 @@ impl Simulation {
         }
     }
 
-    /// Runs a push system call.
     fn run_push_syscall(&mut self, args: &PushArgs, ret: i32) -> Result<()> {
-        // Extract buffer length.
-        let buf_len: u16 = match args.len {
+        let buf_len: usize = match args.len {
             Some(len) => len.try_into()?,
             None => {
                 let cause: String = format!("buffer length must be informed");
@@ -545,7 +502,6 @@ impl Simulation {
             },
         };
 
-        // Extract remote queue descriptor.
         let remote_qd: QDesc = match self.remote_qd {
             Some((_, qd)) => qd.unwrap(),
             None => {
@@ -553,7 +509,7 @@ impl Simulation {
             },
         };
 
-        let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
+        let buf: DemiBuffer = Self::prepare_dummy_buffer(buf_len, None);
         match self.engine.tcp_push(remote_qd, buf) {
             Ok(push_qt) => {
                 self.inflight = Some(push_qt);
@@ -572,9 +528,7 @@ impl Simulation {
         }
     }
 
-    /// Runs a pop system call.
-    fn run_pop_syscall(&mut self, args: &network_simulator::glue::PopArgs, ret: i32) -> Result<()> {
-        // Extract remote queue descriptor.
+    fn run_pop_syscall(&mut self, args: &PopArgs, ret: i32) -> Result<()> {
         let remote_qd: QDesc = args.qd.into();
 
         match self.protocol {
@@ -610,9 +564,7 @@ impl Simulation {
         }
     }
 
-    /// Emulates wait system call.
-    fn run_wait_syscall(&mut self, args: &network_simulator::glue::WaitArgs, ret: i32) -> Result<()> {
-        // Extract queue descriptor.
+    fn run_wait_syscall(&mut self, args: &WaitArgs, ret: i32) -> Result<()> {
         let args_qd: QDesc = match args.qd {
             Some(qd) => QDesc::from(qd),
             None => {
@@ -622,34 +574,34 @@ impl Simulation {
             },
         };
 
-        match self.operation_has_completed() {
+        match self.has_operation_completed() {
             Ok((qd, qr)) if args_qd == qd => match qr {
-                crate::OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
+                OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
                     info!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
                     self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
                     Ok(())
                 },
-                crate::OperationResult::Connect => {
+                OperationResult::Connect => {
                     info!("connection established as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Pop(_sockaddr, _data) => {
+                OperationResult::Pop(_sockaddr, _data) => {
                     info!("pop completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Push => {
+                OperationResult::Push => {
                     info!("push completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Close => {
+                OperationResult::Close => {
                     info!("close completed as expected (qd={:?})", qd);
                     Ok(())
                 },
-                crate::OperationResult::Failed(e) if e.errno == ret as i32 => {
+                OperationResult::Failed(e) if e.errno == ret as i32 => {
                     info!("operation failed as expected (qd={:?}, errno={:?})", qd, e.errno);
                     Ok(())
                 },
-                crate::OperationResult::Failed(e) => {
+                OperationResult::Failed(e) => {
                     unreachable!("operation failed unexpectedly (qd={:?}, errno={:?})", qd, e.errno);
                 },
                 _ => unreachable!("unexpected operation has completed coroutine has completed"),
@@ -658,10 +610,8 @@ impl Simulation {
         }
     }
 
-    /// Runs a pushto system call.
     fn run_pushto_syscall(&mut self, args: &PushToArgs, ret: i32) -> Result<()> {
-        // Extract buffer length.
-        let buf_len: u16 = match args.len {
+        let buf_len: usize = match args.len {
             Some(len) => len.try_into()?,
             None => {
                 let cause: String = format!("buffer length must be informed");
@@ -670,7 +620,6 @@ impl Simulation {
             },
         };
 
-        // Extract remote address.
         let remote_addr: SocketAddrV4 = match args.addr {
             None => {
                 self.remote_sockaddr = SocketAddrV4::new(self.remote_sockaddr.ip().clone(), self.remote_port);
@@ -684,7 +633,6 @@ impl Simulation {
             },
         };
 
-        // Extract remote queue descriptor.
         let remote_qd: QDesc = match args.qd {
             Some(qd) => qd.into(),
             None => {
@@ -692,7 +640,7 @@ impl Simulation {
             },
         };
 
-        let buf: DemiBuffer = Self::cook_buffer(buf_len as usize, None);
+        let buf: DemiBuffer = Self::prepare_dummy_buffer(buf_len, None);
         match self.engine.udp_pushto(remote_qd, buf, remote_addr) {
             Ok(push_qt) => {
                 self.inflight = Some(push_qt);
@@ -711,7 +659,6 @@ impl Simulation {
     }
 
     fn run_close_syscall(&mut self, args: &CloseArgs, ret: i32) -> Result<()> {
-        // Extract queue descriptor.
         let args_qd: QDesc = args.qd.into();
 
         match self.engine.tcp_async_close(args_qd) {
@@ -728,33 +675,21 @@ impl Simulation {
         }
     }
 
-    // Build options list.
-    fn build_tcp_options(
-        &self,
-        options: &Vec<network_simulator::glue::TcpOption>,
-    ) -> ([TcpOptions2; MAX_TCP_OPTIONS], usize) {
+    fn build_tcp_options(&self, options: &Vec<TcpOption>) -> ([TcpOptions2; MAX_TCP_OPTIONS], usize) {
         let mut option_list: Vec<TcpOptions2> = Vec::new();
 
         // Convert options.
         for option in options {
             match option {
-                network_simulator::glue::TcpOption::Noop => option_list.push(TcpOptions2::NoOperation),
-                network_simulator::glue::TcpOption::Mss(mss) => {
-                    option_list.push(TcpOptions2::MaximumSegmentSize(mss.clone()))
-                },
-                network_simulator::glue::TcpOption::WindowScale(wscale) => {
-                    option_list.push(TcpOptions2::WindowScale(wscale.clone()))
-                },
-                network_simulator::glue::TcpOption::SackOk => {
-                    option_list.push(TcpOptions2::SelectiveAcknowlegementPermitted)
-                },
-                network_simulator::glue::TcpOption::Timestamp(sender, echo) => {
-                    option_list.push(TcpOptions2::Timestamp {
-                        sender_timestamp: sender.clone(),
-                        echo_timestamp: echo.clone(),
-                    })
-                },
-                network_simulator::glue::TcpOption::EndOfOptions => option_list.push(TcpOptions2::EndOfOptionsList),
+                TcpOption::Noop => option_list.push(TcpOptions2::NoOperation),
+                TcpOption::Mss(mss) => option_list.push(TcpOptions2::MaximumSegmentSize(mss.clone())),
+                TcpOption::WindowScale(wscale) => option_list.push(TcpOptions2::WindowScale(wscale.clone())),
+                TcpOption::SackOk => option_list.push(TcpOptions2::SelectiveAcknowlegementPermitted),
+                TcpOption::Timestamp(sender, echo) => option_list.push(TcpOptions2::Timestamp {
+                    sender_timestamp: sender.clone(),
+                    echo_timestamp: echo.clone(),
+                }),
+                TcpOption::EndOfOptions => option_list.push(TcpOptions2::EndOfOptionsList),
             }
         }
 
@@ -768,13 +703,11 @@ impl Simulation {
         (option_list.try_into().unwrap(), num_options)
     }
 
-    /// Builds an Ethernet 2 header.
-    fn build_ethernet_header(&self) -> Ethernet2Header {
+    fn build_ethernet2_header(&self) -> Ethernet2Header {
         let (src_addr, dst_addr) = { (self.remote_mac, self.local_mac) };
         Ethernet2Header::new(dst_addr, src_addr, EtherType2::Ipv4)
     }
 
-    /// Builds an IPv4 header.
     fn build_ipv4_header(&self, protocol: IpProtocol) -> Ipv4Header {
         let (src_addr, dst_addr) = {
             (
@@ -786,7 +719,6 @@ impl Simulation {
         Ipv4Header::new(src_addr, dst_addr, protocol)
     }
 
-    /// Builds a TCP header.
     fn build_tcp_header(&self, tcp_packet: &TcpPacket) -> TcpHeader {
         let (option_list, num_options): ([TcpOptions2; MAX_TCP_OPTIONS], usize) =
             self.build_tcp_options(&tcp_packet.options);
@@ -826,13 +758,10 @@ impl Simulation {
         UdpHeader::new(src_port, dest_port)
     }
 
-    /// Builds a TCP segment.
     fn build_tcp_segment(&self, tcp_packet: &TcpPacket) -> DemiBuffer {
-        // Create headers.
-
         let tcp_hdr: TcpHeader = self.build_tcp_header(&tcp_packet);
         let mut pkt: DemiBuffer = if tcp_packet.seqnum.win > 0 {
-            Self::cook_buffer(tcp_packet.seqnum.win as usize, None)
+            Self::prepare_dummy_buffer(tcp_packet.seqnum.win as usize, None)
         } else {
             DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
         };
@@ -842,11 +771,9 @@ impl Simulation {
         pkt
     }
 
-    /// Builds a UDP datagram.
     fn build_udp_datagram(&self, udp_packet: &UdpPacket) -> DemiBuffer {
-        // Create headers.
         let udp_hdr: UdpHeader = self.build_udp_header(&udp_packet);
-        let mut pkt: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
+        let mut pkt: DemiBuffer = Self::prepare_dummy_buffer(udp_packet.len as usize, None);
         // This is an incoming packet, so the source is the remote address and the destination is the local address.
         udp_hdr.serialize_and_attach(&mut pkt, &self.remote_sockaddr.ip(), &self.local_sockaddr.ip(), false);
         self.prepend_ipv4_header(IpProtocol::UDP, &mut pkt);
@@ -854,99 +781,85 @@ impl Simulation {
         pkt
     }
 
-    /// Attach the ethernet header to a packet.
     fn prepend_ethernet_header(&self, pkt: &mut DemiBuffer) {
-        let ethernet2_hdr: Ethernet2Header = self.build_ethernet_header();
+        let ethernet2_hdr: Ethernet2Header = self.build_ethernet2_header();
         ethernet2_hdr.serialize_and_attach(pkt);
     }
 
-    /// Attach the Ipv4 header to a packet.
     fn prepend_ipv4_header(&self, ip_protocol: IpProtocol, pkt: &mut DemiBuffer) {
         let ipv4_hdr: Ipv4Header = self.build_ipv4_header(ip_protocol);
         ipv4_hdr.serialize_and_attach(pkt);
     }
 
-    /// Runs an incoming packet.
     fn run_incoming_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         let buf: DemiBuffer = self.build_tcp_segment(&tcp_packet);
         self.engine.push_frame(buf);
-
         self.engine.poll();
         Ok(())
     }
 
-    /// Runs an incoming packet.
     fn run_incoming_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
         let buf: DemiBuffer = self.build_udp_datagram(&udp_packet);
         self.engine.push_frame(buf);
-
         self.engine.poll();
         Ok(())
     }
 
-    /// Checks an Ethernet 2 header.
     fn check_ethernet2_header(&self, eth2_header: &Ethernet2Header) -> Result<()> {
-        crate::ensure_eq!(eth2_header.src_addr(), self.local_mac);
-        crate::ensure_eq!(eth2_header.dst_addr(), self.remote_mac);
-        crate::ensure_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
-
+        ensure_eq!(eth2_header.src_addr(), self.local_mac);
+        ensure_eq!(eth2_header.dst_addr(), self.remote_mac);
+        ensure_eq!(eth2_header.ether_type(), EtherType2::Ipv4);
         Ok(())
     }
 
-    /// Checks an IPv4 header.
     fn check_ipv4_header(&self, ipv4_header: &Ipv4Header, protocol: IpProtocol) -> Result<()> {
-        crate::ensure_eq!(ipv4_header.get_src_addr(), self.local_sockaddr.ip().to_owned());
-        crate::ensure_eq!(ipv4_header.get_dest_addr(), self.remote_sockaddr.ip().to_owned());
-        crate::ensure_eq!(ipv4_header.get_protocol(), protocol);
-
+        ensure_eq!(ipv4_header.get_src_addr(), self.local_sockaddr.ip().to_owned());
+        ensure_eq!(ipv4_header.get_dest_addr(), self.remote_sockaddr.ip().to_owned());
+        ensure_eq!(ipv4_header.get_protocol(), protocol);
         Ok(())
     }
 
-    /// Checks a TCP header.
     fn check_tcp_header(&self, tcp_header: &TcpHeader, tcp_packet: &TcpPacket) -> Result<()> {
-        // Check if source port number matches what we expect.
-        crate::ensure_eq!(tcp_header.src_port, self.local_sockaddr.port());
-        // Check if destination port number matches what we expect.
-        crate::ensure_eq!(tcp_header.dst_port, self.remote_port);
-        // Check if sequence number matches what we expect.
-        crate::ensure_eq!(tcp_header.seq_num, tcp_packet.seqnum.seq.into());
-        // Check if acknowledgement number matches what we expect.
+        ensure_eq!(tcp_header.src_port, self.local_sockaddr.port());
+        ensure_eq!(tcp_header.dst_port, self.remote_port);
+        ensure_eq!(tcp_header.seq_num, tcp_packet.seqnum.seq.into());
+
         if let Some(ack_num) = tcp_packet.ack {
-            crate::ensure_eq!(tcp_header.ack, true);
-            crate::ensure_eq!(tcp_header.ack_num, ack_num.into());
+            ensure_eq!(tcp_header.ack, true);
+            ensure_eq!(tcp_header.ack_num, ack_num.into());
         }
-        // Check if window size matches what we expect.
+
         if let Some(winsize) = tcp_packet.win {
-            crate::ensure_eq!(tcp_header.window_size, winsize as u16);
+            ensure_eq!(tcp_header.window_size, winsize as u16);
         }
-        // Check if flags matches what we expect.
-        crate::ensure_eq!(tcp_header.cwr, tcp_packet.flags.cwr);
-        crate::ensure_eq!(tcp_header.ece, tcp_packet.flags.ece);
-        crate::ensure_eq!(tcp_header.urg, tcp_packet.flags.urg);
-        crate::ensure_eq!(tcp_header.ack, tcp_packet.flags.ack);
-        crate::ensure_eq!(tcp_header.psh, tcp_packet.flags.psh);
-        crate::ensure_eq!(tcp_header.rst, tcp_packet.flags.rst);
-        crate::ensure_eq!(tcp_header.syn, tcp_packet.flags.syn);
-        crate::ensure_eq!(tcp_header.fin, tcp_packet.flags.fin);
-        // Check if urgent pointer matches what we expect.
-        crate::ensure_eq!(tcp_header.urgent_pointer, 0);
+
+        ensure_eq!(tcp_header.cwr, tcp_packet.flags.cwr);
+        ensure_eq!(tcp_header.ece, tcp_packet.flags.ece);
+        ensure_eq!(tcp_header.urg, tcp_packet.flags.urg);
+        ensure_eq!(tcp_header.ack, tcp_packet.flags.ack);
+        ensure_eq!(tcp_header.psh, tcp_packet.flags.psh);
+        ensure_eq!(tcp_header.rst, tcp_packet.flags.rst);
+        ensure_eq!(tcp_header.syn, tcp_packet.flags.syn);
+        ensure_eq!(tcp_header.fin, tcp_packet.flags.fin);
+        ensure_eq!(tcp_header.urgent_pointer, 0);
+
         // Check if options match what we expect.
         for i in 0..tcp_packet.options.len() {
             match tcp_packet.options[i] {
-                network_simulator::glue::TcpOption::Noop => {
-                    crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::NoOperation);
+                TcpOption::Noop => {
+                    ensure_eq!(tcp_header.option_list[i], TcpOptions2::NoOperation);
                 },
-                network_simulator::glue::TcpOption::Mss(mss) => {
-                    crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::MaximumSegmentSize(mss));
+                TcpOption::Mss(mss) => {
+                    ensure_eq!(tcp_header.option_list[i], TcpOptions2::MaximumSegmentSize(mss));
                 },
-                network_simulator::glue::TcpOption::WindowScale(wscale) => {
-                    crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::WindowScale(wscale));
+                TcpOption::WindowScale(wscale) => {
+                    ensure_eq!(tcp_header.option_list[i], TcpOptions2::WindowScale(wscale));
                 },
-                network_simulator::glue::TcpOption::SackOk => {
-                    crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::SelectiveAcknowlegementPermitted);
+                TcpOption::SackOk => {
+                    ensure_eq!(tcp_header.option_list[i], TcpOptions2::SelectiveAcknowlegementPermitted);
                 },
-                network_simulator::glue::TcpOption::Timestamp(sender, echo) => {
-                    crate::ensure_eq!(
+                TcpOption::Timestamp(sender, echo) => {
+                    ensure_eq!(
                         tcp_header.option_list[i],
                         TcpOptions2::Timestamp {
                             sender_timestamp: sender,
@@ -954,8 +867,8 @@ impl Simulation {
                         }
                     );
                 },
-                network_simulator::glue::TcpOption::EndOfOptions => {
-                    crate::ensure_eq!(tcp_header.option_list[i], TcpOptions2::EndOfOptionsList);
+                TcpOption::EndOfOptions => {
+                    ensure_eq!(tcp_header.option_list[i], TcpOptions2::EndOfOptionsList);
                 },
             }
         }
@@ -963,39 +876,33 @@ impl Simulation {
         Ok(())
     }
 
-    /// Checks a UDP header.
     fn check_udp_header(&self, udp_header: &UdpHeader, _udp_packet: &UdpPacket) -> Result<()> {
-        // Check if source port number matches what we expect.
-        crate::ensure_eq!(udp_header.src_port(), self.local_sockaddr.port());
-        // Check if destination port number matches what we expect.
-        crate::ensure_eq!(udp_header.dest_port(), self.remote_port);
-
+        ensure_eq!(udp_header.src_port(), self.local_sockaddr.port());
+        ensure_eq!(udp_header.dest_port(), self.remote_port);
         Ok(())
     }
 
-    /// Checks if an operation has completed.
-    fn operation_has_completed(&mut self) -> Result<(QDesc, OperationResult)> {
+    fn has_operation_completed(&mut self) -> Result<(QDesc, OperationResult)> {
         match self.inflight.take() {
             Some(qt) => Ok(self.engine.wait(qt, TIMEOUT_SECONDS)?),
             None => anyhow::bail!("should have an inflight queue token"),
         }
     }
 
-    /// Runs an outgoing TCP packet.
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let mut n: usize = 0;
+        let mut num_tries: usize = 0;
         let mut frames: VecDeque<DemiBuffer> = loop {
             let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
             if frames.is_empty() {
-                if n > MAX_POP_RETRIES {
+                if num_tries > MAX_POP_RETRIES {
                     anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
                 } else {
                     self.engine.poll();
-                    n += 1;
+                    num_tries += 1;
                 }
             } else {
                 // FIXME: We currently do not support multi-frame segments.
-                crate::ensure_eq!(frames.len(), 1);
+                ensure_eq!(frames.len(), 1);
                 break frames;
             }
         };
@@ -1009,13 +916,12 @@ impl Simulation {
         let src_ipv4_addr: Ipv4Addr = ipv4_header.get_src_addr();
         let dest_ipv4_addr: Ipv4Addr = ipv4_header.get_dest_addr();
         let tcp_header: TcpHeader = TcpHeader::parse_and_strip(&src_ipv4_addr, &dest_ipv4_addr, &mut pkt, true)?;
-        crate::ensure_eq!(tcp_packet.seqnum.win as usize, pkt.len());
+        ensure_eq!(tcp_packet.seqnum.win as usize, pkt.len());
         self.check_tcp_header(&tcp_header, &tcp_packet)?;
 
         Ok(())
     }
 
-    /// Runs an outgoing UDP packet.
     fn run_outgoing_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
         let mut n: usize = 0;
         let mut frames: VecDeque<DemiBuffer> = loop {
@@ -1029,7 +935,7 @@ impl Simulation {
                 }
             } else {
                 // FIXME: We currently do not support multi-frame segments.
-                crate::ensure_eq!(frames.len(), 1);
+                ensure_eq!(frames.len(), 1);
                 break frames;
             }
         };
@@ -1042,14 +948,13 @@ impl Simulation {
 
         let udp_header: UdpHeader =
             UdpHeader::parse_and_strip(&self.local_sockaddr.ip(), &self.remote_sockaddr.ip(), &mut pkt, true)?;
-        crate::ensure_eq!(udp_packet.len as usize, pkt.len());
+        ensure_eq!(udp_packet.len as usize, pkt.len());
         self.check_udp_header(&udp_header, &udp_packet)?;
 
         Ok(())
     }
 
-    /// Cooks a buffer.
-    fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
+    fn prepare_dummy_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
         assert!(size < u16::MAX as usize);
         let mut buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
         for i in 0..size {
