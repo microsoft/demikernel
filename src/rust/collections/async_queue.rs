@@ -101,6 +101,16 @@ impl<T> AsyncQueue<T> {
     pub fn get_mut_values(&mut self) -> IterMut<T> {
         self.queue.iter_mut()
     }
+
+    /// Get refernce to first item.
+    pub fn get_front(&self) -> Option<&T> {
+        self.queue.front()
+    }
+
+    /// Get mutable reference to first item.
+    pub fn get_front_mut(&mut self) -> Option<&mut T> {
+        self.queue.front_mut()
+    }
 }
 
 impl<T> SharedAsyncQueue<T> {

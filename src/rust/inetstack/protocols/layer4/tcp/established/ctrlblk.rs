@@ -18,7 +18,7 @@ use crate::{
             established::{
                 congestion_control::{self, CongestionControlConstructor},
                 rto::RtoCalculator,
-                sender::{Sender, UnackedSegment},
+                sender::Sender,
             },
             header::TcpHeader,
             SeqNumber,
@@ -308,11 +308,17 @@ impl SharedControlBlock {
 
     pub fn send(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
         let self_: Self = self.clone();
-        self.sender.send(buf, self_)
+        self.sender.immediate_send(buf, self_)
     }
 
-    pub fn retransmit(&self) {
-        self.sender.retransmit(self.clone())
+    pub async fn background_retransmitter(mut self) -> Result<Never, Fail> {
+        let cb: Self = self.clone();
+        self.sender.background_retransmitter(cb).await
+    }
+
+    pub async fn background_sender(mut self) -> Result<Never, Fail> {
+        let cb: Self = self.clone();
+        self.sender.background_sender(cb).await
     }
 
     pub fn congestion_control_watch_retransmit_now_flag(&self) -> SharedAsyncValue<bool> {
@@ -343,30 +349,6 @@ impl SharedControlBlock {
         self.congestion_control_algorithm.get_limited_transmit_cwnd_increase()
     }
 
-    pub fn get_mss(&self) -> usize {
-        self.sender.get_mss()
-    }
-
-    pub fn get_send_window(&self) -> SharedAsyncValue<u32> {
-        self.sender.get_send_window()
-    }
-
-    pub fn get_send_unacked(&self) -> SharedAsyncValue<SeqNumber> {
-        self.sender.get_send_unacked()
-    }
-
-    pub fn get_unsent_seq_no(&self) -> SharedAsyncValue<SeqNumber> {
-        self.sender.get_unsent_seq_no()
-    }
-
-    pub fn get_send_next(&self) -> SharedAsyncValue<SeqNumber> {
-        self.sender.get_send_next()
-    }
-
-    pub fn modify_send_next(&mut self, f: impl FnOnce(SeqNumber) -> SeqNumber) {
-        self.sender.modify_send_next(f)
-    }
-
     pub fn get_retransmit_deadline(&self) -> Option<Instant> {
         self.send_retransmit_deadline_time_secs.get()
     }
@@ -379,10 +361,6 @@ impl SharedControlBlock {
         self.send_retransmit_deadline_time_secs.clone()
     }
 
-    pub fn push_unacked_segment(&self, segment: UnackedSegment) {
-        self.sender.push_unacked_segment(segment)
-    }
-
     pub fn rto_add_sample(&mut self, rtt: Duration) {
         self.send_rto_calculator.add_sample(rtt)
     }
@@ -393,18 +371,6 @@ impl SharedControlBlock {
 
     pub fn rto_back_off(&mut self) {
         self.send_rto_calculator.back_off()
-    }
-
-    pub fn unsent_top_size(&self) -> Option<usize> {
-        self.sender.top_size_unsent()
-    }
-
-    pub fn pop_unsent_segment(&self, max_bytes: usize) -> Option<(DemiBuffer, bool)> {
-        self.sender.pop_unsent(max_bytes)
-    }
-
-    pub fn pop_one_unsent_byte(&self) -> Option<DemiBuffer> {
-        self.sender.pop_one_unsent_byte()
     }
 
     pub fn get_now(&self) -> Instant {
@@ -708,8 +674,8 @@ impl SharedControlBlock {
                 let bytes_acknowledged: u32 = (header.ack_num - send_unacknowledged).into();
 
                 // Remove the now acknowledged data from the unacknowledged queue.
-                self.sender
-                    .remove_acknowledged_data(self.clone(), bytes_acknowledged, now);
+                let cb: Self = self.clone();
+                self.sender.remove_acknowledged_data(cb, bytes_acknowledged, now);
 
                 // Update SND.UNA to SEG.ACK.
                 self.sender.send_unacked.set(header.ack_num);
@@ -811,7 +777,7 @@ impl SharedControlBlock {
         let mut header: TcpHeader = self.tcp_header();
 
         // TODO: Think about moving this to tcp_header() as well.
-        let seq_num: SeqNumber = self.get_send_next().get();
+        let seq_num: SeqNumber = self.sender.get_send_next().get();
         header.seq_num = seq_num;
         self.emit(header, None);
     }
