@@ -197,7 +197,7 @@ static void client(int argc,
         sga = demi_sgaalloc(data_size);
         assert(sga.sga_segs != 0);
 
-        /* Cook data. */
+        /* Prepare data. */
         memset(expected_buf, it % 256, data_size);
         memcpy(sga.sga_segs[0].sgaseg_buf, expected_buf, data_size);
 

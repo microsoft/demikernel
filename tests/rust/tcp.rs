@@ -323,8 +323,7 @@ mod test {
                 },
             }
 
-            // Cook some data and push.
-            let buf = libos.cook_data(32)?;
+            let buf = libos.prepare_dummy_buffer(32)?;
             let qt: QToken = safe_push(&mut libos, sockqd, buf)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {
@@ -889,8 +888,7 @@ mod test {
                 },
             }
 
-            // Cook some data and push to a bad socket.
-            let bytes = libos.cook_data(32)?;
+            let bytes = libos.prepare_dummy_buffer(32)?;
             match libos.push(QDesc::from(2), &bytes) {
                 Ok(_) => {
                     // Close socket if not error because this test cannot continue.
@@ -919,7 +917,7 @@ mod test {
             };
 
             // Push data.
-            let bytes = libos.cook_data(32)?;
+            let bytes = libos.prepare_dummy_buffer(32)?;
             let qt: QToken = safe_push(&mut libos, sockqd, bytes)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {
@@ -1032,8 +1030,7 @@ mod test {
                 },
             }
 
-            // Cook some data and push data.
-            let bytes = libos.cook_data(32)?;
+            let bytes = libos.prepare_dummy_buffer(32)?;
             let qt: QToken = safe_push(&mut libos, sockqd, bytes)?;
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {

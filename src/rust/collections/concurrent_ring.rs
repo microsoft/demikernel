@@ -789,8 +789,7 @@ mod test {
             }
         }
 
-        // Cooks a message.
-        fn cook_message(buf: &mut [u8], seqnum: u8, tid: u8) {
+        fn prepare_buffer(buf: &mut [u8], seqnum: u8, tid: u8) {
             for x in &mut buf[..] {
                 *x = (seqnum << LOG2_NUMBER_OF_THREADS) | tid;
             }
@@ -825,8 +824,7 @@ mod test {
 
                         trace!("writer: started");
                         while seqnum <= NUMBER_OF_ITERATIONS {
-                            // Cook message.
-                            cook_message(&mut buf[..], seqnum, peer_tid);
+                            prepare_buffer(&mut buf[..], seqnum, peer_tid);
 
                             loop {
                                 // Push message.
@@ -922,8 +920,7 @@ mod test {
                                 next_seqnum = next_seqnum + 1;
                             }
 
-                            // Cook message.
-                            cook_message(&mut buf, next_seqnum, peer_tid);
+                            prepare_buffer(&mut buf, next_seqnum, peer_tid);
 
                             // Push message.
                             push_message(&reader_ring, &buf);

@@ -58,8 +58,7 @@ impl DummyLibOS {
         )))
     }
 
-    /// Cooks a buffer.
-    pub fn cook_data(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+    pub fn prepare_dummy_buffer(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         let fill_char: u8 = b'a';
 
         let mut buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
