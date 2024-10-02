@@ -42,6 +42,8 @@ export INPUT ?= $(CURDIR)/network_simulator/input
 export CARGO ?= $(shell which cargo || echo "$(HOME)/.cargo/bin/cargo" )
 export CARGO_FLAGS += --profile $(BUILD)
 
+export RUSTFLAGS += -D warnings
+
 # C
 export CFLAGS := -I $(INCDIR)
 ifeq ($(DEBUG),yes)
