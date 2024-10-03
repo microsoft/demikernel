@@ -34,7 +34,7 @@ use crate::runtime::libdpdk::{
     rte_pktmbuf_trim,
 };
 use crate::{
-    pal::CPU_DATA_CACHE_LINE_SIZE,
+    pal::CPU_DATA_CACHE_LINE_SIZE_IN_BYTES,
     runtime::{
         fail::Fail,
         memory::{
@@ -161,8 +161,8 @@ struct DemiMetaData {
 // Check MetaData structure alignment and size at compile time.
 // Note that alignment must be specified via a literal value in #[repr(align(64))] above, so a defined constant can't
 // be used.  So, if the alignment assert is firing, change the value in the align() to match CPU_DATA_CACHE_LINE_SIZE.
-const _: () = assert!(std::mem::align_of::<MetaData>() == CPU_DATA_CACHE_LINE_SIZE);
-const _: () = assert!(std::mem::size_of::<MetaData>() == 2 * CPU_DATA_CACHE_LINE_SIZE);
+const _: () = assert!(std::mem::align_of::<MetaData>() == CPU_DATA_CACHE_LINE_SIZE_IN_BYTES);
+const _: () = assert!(std::mem::size_of::<MetaData>() == 2 * CPU_DATA_CACHE_LINE_SIZE_IN_BYTES);
 const _: () = assert!(std::mem::size_of::<Option<Rc<MemoryPool>>>() == std::mem::size_of::<*const ()>());
 
 // MetaData "offload flags".  These exactly mimic those of DPDK MBufs.
@@ -827,7 +827,7 @@ fn allocate_metadata_data<'a>(direct_data_size: u16) -> (&'a mut MaybeUninit<Met
     let amount: usize = size_of::<MetaData>() + direct_data_size as usize;
 
     // Given our limited allocation amount (u16::MAX) and fixed alignment size, this unwrap cannot panic.
-    let layout: Layout = Layout::from_size_align(amount, CPU_DATA_CACHE_LINE_SIZE).unwrap();
+    let layout: Layout = Layout::from_size_align(amount, CPU_DATA_CACHE_LINE_SIZE_IN_BYTES).unwrap();
 
     // Safety: This is safe, as we check for a null return value before dereferencing "allocation".
     let allocation: *mut MaybeUninit<u8> = unsafe { alloc(layout) }.cast();
@@ -901,7 +901,7 @@ fn free_metadata_data(mut buffer: NonNull<MetaData>) {
         None => {
             // Convert buffer pointer into a raw allocation pointer.
             let allocation: *mut u8 = buffer.cast::<u8>().as_ptr();
-            let layout: Layout = Layout::from_size_align(amount, CPU_DATA_CACHE_LINE_SIZE).unwrap();
+            let layout: Layout = Layout::from_size_align(amount, CPU_DATA_CACHE_LINE_SIZE_IN_BYTES).unwrap();
 
             // Safety: this is safe because we're using the same (de)allocator and Layout used for allocation.
             unsafe { dealloc(allocation, layout) };

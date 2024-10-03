@@ -8,7 +8,7 @@
 use std::{alloc::LayoutError, num::NonZeroUsize, rc::Rc};
 
 use crate::{
-    pal::CPU_DATA_CACHE_LINE_SIZE,
+    pal::CPU_DATA_CACHE_LINE_SIZE_IN_BYTES,
     runtime::memory::{demibuffer::MetaData, memory_pool::MemoryPool},
 };
 
@@ -29,7 +29,7 @@ impl BufferPool {
     pub fn new(buffer_data_size: u16) -> Result<Self, LayoutError> {
         Ok(Self(MemoryPool::new(
             NonZeroUsize::new(std::mem::size_of::<MetaData>() + buffer_data_size as usize).unwrap(),
-            NonZeroUsize::new(CPU_DATA_CACHE_LINE_SIZE).unwrap(),
+            NonZeroUsize::new(CPU_DATA_CACHE_LINE_SIZE_IN_BYTES).unwrap(),
         )?))
     }
 
