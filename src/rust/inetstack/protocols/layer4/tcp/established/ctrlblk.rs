@@ -17,7 +17,6 @@ use crate::{
             constants::MSL,
             established::{
                 congestion_control::{self, CongestionControlConstructor},
-                rto::RtoCalculator,
                 sender::Sender,
             },
             header::TcpHeader,
@@ -173,15 +172,6 @@ pub struct ControlBlock {
     // Previous send variables and queues.
     // TODO: Consider incorporating this directly into ControlBlock.
     sender: Sender,
-
-    // Send timers
-    // Current retransmission timer expiration time.
-    // TODO: Consider storing this directly in the RtoCalculator.
-    send_retransmit_deadline_time_secs: SharedAsyncValue<Option<Instant>>,
-
-    // Retransmission Timeout (RTO) calculator.
-    send_rto_calculator: RtoCalculator,
-
     // Receive Sequence Variables from RFC 793.
 
     // RCV.NXT - receive next
@@ -290,8 +280,6 @@ impl SharedControlBlock {
                 sender_initial_seq_no,
                 congestion_control_options,
             ),
-            send_retransmit_deadline_time_secs: SharedAsyncValue::new(None),
-            send_rto_calculator: RtoCalculator::new(),
             recv_queue,
             receive_ack_queue_frame_bytes,
             parent_passive_socket_close_queue,
@@ -348,30 +336,6 @@ impl SharedControlBlock {
 
     pub fn congestion_control_get_limited_transmit_cwnd_increase(&self) -> SharedAsyncValue<u32> {
         self.congestion_control_algorithm.get_limited_transmit_cwnd_increase()
-    }
-
-    pub fn get_retransmit_deadline(&self) -> Option<Instant> {
-        self.send_retransmit_deadline_time_secs.get()
-    }
-
-    pub fn set_retransmit_deadline(&mut self, when: Option<Instant>) {
-        self.send_retransmit_deadline_time_secs.set(when);
-    }
-
-    pub fn watch_retransmit_deadline(&self) -> SharedAsyncValue<Option<Instant>> {
-        self.send_retransmit_deadline_time_secs.clone()
-    }
-
-    pub fn rto_add_sample(&mut self, rtt: Duration) {
-        self.send_rto_calculator.add_sample(rtt)
-    }
-
-    pub fn rto(&self) -> Duration {
-        self.send_rto_calculator.rto()
-    }
-
-    pub fn rto_back_off(&mut self) {
-        self.send_rto_calculator.back_off()
     }
 
     pub fn get_now(&self) -> Instant {
@@ -661,47 +625,27 @@ impl SharedControlBlock {
         // TODO: Restructure this call into congestion control to either integrate it directly or make it more fine-
         // grained.  It currently duplicates the new/duplicate ack check itself internally, which is inefficient.
         // We should either make separate calls for each case or integrate those cases directly.
-        let rto: Duration = self.send_rto_calculator.rto();
+        let rto: Duration = self.sender.get_rto();
         self.congestion_control_algorithm
             .on_ack_received(rto, send_unacknowledged, send_next, header.ack_num);
 
-        if send_unacknowledged < header.ack_num {
-            if header.ack_num <= send_next {
-                // Does not matter when we get this since the clock will not move between the beginning of packet
-                // processing and now without a call to advance_clock.
-                let now: Instant = self.get_now();
-                let cb: Self = self.clone();
-                // Remove the now acknowledged data from the unacknowledged queue, update the acked sequence number
-                // and update the sender window.
-                self.sender.process_ack(cb, header, now);
-                if header.ack_num == send_next {
-                    // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
-
-                    // Since we no longer have anything outstanding, we can turn off the retransmit timer.
-                    self.send_retransmit_deadline_time_secs.set(None);
-                } else {
-                    // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
-                    // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
-                    // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
-                    let deadline: Instant = now + self.send_rto_calculator.rto();
-                    self.send_retransmit_deadline_time_secs.set(Some(deadline));
-                }
-
-                let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
-                self.receive_ack_queue_frame_bytes.push(nbytes);
-            } else {
-                // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
-                // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
-                let cause: String = format!("Received segment acknowledging data we have yet to send!");
-                warn!("process_ack(): {}", cause);
-                self.send_ack();
-                return Err(Fail::new(libc::EBADMSG, &cause));
-            }
+        // Check whether this is an ack for data that we have sent.
+        if header.ack_num <= send_next {
+            // Does not matter when we get this since the clock will not move between the beginning of packet
+            // processing and now without a call to advance_clock.
+            let now: Instant = self.get_now();
+            self.sender.process_ack(header, now);
+            let nbytes: usize = Into::<u32>::into(header.ack_num - send_unacknowledged) as usize;
+            self.receive_ack_queue_frame_bytes.push(nbytes)
         } else {
-            // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
-            // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
-            warn!("process_ack(): received duplicate ack ({:?})", header.ack_num);
+            // This segment acknowledges data we have yet to send!?  Send an ACK and drop the segment.
+            // TODO: See RFC 5961, this could be a Blind Data Injection Attack.
+            let cause: String = format!("Received segment acknowledging data we have yet to send!");
+            warn!("process_ack(): {}", cause);
+            self.send_ack();
+            return Err(Fail::new(libc::EBADMSG, &cause));
         }
+
         Ok(())
     }
 

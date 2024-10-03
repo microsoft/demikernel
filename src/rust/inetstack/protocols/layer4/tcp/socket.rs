@@ -33,7 +33,6 @@ use ::std::{
     fmt::Debug,
     net::{Ipv4Addr, SocketAddrV4},
     ops::{Deref, DerefMut},
-    time::Duration,
 };
 
 //======================================================================================================================
@@ -295,13 +294,6 @@ impl SharedTcpSocket {
             },
             SocketState::Bound(addr) => Ok(Some(SocketId::Passive(addr))),
             SocketState::Unbound => Ok(None),
-        }
-    }
-
-    pub fn current_rto(&self) -> Result<Duration, Fail> {
-        match self.state {
-            SocketState::Established(ref socket) => Ok(socket.current_rto()),
-            _ => return Err(Fail::new(libc::ENOTCONN, "connection not established")),
         }
     }
 

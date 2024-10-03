@@ -305,10 +305,6 @@ impl Peer {
 
 #[cfg(test)]
 impl Peer {
-    pub fn tcp_rto(&self, socket: &SharedTcpSocket) -> Result<Duration, Fail> {
-        socket.current_rto()
-    }
-
     pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
         self.layer3_endpoint.ping(addr, timeout).await
     }
