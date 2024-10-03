@@ -17,7 +17,7 @@ use crate::{
         fail::Fail,
         limits,
         memory::{DemiBuffer, MemoryRuntime},
-        network::{consts::RECEIVE_BATCH_SIZE, types::MacAddress},
+        network::consts::RECEIVE_BATCH_SIZE,
         Runtime, SharedObject,
     },
 };
@@ -26,7 +26,6 @@ use ::libc::c_void;
 use ::std::{
     fs,
     mem::{self, MaybeUninit},
-    net::Ipv4Addr,
     num::ParseIntError,
 };
 
@@ -34,11 +33,8 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// Linux Runtime
 #[derive(Clone)]
 pub struct LinuxRuntime {
-    link_addr: MacAddress,
-    ipv4_addr: Ipv4Addr,
     ifindex: i32,
     socket: SharedObject<RawSocket>,
 }
@@ -47,9 +43,7 @@ pub struct LinuxRuntime {
 // Associate Functions
 //======================================================================================================================
 
-/// Associate Functions for Linux Runtime
 impl LinuxRuntime {
-    /// Instantiates a Linux Runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let mac_addr: [u8; 6] = [0; 6];
         let ifindex: i32 = match Self::get_ifindex(&config.local_interface_name()?) {
@@ -61,27 +55,16 @@ impl LinuxRuntime {
         socket.bind(&sockaddr)?;
 
         Ok(Self {
-            link_addr: config.local_link_addr()?,
-            ipv4_addr: config.local_ipv4_addr()?,
             ifindex,
             socket: SharedObject::<RawSocket>::new(socket),
         })
     }
 
-    /// Gets the interface index of the network interface named `ifname`.
     fn get_ifindex(ifname: &str) -> Result<i32, ParseIntError> {
         let path: String = format!("/sys/class/net/{}/ifindex", ifname);
         expect_ok!(fs::read_to_string(path), "could not read ifname")
             .trim()
             .parse()
-    }
-
-    pub fn get_link_addr(&self) -> MacAddress {
-        self.link_addr
-    }
-
-    pub fn get_ip_addr(&self) -> Ipv4Addr {
-        self.ipv4_addr
     }
 }
 
@@ -89,25 +72,20 @@ impl LinuxRuntime {
 // Imports
 //======================================================================================================================
 
-/// Memory Runtime Trait Implementation for POSIX Runtime
 impl MemoryRuntime for LinuxRuntime {
-    /// Allocates a scatter-gather array.
     fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
-        // We can't allocate a zero-sized buffer.
         if size == 0 {
             let cause: String = format!("cannot allocate a zero-sized buffer");
             error!("sgaalloc(): {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        // We can't allocate more than a single buffer.
         if size > u16::MAX as usize {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
 
-        // First allocate the underlying DemiBuffer.
         // Always allocate with header space for now even if we do not need it.
         let buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
 
@@ -128,21 +106,16 @@ impl MemoryRuntime for LinuxRuntime {
     }
 }
 
-/// Runtime Trait Implementation for POSIX Runtime
 impl Runtime for LinuxRuntime {}
 
-/// Network Runtime Trait Implementation for Linux Runtime
 impl PhysicalLayer for LinuxRuntime {
-    /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         // We clone the packet so as to not remove the ethernet header from the outgoing message.
         let header = Ethernet2Header::parse_and_strip(&mut pkt.clone()).unwrap();
         let dest_addr_arr: [u8; 6] = header.dst_addr().to_array();
         let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
 
-        // Send packet.
         match self.socket.sendto(&pkt, &dest_sockaddr) {
-            // Operation succeeded.
             Ok(size) if size == pkt.len() => Ok(()),
             Ok(size) => {
                 let cause = format!(
@@ -153,7 +126,6 @@ impl PhysicalLayer for LinuxRuntime {
                 warn!("{}", cause);
                 Err(Fail::new(libc::EAGAIN, &cause))
             },
-            // Operation failed, drop packet.
             Err(e) => {
                 let cause = "send failed";
                 warn!("transmit(): {} {:?}", cause, e);
@@ -162,7 +134,6 @@ impl PhysicalLayer for LinuxRuntime {
         }
     }
 
-    /// Receives a batch of [DemiBuffer].
     // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
