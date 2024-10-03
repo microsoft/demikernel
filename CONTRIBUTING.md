@@ -22,19 +22,12 @@ From a practical point of view, you should use these branches as follows:
 
 - Use `dev` whenever you want to introduce changes to this project.
 
-Naming Branches
-----------------
+Continuous Integration (CI)
+---------------------------
 
-We rely on a naming convention for branches in order to:
-- make it easier to navigate across the history of the project, and
-- automatically run continuous integration workflows.
-
-In a nutshell, branches that follow this convention are named according to their purpose:
-
-- `feature-<module>-<issue>` for new features
-- `enhancement-<module>-<issue>` for improvements on an existing feature
-- `bugfix-<module>-<issue>` for permanent bug fixes on existing features
-- `workaround-<module>-<issue>` for temporary bug fixes on existing features
+CI will automatically run for new PRs. Any subsequent push to the PR will cause
+new instances of the pipelines to run. Apart from this, any push to the `Special
+Branches` listed the in above section will new trigger CI pipeline runs.
 
 Submitting Pull Requests
 -------------------------
