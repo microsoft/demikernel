@@ -7,7 +7,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::{demikernel::config::Config, pal::data_structures::KeepAlive, runtime::fail::Fail};
+use crate::{demikernel::config::Config, pal::KeepAlive, runtime::fail::Fail};
 use ::std::time::Duration;
 #[cfg(target_os = "windows")]
 use ::windows::Win32::Networking::WinSock::tcp_keepalive;

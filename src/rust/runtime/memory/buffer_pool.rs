@@ -8,7 +8,7 @@
 use std::{alloc::LayoutError, num::NonZeroUsize, rc::Rc};
 
 use crate::{
-    pal::arch::CPU_DATA_CACHE_LINE_SIZE,
+    pal::CPU_DATA_CACHE_LINE_SIZE,
     runtime::memory::{demibuffer::MetaData, memory_pool::MemoryPool},
 };
 
