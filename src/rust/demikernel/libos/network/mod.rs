@@ -14,7 +14,7 @@ pub mod queue;
 
 use crate::{
     demikernel::libos::network::libos::SharedNetworkLibOS,
-    pal::constants::SOMAXCONN,
+    pal::SOMAXCONN,
     runtime::{
         fail::Fail,
         network::socket::option::SocketOption,

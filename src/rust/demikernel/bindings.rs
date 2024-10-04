@@ -8,9 +8,8 @@
 use crate::{
     demikernel::libos::{name::LibOSName, LibOS},
     pal::{
-        constants::{AF_INET, AF_INET6, SOL_SOCKET, SO_LINGER},
-        data_structures::{self, AddressFamily, Linger, SockAddrIn, SockAddrIn6, SockAddrStorage, Socklen},
-        functions::socketaddrv4_to_sockaddr,
+        socketaddrv4_to_sockaddr, AddressFamily, Linger, SockAddrIn, SockAddrIn6, SockAddrStorage, Socklen, AF_INET,
+        AF_INET6, SOL_SOCKET, SO_LINGER,
     },
     runtime::{
         fail::Fail,
@@ -20,7 +19,7 @@ use crate::{
     },
     SocketOption,
 };
-use ::libc::{c_int, c_void, sockaddr};
+use ::libc::{c_int, c_void};
 use ::socket2::SockAddr;
 use ::std::{
     cell::RefCell,
@@ -29,6 +28,7 @@ use ::std::{
     ptr, slice,
     time::Duration,
 };
+use libc::sockaddr;
 
 thread_local! {
     static THREAD_LOCAL_LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
@@ -738,10 +738,9 @@ pub extern "C" fn demi_getsockopt(
 }
 
 #[no_mangle]
-pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAddr, addrlen: *mut Socklen) -> c_int {
+pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut SockAddr, addrlen: *mut Socklen) -> c_int {
     trace!("demi_getpeername()");
 
-    // Check for invalid storage locations.
     if addr.is_null() {
         warn!("demi_getpeername() addr value is a null pointer");
         return libc::EINVAL;
@@ -752,14 +751,13 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
         return libc::EINVAL;
     }
 
-    let expected_len = mem::size_of::<data_structures::SockAddrIn>() as Socklen;
+    let expected_len = mem::size_of::<SockAddrIn>() as Socklen;
 
     if unsafe { *addrlen != expected_len } {
         warn!("demi_getpeername(): addrlen does not match size of SockAddrIn");
         return libc::EINVAL;
     }
 
-    // Issue peername operation on socket.
     let ret: Result<SocketAddrV4, Fail> = match do_syscall(|libos| libos.getpeername(qd.into())) {
         Ok(result) => result,
         Err(e) => {
@@ -770,8 +768,8 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
 
     match ret {
         Ok(sockaddr) => {
-            let result: data_structures::SockAddr = socketaddrv4_to_sockaddr(&sockaddr);
-            let result_length: usize = mem::size_of::<data_structures::SockAddr>();
+            let result: sockaddr = socketaddrv4_to_sockaddr(&sockaddr);
+            let result_length: usize = mem::size_of::<SockAddr>();
             unsafe {
                 if (result_length as Socklen) < *addrlen {
                     *addrlen = result_length as Socklen;
@@ -779,7 +777,7 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut data_structures::SockAd
 
                 // Need to pass dst a as c_void pointer or else we get a stack-smashing error
                 ptr::copy_nonoverlapping(
-                    &result as *const data_structures::SockAddr as *const c_void,
+                    &result as *const sockaddr as *const c_void,
                     addr as *mut c_void,
                     *addrlen as usize,
                 );
@@ -860,10 +858,7 @@ mod test {
     use crate::{
         demikernel::bindings::{demi_getsockopt, demi_init, demi_setsockopt, demi_socket, sockaddr_to_socketaddr},
         ensure_eq, ensure_neq,
-        pal::{
-            constants::{AF_INET, SOL_SOCKET, SO_LINGER},
-            data_structures::{AddressFamily, Linger, SockAddrStorage, Socklen},
-        },
+        pal::{AddressFamily, Linger, SockAddrStorage, Socklen, AF_INET, SOL_SOCKET, SO_LINGER},
     };
 
     #[test]

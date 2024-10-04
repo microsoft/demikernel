@@ -5,7 +5,7 @@
 // Imports
 //======================================================================================================================
 
-use crate::{pal::data_structures::KeepAlive, runtime::fail::Fail, MacAddress};
+use crate::{pal::KeepAlive, runtime::fail::Fail, MacAddress};
 #[cfg(any(feature = "catnip-libos"))]
 use ::std::ffi::CString;
 use ::std::{collections::HashMap, fs::File, io::Read, net::Ipv4Addr, ops::Index, str::FromStr, time::Duration};

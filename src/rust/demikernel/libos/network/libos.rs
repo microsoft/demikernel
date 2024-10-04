@@ -8,7 +8,7 @@
 use crate::{
     demikernel::libos::network::queue::SharedNetworkQueue,
     expect_ok, expect_some,
-    pal::{constants::SOMAXCONN, data_structures::SockAddr},
+    pal::{socketaddrv4_to_sockaddr, SOMAXCONN},
     runtime::{
         fail::Fail,
         limits,
@@ -32,12 +32,6 @@ use ::std::{
     ops::{Deref, DerefMut},
     time::Duration,
 };
-
-#[cfg(target_os = "windows")]
-use crate::pal::functions::socketaddrv4_to_sockaddr;
-
-#[cfg(target_os = "linux")]
-use crate::pal::linux::socketaddrv4_to_sockaddr;
 
 //======================================================================================================================
 // Structures
@@ -514,7 +508,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                 qr_value: unsafe { mem::zeroed() },
             },
             OperationResult::Accept((new_qd, addr)) => {
-                let saddr: SockAddr = socketaddrv4_to_sockaddr(&addr);
+                let saddr: libc::sockaddr = socketaddrv4_to_sockaddr(&addr);
                 let qr_value: demi_qr_value_t = demi_qr_value_t {
                     ares: demi_accept_result_t {
                         qd: new_qd.into(),

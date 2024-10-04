@@ -7,25 +7,23 @@
 
 use crate::{
     catpowder::linux::RawSocketAddr,
-    pal::data_structures::{SockAddr, SockAddrIn, Socklen},
+    pal::{SockAddrIn, Socklen},
     runtime::fail::Fail,
 };
 use ::std::{mem, mem::MaybeUninit};
+use libc::sockaddr;
 
 //======================================================================================================================
 // Constants & Structures
 //======================================================================================================================
 
-/// Raw socket.
 pub struct RawSocket(libc::c_int);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-/// Associated functions for raw sockets.
 impl RawSocket {
-    /// Creates a raw socket.
     pub fn new() -> Result<Self, Fail> {
         let domain: i32 = libc::AF_PACKET; // Do not parse any headers.
         let ty: i32 = libc::SOCK_RAW | libc::SOCK_NONBLOCK; // Non-blocking, raw socket.
@@ -43,7 +41,7 @@ impl RawSocket {
     // Binds a socket to a raw address.
     pub fn bind(&self, addr: &RawSocketAddr) -> Result<(), Fail> {
         let ret: i32 = unsafe {
-            let (sockaddr_ptr, address_len): (*const SockAddr, Socklen) = addr.as_sockaddr_ptr();
+            let (sockaddr_ptr, address_len): (*const sockaddr, Socklen) = addr.as_sockaddr_ptr();
             libc::bind(self.0, sockaddr_ptr, address_len)
         };
 
@@ -59,7 +57,7 @@ impl RawSocket {
     pub fn sendto(&self, buf: &[u8], rawaddr: &RawSocketAddr) -> Result<usize, Fail> {
         let buf_len: usize = buf.len();
         let buf_ptr: *const libc::c_void = buf.as_ptr() as *const libc::c_void;
-        let (addr_ptr, addrlen): (*const SockAddr, Socklen) = rawaddr.as_sockaddr_ptr();
+        let (addr_ptr, addrlen): (*const sockaddr, Socklen) = rawaddr.as_sockaddr_ptr();
 
         let nbytes: i32 =
             unsafe { libc::sendto(self.0, buf_ptr, buf_len, libc::MSG_DONTWAIT, addr_ptr, addrlen) as i32 };
@@ -79,7 +77,7 @@ impl RawSocket {
         let mut addrlen: Socklen = mem::size_of::<SockAddrIn>() as u32;
         let mut rawaddr: RawSocketAddr = RawSocketAddr::default();
         let addrlen_ptr: *mut Socklen = &mut addrlen as *mut Socklen;
-        let (addr_ptr, _): (*mut SockAddr, Socklen) = rawaddr.as_sockaddr_mut_ptr();
+        let (addr_ptr, _): (*mut sockaddr, Socklen) = rawaddr.as_sockaddr_mut_ptr();
 
         let nbytes: i32 = unsafe {
             libc::recvfrom(
