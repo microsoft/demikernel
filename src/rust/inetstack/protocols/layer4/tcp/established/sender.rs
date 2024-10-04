@@ -407,7 +407,6 @@ impl Sender {
         // Start by checking that the ACK acknowledges something new.
         // TODO: Look into removing Watched types.
         let send_unacknowledged: SeqNumber = self.send_unacked.get();
-        let send_next: SeqNumber = self.send_next.get();
 
         if send_unacknowledged < header.ack_num {
             // Remove the now acknowledged data from the unacknowledged queue, update the acked sequence number
@@ -459,18 +458,14 @@ impl Sender {
             // Check and update send window if necessary.
             self.update_send_window(header);
 
-            if header.ack_num == send_next {
-                // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
-                // Since we no longer have anything outstanding, we can turn off the retransmit timer.
-                debug_assert_eq!(self.unacked_queue.is_empty(), true);
-                self.retransmit_deadline_time_secs.set(None);
-            } else {
-                // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
-                // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
-                // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
-                let deadline: Instant = now + self.rto_calculator.rto();
-                self.retransmit_deadline_time_secs.set(Some(deadline));
+            // Reset the retransmit timer if necessary. If there is more data that hasn't been acked, then set to the
+            // next segment deadline, otherwise, do not set.
+            let retransmit_deadline_time_secs: Option<Instant> = self.update_retransmit_deadline(now);
+            #[cfg(debug_assertions)]
+            if retransmit_deadline_time_secs.is_none() {
+                debug_assert_eq!(self.send_next.get(), header.ack_num);
             }
+            self.retransmit_deadline_time_secs.set(retransmit_deadline_time_secs);
         } else {
             // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
             // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
@@ -478,7 +473,21 @@ impl Sender {
         }
     }
 
-    pub fn update_send_window(&mut self, header: &TcpHeader) {
+    fn update_retransmit_deadline(&self, now: Instant) -> Option<Instant> {
+        match self.unacked_queue.get_front() {
+            Some(UnackedSegment {
+                bytes: _,
+                initial_tx: Some(initial_tx),
+            }) => Some(*initial_tx + self.rto_calculator.rto()),
+            Some(UnackedSegment {
+                bytes: _,
+                initial_tx: None,
+            }) => Some(now + self.rto_calculator.rto()),
+            None => None,
+        }
+    }
+
+    fn update_send_window(&mut self, header: &TcpHeader) {
         // Make sure the ack num is bigger than the last one that we used to update the send window.
         if self.send_window_last_update_seq < header.seq_num
             || (self.send_window_last_update_seq == header.seq_num
