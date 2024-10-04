@@ -120,10 +120,6 @@ impl EstablishedSocket {
         self.cb.close().await
     }
 
-    pub fn current_rto(&self) -> Duration {
-        self.cb.rto()
-    }
-
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
         (self.cb.get_local(), self.cb.get_remote())
     }

@@ -4,7 +4,11 @@
 use crate::{
     collections::{async_queue::SharedAsyncQueue, async_value::SharedAsyncValue},
     expect_ok,
-    inetstack::protocols::layer4::tcp::{established::SharedControlBlock, header::TcpHeader, SeqNumber},
+    inetstack::protocols::layer4::tcp::{
+        established::{rto::RtoCalculator, SharedControlBlock},
+        header::TcpHeader,
+        SeqNumber,
+    },
     runtime::{conditional_yield_until, fail::Fail, memory::DemiBuffer},
 };
 use ::futures::{pin_mut, select_biased, FutureExt};
@@ -61,6 +65,14 @@ pub struct Sender {
     // Queue of unacknowledged sent data.  RFC 793 calls this the "retransmission queue".
     unacked_queue: SharedAsyncQueue<UnackedSegment>,
 
+    // Send timers
+    // Current retransmission timer expiration time.
+    // TODO: Consider storing this directly in the RtoCalculator.
+    retransmit_deadline_time_secs: SharedAsyncValue<Option<Instant>>,
+
+    // Retransmission Timeout (RTO) calculator.
+    rto_calculator: RtoCalculator,
+
     // Sequence Number of the next data to be sent.  In RFC 793 terms, this is SND.NXT.
     send_next: SharedAsyncValue<SeqNumber>,
 
@@ -97,13 +109,13 @@ impl Sender {
         Self {
             send_unacked: SharedAsyncValue::new(seq_no),
             unacked_queue: SharedAsyncQueue::with_capacity(MIN_UNACKED_QUEUE_SIZE_FRAMES),
+            retransmit_deadline_time_secs: SharedAsyncValue::new(None),
+            rto_calculator: RtoCalculator::new(),
             send_next: SharedAsyncValue::new(seq_no),
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
-
             send_window: SharedAsyncValue::new(send_window),
             send_window_last_update_seq: seq_no,
             send_window_last_update_ack: seq_no,
-
             send_window_scale_shift_bits,
             mss,
         }
@@ -161,7 +173,7 @@ impl Sender {
         };
         let mut segment_data_len: u32 = segment_data.len() as u32;
 
-        let rto: Duration = cb.rto();
+        let rto: Duration = self.rto_calculator.rto();
         cb.congestion_control_on_send(rto, (self.send_next.get() - self.send_unacked.get()).into());
 
         // Prepare the segment and send it.
@@ -188,11 +200,9 @@ impl Sender {
         self.unacked_queue.push(unacked_segment);
 
         // Set the retransmit timer.
-        // TODO: Fix how the retransmit timer works.
-        let retransmit_deadline = cb.get_retransmit_deadline();
-        if retransmit_deadline.is_none() {
-            let rto: Duration = cb.rto();
-            cb.set_retransmit_deadline(Some(cb.get_now() + rto));
+        if self.retransmit_deadline_time_secs.get().is_none() {
+            let rto: Duration = self.rto_calculator.rto();
+            self.retransmit_deadline_time_secs.set(Some(cb.get_now() + rto));
         }
         segment_data_len as usize
     }
@@ -309,7 +319,7 @@ impl Sender {
 
     pub async fn background_retransmitter(&mut self, mut cb: SharedControlBlock) -> Result<Never, Fail> {
         // Watch the retransmission deadline.
-        let mut rtx_deadline_watched: SharedAsyncValue<Option<Instant>> = cb.watch_retransmit_deadline();
+        let mut rtx_deadline_watched: SharedAsyncValue<Option<Instant>> = self.retransmit_deadline_time_secs.clone();
         // Watch the fast retransmit flag.
         let mut rtx_fast_retransmit_watched: SharedAsyncValue<bool> = cb.congestion_control_watch_retransmit_now_flag();
         loop {
@@ -346,12 +356,11 @@ impl Sender {
                     self.retransmit(&mut cb);
 
                     // RFC 6298 Section 5.5: Back off the retransmission timer.
-                    cb.clone().rto_back_off();
+                    self.rto_calculator.back_off();
 
                     // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
-                    let rto: Duration = cb.rto();
-                    let deadline: Instant = cb.get_now() + rto;
-                    cb.set_retransmit_deadline(Some(deadline));
+                    let deadline: Instant = cb.get_now() + self.rto_calculator.rto();
+                    self.retransmit_deadline_time_secs.set(Some(deadline));
                 },
                 Err(_) => {
                     unreachable!(
@@ -393,71 +402,103 @@ impl Sender {
         cb.emit(header, Some(data));
     }
 
-    // This segment acknowledges new data, so process the ack.
-    pub fn process_ack(&mut self, mut cb: SharedControlBlock, header: &TcpHeader, now: Instant) {
-        let bytes_acknowledged: u32 = (header.ack_num - self.send_unacked.get()).into();
-        let mut bytes_remaining: usize = bytes_acknowledged as usize;
-        // Remove bytes from the unacked queue.
-        while bytes_remaining != 0 {
-            if let Some(mut segment) = self.unacked_queue.try_pop() {
-                // Add sample for RTO if we have an initial transmit time.
-                // Note that in the case of repacketization, an ack for the first byte is enough for the time sample.
-                // TODO: TCP timestamp support.
-                if let Some(initial_tx) = segment.initial_tx {
-                    cb.rto_add_sample(now - initial_tx);
+    // Process an ack.
+    pub fn process_ack(&mut self, header: &TcpHeader, now: Instant) {
+        // Start by checking that the ACK acknowledges something new.
+        // TODO: Look into removing Watched types.
+        let send_unacknowledged: SeqNumber = self.send_unacked.get();
+        let send_next: SeqNumber = self.send_next.get();
+
+        if send_unacknowledged < header.ack_num {
+            // Remove the now acknowledged data from the unacknowledged queue, update the acked sequence number
+            // and update the sender window.
+
+            // Convert the difference in sequence numbers into a u32.
+            let bytes_acknowledged: u32 = (header.ack_num - self.send_unacked.get()).into();
+            // Convert that into a usize for counting bytes to remove from the unacked queue.
+            let mut bytes_remaining: usize = bytes_acknowledged as usize;
+            // Remove bytes from the unacked queue.
+            while bytes_remaining != 0 {
+                if let Some(mut segment) = self.unacked_queue.try_pop() {
+                    // Add sample for RTO if we have an initial transmit time.
+                    // Note that in the case of repacketization, an ack for the first byte is enough for the time sample because it still represents the RTO for that single byte.
+                    // TODO: TCP timestamp support.
+                    if let Some(initial_tx) = segment.initial_tx {
+                        self.rto_calculator.add_sample(now - initial_tx);
+                    }
+
+                    if segment.bytes.len() > bytes_remaining {
+                        // Only some of the data in this segment has been acked.  Remove just the acked amount.
+                        expect_ok!(
+                            segment.bytes.adjust(bytes_remaining),
+                            "'segment' should contain at least 'bytes_remaining'"
+                        );
+                        segment.initial_tx = None;
+
+                        // Leave this segment on the unacknowledged queue.
+                        self.unacked_queue.push_front(segment);
+                        break;
+                    }
+
+                    if segment.bytes.len() == 0 {
+                        // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged
+                        // sequence space remaining (corresponding to our FIN).
+                        debug_assert_eq!(bytes_remaining, 1);
+                        bytes_remaining = 0;
+                    }
+
+                    bytes_remaining -= segment.bytes.len();
+                } else {
+                    debug_assert!(false); // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
                 }
-
-                if segment.bytes.len() > bytes_remaining {
-                    // Only some of the data in this segment has been acked.  Remove just the acked amount.
-                    expect_ok!(
-                        segment.bytes.adjust(bytes_remaining),
-                        "'segment' should contain at least 'bytes_remaining'"
-                    );
-                    segment.initial_tx = None;
-
-                    // Leave this segment on the unacknowledged queue.
-                    self.unacked_queue.push_front(segment);
-                    break;
-                }
-
-                if segment.bytes.len() == 0 {
-                    // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged sequence
-                    // space remaining (corresponding to our FIN).
-                    debug_assert_eq!(bytes_remaining, 1);
-                    bytes_remaining = 0;
-                }
-
-                bytes_remaining -= segment.bytes.len();
-            } else {
-                debug_assert!(false); // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
             }
+
+            // Update SND.UNA to SEG.ACK.
+            self.send_unacked.set(header.ack_num);
+
+            // Check and update send window if necessary.
+            self.update_send_window(header);
+
+            if header.ack_num == send_next {
+                // This segment acknowledges everything we've sent so far (i.e. nothing is currently outstanding).
+                // Since we no longer have anything outstanding, we can turn off the retransmit timer.
+                debug_assert_eq!(self.unacked_queue.is_empty(), true);
+                self.retransmit_deadline_time_secs.set(None);
+            } else {
+                // Update the retransmit timer.  Some of our outstanding data is now acknowledged, but not all.
+                // TODO: This looks wrong.  We should reset the retransmit timer to match the deadline for the
+                // oldest still-outstanding data.  The below is overly generous (minor efficiency issue).
+                let deadline: Instant = now + self.rto_calculator.rto();
+                self.retransmit_deadline_time_secs.set(Some(deadline));
+            }
+        } else {
+            // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
+            // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
+            warn!("process_ack(): received duplicate ack ({:?})", header.ack_num);
         }
+    }
 
-        // Update SND.UNA to SEG.ACK.
-        self.send_unacked.set(header.ack_num);
-
-        // Update send window.
-        // Check that the ACK we're using to update the window isn't older than the last one used to update it.
+    pub fn update_send_window(&mut self, header: &TcpHeader) {
+        // Make sure the ack num is bigger than the last one that we used to update the send window.
         if self.send_window_last_update_seq < header.seq_num
             || (self.send_window_last_update_seq == header.seq_num
                 && self.send_window_last_update_ack <= header.ack_num)
         {
-            // Update our send window.
             self.send_window
                 .set((header.window_size as u32) << self.send_window_scale_shift_bits);
             self.send_window_last_update_seq = header.seq_num;
             self.send_window_last_update_ack = header.ack_num;
-        }
 
-        debug!(
-            "Updating window size -> {} (hdr {}, scale {})",
-            self.send_window.get(),
-            header.window_size,
-            self.send_window_scale_shift_bits,
-        );
+            debug!(
+                "Updating window size -> {} (hdr {}, scale {})",
+                self.send_window.get(),
+                header.window_size,
+                self.send_window_scale_shift_bits,
+            );
+        }
     }
 
-    // Get SND.UNA.
+    // Get SD.UNA.
     pub fn get_unacked_seq_no(&self) -> SeqNumber {
         self.send_unacked.get()
     }
@@ -465,5 +506,10 @@ impl Sender {
     // Get SND.NXT.
     pub fn get_next_seq_no(&self) -> SeqNumber {
         self.send_next.get()
+    }
+
+    // Get the current estimate of RTO.
+    pub fn get_rto(&self) -> Duration {
+        self.rto_calculator.rto()
     }
 }
