@@ -9,7 +9,7 @@ if [ $(echo "$commit_msg_title" | wc -c) -gt $max_length ]; then
     exit 1
 fi
 
-if ! echo "$commit_msg" | grep -q -E 'Merge pull request|Merge branch|\[[[:alnum:]-]+\] (Workaround|Enhancement|Feature|Bug Fix): '; then
-	echo "Commit message does not match pattern: '[module-name] (Workaround|Enhancement|Feature|Bug Fix): Short Description"
+if ! echo "$commit_msg" | grep -q -E 'Merge pull request|Merge branch|[[:alnum:]-]+: '; then
+	echo "Commit message does not match pattern: 'module-name: Short Description"
     exit 1
 fi
