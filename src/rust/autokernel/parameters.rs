@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use std::{default, env};
 
 
-pub const MAX_RECEIVE_BATCH_SIZE: usize = 200;
+pub const MAX_RECEIVE_BATCH_SIZE: usize = 100;
 
 pub struct AutokernelParameters {
     pub receive_batch_size: usize,

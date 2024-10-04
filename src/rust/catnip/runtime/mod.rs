@@ -420,7 +420,7 @@ impl PhysicalLayer for SharedDPDKRuntime {
     }
 
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_RECEIVE_BATCH_SIZE>, Fail> {
-        // inho: we can use Vec to dynamically determnine the size of the array at runtime
+        // ToDo (inho): we can use Vec to dynamically determnine the size of the array at runtime
         // but Vec is heap allocated, so I avoid using it here.  
         timer!("catnip::runtime::receive");
 

@@ -140,7 +140,7 @@ def run_eval():
                     task = host.run(cmd, quiet=False)
                     print('Running client\n')
                     pyrem.task.Parallel([task], aggregate=True).start(wait=False)
-                    time.sleep(RUNTIME + 10)
+                    time.sleep(RUNTIME * 2 + 7)
                     print('================ TEST COMPLETE =================\n')
                     
                     try:
@@ -162,7 +162,7 @@ def run_eval():
                         
                         print('\n\n' + "***TEST RESULT***\n" + result_header + '\n' + result)
                         
-                        final_result += result + '\n'
+                        final_result += result
                         
                     except subprocess.CalledProcessError as e:
                         # Handle the exception for a failed command execution

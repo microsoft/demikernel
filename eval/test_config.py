@@ -35,7 +35,7 @@ REPEAT_NUM = 1
 
 ################## VARS #####################
 ### CLIENT ###
-CLIENT_PPS = [i for i in range(90000, 90000 + 1, 30000)]#[i for i in range(100000, 1_300_001, 100000)]
+CLIENT_PPS = [i for i in range(85000, 85000 + 1, 30000)]#[i for i in range(100000, 1_300_001, 100000)]
 NUM_CONNECTIONS = [32]
 RUNTIME = 5
 
