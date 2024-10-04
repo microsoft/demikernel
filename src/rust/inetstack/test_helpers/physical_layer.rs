@@ -36,6 +36,8 @@ use ::std::{
     time::Instant,
 };
 
+use crate::autokernel::parameters::MAX_RECEIVE_BATCH_SIZE;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -108,7 +110,7 @@ impl PhysicalLayer for SharedTestPhysicalLayer {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.pop_front() {
             out.push(buf);
