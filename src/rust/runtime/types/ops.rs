@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![allow(non_camel_case_types)]
-
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -26,7 +24,6 @@ pub enum demi_opcode_t {
     DEMI_OPC_FAILED,
 }
 
-/// Result for `accept()`
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct demi_accept_result_t {

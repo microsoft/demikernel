@@ -32,7 +32,6 @@ const DEFAULT_NO_DELAY: bool = true;
 //======================================================================================================================
 
 /// A listing of the SO_* socket options.
-#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy)]
 pub enum SocketOption {
     Linger(Option<Duration>),
