@@ -100,7 +100,6 @@ CARGO_FEATURES = $(CARGO_FEATURES) --features=$(DRIVER)
 CARGO_FEATURES = $(CARGO_FEATURES) --features=libxdp
 !endif
 
-# Switch for profiler.
 !if "$(PROFILER)" == "yes"
 CARGO_FEATURES = $(CARGO_FEATURES) --features=profiler
 !endif
@@ -111,7 +110,6 @@ CARGO_FEATURES = $(CARGO_FEATURES) $(FEATURES)
 
 all: all-libs all-tests all-examples
 
-# Builds documentation.
 doc:
 	$(CARGO) doc $(FLAGS) --no-deps
 
@@ -127,12 +125,12 @@ install:
 # Libs
 #=======================================================================================================================
 
-# Builds all libraries.
 all-libs:
 	@echo "LD_LIBRARY_PATH: $(LD_LIBRARY_PATH)"
 	@echo "XDP_PATH: $(XDP_PATH)"
 	@echo "$(CARGO) build --libs $(CARGO_FEATURES) $(CARGO_FLAGS)"
 	set XDP_PATH=$(XDP_PATH)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) build --lib $(CARGO_FEATURES) $(CARGO_FLAGS)
 	IF NOT EXIST $(BINDIR) mkdir $(BINDIR)
 	$(RECURSIVE_COPY_FORCE_NO_PROMPT) $(DEMIKERNEL_DLL) $(BINDIR)
@@ -142,25 +140,21 @@ all-libs:
 # Tests
 #=======================================================================================================================
 
-# Builds all tests.
 all-tests: all-tests-rust all-tests-c
 
-# Builds all Rust tests.
 all-tests-rust: all-libs
 	@echo "$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)"
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) build --tests $(CARGO_FEATURES) $(CARGO_FLAGS)
 
-# Builds all C tests.
 all-tests-c: all-libs
 	set BINDIR=$(BINDIR)
 	set INCDIR=$(INCDIR)
 	set LIBS=$(LIBS)
 	$(MAKE) /C /F tests/windows.mk all
 
-# Cleans up all build artifactos for tests.
 clean-tests: clean-tests-c
 
-# Cleans up all C build artifacts for tests.
 clean-tests-c:
 	set BINDIR=$(BINDIR)
 	$(MAKE) /C /F tests/windows.mk clean
@@ -169,35 +163,30 @@ clean-tests-c:
 # Examples
 #=======================================================================================================================
 
-# Builds all examples.
 all-examples: all-examples-c all-examples-rust
 
-# Builds all C examples.
 all-examples-c: all-libs
 	set BINDIR=$(BINDIR)
 	set INCDIR=$(INCDIR)
 	set LIBS=$(LIBS)
 	$(MAKE) /C /F examples/c/windows.mk all
 
-# Builds all Rust examples.
 all-examples-rust: all-libs
 	set BINDIR=$(BINDIR)
 	set BUILD_DIR=$(BUILD_DIR)
 	set CARGO_FEATURES=$(CARGO_FEATURES)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	set CARGO_FLAGS=$(CARGO_FLAGS)
 	set CARGO=$(CARGO)
 	set INCDIR=$(INCDIR)
 	$(MAKE) /C /F examples/rust/windows.mk all
 
-# Cleans all examples.
 clean-examples: clean-examples-c clean-examples-rust
 
-# Cleans all C examples.
 clean-examples-c:
 	set BINDIR=$(BINDIR)
 	$(MAKE) /C /F examples/c/windows.mk clean
 
-# Cleans all Rust examples.
 clean-examples-rust:
 	set BINDIR=$(BINDIR)
 	$(MAKE) /C /F examples/rust/windows.mk clean
@@ -206,18 +195,16 @@ clean-examples-rust:
 # Check
 #=======================================================================================================================
 
-# Check code style formatting.
 check-fmt: check-fmt-rust
 
-# Check code style formatting for Rust.
 check-fmt-rust:
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) fmt --all -- --check
 
 #=======================================================================================================================
 # Clean
 #=======================================================================================================================
 
-# Cleans up all build artifacts.
 clean: clean-examples clean-tests
 	del /S /Q target
 	del /Q Cargo.lock
@@ -251,31 +238,30 @@ TEST = udp-push-pop
 TEST_INTEGRATION = tcp-test
 !endif
 
-# Runs system tests.
 test-system: test-system-rust
 
-# Rust system tests.
 test-system-rust:
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(BINDIR)\examples\rust\$(TEST).exe $(ARGS)
 
-# Runs unit tests.
 test-unit: test-unit-rust
 
-# C unit tests.
 test-unit-c: all-tests-c test-unit-c-sizes test-unit-c-syscalls
 
 test-unit-c-sizes: all-tests-c
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(BINDIR)\sizes.exe
 
 test-unit-c-syscalls: all-tests-c
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(BINDIR)\syscalls.exe
 
-# Rust unit tests.
 test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_single_small
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_small
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_small
@@ -283,23 +269,23 @@ test-unit-rust: test-unit-rust-lib test-unit-rust-udp test-unit-rust-tcp
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_tight_big
 	$(CARGO) test --test sga $(BUILD) $(CARGO_FEATURES) -- --nocapture --test-threads=1 test_unit_sga_alloc_free_loop_decoupled_big
 
-# Rust unit tests for the library.
 test-unit-rust-lib: all-tests-rust
 	set INPUT=$(INPUT)
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) test --lib $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
-# Rust unit tests for UDP.
 test-unit-rust-udp: all-tests-rust
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) test --test udp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
-# Rust unit tests for TCP.
 test-unit-rust-tcp: all-tests-rust
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) test --test tcp $(CARGO_FLAGS) $(CARGO_FEATURES) -- --nocapture $(TEST_UNIT)
 
-# Runs Rust integration tests.
 test-integration-rust:
 	set RUST_LOG=$(RUST_LOG)
+	set RUSTFLAGS=$(RUSTFLAGS)
 	$(CARGO) test --test $(TEST_INTEGRATION) $(CARGO_FLAGS) $(CARGO_FEATURES) -- $(ARGS)
