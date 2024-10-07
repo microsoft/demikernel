@@ -156,7 +156,7 @@ struct Simulation {
     remote_qd: Option<(u32, Option<QDesc>)>,
     engine: SharedEngine,
     now: Instant,
-    inflight: Option<QToken>,
+    inflight: VecDeque<QToken>,
     lines: Vec<String>,
 }
 
@@ -189,7 +189,7 @@ impl Simulation {
             now,
             local_qd: None,
             remote_qd: None,
-            inflight: None,
+            inflight: VecDeque::with_capacity(4),
             local_sockaddr: SocketAddrV4::new(local_ipv4.clone(), local_ephemeral_port),
             local_port,
             remote_sockaddr: SocketAddrV4::new(remote_ipv4.clone(), remote_ephemeral_port),
@@ -443,7 +443,7 @@ impl Simulation {
         match self.engine.tcp_accept(local_qd) {
             Ok(accept_qt) => {
                 self.remote_qd = Some((ret as u32, None));
-                self.inflight = Some(accept_qt);
+                self.inflight.push_back(accept_qt);
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -480,7 +480,7 @@ impl Simulation {
 
         match self.engine.tcp_connect(local_qd, remote_addr) {
             Ok(connect_qt) => {
-                self.inflight = Some(connect_qt);
+                self.inflight.push_back(connect_qt);
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -512,7 +512,7 @@ impl Simulation {
         let buf: DemiBuffer = Self::prepare_dummy_buffer(buf_len, None);
         match self.engine.tcp_push(remote_qd, buf) {
             Ok(push_qt) => {
-                self.inflight = Some(push_qt);
+                self.inflight.push_back(push_qt);
                 // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
                 // TODO: Remove this once we separate the poll and advance clock functions.
                 self.engine.poll();
@@ -534,7 +534,7 @@ impl Simulation {
         match self.protocol {
             Some(IpProtocol::TCP) => match self.engine.tcp_pop(remote_qd) {
                 Ok(pop_qt) => {
-                    self.inflight = Some(pop_qt);
+                    self.inflight.push_back(pop_qt);
                     Ok(())
                 },
                 Err(err) if ret as i32 == err.errno => Ok(()),
@@ -546,7 +546,7 @@ impl Simulation {
             },
             Some(IpProtocol::UDP) => match self.engine.udp_pop(remote_qd) {
                 Ok(pop_qt) => {
-                    self.inflight = Some(pop_qt);
+                    self.inflight.push_back(pop_qt);
                     Ok(())
                 },
                 Err(err) if ret as i32 == err.errno => Ok(()),
@@ -643,7 +643,7 @@ impl Simulation {
         let buf: DemiBuffer = Self::prepare_dummy_buffer(buf_len, None);
         match self.engine.udp_pushto(remote_qd, buf, remote_addr) {
             Ok(push_qt) => {
-                self.inflight = Some(push_qt);
+                self.inflight.push_back(push_qt);
                 // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
                 // TODO: Remove this once we separate the poll and advance clock functions.
                 self.engine.poll();
@@ -663,7 +663,7 @@ impl Simulation {
 
         match self.engine.tcp_async_close(args_qd) {
             Ok(close_qt) => {
-                self.inflight = Some(close_qt);
+                self.inflight.push_back(close_qt);
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -883,7 +883,7 @@ impl Simulation {
     }
 
     fn has_operation_completed(&mut self) -> Result<(QDesc, OperationResult)> {
-        match self.inflight.take() {
+        match self.inflight.pop_front() {
             Some(qt) => Ok(self.engine.wait(qt, TIMEOUT_SECONDS)?),
             None => anyhow::bail!("should have an inflight queue token"),
         }
