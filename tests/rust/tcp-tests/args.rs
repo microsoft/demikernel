@@ -27,10 +27,8 @@ pub struct ProgramArguments {
 
 impl ProgramArguments {
     /// Parses the program arguments from the command line interface.
-    pub fn new(app_name: &'static str, app_author: &'static str, app_about: &'static str) -> Result<Self> {
-        let matches: ArgMatches = Command::new(app_name)
-            .author(app_author)
-            .about(app_about)
+    pub fn new() -> Result<Self> {
+        let matches: ArgMatches = Command::new("tcp-tests")
             .arg(
                 Arg::new("local")
                     .long("local-address")

@@ -73,13 +73,7 @@ macro_rules! collect {
 fn main() -> Result<()> {
     let mut nfailed: usize = 0;
     let mut result: Vec<(String, String, Result<(), anyhow::Error>)> = Vec::new();
-
-    let args: ProgramArguments = ProgramArguments::new(
-        "tcp",
-        "Pedro Henrique Penna <ppenna@microsoft.com>",
-        "Integration test for TCP queues.",
-    )?;
-
+    let args: ProgramArguments = ProgramArguments::new()?;
     let mut libos: LibOS = {
         let libos_name: LibOSName = LibOSName::from_env()?.into();
         LibOS::new(libos_name, None)?

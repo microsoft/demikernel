@@ -7,11 +7,6 @@ import ci.job.windows as windows
 import ci.job.linux as linux
 from ci.job.generic import BaseJob
 
-# ======================================================================================================================
-# Generic Jobs
-# ======================================================================================================================
-
-
 class JobFactory:
 
     def __init__(self, config: dict):
@@ -57,11 +52,11 @@ class JobFactory:
             else:
                 raise Exception("Invalid test name")
 
-    def integration_test(self, run_mode="") -> BaseJob:
+    def integration_test(self, run_mode="", test_name="") -> BaseJob:
         if self.config["platform"] == "windows":
-            return windows.TcpIntegrationTestJobOnWindows(self.config)
+            return windows.IntegrationTestJobOnWindows(self.config, test_name)
         else:
-            return linux.TcpIntegrationTestJobOnLinux(self.config)
+            return linux.IntegrationTestJobOnLinux(self.config, test_name)
 
     def system_test(self, test_name: str, niterations: int = 0, run_mode: str = "", nclients: int = 0, bufsize: int = 0, nrequests: int = 0, nthreads: int = 1, who_closes: str = "", scenario: str = "") -> BaseJob:
         if self.config["platform"] == "windows":
