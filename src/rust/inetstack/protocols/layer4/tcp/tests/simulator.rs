@@ -502,15 +502,15 @@ impl Simulation {
             },
         };
 
-        let remote_qd: QDesc = match self.remote_qd {
-            Some((_, qd)) => qd.unwrap(),
+        let syscall_qd: QDesc = match args.qd {
+            Some(qd) => qd.into(),
             None => {
                 anyhow::bail!("remote queue descriptor must have been previously assigned");
             },
         };
 
         let buf: DemiBuffer = Self::prepare_dummy_buffer(buf_len, None);
-        match self.engine.tcp_push(remote_qd, buf) {
+        match self.engine.tcp_push(syscall_qd, buf) {
             Ok(push_qt) => {
                 self.inflight.push_back(push_qt);
                 // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
