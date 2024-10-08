@@ -1,0 +1,44 @@
+// Tests for local close.
+
+// Establish a connection.
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
++.2 connect(500, ..., ...) = 0
+
+// Send SYN segment.
++.0 TCP > S seq 0(0) win 65535 <mss 1450, wscale 0>
+// Receive SYN-ACK segment.
++.1 TCP < S. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
+// Send ACK on SYN-ACK segment.
++.0 TCP > . seq 1(0) ack 1 win 65535 <nop>
+
+// Succeed to establish connection.
++.0 wait(500, ...) = 0
+
+// Send data.
++.1 write(500, ..., 1000) = 1000
+
+// Send data packet.
++0 TCP > P. seq 1(1000) ack 1 win 65535 <nop>
+
+// Close connection.
++.2 close(500) = 0
+
+// Send FIN segment.
++.0 TCP > F. seq 1001(0) ack 1 win 65535 <nop>
+
+// Send data packet.
++4 TCP > P. seq 1(1000) ack 1 win 65535 <nop>
+
+// Receive ACK on data packet.
++.1 TCP < . seq 1(0) ack 1001 win 65535 <nop>
+
+// Send completes
++.0 wait(500, ...) = 9
+
+// Receive FIN segment.
++.1 TCP < F. seq 1(0) ack 1002 win 65535 <nop>
+// Send ACK on FIN segment.
++.0 TCP > . seq 1002(0) ack 2 win 65534 <nop>
+
+// Succeed to close connection after 2 MLS.
++240 wait(500, ...) = 0
