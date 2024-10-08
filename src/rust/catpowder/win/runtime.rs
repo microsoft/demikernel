@@ -9,24 +9,29 @@ use crate::{
     catpowder::win::{
         api::XdpApi,
         ring::{RxRing, TxRing, XdpBuffer},
-    },
-    demi_sgarray_t, demi_sgaseg_t,
-    demikernel::config::Config,
-    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
-    runtime::{
+    }, demi_sgarray_t, demi_sgaseg_t, demikernel::config::Config, inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE}, runtime::{
         fail::Fail,
         libxdp,
         memory::{DemiBuffer, MemoryRuntime},
         network::consts::RECEIVE_BATCH_SIZE,
         Runtime, SharedObject,
-    },
+    }
 };
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::std::{
-    borrow::{Borrow, BorrowMut},
+    borrow::BorrowMut,
     mem,
 };
+use windows::Win32::{
+    Foundation::ERROR_INSUFFICIENT_BUFFER,
+     System::SystemInformation::{
+        GetLogicalProcessorInformationEx,
+        RelationProcessorCore,
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
+    }
+};
+
 
 //======================================================================================================================
 // Structures
@@ -40,7 +45,7 @@ pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntimeInner>);
 struct CatpowderRuntimeInner {
     api: XdpApi,
     tx: TxRing,
-    rx: RxRing,
+    rx_rings: Vec<RxRing>,
 }
 //======================================================================================================================
 // Implementations
@@ -57,16 +62,29 @@ impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
-        const QUEUEID: u32 = 0; // We do no use RSS, thus queue id is always 0.
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
         // Open TX and RX rings
-        let tx: TxRing = TxRing::new(&mut api, Self::RING_LENGTH, ifindex, QUEUEID)?;
-        let rx: RxRing = RxRing::new(&mut api, Self::RING_LENGTH, ifindex, QUEUEID)?;
+        let tx: TxRing = TxRing::new(&mut api, Self::RING_LENGTH, ifindex, 0)?;
 
-        Ok(Self(SharedObject::new(CatpowderRuntimeInner { api, rx, tx })))
+        let sys_proc_count: usize = count_processor_cores()?;
+        let mut rx_rings: Vec<RxRing> = Vec::with_capacity(sys_proc_count);
+        rx_rings.push(RxRing::new(&mut api, Self::RING_LENGTH, ifindex, 0)?);
+        for queueid in 1..sys_proc_count {
+            match RxRing::new(&mut api, Self::RING_LENGTH, ifindex, queueid as u32) {
+                Ok(rx) => rx_rings.push(rx),
+                Err(e) => {
+                    warn!("Failed to create RX ring on queue {}: {:?}. This is only an error if {} is a valid RSS queue ID",
+                        queueid, queueid, e);
+                    break;
+                }
+            }
+        }
+        trace!("Created {} RX rings.", rx_rings.len());
+
+        Ok(Self(SharedObject::new(CatpowderRuntimeInner { api, tx, rx_rings })))
     }
 }
 
@@ -126,19 +144,23 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
         let mut idx: u32 = 0;
 
-        if self.0.borrow_mut().rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
-            let xdp_buffer: XdpBuffer = self.0.borrow().rx.get_buffer(idx);
-            let out: Vec<u8> = xdp_buffer.into();
+        for rx in self.0.borrow_mut().rx_rings.iter_mut() {
+            if rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
+                let xdp_buffer: XdpBuffer = rx.get_buffer(idx);
+                let dbuf: DemiBuffer = DemiBuffer::from_slice(&*xdp_buffer)?;
+                rx.release_rx(Self::RING_LENGTH);
 
-            let dbuf: DemiBuffer = DemiBuffer::from_slice(&out)?;
+                ret.push(dbuf);
 
-            ret.push(dbuf);
+                rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
+                // NB for now there is only ever one element in the fill ring, so we don't have to
+                // change the ring contents.
+                rx.submit_rx_fill(Self::RING_LENGTH);
 
-            self.0.borrow_mut().rx.release_rx(Self::RING_LENGTH);
-
-            self.0.borrow_mut().rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
-
-            self.0.borrow_mut().rx.submit_rx_fill(Self::RING_LENGTH);
+                if ret.is_full() {
+                    break;
+                }
+            }
         }
 
         Ok(ret)
@@ -150,6 +172,50 @@ impl CatpowderRuntimeInner {
     fn notify_socket(&mut self, flags: i32, timeout: u32, outflags: &mut i32) -> Result<(), Fail> {
         self.tx.notify_socket(&mut self.api, flags, timeout, outflags)
     }
+}
+
+//======================================================================================================================
+// Functions
+//======================================================================================================================
+
+fn count_processor_cores() -> Result<usize, Fail> {
+
+    let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
+    let mut buffer_len: u32 = 0;
+
+    if let Err(e) = unsafe {
+        GetLogicalProcessorInformationEx(RelationProcessorCore, Some(&mut proc_info), &mut buffer_len)
+    } {
+        if e.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult() {
+            let cause: String = format!("GetLogicalProcessorInformationEx failed: {:?}", e);
+            return Err(Fail::new(libc::EFAULT, &cause));
+        }
+    }
+    else {
+        return Err(Fail::new(libc::EFAULT, "GetLogicalProcessorInformationEx did not return any information"));
+    }
+    
+    let mut buf: Vec<u8> = vec![0; buffer_len as usize];
+    if let Err(e) = unsafe {
+        GetLogicalProcessorInformationEx(RelationProcessorCore, Some(buf.as_mut_ptr() as *mut SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX), &mut buffer_len)
+    } {
+        let cause: String = format!("GetLogicalProcessorInformationEx failed: {:?}", e);
+        return Err(Fail::new(libc::EFAULT, &cause));
+    }
+
+    let mut core_count: usize = 0;
+    let std::ops::Range{ start: mut proc_core_info, end: proc_core_end } = buf.as_ptr_range();
+    while proc_core_info < proc_core_end && proc_core_info >= buf.as_ptr() {
+        // Safety: the buffer is initialized to valid values by GetLogicalProcessorInformationEx, and the pointer is
+        // not aliased. Bounds are checked above.
+        let proc_info: &SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = unsafe { &*(proc_core_info as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) };
+        if proc_info.Relationship == RelationProcessorCore {
+            core_count += 1;
+        }
+        proc_core_info = proc_core_info.wrapping_add(proc_info.Size as usize);
+    }
+
+    return Ok(core_count);
 }
 
 //======================================================================================================================

@@ -8,9 +8,11 @@ use crate::runtime::libxdp;
 //======================================================================================================================
 
 /// A wrapper structure for a XDP user memory region.
-#[repr(C)]
-#[derive(Clone)]
-pub struct UmemReg(libxdp::XSK_UMEM_REG);
+pub struct UmemReg
+{
+    _buffer: Vec<u8>,
+    umem: libxdp::XSK_UMEM_REG
+}
 
 //======================================================================================================================
 // Implementations
@@ -22,23 +24,23 @@ impl UmemReg {
         let total_size: u64 = count as u64 * chunk_size as u64;
         let mut buffer: Vec<u8> = Vec::<u8>::with_capacity(total_size as usize);
 
-        let mem: libxdp::XSK_UMEM_REG = libxdp::XSK_UMEM_REG {
+        let umem: libxdp::XSK_UMEM_REG = libxdp::XSK_UMEM_REG {
             TotalSize: total_size,
             ChunkSize: chunk_size,
             Headroom: 0,
             Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
         };
 
-        Self(mem)
+        Self{ _buffer: buffer, umem }
     }
 
     /// Gets a reference to the underlying XDP user memory region.
     pub fn as_ref(&self) -> &libxdp::XSK_UMEM_REG {
-        &self.0
+        &self.umem
     }
 
     /// Returns a raw pointer to the the start address of the user memory region.
     pub fn address(&self) -> *mut core::ffi::c_void {
-        self.0.Address
+        self.umem.Address
     }
 }
