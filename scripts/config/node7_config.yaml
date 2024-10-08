@@ -18,9 +18,9 @@ tcp_socket_options:
     time_seconds: 0
   nodelay: true
 inetstack_config:
-  mtu: 1500
-  mss: 1500
-  enable_jumbo_frames: false
+  mtu: 9000
+  mss: 9000
+  enable_jumbo_frames: true
   udp_checksum_offload: false
   tcp_checksum_offload: false
   arp_table:

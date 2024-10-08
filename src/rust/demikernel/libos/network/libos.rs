@@ -539,6 +539,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Waits for any of the given pending I/O operations to complete or a timeout to expire.
     pub fn wait_any(&mut self, qts: &[QToken], timeout: Duration) -> Result<(usize, demi_qresult_t), Fail> {
         let (offset, qt, qd, result) = self.runtime.wait_any(qts, timeout)?;
+        eprintln!("[DEMI] ** wait_any is returning {:?} **", qd);
         Ok((offset, self.create_result(result, qd, qt)))
     }
 

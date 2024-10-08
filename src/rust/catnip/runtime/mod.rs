@@ -12,9 +12,7 @@ use self::memory::{
     MemoryManager,
 };
 use crate::{
-    demikernel::config::Config,
-    expect_some,
-    runtime::{
+    capy_log, demikernel::config::Config, expect_some, runtime::{
         fail::Fail,
         libdpdk::{
             rte_delay_us_block,
@@ -63,8 +61,7 @@ use crate::{
             PacketBuf,
         },
         SharedObject,
-    },
-    timer,
+    }, timer
 };
 use ::arrayvec::ArrayVec;
 use ::std::mem;
@@ -404,9 +401,13 @@ impl NetworkRuntime for SharedDPDKRuntime {
         // payloads because we allocate actual data-carrying application buffers from the DPDK pool.
         let outgoing_pkt: DemiBuffer = match pkt.take_body() {
             Some(body) => match body {
-                buf if buf.is_dpdk_allocated() => buf,
+                buf if buf.is_dpdk_allocated() => {
+                    eprintln!("[0]buf.len(): {}", buf.len());
+                    buf
+                },
                 buf => {
                     let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf().expect("should be able to allocate mbuf");
+                    eprintln!("[1] buf.len(): {}, mbuf.len(): {}", buf.len(), mbuf.len());
                     debug_assert!(buf.len() < mbuf.len());
                     mbuf.trim(mbuf.len() - buf.len()).expect("Should be able to trim");
                     mbuf.copy_from_slice(&buf);
@@ -420,7 +421,7 @@ impl NetworkRuntime for SharedDPDKRuntime {
                 return Err(Fail::new(libc::EINVAL, &cause));
             },
         };
-
+        capy_log!("[DEMI] TRANSMIT buffer size: {}", outgoing_pkt.len());
         let mut mbuf_ptr: *mut rte_mbuf = expect_some!(outgoing_pkt.into_mbuf(), "mbuf cannot be empty");
         let num_sent: u16 = unsafe { rte_eth_tx_burst(self.port_id, 0, &mut mbuf_ptr, 1) };
         debug_assert_eq!(num_sent, 1);

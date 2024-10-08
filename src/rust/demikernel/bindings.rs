@@ -508,7 +508,10 @@ pub extern "C" fn demi_push(qtok_out: *mut demi_qtoken_t, qd: c_int, sga: *const
     });
 
     match ret {
-        Ok(ret) => ret,
+        Ok(ret) => {
+            eprintln!("demi_push returns {}", ret);
+            ret
+        },
         Err(e) => e.errno,
     }
 }
@@ -526,6 +529,12 @@ pub extern "C" fn demi_pop(qtok_out: *mut demi_qtoken_t, qd: c_int) -> c_int {
         warn!("demi_pop() qtok_out is a null pointer");
         return libc::EINVAL;
     }
+    // Convert count to Option<usize>.
+    // let size_option: Option<usize> = if count == 0 {
+    //     None
+    // } else {
+    //     Some(count as usize)
+    // };
 
     // Issue pop operation.
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.pop(qd.into(), None) {
@@ -597,14 +606,14 @@ pub extern "C" fn demi_wait_any(
     num_qts: c_int,
     timeout: *const libc::timespec,
 ) -> c_int {
-    trace!(
-        "demi_wait_any() {:?} {:?} {:?} {:?} {:?}",
-        qr_out,
-        ready_offset,
-        qts,
-        num_qts,
-        timeout
-    );
+    // trace!(
+    //     "demi_wait_any() {:?} {:?} {:?} {:?} {:?}",
+    //     qr_out,
+    //     ready_offset,
+    //     qts,
+    //     num_qts,
+    //     timeout
+    // );
 
     // Check for invalid storage location for queue result.
     if qr_out.is_null() {
@@ -638,7 +647,7 @@ pub extern "C" fn demi_wait_any(
             0
         },
         Err(e) => {
-            trace!("demi_wait_any() failed: {:?}", e);
+            // trace!("demi_wait_any() failed: {:?}", e);
             e.errno
         },
     });
@@ -699,7 +708,7 @@ pub extern "C" fn demi_wait_next_n(
     let ret: Result<i32, Fail> = do_syscall(|libos| match libos.wait_next_n(wait_callback, duration) {
         Ok(()) => 0,
         Err(e) => {
-            trace!("demi_wait_any() failed: {:?}", e);
+            // trace!("demi_wait_any() failed: {:?}", e);
             e.errno
         },
     });

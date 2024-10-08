@@ -348,6 +348,7 @@ impl LibOS {
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::bind");
+            eprintln!("[DEMI] libos.bind()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -371,6 +372,7 @@ impl LibOS {
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
             timer!("demikernel::listen");
+            eprintln!("[DEMI] libos.listen()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -394,6 +396,7 @@ impl LibOS {
     pub fn accept(&mut self, sockqd: QDesc) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::accept");
+            eprintln!("[DEMI] libos.accept()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -417,6 +420,7 @@ impl LibOS {
     pub fn connect(&mut self, sockqd: QDesc, remote: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::connect");
+            eprintln!("[DEMI] libos.connect()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -495,6 +499,7 @@ impl LibOS {
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::push");
+            eprintln!("[DEMI] libos.push()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -518,6 +523,7 @@ impl LibOS {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, to: SocketAddr) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::pushto");
+            eprintln!("[DEMI] libos.pushto()");
             match self {
                 #[cfg(any(
                     feature = "catnap-libos",
@@ -540,6 +546,7 @@ impl LibOS {
     pub fn pop(&mut self, qd: QDesc, size: Option<usize>) -> Result<QToken, Fail> {
         let result: Result<QToken, Fail> = {
             timer!("demikernel::pop");
+            eprintln!("[DEMI] libos.pop() (size: {:?})", size);
 
             // Check if this is a fixed-size pop.
             if let Some(size) = size {

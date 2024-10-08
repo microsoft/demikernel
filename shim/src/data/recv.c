@@ -38,17 +38,22 @@ ssize_t __read(int sockfd, void *buf, size_t count)
         // Check if read operation has completed.
         if ((ev = queue_man_get_pop_result(sockfd)) != NULL)
         {
+            printf("ev->used: %d\n", ev->used);
+            printf("ev->sockqd: %d\n", ev->sockqd);
+            printf("ev->qt: %ld\n", ev->qt);
+            printf("ev->qr.qr_value.sga.sga_segs[0].sgaseg_len: %zu\n", ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
+            printf("count: %zu\n", count);
             assert(ev->used == 1);
             assert(ev->sockqd == sockfd);
             assert(ev->qt == (demi_qtoken_t)-1);
             assert(ev->qr.qr_value.sga.sga_numsegs == 1);
 
             // TODO: We should support buffering.
-            assert(count >= ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
+            // assert(count >= ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
 
             // Round down the number of bytes to read accordingly.
             count = MIN(count, ev->qr.qr_value.sga.sga_segs[0].sgaseg_len);
-
+            printf("[0] sga_len: %zu, count: %zu\n", ev->qr.qr_value.sga.sga_segs[0].sgaseg_len, count);
             if (ev->qr.qr_value.sga.sga_segs[0].sgaseg_len == 0)
             {
                 TRACE("read zero bytes");
@@ -59,8 +64,21 @@ ssize_t __read(int sockfd, void *buf, size_t count)
             if (count > 0)
             {
                 memcpy(buf, ev->qr.qr_value.sga.sga_segs[0].sgaseg_buf, count);
-                __demi_sgafree(&ev->qr.qr_value.sga);
+                if(ev->qr.qr_value.sga.sga_segs[0].sgaseg_len > count){
+                    printf("[1] sga_len: %zu, count: %zu\n", ev->qr.qr_value.sga.sga_segs[0].sgaseg_len, count);
+                    ev->qr.qr_value.sga.sga_segs[0].sgaseg_buf = 
+                        (void *)((char *)ev->qr.qr_value.sga.sga_segs[0].sgaseg_buf + count);
+
+                    // Update the length to reflect the trimmed data
+                    ev->qr.qr_value.sga.sga_segs[0].sgaseg_len -= count;
+
+                    // Return the number of bytes trimmed (which is 'count')
+                    return count;
+                }
             }
+            __demi_sgafree(&ev->qr.qr_value.sga);   
+            queue_man_unset_pop_result(sockfd);
+            printf("calling __demi_pop (size: %lu)\n", count);
 
             // Re-issue I/O queue operation.
             assert(__demi_pop(&ev->qt, ev->sockqd) == 0);

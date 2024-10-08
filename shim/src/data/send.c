@@ -24,6 +24,7 @@ ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
     // If that is not the case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
     {
+        fprintf(stderr, "[1] ERROR\n");
         errno = EBADF;
         return (-1);
     }
@@ -49,10 +50,12 @@ ssize_t __send(int sockfd, const void *buf, size_t len, int flags)
 
 ssize_t __write(int sockfd, const void *buf, size_t count)
 {
+    fprintf(stderr, "send.c::__write()\n");
     // Check if this socket descriptor is managed by Demikernel.
     // If that is the not case, then fail to let the Linux kernel handle it.
     if (!queue_man_query_fd(sockfd))
     {
+        fprintf(stderr, "[0] ERROR\n");
         errno = EBADF;
         return (-1);
     }

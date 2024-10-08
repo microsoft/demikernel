@@ -84,6 +84,7 @@ int __demi_close(int qd)
 
 int __demi_push(demi_qtoken_t *qt_out, int qd, const demi_sgarray_t *sga)
 {
+    printf("glue.c::__demi_push\n");
     DEMI_CALL(int, demi_push, qt_out, qd, sga);
 }
 
@@ -95,6 +96,7 @@ int __demi_pushto(demi_qtoken_t *qt_out, int sockqd, const demi_sgarray_t *sga,
 
 int __demi_pop(demi_qtoken_t *qt_out, int qd)
 {
+    printf("glue.c::__demi_pop()\n");
     DEMI_CALL(int, demi_pop, qt_out, qd);
 }
 

@@ -224,8 +224,8 @@ clean: clean-examples clean-tests clean-libs
 export CONFIG_PATH ?= $(HOME)/config.yaml
 export CONFIG_DIR = $(CURDIR)/scripts/config
 export ELF_DIR ?= $(CURDIR)/bin/examples/rust
-export MTU ?= 1500
-export MSS ?= 1500
+export MTU ?= 9000
+export MSS ?= 9000
 export PEER ?= server
 export TEST ?= udp-push-pop
 export TEST_INTEGRATION ?= tcp-test

@@ -261,6 +261,25 @@ impl<N: NetworkRuntime> SharedTcpPeer<N> {
             // Wait for push to complete.
             socket.push(buf.clone()).await?;
             buf.trim(buf.len())
+
+            // [Segmentation]
+            // while buf.len() > 0 {
+            //     // Determine how much to push in this iteration.
+            //     let fragment_size = std::cmp::min(buf.len(), MAX_FRAGMENT_SIZE);
+        
+            //     // Clone the buffer for this fragment, and adjust the original buffer.
+            //     let mut fragment = buf.clone();
+                
+            //     // Trim the fragment to the desired size.
+            //     fragment.trim(buf.len() - fragment_size)?;
+        
+            //     // Push this fragment asynchronously.
+            //     socket.push(fragment).await?;
+        
+            //     // Trim the original buffer to remove the pushed fragment.
+            //     buf.adjust(fragment_size)?;
+            // }
+            // buf.trim(0)
         }
     }
 

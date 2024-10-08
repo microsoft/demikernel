@@ -86,6 +86,7 @@ extern int queue_man_set_accept_result(int qd, struct demi_event *ev);
 extern struct demi_event *queue_man_get_accept_result(int qd);
 extern int queue_man_set_pop_result(int qd, struct demi_event *ev);
 extern struct demi_event *queue_man_get_pop_result(int qd);
+extern void queue_man_get_unset_result(int qd);
 
 struct hashset;
 extern struct hashset *hashset_create(int);
