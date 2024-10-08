@@ -39,7 +39,9 @@ use crate::{
             },
             SeqNumber,
         },
-    }, runtime::{
+        MAX_HEADER_SIZE,
+    },
+    runtime::{
         fail::Fail,
         memory::DemiBuffer,
         network::{
@@ -163,14 +165,16 @@ impl Receiver {
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         let buf: DemiBuffer = if let Some(size) = size {
-            capy_log!("receiver.recv_queue.pop() is scheduled");
-            let mut buf: DemiBuffer = self.recv_queue.pop(None).await?;
-            capy_log!("receiver.recv_queue.pop() is polled");
+            capy_log!("receiver.recv_queue.pop(size: {:?}) is scheduled", size);
+            let mut original_buf: DemiBuffer = self.recv_queue.pop(None).await?;
+            capy_log!("receiver.recv_queue.pop(size: {:?}) is polled", size);
             // Split the buffer if it's too big.
-            if buf.len() > size {
-                buf.split_front(size)?
+            if original_buf.len() > size {
+                let popped_buf = original_buf.split_front(size)?;
+                self.push(original_buf);
+                popped_buf
             } else {
-                buf
+                original_buf
             }
         } else {
             self.recv_queue.pop(None).await?
@@ -874,7 +878,7 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         // TODO: Think about moving this to tcp_header() as well.
         let seq_num: SeqNumber = self.get_send_next().get();
         header.seq_num = seq_num;
-
+        capy_log!("ACKing {}", seq_num);
         // TODO: Remove this if clause once emit() is fixed to not require the remote hardware addr (this should be
         // left to the ARP layer and not exposed to TCP).
         if let Some(remote_link_addr) = self.arp().try_query(self.remote.ip().clone()) {
@@ -899,16 +903,25 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
         let sent_fin: bool = header.fin;
         // Prepare description of TCP segment to send.
         // TODO: Change this to call lower levels to fill in their header information, handle routing, ARPing, etc.
-        let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
-            tcp_hdr: header,
-            data: body,
-            tx_checksum_offload: self.tcp_config.get_tx_checksum_offload(),
+        let segment = match TcpSegment::new(
+            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            header,
+            body,
+            self.tcp_config.get_tx_checksum_offload(),
+        ) {
+            Ok(segment) => segment,
+            Err(e) => {
+                warn!("could not construct packet header: {:?}", e);
+                return;
+            },
         };
 
         // Call the runtime to send the segment.
-        self.transport.transmit(Box::new(segment));
+        if let Err(e) = self.transport.transmit(segment) {
+            warn!("could not emit packet: {:?}", e);
+            return;
+        }
 
         // Post-send operations follow.
         // Review: We perform these after the send, in order to keep send latency as low as possible.
@@ -1190,7 +1203,8 @@ impl<N: NetworkRuntime> SharedControlBlock<N> {
     /// Send a fin by pushing a zero-length DemiBuffer to the sender function.
     fn send_fin(&mut self) {
         // Construct FIN.
-        let fin_buf: DemiBuffer = DemiBuffer::new(0);
+        // TODO: Remove this allocation.
+        let fin_buf: DemiBuffer = DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16);
         // Send.
         if let Err(e) = self.send(fin_buf) {
             warn!("send_fin(): failed to send fin ({:?})", e);

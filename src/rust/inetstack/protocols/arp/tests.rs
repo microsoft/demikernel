@@ -71,8 +71,8 @@ fn arp_immediate_reply() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
-    let pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &local_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&pkt);
+    let mut pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &local_ipv4);
+    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
     engine.receive(buf)?;
@@ -112,8 +112,8 @@ fn arp_no_reply() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::ALICE_CONFIG_PATH)?;
 
     // Create an ARP query request to a different IP address.
-    let pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &other_remote_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&pkt);
+    let mut pkt: ArpMessage = build_arp_query(&remote_mac, &remote_ipv4, &other_remote_ipv4);
+    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
     engine.receive(buf)?;
@@ -141,8 +141,8 @@ fn arp_cache_update() -> Result<()> {
     let mut engine: SharedEngine = new_engine(now, &test_helpers::BOB_CONFIG_PATH)?;
 
     // Create an ARP query request to the local IP address.
-    let pkt: ArpMessage = build_arp_query(&other_remote_mac, &other_remote_ipv4, &local_ipv4);
-    let buf: DemiBuffer = serialize_arp_message(&pkt);
+    let mut pkt: ArpMessage = build_arp_query(&other_remote_mac, &other_remote_ipv4, &local_ipv4);
+    let buf: DemiBuffer = serialize_arp_message(&mut pkt);
 
     // Feed it to engine.
     engine.receive(buf)?;
@@ -219,15 +219,8 @@ fn arp_cache_timeout() -> Result<()> {
 //======================================================================================================================
 
 /// Serializes an [ArpMessage] into a [DemiBuffer].
-fn serialize_arp_message(pkt: &ArpMessage) -> DemiBuffer {
-    let header_size: usize = pkt.header_size();
-    let body_size: usize = pkt.body_size();
-    let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
-    pkt.write_header(&mut buf[..header_size]);
-    if let Some(body) = pkt.take_body() {
-        buf[header_size..].copy_from_slice(&body[..]);
-    }
-    buf
+fn serialize_arp_message(pkt: &mut ArpMessage) -> DemiBuffer {
+    pkt.take_body().unwrap()
 }
 
 /// Builds an ARP query request.
@@ -240,7 +233,7 @@ fn build_arp_query(local_mac: &MacAddress, local_ipv4: &Ipv4Addr, remote_ipv4: &
         MacAddress::broadcast(),
         remote_ipv4.clone(),
     );
-    ArpMessage::new(header, body)
+    ArpMessage::new(header, body).expect("Should be able to construct ARP message")
 }
 
 /// Creates a new engine.

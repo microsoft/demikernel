@@ -329,19 +329,26 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
                 tcp_hdr.ack = true;
                 tcp_hdr.ack_num = ack_num;
             }
-            TcpSegment {
-                ethernet2_hdr: Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
-                ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+            match TcpSegment::new(
+                Ethernet2Header::new(dst_link_addr, self.local_link_addr, EtherType2::Ipv4),
+                Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
                 tcp_hdr,
-                data: None,
-                tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
+                None,
+                self.tcp_config.get_rx_checksum_offload(),
+            ) {
+                Ok(segment) => segment,
+                Err(e) => {
+                    warn!("Could not construct TCP segment: {:?}", e);
+                    return;
+                },
             }
         };
 
         // Send it.
-        let pkt: Box<TcpSegment> = Box::new(segment);
+        if let Err(e) = self.transport.transmit(segment) {
+            warn!("Could not send RST: {:?}", e);
+        }
         capy_log!("SEND RST to {}", remote);
-        self.transport.transmit(pkt);
     }
 
     async fn send_syn_ack_and_wait_for_ack(
@@ -441,15 +448,14 @@ impl<N: NetworkRuntime> SharedPassiveSocket<N> {
         info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
         debug!("Sending SYN+ACK: {:?}", tcp_hdr);
-        let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
+        let segment = TcpSegment::new(
+            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            Ipv4Header::new(self.local.ip().clone(), remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
-            data: None,
-            tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
-        };
-        self.transport.transmit(Box::new(segment));
-        Ok(())
+            None,
+            self.tcp_config.get_rx_checksum_offload(),
+        )?;
+        self.transport.transmit(segment)
     }
 
     async fn wait_for_ack(

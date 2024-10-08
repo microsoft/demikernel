@@ -16,8 +16,6 @@
 
 int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-    int nevents = 0;
-
     // Check if epoll descriptor is managed by Demikernel.
     if (epfd < EPOLL_MAX_FDS)
     {
@@ -50,114 +48,107 @@ int __epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeou
 
     struct timespec abstime = {timeout / 1000, timeout * 1000 * 1000};
 
-    // Traverse events
-    struct demi_event *ev = epoll_get_head(demikernel_epfd);
-    while (ev != NULL)
+    demi_qresult_t qr;
+    int ready_offset;
+    demi_qtoken_t qts[MAX_EVENTS];
+    struct demi_event *evs[MAX_EVENTS];
+
+    int nevents = epoll_get_ready(demikernel_epfd, qts, evs);
+
+    if (nevents > 0)
     {
-        if ((ev->used) && (ev->qt != (demi_qtoken_t)-1))
+        int ret = __demi_wait_any(&qr, &ready_offset, qts, nevents, &abstime);
+        if (ret != 0)
         {
-            int ret = __demi_wait(&ev->qr, ev->qt, &abstime);
-
-            if (ret == ETIMEDOUT)
-            {
-                ev = epoll_get_next(demikernel_epfd, ev);
-                continue;
-            }
-
-            ev->qt = (demi_qtoken_t)-1;
-
-            if (ret != 0)
-            {
-                ERROR("demi_timedwait() failed - %s", strerror(ret));
-                ev = epoll_get_next(demikernel_epfd, ev);
-                continue;
-            }
-
-            switch (ev->qr.qr_opcode)
-            {
-            case DEMI_OPC_ACCEPT:
-            {
-                // Fill in event.
-                events[nevents].events = ev->ev.events;
-                events[nevents].data.fd = ev->sockqd;
-                nevents++;
-
-                // Store I/O queue operation result.
-                queue_man_set_accept_result(ev->sockqd, ev);
-            }
-            break;
-            case DEMI_OPC_CONNECT:
-            {
-                // TODO: implement.
-                UNIMPLEMETED("parse result of demi_connect()");
-            }
-            break;
-            case DEMI_OPC_POP:
-            {
-
-                // Fill in event.
-                events[nevents].events = ev->ev.events;
-                events[nevents].data.fd = ev->sockqd;
-                events[nevents].data.ptr = ev->ev.data.ptr;
-                events[nevents].data.u32 = ev->ev.data.u32;
-                nevents++;
-
-                // Store I/O queue operation result.
-                queue_man_set_pop_result(ev->sockqd, ev);
-            }
-            break;
-            case DEMI_OPC_PUSH:
-            {
-                // TODO: implement.
-                UNIMPLEMETED("parse result of demi_push()")
-            }
-            break;
-
-            case DEMI_OPC_FAILED:
-            {
-                // Handle timeout: re-issue operation.
-                if (ev->qr.qr_ret == ETIMEDOUT)
-                {
-                    // Check if read was requested.
-                    if (ev->ev.events & EPOLLIN)
-                    {
-                        demi_qtoken_t qt = -1;
-
-                        if (queue_man_is_listen_fd(ev->sockqd))
-                        {
-                            assert(__demi_accept(&qt, ev->sockqd) == 0);
-                        }
-                        else
-                        {
-                            assert(__demi_pop(&qt, ev->sockqd) == 0);
-                        }
-                        ev->qt = qt;
-                    }
-
-                    // Check if write was requested.
-                    if (ev->ev.events & EPOLLOUT)
-                    {
-                        // TODO: implement.
-                        UNIMPLEMETED("add EPOLLOUT event");
-                    }
-                }
-
-                WARN("operation failed - %s", strerror(ev->qr.qr_ret));
-                errno = EINTR;
-                return (-1);
-            }
-            break;
-
-            default:
-            {
-                // TODO: implement.
-                UNIMPLEMETED("signal that Demikernel operation failed");
-            }
-            break;
-            }
+            ERROR("demi_timedwait() failed - %s", strerror(ret));
+            return 0;
         }
 
-        ev = epoll_get_next(demikernel_epfd, ev);
+        evs[ready_offset]->qr = qr;
+        switch (evs[ready_offset]->qr.qr_opcode)
+            {
+                case DEMI_OPC_ACCEPT:
+                {
+                    // Fill in event.
+                    events[nevents].events = evs[ready_offset]->ev.events;
+                    events[nevents].data.fd = evs[ready_offset]->sockqd;
+                    evs[ready_offset]->qt = -1;
+                    nevents++;
+
+                    // Store I/O queue operation result.
+                    queue_man_set_accept_result(evs[ready_offset]->sockqd, evs[ready_offset]);
+                }
+                break;
+                case DEMI_OPC_CONNECT:
+                {
+                    // TODO: implement.
+                    UNIMPLEMETED("parse result of demi_connect()");
+                }
+                break;
+                case DEMI_OPC_POP:
+                {
+
+                    // Fill in event.
+                    events[nevents].events = evs[ready_offset]->ev.events;
+                    events[nevents].data.fd = evs[ready_offset]->sockqd;
+                    events[nevents].data.ptr = evs[ready_offset]->ev.data.ptr;
+                    events[nevents].data.u32 = evs[ready_offset]->ev.data.u32;
+                    evs[ready_offset]->qt = -1;
+                    nevents++;
+
+                    // Store I/O queue operation result.
+                    queue_man_set_pop_result(evs[ready_offset]->sockqd, evs[ready_offset]);
+                }
+                break;
+                case DEMI_OPC_PUSH:
+                {
+                    // TODO: implement.
+                    UNIMPLEMETED("parse result of demi_push()")
+                }
+                break;
+
+                case DEMI_OPC_FAILED:
+                {
+                    // Handle timeout: re-issue operation.
+                    if (evs[ready_offset]->qr.qr_ret == ETIMEDOUT)
+                    {
+                        // Check if read was requested.
+                        if (evs[ready_offset]->ev.events & EPOLLIN)
+                        {
+                            demi_qtoken_t qt = -1;
+
+                            if (queue_man_is_listen_fd(evs[ready_offset]->sockqd))
+                            {
+                                assert(__demi_accept(&qt, evs[ready_offset]->sockqd) == 0);
+                            }
+                            else
+                            {
+                                assert(__demi_pop(&qt, evs[ready_offset]->sockqd) == 0);
+                            }
+                            evs[ready_offset]->qt = qt;
+                        }
+
+                        // Check if write was requested.
+                        if (evs[ready_offset]->ev.events & EPOLLOUT)
+                        {
+                            // TODO: implement.
+                            UNIMPLEMETED("add EPOLLOUT event");
+                        }
+                    }
+
+                    WARN("operation failed - %s", strerror(evs[ready_offset]->qr.qr_ret));
+                    errno = EINTR;
+                    return (-1);
+                }
+                break;
+
+                default:
+                {
+                    // TODO: implement.
+                    UNIMPLEMETED("signal that Demikernel operation failed");
+                }
+                break;
+            }
     }
 
     return (nevents);

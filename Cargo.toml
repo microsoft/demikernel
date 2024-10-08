@@ -7,7 +7,7 @@
 
 [package]
 name = "demikernel"
-version = "1.5.11"
+version = "1.5.13"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Kernel-Bypass LibOS Architecture"
@@ -31,7 +31,7 @@ byteorder = "1.4.3"
 cfg-if = "1.0.0"
 chrono = "0.4.3"
 crc = "3.2.1"
-clap = "4.5.11"
+clap = "4.5.15"
 crossbeam-channel = "0.5.13"
 eui48 = "1.1.0"
 flexi_logger = "0.28.5"
@@ -168,6 +168,7 @@ profiler = []
 tcp-migration = [ ]
 capy-log = [ ]
 
+auto-calibrate = []
 
 #=======================================================================================================================
 # Profile

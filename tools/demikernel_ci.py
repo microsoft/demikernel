@@ -150,6 +150,7 @@ def run_redis_pipeline(
         log_directory: str, branch: str, libos: str, server: str,
         client: str, server_addr: str, client_addr: str, delay: float, output_dir: str,
         libshim_path: str, ld_library_path: str, config_path: str) -> int:
+    is_sudo: bool = True if libos == "catnip" or libos == "catpowder" or libos == "catloop" else False
     status: dict[str, bool] = {}
 
     config: dict = {
@@ -166,6 +167,7 @@ def run_redis_pipeline(
         "delay": delay,
         "output_dir": output_dir,
         "log_directory": log_directory,
+        "is_sudo": is_sudo,
         "platform": platform,
         "libshim_path": libshim_path,
         "ld_library_path": ld_library_path,
@@ -178,7 +180,8 @@ def run_redis_pipeline(
     status["make-redis"] = factory.make_redis().execute()
     status["run-redis"] = factory.run_redis_server().execute()
     status["run-redis-benchmark"] = factory.run_redis_benchmark().execute()
-    status["stop-redis"] = factory.stop_redis_server().execute()
+    factory.stop_redis_server().execute()
+    # NOTE: we do not report status od stopping redis server.
     status["cleanup-redis"] = factory.cleanup_redis().execute()
 
     return status
@@ -326,6 +329,8 @@ def main():
     if test_redis:
         libshim_path: str = f"{install_prefix}/lib/libshim.so"
         ld_library_path: str = f"{install_prefix}/lib"
+        if libos == "catnip":
+            ld_library_path = f"\$HOME/lib/x86_64-linux-gnu:{install_prefix}/lib"
         status |= run_redis_pipeline(platform, log_directory, branch, libos, server,
                                      client, server_addr,
                                      client_addr, delay, output_dir, libshim_path, ld_library_path, config_path)

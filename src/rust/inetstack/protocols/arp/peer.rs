@@ -223,7 +223,7 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                     // from RFC 826:
                     // > Swap hardware and protocol fields, putting the local
                     // > hardware and protocol addresses in the sender fields.
-                    let reply = ArpMessage::new(
+                    let reply: ArpMessage = match ArpMessage::new(
                         Ethernet2Header::new(header.get_sender_hardware_addr(), self.local_link_addr, EtherType2::Arp),
                         ArpHeader::new(
                             ArpOperation::Reply,
@@ -232,9 +232,20 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                             header.get_sender_hardware_addr(),
                             header.get_sender_protocol_addr(),
                         ),
-                    );
+                    ) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            warn!("Could not construct ARP message {:?}", e);
+                            continue;
+                        },
+                    };
                     debug!("Responding {:?}", reply);
-                    self.network.transmit(Box::new(reply));
+                    if let Err(e) = self.network.transmit(reply) {
+                        // Ignore for now because the other end will retry.
+                        // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
+                        // FIXME: https://github.com/microsoft/demikernel/issues/1365
+                        warn!("Could not transmit message: {:?}", e);
+                    }
                 },
                 ArpOperation::Reply => {
                     debug!(
@@ -266,14 +277,17 @@ impl<N: NetworkRuntime> SharedArpPeer<N> {
                 MacAddress::broadcast(),
                 ipv4_addr,
             ),
-        );
+        )?;
         let mut peer: SharedArpPeer<N> = self.clone();
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                self.network.transmit(Box::new(msg.clone()));
+                if let Err(e) = self.network.transmit(msg.clone()) {
+                    warn!("Could not send packet: {:?}", e);
+                    continue;
+                }
                 let arp_response = peer.do_wait_link_addr(ipv4_addr);
 
                 match conditional_yield_with_timeout(arp_response, self.arp_config.get_request_timeout()).await {

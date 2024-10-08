@@ -182,14 +182,14 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
         tcp_hdr.seq_num = self.local_isn + SeqNumber::from(1);
         debug!("Sending ACK: {:?}", tcp_hdr);
 
-        let segment = TcpSegment {
-            ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-            ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+        let segment = TcpSegment::new(
+            Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+            Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
             tcp_hdr,
-            data: None,
-            tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
-        };
-        self.transport.transmit(Box::new(segment));
+            None,
+            self.tcp_config.get_rx_checksum_offload(),
+        )?;
+        self.transport.transmit(segment)?;
 
         let mut remote_window_scale = None;
         let mut mss = FALLBACK_MSS;
@@ -315,15 +315,18 @@ impl<N: NetworkRuntime> SharedActiveOpenSocket<N> {
             info!("Advertising window scale: {}", self.tcp_config.get_window_scale());
 
             debug!("Sending SYN {:?}", tcp_hdr);
-            let segment = TcpSegment {
-                ethernet2_hdr: Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
-                ipv4_hdr: Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
+            let segment = TcpSegment::new(
+                Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
+                Ipv4Header::new(self.local.ip().clone(), self.remote.ip().clone(), IpProtocol::TCP),
                 tcp_hdr,
-                data: None,
-                tx_checksum_offload: self.tcp_config.get_rx_checksum_offload(),
-            };
+                None,
+                self.tcp_config.get_rx_checksum_offload(),
+            )?;
             // Send SYN.
-            self.transport.transmit(Box::new(segment));
+            if let Err(e) = self.transport.transmit(segment) {
+                warn!("Could not send SYN: {:?}", e);
+                continue;
+            }
 
             // Wait for either a response or timeout.
             let mut recv_queue: SharedAsyncQueue<(Ipv4Header, TcpHeader, DemiBuffer)> = self.recv_queue.clone();

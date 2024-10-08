@@ -411,6 +411,8 @@ impl TcpEchoClient {
         let sga: demi_sgarray_t = self.mksga(self.bufsize)?;
         let qt: QToken = self.libos.push(qd, &sga)?;
         self.register_operation(qd, qt);
+        // Ok to immediately free because the push clones the reference and keeps it until the push completes.
+        self.libos.sgafree(sga)?;
         Ok(())
     }
 

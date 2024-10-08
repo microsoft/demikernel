@@ -62,7 +62,7 @@ def __get_perf_data(log_dir):
     # with the data for transformations.
     perf_df = pd.read_csv(
         StringIO('\n'.join(collapsed_stacks)),
-        names=['collapsed_stack', 'percent_time', 'cycles_per_call', 'nanoseconds_per_call'])
+        names=['collapsed_stack', 'num_calls', 'percent_time', 'cycles_per_call', 'nanoseconds_per_call'])
 
     # There will be multiple entries for each function in the perf data coming
     # from different files. So, we need to collapse them into a single entry
@@ -103,7 +103,7 @@ def __populate_collapsed_stacks(collapsed_stacks, file):
             # The collapsed stack is a string that contains the function names
             # separated by a semicolon.
             collapsed_stack = ";".join(current_stack)
-            collapsed_stacks.append(f"{collapsed_stack},{row['percent_time']},{row['cycles_per_call']},{row['nanoseconds_per_call']}")
+            collapsed_stacks.append(f"{collapsed_stack},{row['num_calls']},{row['percent_time']},{row['cycles_per_call']},{row['nanoseconds_per_call']}")
 
 
 def __get_file_df(file):
@@ -114,8 +114,7 @@ def __get_file_df(file):
     file_df = pd.read_csv(
         StringIO('\n'.join(lines)),
         delimiter=',',
-        names=['call_depth', 'thread_id', 'function_name', 'percent_time',
-               'cycles_per_call', 'nanoseconds_per_call'])
+        names=['call_depth', 'thread_id', 'function_name', 'num_calls', 'percent_time', 'cycles_per_call', 'nanoseconds_per_call'])
 
     # Number of '+' characters in the call_depth column denotes the depth of
     # the function call.
@@ -140,12 +139,12 @@ def __print_perf_data(perf_df):
 
     # Typically, time is the most important metric to sort by. However, you can
     # sort by any column.
-    sort_by_columns = ['percent_time', 'cycles_per_call', 'nanoseconds_per_call']
+    sort_by_columns = ['num_calls', 'cycles_per_call', 'nanoseconds_per_call', 'percent_time']
 
     # The columns that we are interested in displaying in the table.
     # collapsed_stack is important because it denotes the complete function call
     # stack.
-    columns_to_display = ['collapsed_stack', 'percent_time', 'cycles_per_call', 'nanoseconds_per_call']
+    columns_to_display = ['collapsed_stack', 'num_calls', 'cycles_per_call', 'nanoseconds_per_call', 'percent_time']
 
     # We are interested in the aggregated perf data. We sort the data by the
     # important columns and display only the relevant columns.

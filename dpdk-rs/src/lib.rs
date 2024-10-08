@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![cfg_attr(feature = "strict", deny(clippy:all))]
+#![deny(clippy::all)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(unused)]
 
-use ::std::os::raw::{c_char, c_int};
+use ::std::os::raw::{
+    c_char,
+    c_int,
+};
 
 #[link(name = "inlined")]
 extern "C" {
@@ -29,6 +32,7 @@ extern "C" {
     fn rte_eth_rx_offload_tcp_cksum_() -> c_int;
     fn rte_eth_rx_offload_udp_cksum_() -> c_int;
     fn rte_eth_tx_offload_multi_segs_() -> c_int;
+    fn rte_pktmbuf_prepend_(m: *mut rte_mbuf, len: u16) -> *mut c_char;
 }
 
 #[cfg(all(feature = "mlx5", target_os = "windows"))]
@@ -149,4 +153,9 @@ pub unsafe fn rte_eth_rx_offload_udp_cksum() -> c_int {
 #[inline]
 pub unsafe fn rte_eth_tx_offload_multi_segs() -> c_int {
     rte_eth_tx_offload_multi_segs_()
+}
+
+#[inline]
+pub unsafe fn rte_pktmbuf_prepend(m: *mut rte_mbuf, len: u16) -> *mut c_char {
+    rte_pktmbuf_prepend_(m, len)
 }

@@ -123,15 +123,14 @@ impl<N: NetworkRuntime> SharedUdpSocket<N> {
         let remote_link_addr: MacAddress = self.arp.query(remote.ip().clone()).await?;
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
         debug!("UDP send {:?}", udp_header);
-        let datagram = UdpDatagram::new(
+        let datagram: UdpDatagram = UdpDatagram::new(
             Ethernet2Header::new(remote_link_addr, self.local_link_addr, EtherType2::Ipv4),
             Ipv4Header::new(self.local_ipv4_addr, remote.ip().clone(), IpProtocol::UDP),
             udp_header,
             buf,
             self.checksum_offload,
-        );
-        self.network.transmit(Box::new(datagram));
-        Ok(())
+        )?;
+        self.network.transmit(datagram)
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {

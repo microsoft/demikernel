@@ -8,7 +8,6 @@
 #include <demi/types.h>
 
 #define EPOLL_MAX_FDS 1024
-#define EPOLL_MAX_FDS 1024
 #define MAX_EVENTS 512
 #define INVALID_EV -1
 
@@ -26,6 +25,7 @@ struct demi_event
 
 extern void epoll_table_init(void);
 extern int epoll_table_alloc(void);
+extern int epoll_get_ready(int epfd, demi_qtoken_t *qts, struct demi_event **evs);
 extern struct demi_event *epoll_get_event(int epfd, int i);
 extern struct demi_event *epoll_get_head(int epfd);
 extern struct demi_event *epoll_get_tail(int epfd);

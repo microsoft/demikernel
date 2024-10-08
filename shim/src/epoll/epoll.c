@@ -43,10 +43,31 @@ void epoll_table_init(void)
             epoll_table[i].events[j].used = j == 0? 1 : 0;
 
             epoll_table[i].events[j].id = j;
+            epoll_table[i].events[j].qt = -1;
             epoll_table[i].events[j].next_ev = INVALID_EV;
             epoll_table[i].events[j].prev_ev = INVALID_EV;
         }
     }
+}
+
+int epoll_get_ready(int epfd, demi_qtoken_t *qts, struct demi_event **evs)
+{
+    int nevents = 0;
+
+    struct demi_event *ev = epoll_get_head(epfd);
+    while (ev != NULL)
+    {
+        if ((ev->used) && (ev->qt != (demi_qtoken_t)-1))
+        {
+            qts[nevents] = ev->qt;
+            evs[nevents] = ev;
+            nevents++;
+        }
+
+        ev = epoll_get_next(epfd, ev);
+    }
+
+    return nevents;
 }
 
 struct demi_event *epoll_get_event(int epfd, int i)

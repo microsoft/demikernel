@@ -12,9 +12,14 @@ use crate::{
         RawSocket,
         RawSocketAddr,
     },
+    demi_sgarray_t,
+    demi_sgaseg_t,
     demikernel::config::Config,
     expect_ok,
-    inetstack::protocols::ethernet2::Ethernet2Header,
+    inetstack::protocols::{
+        ethernet2::Ethernet2Header,
+        MAX_HEADER_SIZE,
+    },
     runtime::{
         fail::Fail,
         limits,
@@ -33,6 +38,7 @@ use crate::{
     },
 };
 use ::arrayvec::ArrayVec;
+use ::libc::c_void;
 use ::std::{
     fs,
     mem::{
@@ -84,7 +90,43 @@ impl LinuxRuntime {
 //======================================================================================================================
 
 /// Memory Runtime Trait Implementation for POSIX Runtime
-impl MemoryRuntime for LinuxRuntime {}
+impl MemoryRuntime for LinuxRuntime {
+    /// Allocates a scatter-gather array.
+    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
+
+        // We can't allocate a zero-sized buffer.
+        if size == 0 {
+            let cause: String = format!("cannot allocate a zero-sized buffer");
+            error!("sgaalloc(): {}", cause);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        // We can't allocate more than a single buffer.
+        if size > u16::MAX as usize {
+            return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
+        }
+
+        // First allocate the underlying DemiBuffer.
+        // Always allocate with header space for now even if we do not need it.
+        let buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
+
+        // Create a scatter-gather segment to expose the DemiBuffer to the user.
+        let data: *const u8 = buf.as_ptr();
+        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
+            sgaseg_buf: data as *mut c_void,
+            sgaseg_len: size as u32,
+        };
+
+        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
+        Ok(demi_sgarray_t {
+            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
+            sga_numsegs: 1,
+            sga_segs: [sga_seg],
+            sga_addr: unsafe { mem::zeroed() },
+        })
+    }
+}
 
 /// Runtime Trait Implementation for POSIX Runtime
 impl Runtime for LinuxRuntime {}
@@ -111,18 +153,15 @@ impl NetworkRuntime for LinuxRuntime {
     }
 
     /// Transmits a single [PacketBuf].
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>) {
-        let header_size: usize = pkt.header_size();
-        let body_size: usize = pkt.body_size();
-
-        assert!(header_size + body_size < u16::MAX as usize);
-        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
-
-        pkt.write_header(&mut buf[..header_size]);
-        if let Some(body) = pkt.take_body() {
-            buf[header_size..].copy_from_slice(&body[..]);
-        }
-
+    fn transmit<P: PacketBuf>(&mut self, mut pkt: P) -> Result<(), Fail> {
+        let buf: DemiBuffer = match pkt.take_body() {
+            Some(body) => body,
+            _ => {
+                let cause = format!("No body in PacketBuf to transmit");
+                warn!("{}", cause);
+                return Err(Fail::new(libc::EINVAL, &cause));
+            },
+        };
         let (header, _) = Ethernet2Header::parse(buf.clone()).unwrap();
         let dest_addr_arr: [u8; 6] = header.dst_addr().to_array();
         let dest_sockaddr: RawSocketAddr = RawSocketAddr::new(self.ifindex, &dest_addr_arr);
@@ -130,15 +169,28 @@ impl NetworkRuntime for LinuxRuntime {
         // Send packet.
         match self.socket.sendto(&buf, &dest_sockaddr) {
             // Operation succeeded.
-            Ok(_) => (),
+            Ok(size) if size == buf.len() => Ok(()),
+            Ok(size) => {
+                let cause = format!(
+                    "Incorrect number of bytes sent: packet_size={:?} sent={:?}",
+                    buf.len(),
+                    size
+                );
+                warn!("{}", cause);
+                Err(Fail::new(libc::EAGAIN, &cause))
+            },
             // Operation failed, drop packet.
-            Err(e) => warn!("dropping packet: {:?}", e),
-        };
+            Err(e) => {
+                let cause = "send failed";
+                warn!("transmit(): {} {:?}", cause, e);
+                Err(Fail::new(libc::EIO, &cause))
+            },
+        }
     }
 
     /// Receives a batch of [DemiBuffer].
     // TODO: This routine currently only tries to receive a single packet buffer, not a batch of them.
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         // TODO: This routine contains an extra copy of the entire incoming packet that could potentially be removed.
 
         // TODO: change this function to operate directly on DemiBuffer rather than on MaybeUninit<u8>.
@@ -151,16 +203,13 @@ impl NetworkRuntime for LinuxRuntime {
             unsafe {
                 let bytes: [u8; limits::RECVBUF_SIZE_MAX] =
                     mem::transmute::<[MaybeUninit<u8>; limits::RECVBUF_SIZE_MAX], [u8; limits::RECVBUF_SIZE_MAX]>(out);
-                let mut dbuf: DemiBuffer = expect_ok!(DemiBuffer::from_slice(&bytes), "'bytes' should fit");
-                expect_ok!(
-                    dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes),
-                    "'bytes' <= RECVBUF_SIZE_MAX"
-                );
+                let mut dbuf: DemiBuffer = DemiBuffer::from_slice(&bytes)?;
+                dbuf.trim(limits::RECVBUF_SIZE_MAX - nbytes)?;
                 ret.push(dbuf);
             }
-            ret
+            Ok(ret)
         } else {
-            ArrayVec::new()
+            Ok(ArrayVec::new())
         }
     }
 }

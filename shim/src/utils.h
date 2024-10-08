@@ -7,10 +7,14 @@
 #include <stdint.h>
 
 #define UNUSED(x) ((void)(x))
-
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
-
 #define MEM_BARRIER() __asm__ volatile("" ::: "memory")
+#define LIKELY(x) __builtin_expect((x),1)
+#define UNLIKELY(x) __builtin_expect((x),0)
+
+#define LIKELY(x) __builtin_expect((x), 1)
+
+#define UNLIKELY(x) __builtin_expect((x), 0)
 
 struct hashset;
 extern struct hashset *hashset_create(int);

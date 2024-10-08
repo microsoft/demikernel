@@ -111,14 +111,8 @@ pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
 
 /// Packet Buffer
 pub trait PacketBuf {
-    /// Returns the header size of the target [PacketBuf].
-    fn header_size(&self) -> usize;
-    /// Writes the header of the target [PacketBuf] into a slice.
-    fn write_header(&self, buf: &mut [u8]);
-    /// Returns the body size of the target [PacketBuf].
-    fn body_size(&self) -> usize;
     /// Consumes and returns the body of the target [PacketBuf].
-    fn take_body(&self) -> Option<DemiBuffer>;
+    fn take_body(&mut self) -> Option<DemiBuffer>;
 }
 
 /// Network Runtime
@@ -127,8 +121,8 @@ pub trait NetworkRuntime: Clone + 'static + MemoryRuntime {
     fn new(config: &Config) -> Result<Self, Fail>;
 
     /// Transmits a single [PacketBuf].
-    fn transmit(&mut self, pkt: Box<dyn PacketBuf>);
+    fn transmit<P: PacketBuf>(&mut self, pkt: P) -> Result<(), Fail>;
 
     /// Receives a batch of [DemiBuffer].
-    fn receive(&mut self) -> ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>;
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
 }

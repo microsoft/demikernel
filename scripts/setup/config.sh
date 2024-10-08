@@ -14,7 +14,7 @@ if [ -z "$CONFIG_PATH" ]; then
     CONFIG_PATH="config.yaml"
 fi
 
-export PCI_ADDR=`lspci | grep Ethernet | cut -d ' ' -f 1`
+export PCI_ADDR=`lspci | grep Ethernet | cut -d ' ' -f 1 | tail -n 1`
 export IPV4_ADDR=`ifconfig $IFACE_NAME | grep "inet " | awk '{gsub(/^[ \t]+/,""); print$0, ""}' | cut -d " " -f 2`
 export MAC_ADDR=`ifconfig $IFACE_NAME | grep "ether " | awk '{gsub(/^[ \t]+/,""); print$0, ""}' | cut -d " " -f 2`
 
@@ -31,7 +31,6 @@ else
 fi
 
 # Set MAC_ADDR.
-
 if [ -z "$MAC_ADDR" ]; then
     echo "MAC address not found, skipping."
 else

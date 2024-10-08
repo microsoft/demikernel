@@ -13,6 +13,7 @@ use crate::{
         ipv4::Ipv4Header,
     },
     runtime::{
+        fail::Fail,
         memory::DemiBuffer,
         network::PacketBuf,
     },
@@ -22,7 +23,10 @@ use crate::{
 // Exports
 //======================================================================================================================
 
-pub use header::UdpHeader;
+pub use header::{
+    UdpHeader,
+    UDP_HEADER_SIZE,
+};
 
 //======================================================================================================================
 // Structures
@@ -31,16 +35,7 @@ pub use header::UdpHeader;
 /// UDP Datagram
 #[derive(Debug)]
 pub struct UdpDatagram {
-    /// Ethernet header.
-    ethernet2_hdr: Ethernet2Header,
-    /// IPv4 header.
-    ipv4_hdr: Ipv4Header,
-    /// UDP header.
-    udp_hdr: UdpHeader,
-    /// Payload
-    data: DemiBuffer,
-    /// Offload checksum to hardware?
-    checksum_offload: bool,
+    pkt: Option<DemiBuffer>,
 }
 
 //======================================================================================================================
@@ -54,16 +49,24 @@ impl UdpDatagram {
         ethernet2_hdr: Ethernet2Header,
         ipv4_hdr: Ipv4Header,
         udp_hdr: UdpHeader,
-        data: DemiBuffer,
+        mut pkt: DemiBuffer,
         checksum_offload: bool,
-    ) -> Self {
-        Self {
-            ethernet2_hdr,
-            ipv4_hdr,
-            udp_hdr,
-            data,
-            checksum_offload,
-        }
+    ) -> Result<Self, Fail> {
+        let eth_hdr_size: usize = ethernet2_hdr.compute_size();
+        let ipv4_hdr_size: usize = ipv4_hdr.compute_size();
+        let udp_hdr_size: usize = udp_hdr.size();
+
+        // Attach headers in reverse.
+        pkt.prepend(udp_hdr_size)?;
+        let (hdr_buf, data_buf): (&mut [u8], &mut [u8]) = pkt[..].split_at_mut(udp_hdr_size);
+        udp_hdr.serialize(hdr_buf, &ipv4_hdr, data_buf, checksum_offload);
+        let ipv4_payload_len: usize = pkt.len();
+        pkt.prepend(ipv4_hdr_size)?;
+        ipv4_hdr.serialize(&mut pkt[..ipv4_hdr_size], ipv4_payload_len);
+        pkt.prepend(eth_hdr_size)?;
+        ethernet2_hdr.serialize(&mut pkt[..eth_hdr_size]);
+
+        Ok(Self { pkt: Some(pkt) })
     }
 }
 
@@ -73,46 +76,9 @@ impl UdpDatagram {
 
 /// Packet Buffer Trait Implementation for UDP Datagrams
 impl PacketBuf for UdpDatagram {
-    /// Computes the header size of the target UDP datagram.
-    fn header_size(&self) -> usize {
-        self.ethernet2_hdr.compute_size() + self.ipv4_hdr.compute_size() + self.udp_hdr.size()
-    }
-
-    /// Computes the payload size of the target UDP datagram.
-    fn body_size(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Serializes the header of the target UDP datagram.
-    fn write_header(&self, buf: &mut [u8]) {
-        let mut cur_pos: usize = 0;
-        let eth_hdr_size: usize = self.ethernet2_hdr.compute_size();
-        let udp_hdr_size: usize = self.udp_hdr.size();
-        let ipv4_payload_len: usize = udp_hdr_size + self.data.len();
-
-        // Ethernet header.
-        self.ethernet2_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + eth_hdr_size)]);
-        cur_pos += eth_hdr_size;
-
-        // IPV4 header.
-        let ipv4_hdr_size = self.ipv4_hdr.compute_size();
-        self.ipv4_hdr
-            .serialize(&mut buf[cur_pos..(cur_pos + ipv4_hdr_size)], ipv4_payload_len);
-        cur_pos += ipv4_hdr_size;
-
-        // UDP header.
-        self.udp_hdr.serialize(
-            &mut buf[cur_pos..(cur_pos + udp_hdr_size)],
-            &self.ipv4_hdr,
-            &self.data[..],
-            self.checksum_offload,
-        );
-    }
-
     /// Returns the payload of the target UDP datagram.
-    fn take_body(&self) -> Option<DemiBuffer> {
-        Some(self.data.clone())
+    fn take_body(&mut self) -> Option<DemiBuffer> {
+        self.pkt.take()
     }
 }
 
@@ -163,7 +129,8 @@ mod test {
 
         // Payload.
         let bytes: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-        let data: DemiBuffer = DemiBuffer::from_slice(&bytes).expect("bytes should be shorter than u16::MAX");
+        let data: DemiBuffer =
+            DemiBuffer::from_slice_with_headroom(&bytes, HEADER_SIZE).expect("bytes should be shorter than u16::MAX");
 
         // Build expected header.
         let mut hdr: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
@@ -180,13 +147,16 @@ mod test {
         );
 
         // Output buffer.
-        let mut buf: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
-
-        let datagram: UdpDatagram = UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, checksum_offload);
-
+        let mut datagram: UdpDatagram = UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, checksum_offload)?;
+        let buf: DemiBuffer = match datagram.take_body() {
+            Some(body) => body,
+            _ => {
+                let cause = format!("No body in PacketBuf to transmit");
+                anyhow::bail!(cause);
+            },
+        };
         // Do it.
-        datagram.write_header(&mut buf);
-        crate::ensure_eq!(buf, hdr);
+        crate::ensure_eq!(buf[..HEADER_SIZE], hdr[..]);
 
         Ok(())
     }

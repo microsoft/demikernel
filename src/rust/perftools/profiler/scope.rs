@@ -159,6 +159,7 @@ impl Scope {
             out,
             "{},{},{},{},{}",
             format!("{},{:?},{}", markers, thread_id, self.name),
+            self.num_calls,
             percent_time,
             duration_sum_secs / (self.num_calls as f64),
             duration_sum_secs / (self.num_calls as f64) * ns_per_cycle,

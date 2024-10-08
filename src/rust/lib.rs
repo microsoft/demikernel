@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-#![cfg_attr(feature = "strict", deny(clippy:all))]
+#![deny(clippy::all)]
 #![recursion_limit = "512"]
 #![feature(test)]
 #![feature(allocator_api)]

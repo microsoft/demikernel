@@ -24,6 +24,7 @@ use crate::{
                 UdpDatagram,
                 UdpHeader,
             },
+            MAX_HEADER_SIZE,
         },
         test_helpers::{
             self,
@@ -102,10 +103,12 @@ fn test_simulation() -> Result<()> {
     let local_mac: MacAddress = test_helpers::ALICE_MAC;
     let remote_mac: MacAddress = test_helpers::BOB_MAC;
     let local_port: u16 = 12345;
-    let local_ephemeral_port: u16 = 49152;
+    // let local_ephemeral_port: u16 = 49152;
+    let local_ephemeral_port: u16 = 65535;
     let local_ipv4: Ipv4Addr = test_helpers::ALICE_IPV4;
     let remote_port: u16 = 23456;
-    let remote_ephemeral_port: u16 = 49152;
+    // let remote_ephemeral_port: u16 = 49152;
+    let remote_ephemeral_port: u16 = 65535;
     let remote_ipv4: Ipv4Addr = test_helpers::BOB_IPV4;
 
     let input_path: String = match env::var("INPUT") {
@@ -858,13 +861,7 @@ impl Simulation {
             None
         };
 
-        TcpSegment {
-            ethernet2_hdr,
-            ipv4_hdr,
-            tcp_hdr,
-            data,
-            tx_checksum_offload: false,
-        }
+        TcpSegment::new(ethernet2_hdr, ipv4_hdr, tcp_hdr, data, false).unwrap()
     }
 
     /// Builds a UDP datagram.
@@ -875,7 +872,7 @@ impl Simulation {
         let udp_hdr: UdpHeader = self.build_udp_header(&udp_packet);
         let data: DemiBuffer = Self::cook_buffer(udp_packet.len as usize, None);
 
-        UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, false)
+        UdpDatagram::new(ethernet2_hdr, ipv4_hdr, udp_hdr, data, false).unwrap()
     }
 
     /// Runs an incoming packet.
@@ -1062,33 +1059,19 @@ impl Simulation {
     }
 
     /// Serializes a TCP segment.
-    fn serialize_segment(pkt: TcpSegment) -> DemiBuffer {
-        let header_size: usize = pkt.header_size();
-        let body_size: usize = pkt.body_size();
-        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
-        pkt.write_header(&mut buf[..header_size]);
-        if let Some(body) = pkt.take_body() {
-            buf[header_size..].copy_from_slice(&body[..]);
-        }
-        buf
+    fn serialize_segment(mut pkt: TcpSegment) -> DemiBuffer {
+        pkt.take_body().unwrap()
     }
 
     /// Serializes a UDP datagram.
-    fn serialize_datagram(pkt: UdpDatagram) -> DemiBuffer {
-        let header_size: usize = pkt.header_size();
-        let body_size: usize = pkt.body_size();
-        let mut buf: DemiBuffer = DemiBuffer::new((header_size + body_size) as u16);
-        pkt.write_header(&mut buf[..header_size]);
-        if let Some(body) = pkt.take_body() {
-            buf[header_size..].copy_from_slice(&body[..]);
-        }
-        buf
+    fn serialize_datagram(mut pkt: UdpDatagram) -> DemiBuffer {
+        pkt.take_body().unwrap()
     }
 
     /// Cooks a buffer.
     fn cook_buffer(size: usize, stamp: Option<u8>) -> DemiBuffer {
         assert!(size < u16::MAX as usize);
-        let mut buf: DemiBuffer = DemiBuffer::new(size as u16);
+        let mut buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
         for i in 0..size {
             buf[i] = stamp.unwrap_or(i as u8);
         }

@@ -220,7 +220,7 @@ impl Profiler {
 
         writeln!(
             out,
-            "call_depth,thread_id,function_name,percent_time,cycles_per_call,nanoseconds_per_call"
+            "call_depth,thread_id,function_name,num_calls,percent_time,cycles_per_call,nanoseconds_per_call"
         )?;
         for root in self.roots.iter() {
             root.borrow()
