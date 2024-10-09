@@ -9,14 +9,14 @@ pub mod network;
 //======================================================================================================================
 
 use self::name::LibOSName;
-#[cfg(feature = "catnip-libos")]
-use crate::catnip::runtime::SharedDPDKRuntime;
+#[cfg(feature = "catnap-libos")]
+use crate::catnap::transport::SharedCatnapTransport;
 #[cfg(feature = "catpowder-libos")]
-use crate::catpowder::SharedCatpowderRuntime;
-#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
-use crate::inetstack::SharedInetStack;
+use crate::catpowder::{SharedCatpowderRuntime, SharedCatpowderTransport};
 #[cfg(feature = "profiler")]
 use crate::perftools::profiler::set_callback;
+#[cfg(feature = "catnip-libos")]
+use crate::{catnip::runtime::SharedDPDKRuntime, inetstack::SharedInetStack};
 use crate::{
     demikernel::{
         config::Config,
@@ -36,9 +36,6 @@ use ::std::{
     net::{SocketAddr, SocketAddrV4},
     time::Duration,
 };
-
-#[cfg(feature = "catnap-libos")]
-use crate::catnap::transport::SharedCatnapTransport;
 
 //======================================================================================================================
 // Structures
@@ -93,12 +90,13 @@ impl LibOS {
             #[cfg(feature = "catpowder-libos")]
             LibOSName::Catpowder => {
                 let layer1_endpoint: SharedCatpowderRuntime = SharedCatpowderRuntime::new(&config)?;
-                // This is our transport for Catpowder.
-                let inetstack: SharedInetStack =
-                    SharedInetStack::new(&config, runtime.clone(), layer1_endpoint).unwrap();
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(
-                    SharedNetworkLibOS::<SharedInetStack>::new(runtime, inetstack),
-                ))
+                let catpowder_transport: SharedCatpowderTransport =
+                    SharedCatpowderTransport::new(&config, runtime.clone(), layer1_endpoint.clone()).unwrap();
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
+                    SharedCatpowderTransport,
+                >::new(
+                    runtime, catpowder_transport
+                )))
             },
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {

@@ -27,7 +27,10 @@ use ::std::{
     time::Duration,
 };
 
-#[cfg(any(feature = "catpowder-libos", feature = "catnip-libos"))]
+#[cfg(feature = "catpowder-libos")]
+use crate::catpowder::SharedCatpowderTransport;
+
+#[cfg(feature = "catnip-libos")]
 use crate::inetstack::SharedInetStack;
 
 #[cfg(all(feature = "catnap-libos"))]
@@ -40,7 +43,7 @@ use crate::catnap::transport::SharedCatnapTransport;
 /// Network LIBOS.
 pub enum NetworkLibOSWrapper {
     #[cfg(feature = "catpowder-libos")]
-    Catpowder(SharedNetworkLibOS<SharedInetStack>),
+    Catpowder(SharedNetworkLibOS<SharedCatpowderTransport>),
     #[cfg(all(feature = "catnap-libos"))]
     Catnap(SharedNetworkLibOS<SharedCatnapTransport>),
     #[cfg(feature = "catnip-libos")]
