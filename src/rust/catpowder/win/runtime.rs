@@ -12,7 +12,7 @@ use crate::{
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
+    inetstack::protocols::{layer1::PhysicalLayer, layer4::Socket, Protocol, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
         libxdp,
@@ -27,6 +27,7 @@ use ::std::{
     borrow::{Borrow, BorrowMut},
     mem,
 };
+use std::net::SocketAddr;
 
 //======================================================================================================================
 // Structures
@@ -41,6 +42,7 @@ struct CatpowderRuntimeInner {
     api: XdpApi,
     tx: TxRing,
     rx: RxRing,
+    rules: Vec<(Protocol, u16)>,
 }
 //======================================================================================================================
 // Implementations
@@ -66,7 +68,23 @@ impl SharedCatpowderRuntime {
         let tx: TxRing = TxRing::new(&mut api, Self::RING_LENGTH, ifindex, QUEUEID)?;
         let rx: RxRing = RxRing::new(&mut api, Self::RING_LENGTH, ifindex, QUEUEID)?;
 
-        Ok(Self(SharedObject::new(CatpowderRuntimeInner { api, rx, tx })))
+        Ok(Self(SharedObject::new(CatpowderRuntimeInner {
+            api,
+            rx,
+            tx,
+            rules: vec![],
+        })))
+    }
+
+    pub fn bind(&mut self, socket: &Socket, local: SocketAddr) -> Result<(), Fail> {
+        let protocol: Protocol = match socket {
+            Socket::Udp(_) => Protocol::Udp,
+            Socket::Tcp(_) => Protocol::Tcp,
+        };
+
+        let inner_self: &mut CatpowderRuntimeInner = self.0.borrow_mut();
+        inner_self.rules.push((protocol, local.port()));
+        inner_self.rx.reprogram(&mut inner_self.api, &inner_self.rules)
     }
 }
 
