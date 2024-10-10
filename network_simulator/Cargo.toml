@@ -3,7 +3,7 @@
 
 [package]
 name = "demikernel-network-simulator"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Network Testing Tool for Demikernel"
@@ -20,6 +20,7 @@ lrlex = "0.13.7"
 lrpar = "0.13.7"
 
 [dependencies]
+anyhow = "1.0.89"
 clap = "4.5.15"
 
 [[bin]]
