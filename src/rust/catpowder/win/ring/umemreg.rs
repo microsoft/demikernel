@@ -8,10 +8,9 @@ use crate::runtime::libxdp;
 //======================================================================================================================
 
 /// A wrapper structure for a XDP user memory region.
-pub struct UmemReg
-{
+pub struct UmemReg {
     _buffer: Vec<u8>,
-    umem: libxdp::XSK_UMEM_REG
+    umem: libxdp::XSK_UMEM_REG,
 }
 
 //======================================================================================================================
@@ -31,7 +30,7 @@ impl UmemReg {
             Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
         };
 
-        Self{ _buffer: buffer, umem }
+        Self { _buffer: buffer, umem }
     }
 
     /// Gets a reference to the underlying XDP user memory region.
