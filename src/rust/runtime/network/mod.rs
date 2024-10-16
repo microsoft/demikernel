@@ -30,8 +30,7 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// This data structure demultiplexes network identifiers (e.g., file descriptors, IP addresses) to queue descriptors.
-pub struct NetworkQueueTable {
+pub struct SocketIdToQDescMap {
     mappings: HashMap<SocketId, QDesc>,
 }
 
@@ -39,27 +38,23 @@ pub struct NetworkQueueTable {
 // Associated Functions
 //======================================================================================================================
 
-impl NetworkQueueTable {
-    /// Get the queue descriptor associated with [id].
-    pub fn get_qd(&self, id: &SocketId) -> Option<QDesc> {
-        self.mappings.get(id).copied()
+impl SocketIdToQDescMap {
+    pub fn get_qd(&self, socket_id: &SocketId) -> Option<QDesc> {
+        self.mappings.get(socket_id).copied()
     }
 
-    /// Insert a new mapping between socket [id] and [qd].
-    pub fn insert_qd(&mut self, id: SocketId, qd: QDesc) -> Option<QDesc> {
-        self.mappings.insert(id, qd)
+    pub fn insert(&mut self, socket_id: SocketId, qd: QDesc) -> Option<QDesc> {
+        self.mappings.insert(socket_id, qd)
     }
 
-    /// Remove the mapping for [id].
-    pub fn remove_qd(&mut self, id: &SocketId) -> Option<QDesc> {
-        self.mappings.remove(id)
+    pub fn remove(&mut self, socket_id: &SocketId) -> Option<QDesc> {
+        self.mappings.remove(socket_id)
     }
 
-    /// Checks if the given `local` address is in use.
-    pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
+    pub fn is_in_use(&self, socket_addrv4: SocketAddrV4) -> bool {
         for (socket_id, _) in &self.mappings {
             match socket_id {
-                SocketId::Passive(addr) | SocketId::Active(addr, _) if *addr == local => return true,
+                SocketId::Passive(addr) | SocketId::Active(addr, _) if *addr == socket_addrv4 => return true,
                 _ => continue,
             }
         }
@@ -71,7 +66,7 @@ impl NetworkQueueTable {
 // Traits
 //======================================================================================================================
 
-impl Default for NetworkQueueTable {
+impl Default for SocketIdToQDescMap {
     fn default() -> Self {
         Self {
             mappings: HashMap::<SocketId, QDesc>::new(),
@@ -87,8 +82,8 @@ impl Default for NetworkQueueTable {
 /// supported. This method should be removed when IPv6 support is added; see
 /// https://github.com/microsoft/demikernel/issues/935
 ///
-pub fn unwrap_socketaddr(addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
-    match addr {
+pub fn unwrap_socketaddr(socket_addr: SocketAddr) -> Result<SocketAddrV4, Fail> {
+    match socket_addr {
         SocketAddr::V4(addr) => Ok(addr),
         _ => Err(Fail::new(libc::EINVAL, "bad address family")),
     }

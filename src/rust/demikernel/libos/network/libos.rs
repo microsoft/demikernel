@@ -99,36 +99,36 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// This function contains the LibOS-level functionality needed to bind a SharedNetworkQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, mut local: SocketAddr) -> Result<(), Fail> {
-        trace!("bind() qd={:?}, local={:?}", qd, local);
+    pub fn bind(&mut self, qd: QDesc, mut socket_addr: SocketAddr) -> Result<(), Fail> {
+        trace!("bind() qd={:?}, local={:?}", qd, socket_addr);
 
         // We only support IPv4 addresses.
-        let localv4: SocketAddrV4 = unwrap_socketaddr(local)?;
+        let socket_addrv4: SocketAddrV4 = unwrap_socketaddr(socket_addr)?;
 
         // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        match *localv4.ip() {
+        match *socket_addrv4.ip() {
             Ipv4Addr::UNSPECIFIED if self.get_shared_queue(&qd)?.get_qtype() == QType::UdpSocket => (),
             Ipv4Addr::UNSPECIFIED => {
                 let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
                 error!("bind(): {}", cause);
                 return Err(Fail::new(libc::ENOTSUP, &cause));
             },
-            addr if addr != self.local_ipv4_addr => {
-                let cause: String = format!("cannot bind to non-local address: {:?}", addr);
+            addrv4 if addrv4 != self.local_ipv4_addr => {
+                let cause: String = format!("cannot bind to non-local address: {:?}", addrv4);
                 error!("bind(): {}", &cause);
                 return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
             },
             _ => (),
         }
 
-        if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-            self.runtime.reserve_ephemeral_port(local.port())?
+        if SharedDemiRuntime::is_private_ephemeral_port(socket_addr.port()) {
+            self.runtime.reserve_ephemeral_port(socket_addr.port())?
         }
 
         // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if local.port() == 0 {
+        if socket_addr.port() == 0 {
             if self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
                 let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
                 error!("bind(): {}", cause);
@@ -136,27 +136,27 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             } else {
                 // Allocate an ephemeral port.
                 let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
-                local.set_port(new_port);
+                socket_addr.set_port(new_port);
             }
         }
 
-        if self.runtime.addr_in_use(localv4) {
+        if self.runtime.is_addr_in_use(socket_addrv4) {
             let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
 
-        if let Err(e) = self.get_shared_queue(&qd)?.bind(local) {
-            if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-                if self.runtime.free_ephemeral_port(local.port()).is_err() {
-                    warn!("bind(): leaking ephemeral port (port={})", local.port());
+        if let Err(e) = self.get_shared_queue(&qd)?.bind(socket_addr) {
+            if SharedDemiRuntime::is_private_ephemeral_port(socket_addr.port()) {
+                if self.runtime.free_ephemeral_port(socket_addr.port()).is_err() {
+                    warn!("bind(): leaking ephemeral port (port={})", socket_addr.port());
                 }
             }
             Err(e)
         } else {
             // Insert into address to queue descriptor table.
             self.runtime
-                .insert_socket_id_to_qd(SocketId::Passive(localv4.clone()), qd);
+                .insert_socket_id_to_qd(SocketId::Passive(socket_addrv4.clone()), qd);
             Ok(())
         }
     }

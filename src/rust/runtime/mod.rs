@@ -30,7 +30,7 @@ pub use demikernel_xdp_bindings as libxdp;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::network::{ephemeral::EphemeralPorts, socket::SocketId, NetworkQueueTable};
+use crate::runtime::network::{ephemeral::EphemeralPorts, socket::SocketId, SocketIdToQDescMap};
 
 #[cfg(feature = "profiler")]
 use crate::coroutine_timer;
@@ -70,16 +70,11 @@ const TIMER_FINER_RESOLUTION: usize = 2;
 // Structures
 //======================================================================================================================
 
-/// Demikernel Runtime
 pub struct DemiRuntime {
-    /// Shared IoQueueTable.
     qtable: IoQueueTable,
-    /// Shared coroutine scheduler.
     scheduler: SharedScheduler,
-    /// Shared ephemeral port allocator.
     ephemeral_ports: EphemeralPorts,
-    /// Shared table for mapping from underlying transport identifiers to queue descriptors.
-    network_table: NetworkQueueTable,
+    socket_id_to_qdesc_map: SocketIdToQDescMap,
     /// Number of iterations that we have polled since advancing the clock.
     ts_iters: usize,
     /// Tasks that have been completed and removed from the
@@ -117,7 +112,7 @@ impl SharedDemiRuntime {
             qtable: IoQueueTable::default(),
             scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
-            network_table: NetworkQueueTable::default(),
+            socket_id_to_qdesc_map: SocketIdToQDescMap::default(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
         }))
@@ -417,14 +412,14 @@ impl SharedDemiRuntime {
     }
 
     /// Reserves a specific port if it is free.
-    pub fn reserve_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        match self.ephemeral_ports.reserve(port) {
+    pub fn reserve_ephemeral_port(&mut self, port_number: u16) -> Result<(), Fail> {
+        match self.ephemeral_ports.reserve(port_number) {
             Ok(()) => {
-                trace!("Reserving ephemeral port: {:?}", port);
+                trace!("Reserving ephemeral port: {:?}", port_number);
                 Ok(())
             },
             Err(e) => {
-                warn!("Could not reserve ephemeral port: port={:?} error={:?}", port, e);
+                warn!("Could not reserve ephemeral port: port={:?} error={:?}", port_number, e);
                 Err(e)
             },
         }
@@ -469,7 +464,7 @@ impl SharedDemiRuntime {
 
     /// Checks if an identifier is in use and returns the queue descriptor if it is.
     pub fn get_qd_from_socket_id(&self, id: &SocketId) -> Option<QDesc> {
-        match self.network_table.get_qd(id) {
+        match self.socket_id_to_qdesc_map.get_qd(id) {
             Some(qd) => {
                 trace!("Looking up queue descriptor: socket_id={:?} qd={:?}", id, qd);
                 Some(qd)
@@ -484,12 +479,12 @@ impl SharedDemiRuntime {
     /// Inserts a mapping and returns the previously mapped queue descriptor if it exists.
     pub fn insert_socket_id_to_qd(&mut self, id: SocketId, qd: QDesc) -> Option<QDesc> {
         trace!("Insert socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
-        self.network_table.insert_qd(id, qd)
+        self.socket_id_to_qdesc_map.insert(id, qd)
     }
 
     /// Removes a mapping and returns the mapped queue descriptor.
     pub fn remove_socket_id_to_qd(&mut self, id: &SocketId) -> Option<QDesc> {
-        match self.network_table.remove_qd(id) {
+        match self.socket_id_to_qdesc_map.remove(id) {
             Some(qd) => {
                 trace!("Remove socket id to queue descriptor mapping: {:?} -> {:?}", id, qd);
                 Some(qd)
@@ -504,9 +499,9 @@ impl SharedDemiRuntime {
         }
     }
 
-    pub fn addr_in_use(&self, local: SocketAddrV4) -> bool {
-        trace!("Check address in use: {:?}", local);
-        self.network_table.addr_in_use(local)
+    pub fn is_addr_in_use(&self, socket_addrv4: SocketAddrV4) -> bool {
+        trace!("Check address in use: {:?}", socket_addrv4);
+        self.socket_id_to_qdesc_map.is_in_use(socket_addrv4)
     }
 }
 
@@ -568,7 +563,7 @@ impl Default for SharedDemiRuntime {
             qtable: IoQueueTable::default(),
             scheduler: SharedScheduler::default(),
             ephemeral_ports: EphemeralPorts::default(),
-            network_table: NetworkQueueTable::default(),
+            socket_id_to_qdesc_map: SocketIdToQDescMap::default(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
         }))
