@@ -417,7 +417,7 @@ impl SharedControlBlock {
             warn!("Got packet with URG bit set!");
         }
 
-        if data.len() > 0 {
+        if data.len() > 0 || header.fin {
             self.process_data(&mut header, data, seg_start, seg_end, seg_len)?;
         }
         self.process_remote_close(&header)?;
@@ -670,6 +670,8 @@ impl SharedControlBlock {
                             seg_len -= 1;
                             self.store_out_of_order_fin(seg_end);
                             seg_end = seg_end - SeqNumber::from(1);
+                            // Clear header FIN and process later.
+                            header.fin = false;
                         }
                         debug_assert_eq!(seg_len, data.len() as u32);
                         if seg_len > 0 {
@@ -959,7 +961,6 @@ impl SharedControlBlock {
 
         // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
         // the out-of-order queue is now in-order.  If so, we can move it to the receive queue.
-        let mut added_out_of_order: bool = false;
         while !self.receive_out_of_order_frames.is_empty() {
             if let Some(stored_entry) = self.receive_out_of_order_frames.front() {
                 if stored_entry.0 == recv_next {
@@ -970,7 +971,6 @@ impl SharedControlBlock {
                         recv_next = recv_next + SeqNumber::from(temp.1.len() as u32);
                         // This inserts the segment and wakes a waiting pop coroutine.
                         self.receiver.push(temp.1);
-                        added_out_of_order = true;
                     }
                 } else {
                     // Since our out-of-order list is sorted, we can stop when the next segment is not in sequence.
@@ -988,15 +988,13 @@ impl SharedControlBlock {
         // self.receive_next.set(recv_next);
 
         // This is a lot of effort just to check the FIN sequence number is correct in debug builds.
-        // TODO: Consider changing all this to "return added_out_of_order && self.out_of_order_fin.get().is_some()".
-        if added_out_of_order {
-            match self.receive_out_of_order_fin {
-                Some(fin) => {
-                    debug_assert_eq!(fin, recv_next);
-                    return true;
-                },
-                _ => (),
-            }
+        // Regardless of whether we have out of order data, check for the FIN because it might not have come on a data
+        // carrying packet.
+        match self.receive_out_of_order_fin {
+            Some(fin) if fin == recv_next => {
+                return true;
+            },
+            _ => (),
         }
 
         false
