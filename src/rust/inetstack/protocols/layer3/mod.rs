@@ -160,7 +160,6 @@ impl SharedLayer3Endpoint {
         self.layer2_endpoint.transmit_ipv4_packet(remote_link_addr, pkt)
     }
 
-    #[cfg(test)]
     pub fn get_local_addr(&self) -> Ipv4Addr {
         self.local_ipv4_addr
     }
