@@ -17,9 +17,7 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-/// A structure that represents a buffer in the UMEM region.
 pub struct XdpBuffer {
-    /// A pointer to the buffer descriptor.
     b: *mut libxdp::XSK_BUFFER_DESCRIPTOR,
     /// UMEM region that contains the buffer.
     umemreg: Rc<RefCell<UmemReg>>,
@@ -30,24 +28,20 @@ pub struct XdpBuffer {
 //======================================================================================================================
 
 impl XdpBuffer {
-    /// Instantiates a buffer.
     pub(super) fn new(b: *mut libxdp::XSK_BUFFER_DESCRIPTOR, umemreg: Rc<RefCell<UmemReg>>) -> Self {
         Self { b, umemreg }
     }
 
-    /// Sets the length of the target buffer.
     pub(super) fn set_len(&mut self, len: usize) {
         unsafe {
             (*self.b).Length = len as u32;
         }
     }
 
-    /// Gets the length of the target buffer.
     fn len(&self) -> usize {
         unsafe { (*self.b).Length as usize }
     }
 
-    /// Gets the relative base address of the target buffer.
     unsafe fn relative_base_address(&self) -> u64 {
         (*self.b).Address.__bindgen_anon_1.BaseAddress()
     }
@@ -56,7 +50,6 @@ impl XdpBuffer {
         (*self.b).Address.__bindgen_anon_1.Offset()
     }
 
-    /// Computes the address of the target buffer.
     unsafe fn compute_address(&self) -> *mut core::ffi::c_void {
         let mut ptr: *mut u8 = self.umemreg.borrow_mut().address() as *mut u8;
         ptr = ptr.add(self.relative_base_address() as usize);
@@ -64,7 +57,6 @@ impl XdpBuffer {
         ptr as *mut core::ffi::c_void
     }
 
-    /// Creates a vector with the contents of the target buffer.
     fn to_vector(&self) -> Vec<u8> {
         let mut out: Vec<u8> = Vec::with_capacity(self.len());
         self[..].clone_into(&mut out);
