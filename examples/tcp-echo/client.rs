@@ -67,7 +67,6 @@ pub struct TcpEchoClient {
 //======================================================================================================================
 
 impl TcpEchoClient {
-    /// Instantiates a new TCP echo client.
     pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddr) -> Result<Self> {
         return Ok(Self {
             libos,
