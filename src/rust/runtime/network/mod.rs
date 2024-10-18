@@ -7,7 +7,6 @@
 
 pub mod config;
 pub mod consts;
-pub mod ephemeral;
 pub mod ring;
 pub mod socket;
 pub mod transport;

@@ -104,7 +104,9 @@ impl Default for EphemeralPorts {
 
 #[cfg(test)]
 mod test {
-    use crate::runtime::network::ephemeral::{EphemeralPorts, FIRST_PRIVATE_PORT_NUMBER, LAST_PRIVATE_PORT_NUMBER};
+    use crate::inetstack::protocols::layer4::ephemeral::{
+        EphemeralPorts, FIRST_PRIVATE_PORT_NUMBER, LAST_PRIVATE_PORT_NUMBER,
+    };
     use ::anyhow::Result;
 
     #[test]
