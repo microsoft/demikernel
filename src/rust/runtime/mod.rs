@@ -30,8 +30,6 @@ pub use demikernel_xdp_bindings as libxdp;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::network::{ephemeral::EphemeralPorts, socket::SocketId, SocketIdToQDescMap};
-
 #[cfg(feature = "profiler")]
 use crate::coroutine_timer;
 
@@ -39,6 +37,8 @@ use crate::{
     expect_some,
     runtime::{
         fail::Fail,
+        network::socket::SocketId,
+        network::SocketIdToQDescMap,
         poll::PollFuture,
         queue::{IoQueue, IoQueueTable},
         scheduler::{SharedScheduler, TaskWithResult},
@@ -73,7 +73,6 @@ const TIMER_FINER_RESOLUTION: usize = 2;
 pub struct DemiRuntime {
     qtable: IoQueueTable,
     scheduler: SharedScheduler,
-    ephemeral_ports: EphemeralPorts,
     socket_id_to_qdesc_map: SocketIdToQDescMap,
     /// Number of iterations that we have polled since advancing the clock.
     ts_iters: usize,
@@ -111,7 +110,6 @@ impl SharedDemiRuntime {
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
             scheduler: SharedScheduler::default(),
-            ephemeral_ports: EphemeralPorts::default(),
             socket_id_to_qdesc_map: SocketIdToQDescMap::default(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),
@@ -397,53 +395,6 @@ impl SharedDemiRuntime {
         self.qtable.get_type(qd)
     }
 
-    /// Allocates a port from the shared ephemeral port allocator.
-    pub fn alloc_ephemeral_port(&mut self) -> Result<u16, Fail> {
-        match self.ephemeral_ports.alloc() {
-            Ok(port) => {
-                trace!("Allocating ephemeral port: {:?}", port);
-                Ok(port)
-            },
-            Err(e) => {
-                warn!("Could not allocate ephemeral port: {:?}", e);
-                Err(e)
-            },
-        }
-    }
-
-    /// Reserves a specific port if it is free.
-    pub fn reserve_ephemeral_port(&mut self, port_number: u16) -> Result<(), Fail> {
-        match self.ephemeral_ports.reserve(port_number) {
-            Ok(()) => {
-                trace!("Reserving ephemeral port: {:?}", port_number);
-                Ok(())
-            },
-            Err(e) => {
-                warn!("Could not reserve ephemeral port: port={:?} error={:?}", port_number, e);
-                Err(e)
-            },
-        }
-    }
-
-    /// Frees an ephemeral port.
-    pub fn free_ephemeral_port(&mut self, port: u16) -> Result<(), Fail> {
-        match self.ephemeral_ports.free(port) {
-            Ok(()) => {
-                trace!("Freeing ephemeral port: {:?}", port);
-                Ok(())
-            },
-            Err(e) => {
-                warn!("Could not free ephemeral port: port={:?} error={:?}", port, e);
-                Err(e)
-            },
-        }
-    }
-
-    /// Checks if a port is private.
-    pub fn is_private_ephemeral_port(port: u16) -> bool {
-        EphemeralPorts::is_private(port)
-    }
-
     /// Moves time forward deterministically.
     pub fn advance_clock(&mut self, now: Instant) {
         timer::global_advance_clock(now)
@@ -562,7 +513,6 @@ impl Default for SharedDemiRuntime {
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
             scheduler: SharedScheduler::default(),
-            ephemeral_ports: EphemeralPorts::default(),
             socket_id_to_qdesc_map: SocketIdToQDescMap::default(),
             ts_iters: 0,
             completed_tasks: HashMap::<QToken, (QDesc, OperationResult)>::new(),

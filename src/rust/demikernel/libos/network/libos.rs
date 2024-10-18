@@ -28,10 +28,11 @@ use ::futures::FutureExt;
 use ::socket2::{Domain, Protocol, Type};
 use ::std::{
     mem,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
     time::Duration,
 };
+use std::net::Ipv4Addr;
 
 //======================================================================================================================
 // Structures
@@ -42,7 +43,6 @@ use ::std::{
 /// Catnap libOS. All state is kept in the [runtime] and [qtable].
 /// TODO: Move [qtable] into [runtime] so all state is contained in the PosixRuntime.
 pub struct NetworkLibOS<T: NetworkTransport> {
-    local_ipv4_addr: Ipv4Addr,
     runtime: SharedDemiRuntime,
     transport: T,
 }
@@ -55,9 +55,8 @@ pub struct SharedNetworkLibOS<T: NetworkTransport>(SharedObject<NetworkLibOS<T>>
 //======================================================================================================================
 
 impl<T: NetworkTransport> SharedNetworkLibOS<T> {
-    pub fn new(local_ipv4_addr: Ipv4Addr, runtime: SharedDemiRuntime, transport: T) -> Self {
+    pub fn new(runtime: SharedDemiRuntime, transport: T) -> Self {
         Self(SharedObject::new(NetworkLibOS::<T> {
-            local_ipv4_addr,
             runtime: runtime.clone(),
             transport,
         }))
@@ -99,7 +98,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     }
 
     /// This function contains the LibOS-level functionality needed to bind a SharedNetworkQueue to a local address.
-    pub fn bind(&mut self, qd: QDesc, mut socket_addr: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, qd: QDesc, socket_addr: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, socket_addr);
 
         // We only support IPv4 addresses.
@@ -107,37 +106,18 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
         // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/189
-        match *socket_addrv4.ip() {
-            Ipv4Addr::UNSPECIFIED if self.get_shared_queue(&qd)?.get_qtype() == QType::UdpSocket => (),
-            Ipv4Addr::UNSPECIFIED => {
-                let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
-                error!("bind(): {}", cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            },
-            addrv4 if addrv4 != self.local_ipv4_addr => {
-                let cause: String = format!("cannot bind to non-local address: {:?}", addrv4);
-                error!("bind(): {}", &cause);
-                return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
-            },
-            _ => (),
-        }
-
-        if SharedDemiRuntime::is_private_ephemeral_port(socket_addr.port()) {
-            self.runtime.reserve_ephemeral_port(socket_addr.port())?
+        if *socket_addrv4.ip() == Ipv4Addr::UNSPECIFIED && self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
+            let cause: String = format!("cannot bind to wildcard address (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         // We only support the wildcard address for UDP sockets.
         // FIXME: https://github.com/demikernel/demikernel/issues/582
-        if socket_addr.port() == 0 {
-            if self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
-                let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
-                error!("bind(): {}", cause);
-                return Err(Fail::new(libc::ENOTSUP, &cause));
-            } else {
-                // Allocate an ephemeral port.
-                let new_port: u16 = self.runtime.alloc_ephemeral_port()?;
-                socket_addr.set_port(new_port);
-            }
+        if socket_addr.port() == 0 && self.get_shared_queue(&qd)?.get_qtype() != QType::UdpSocket {
+            let cause: String = format!("cannot bind to port 0 (qd={:?})", qd);
+            error!("bind(): {}", cause);
+            return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
         if self.runtime.is_addr_in_use(socket_addrv4) {
@@ -145,20 +125,12 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             error!("bind(): {}", &cause);
             return Err(Fail::new(libc::EADDRINUSE, &cause));
         }
+        self.get_shared_queue(&qd)?.bind(socket_addr)?;
+        // Insert into address to queue descriptor table.
+        self.runtime
+            .insert_socket_id_to_qd(SocketId::Passive(socket_addrv4.clone()), qd);
 
-        if let Err(e) = self.get_shared_queue(&qd)?.bind(socket_addr) {
-            if SharedDemiRuntime::is_private_ephemeral_port(socket_addr.port()) {
-                if self.runtime.free_ephemeral_port(socket_addr.port()).is_err() {
-                    warn!("bind(): leaking ephemeral port (port={})", socket_addr.port());
-                }
-            }
-            Err(e)
-        } else {
-            // Insert into address to queue descriptor table.
-            self.runtime
-                .insert_socket_id_to_qd(SocketId::Passive(socket_addrv4.clone()), qd);
-            Ok(())
-        }
+        Ok(())
     }
 
     /// Sets a SharedNetworkQueue and its underlying socket as a passive one. This function contains the LibOS-level
@@ -306,15 +278,6 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                         unwrap_socketaddr(local),
                         "we only support IPv4"
                     )));
-
-                    // Check if this is an ephemeral port.
-                    if SharedDemiRuntime::is_private_ephemeral_port(local.port()) {
-                        // Allocate ephemeral port from the pool, to leave  ephemeral port allocator in a consistent state.
-                        if let Err(e) = self.runtime.free_ephemeral_port(local.port()) {
-                            let cause: String = format!("close(): Could not free ephemeral port");
-                            warn!("{}: {:?}", cause, e);
-                        }
-                    }
                 }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine

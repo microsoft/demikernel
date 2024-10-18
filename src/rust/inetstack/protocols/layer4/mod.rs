@@ -5,6 +5,7 @@
 // Exports
 //======================================================================================================================
 
+pub mod ephemeral;
 pub mod tcp;
 pub mod udp;
 
@@ -21,6 +22,7 @@ use crate::{
     inetstack::protocols::{
         layer3::{ip::IpProtocol, SharedLayer3Endpoint},
         layer4::{
+            ephemeral::EphemeralPorts,
             tcp::{SharedTcpPeer, SharedTcpSocket},
             udp::{SharedUdpPeer, SharedUdpSocket},
         },
@@ -48,6 +50,7 @@ pub struct Peer {
     tcp: SharedTcpPeer,
     udp: SharedUdpPeer,
     layer3_endpoint: SharedLayer3Endpoint,
+    ephemeral_ports: EphemeralPorts,
 }
 
 /// Socket Representation.
@@ -75,6 +78,7 @@ impl Peer {
             tcp,
             udp,
             layer3_endpoint,
+            ephemeral_ports: EphemeralPorts::default(),
         })
     }
 
@@ -161,14 +165,28 @@ impl Peer {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, sd: &mut Socket, local: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, sd: &mut Socket, socket_addr: SocketAddr) -> Result<(), Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let local: SocketAddrV4 = unwrap_socketaddr(local)?;
+        let socket_addr_v4: SocketAddrV4 = unwrap_socketaddr(socket_addr)?;
+        // Check if we are allowed to bind to this address.
+        if *socket_addr_v4.ip() != self.layer3_endpoint.get_local_addr()
+            && *socket_addr_v4.ip() != Ipv4Addr::UNSPECIFIED
+        {
+            let cause: String = format!("cannot bind to non-local address: {:?}", socket_addr_v4);
+            error!("bind(): {}", &cause);
+            return Err(Fail::new(libc::EADDRNOTAVAIL, &cause));
+        }
 
         match sd {
-            Socket::Tcp(socket) => self.tcp.bind(socket, local),
-            Socket::Udp(socket) => self.udp.bind(socket, local),
+            Socket::Tcp(socket) => self.tcp.bind(socket, socket_addr_v4),
+            Socket::Udp(socket) => self.udp.bind(socket, socket_addr_v4),
+        }?;
+
+        if EphemeralPorts::is_private(socket_addr_v4.port()) {
+            self.ephemeral_ports.reserve(socket_addr_v4.port())?;
         }
+
+        Ok(())
     }
 
     ///
@@ -253,9 +271,11 @@ impl Peer {
 
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
+        let local: SocketAddrV4 =
+            SocketAddrV4::new(self.layer3_endpoint.get_local_addr(), self.ephemeral_ports.alloc()?);
 
         match sd {
-            Socket::Tcp(socket) => self.tcp.connect(socket, remote).await,
+            Socket::Tcp(socket) => self.tcp.connect(socket, local, remote).await,
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }
@@ -271,17 +291,55 @@ impl Peer {
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
     pub async fn close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.tcp.close(socket).await,
-            Socket::Udp(socket) => self.udp.close(socket).await,
+        let local_port: Option<u16> = match sd {
+            Socket::Tcp(socket) => {
+                let local_port: Option<u16> = match socket.local() {
+                    Some(socket_addr_v4) => Some(socket_addr_v4.port()),
+                    None => None,
+                };
+
+                self.tcp.close(socket).await?;
+                local_port
+            },
+            Socket::Udp(socket) => {
+                let local_port: Option<u16> = match socket.local() {
+                    Some(socket_addr_v4) => Some(socket_addr_v4.port()),
+                    None => None,
+                };
+                self.udp.close(socket).await?;
+                local_port
+            },
+        };
+        match local_port {
+            Some(port) if EphemeralPorts::is_private(port) => self.ephemeral_ports.free(port),
+            _ => Ok(()),
         }
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
     pub fn hard_close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
-        match sd {
-            Socket::Tcp(socket) => self.tcp.hard_close(socket),
-            Socket::Udp(socket) => self.udp.hard_close(socket),
+        let local_port: Option<u16> = match sd {
+            Socket::Tcp(socket) => {
+                let local_port: Option<u16> = match socket.local() {
+                    Some(socket_addr_v4) => Some(socket_addr_v4.port()),
+                    None => None,
+                };
+
+                self.tcp.hard_close(socket)?;
+                local_port
+            },
+            Socket::Udp(socket) => {
+                let local_port: Option<u16> = match socket.local() {
+                    Some(socket_addr_v4) => Some(socket_addr_v4.port()),
+                    None => None,
+                };
+                self.udp.hard_close(socket)?;
+                local_port
+            },
+        };
+        match local_port {
+            Some(port) if EphemeralPorts::is_private(port) => self.ephemeral_ports.free(port),
+            _ => Ok(()),
         }
     }
 
