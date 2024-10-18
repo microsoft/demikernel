@@ -66,7 +66,9 @@ CARGO = $(USERPROFILE)\.cargo\bin\cargo.exe
 !endif
 CARGO_FLAGS = $(CARGO_FLAGS) --profile $(BUILD)
 
-RUSTFLAGS = $(RUSTFLAGS) -D warnings
+!ifndef RUSTFLAGS
+RUSTFLAGS = -D warnings
+!endif
 
 #=======================================================================================================================
 # Libraries
