@@ -40,7 +40,7 @@ impl SharedEngine {
         let transport: SharedInetStack = SharedInetStack::new_test(&config, runtime.clone(), layer1_endpoint.clone())?;
 
         Ok(Self(SharedObject::new(Engine {
-            libos: SharedNetworkLibOS::<SharedInetStack>::new(config.local_ipv4_addr()?, runtime, transport),
+            libos: SharedNetworkLibOS::<SharedInetStack>::new(runtime, transport),
             layer1_endpoint,
         })))
     }

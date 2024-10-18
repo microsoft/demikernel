@@ -86,7 +86,6 @@ impl LibOS {
             LibOSName::Catnap => Self::NetworkLibOS(NetworkLibOSWrapper::Catnap(SharedNetworkLibOS::<
                 SharedCatnapTransport,
             >::new(
-                config.local_ipv4_addr()?,
                 runtime.clone(),
                 SharedCatnapTransport::new(&config, &mut runtime)?,
             ))),
@@ -98,7 +97,7 @@ impl LibOS {
                 let inetstack: SharedInetStack =
                     SharedInetStack::new(&config, runtime.clone(), layer1_endpoint).unwrap();
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(
-                    SharedNetworkLibOS::<SharedInetStack>::new(config.local_ipv4_addr()?, runtime, inetstack),
+                    SharedNetworkLibOS::<SharedInetStack>::new(runtime, inetstack),
                 ))
             },
             #[cfg(feature = "catnip-libos")]
@@ -109,9 +108,7 @@ impl LibOS {
                     SharedInetStack::new(&config, runtime.clone(), layer1_endpoint).unwrap();
 
                 Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<SharedInetStack>::new(
-                    config.local_ipv4_addr()?,
-                    runtime,
-                    inetstack,
+                    runtime, inetstack,
                 )))
             },
             _ => panic!("unsupported libos"),

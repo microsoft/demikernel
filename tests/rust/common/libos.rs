@@ -51,11 +51,7 @@ impl DummyLibOS {
 
         logging::initialize();
         let transport = SharedInetStack::new_test(&config, runtime.clone(), network)?;
-        Ok(Self(SharedNetworkLibOS::<SharedInetStack>::new(
-            config.local_ipv4_addr()?,
-            runtime,
-            transport,
-        )))
+        Ok(Self(SharedNetworkLibOS::<SharedInetStack>::new(runtime, transport)))
     }
 
     pub fn prepare_dummy_buffer(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
