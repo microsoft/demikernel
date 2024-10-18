@@ -269,13 +269,18 @@ impl Peer {
     pub async fn connect(&mut self, sd: &mut Socket, remote: SocketAddr) -> Result<(), Fail> {
         trace!("connect(): remote={:?}", remote);
 
-        // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-        let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
-        let local: SocketAddrV4 =
-            SocketAddrV4::new(self.layer3_endpoint.get_local_addr(), self.ephemeral_ports.alloc()?);
-
         match sd {
-            Socket::Tcp(socket) => self.tcp.connect(socket, local, remote).await,
+            Socket::Tcp(socket) => {
+                // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
+                let remote: SocketAddrV4 = unwrap_socketaddr(remote)?;
+                // If not bound, allocate an ephemeral port.
+                let local: SocketAddrV4 = match socket.local() {
+                    Some(local) => local,
+                    None => SocketAddrV4::new(self.layer3_endpoint.get_local_addr(), self.ephemeral_ports.alloc()?),
+                };
+
+                self.tcp.connect(socket, local, remote).await
+            },
             _ => Err(Fail::new(libc::EINVAL, "invalid queue type")),
         }
     }

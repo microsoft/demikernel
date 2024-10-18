@@ -28,11 +28,10 @@ use ::futures::FutureExt;
 use ::socket2::{Domain, Protocol, Type};
 use ::std::{
     mem,
-    net::{SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
     time::Duration,
 };
-use std::net::Ipv4Addr;
 
 //======================================================================================================================
 // Structures
