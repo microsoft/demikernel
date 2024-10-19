@@ -19,14 +19,11 @@ use std::{
 ///
 /// Values may be assigned to an expiration time or not.
 struct Record<V> {
-    /// Stored Value
     value: V,
-    /// Expiration Time
     expiration: Option<Instant>,
 }
 
 impl<V> Record<V> {
-    /// Asserts if the target cache entry has expired.
     fn has_expired(&self, now: Instant) -> bool {
         if let Some(e) = self.expiration {
             return now >= e;
@@ -45,9 +42,7 @@ pub struct HashTtlCache<K, V> {
     map: HashMap<K, Record<V>>,
     /// Dead values.
     graveyard: HashMap<K, V>,
-    /// Default expiration.
     default_ttl: Option<Duration>,
-    /// Current time.
     clock: Instant,
 }
 
@@ -59,7 +54,6 @@ impl<K, V> HashTtlCache<K, V>
 where
     K: Eq + Hash + Clone,
 {
-    /// Instantiates an TTL cache.
     pub fn new(now: Instant, default_ttl: Option<Duration>) -> HashTtlCache<K, V> {
         if let Some(ttl) = default_ttl {
             assert!(ttl > Duration::new(0, 0));
@@ -73,14 +67,12 @@ where
         }
     }
 
-    // Cleanups the cache.
     pub fn clear(&mut self) {
         self.graveyard.clear();
         self.map.clear();
     }
 
     #[cfg(test)]
-    // Advances the internal clock of the cache.
     pub fn advance_clock(&mut self, now: Instant) {
         assert!(now >= self.clock);
         self.clock = now;
@@ -118,7 +110,6 @@ where
     }
 
     #[cfg(test)]
-    /// Removes an entry from the cache.
     pub fn remove(&mut self, key: &K) -> Option<V> {
         match self.get(key) {
             Some(_) => {
@@ -134,13 +125,11 @@ where
         }
     }
 
-    // Gets an entry from the cache.
     pub fn get(&self, key: &K) -> Option<&V> {
         return self.map.get(key).map(|r| &r.value);
     }
 
     #[cfg(test)]
-    // Iterator.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         let clock = self.clock;
         self.map.iter().flat_map(move |(key, record)| {
@@ -152,7 +141,6 @@ where
         })
     }
 
-    /// Collect dead entries in the cache.
     pub fn cleanup(&mut self) {
         let mut dead_entries: Vec<K> = Vec::new();
 

@@ -203,7 +203,6 @@ mod test {
     use ::anyhow::Result;
     use ::std::net::Ipv4Addr;
 
-    /// Tets UDP serialization.
     #[test]
     fn test_udp_header_serialization() -> Result<()> {
         const UDP_HEADER_SIZE: usize = 8;
@@ -216,18 +215,15 @@ mod test {
         let checksum_offload: bool = true;
         let udp_hdr: UdpHeader = UdpHeader::new(src_port, dest_port);
 
-        // Payload.
-        let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
-        let mut buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&data, UDP_HEADER_SIZE)?;
+        let payload_data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
+        let mut buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&payload_data, UDP_HEADER_SIZE)?;
 
-        // Do it.
         udp_hdr.serialize_and_attach(&mut buf, &src_addr, &dst_addr, checksum_offload);
         crate::ensure_eq!(buf[..UDP_HEADER_SIZE], [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0]);
 
         Ok(())
     }
 
-    /// Tests UDP parsing.
     #[test]
     fn test_udp_header_parsing() -> Result<()> {
         // Build fake IPv4 header.
@@ -240,13 +236,9 @@ mod test {
         let dest_port: u16 = 0x45;
         let hdr: [u8; 8] = [0x0, 0x32, 0x0, 0x45, 0x0, 0x10, 0x0, 0x0];
 
-        // Payload.
-        let data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
+        let payload_data: [u8; 8] = [0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1];
+        let mut buf: DemiBuffer = DemiBuffer::from_slice(&[hdr, payload_data].concat())?;
 
-        // Input buffer.
-        let mut buf: DemiBuffer = DemiBuffer::from_slice(&[hdr, data].concat())?;
-
-        // Do it.
         match UdpHeader::parse_and_strip(&src_addr, &dst_addr, &mut buf, checksum_offload) {
             Ok(udp_hdr) => {
                 crate::ensure_eq!(udp_hdr.src_port(), src_port);

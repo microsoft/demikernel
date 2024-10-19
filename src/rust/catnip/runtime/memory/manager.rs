@@ -48,12 +48,9 @@ pub struct MemoryManager {
 // Associate Functions
 //======================================================================================================================
 
-/// Associated Functions for Memory Managers
 impl MemoryManager {
-    /// Instantiates a memory manager.
     pub fn new(max_body_size: usize) -> Result<Self, Error> {
         let config: MemoryConfig = MemoryConfig::new(Some(max_body_size), None, None);
-        // Create memory pool for holding packet bodies.
         let body_pool: MemoryPool = MemoryPool::new(
             CString::new("body_pool")?,
             config.get_max_body_size(),
@@ -64,7 +61,6 @@ impl MemoryManager {
         Ok(Self { config, body_pool })
     }
 
-    /// Converts a runtime buffer into a scatter-gather array.
     pub fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
         let data: *const u8 = buf.as_ptr();
@@ -82,25 +78,21 @@ impl MemoryManager {
         })
     }
 
-    /// Allocates a body mbuf.
     /// TODO: Review the need of this function after we are done with the refactor of the DPDK runtime.
     pub fn alloc_body_mbuf(&self) -> Result<DemiBuffer, Fail> {
         let mbuf_ptr: *mut rte_mbuf = self.body_pool.alloc_mbuf(None)?;
         Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
     }
 
-    /// Allocates a scatter-gather array.
     pub fn alloc_sgarray(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
-        // We can't allocate a zero-sized buffer.
         if size == 0 {
             let cause: String = format!("cannot allocate a zero-sized buffer");
             error!("sgaalloc(): {}", cause);
             return Err(Fail::new(libc::EINVAL, &cause));
         }
 
-        // We can't allocate more than a single buffer.
         if size > u16::MAX as usize {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
@@ -132,9 +124,7 @@ impl MemoryManager {
         })
     }
 
-    /// Releases a scatter-gather array.
     pub fn free_sgarray(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
@@ -157,7 +147,6 @@ impl MemoryManager {
 
     /// Clones a scatter-gather array into a DemiBuffer.
     pub fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        // Check arguments.
         // TODO: Drop this check once we support scatter-gather arrays with multiple segments.
         if sga.sga_numsegs != 1 {
             return Err(Fail::new(libc::EINVAL, "demi_sgarray_t has invalid segment count"));
@@ -210,7 +199,6 @@ impl MemoryManager {
             clone.trim(trim_amount)?;
         }
 
-        // Return the clone.
         Ok(clone)
     }
 

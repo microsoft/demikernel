@@ -84,9 +84,7 @@ pub struct Ipv4Header {
 // Associated Functions
 //======================================================================================================================
 
-/// Associated Functions for IPv4 Headers
 impl Ipv4Header {
-    /// Instantiates an empty IPv4 header.
     pub fn new(src_addr: Ipv4Addr, dst_addr: Ipv4Addr, protocol: IpProtocol) -> Self {
         Self {
             version: IPV4_VERSION,
@@ -105,7 +103,6 @@ impl Ipv4Header {
         }
     }
 
-    /// Computes the size of the target IPv4 header.
     pub fn compute_size(&self) -> usize {
         (self.ihl as usize) << 2
     }
@@ -117,7 +114,6 @@ impl Ipv4Header {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too small"));
         }
 
-        // IP version number.
         let version: u8 = buf[0] >> 4;
         if version != IPV4_VERSION {
             return Err(Fail::new(ENOTSUP, "unsupported IP version"));
@@ -146,7 +142,6 @@ impl Ipv4Header {
             warn!("ignoring ecn field (ecn={:?})", ecn);
         }
 
-        // Total length.
         let total_length: u16 = u16::from_be_bytes([hdr_buf[2], hdr_buf[3]]);
         if total_length < hdr_size {
             return Err(Fail::new(EBADMSG, "ipv4 datagram smaller than header"));
@@ -182,7 +177,6 @@ impl Ipv4Header {
             return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
-        // Fragment offset.
         let fragment_offset: u16 = u16::from_be_bytes([hdr_buf[6], hdr_buf[7]]) & 0x1fff;
         // TODO: drop this check once we support fragmentation.
         if fragment_offset != 0 {
@@ -190,16 +184,13 @@ impl Ipv4Header {
             return Err(Fail::new(ENOTSUP, "ipv4 fragmentation is not supported"));
         }
 
-        // Time to live.
         let time_to_live: u8 = hdr_buf[8];
         if time_to_live == 0 {
             return Err(Fail::new(EBADMSG, "ipv4 datagram too old"));
         }
 
-        // Protocol.
         let protocol: IpProtocol = IpProtocol::try_from(hdr_buf[9])?;
 
-        // Header checksum.
         let header_checksum: u16 = u16::from_be_bytes([hdr_buf[10], hdr_buf[11]]);
         if header_checksum == 0xffff {
             return Err(Fail::new(EBADMSG, "ipv4 checksum invalid"));
@@ -208,10 +199,7 @@ impl Ipv4Header {
             return Err(Fail::new(EBADMSG, "ipv4 checksum mismatch"));
         }
 
-        // Source address.
         let src_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[12], hdr_buf[13], hdr_buf[14], hdr_buf[15]);
-
-        // Destination address.
         let dst_addr: Ipv4Addr = Ipv4Addr::new(hdr_buf[16], hdr_buf[17], hdr_buf[18], hdr_buf[19]);
 
         // Truncate datagram.
@@ -277,28 +265,23 @@ impl Ipv4Header {
         buf[10..12].copy_from_slice(&checksum.to_be_bytes());
     }
 
-    /// Returns the source address field stored in the target IPv4 header.
     pub fn get_src_addr(&self) -> Ipv4Addr {
         self.src_addr
     }
 
-    /// Returns the destination address field stored in the target IPv4 header.
     pub fn get_dest_addr(&self) -> Ipv4Addr {
         self.dst_addr
     }
 
-    /// Returns the protocol field stored in the target IPv4 header.
     pub fn get_protocol(&self) -> IpProtocol {
         self.protocol
     }
 
-    /// Computes the checksum of the target IPv4 header.
     pub fn compute_checksum(buf: &[u8]) -> u16 {
         let mut state: u32 = 0xffff;
 
-        // Do not compute checksum if buffer is too small.
         if buf.len() < IPV4_HEADER_MIN_SIZE as usize {
-            // This should not happen by construction. If it does, log it.
+            // This should not happen by construction.
             warn!("compute_checksum: buffer is too small (len={})", buf.len());
             return 0;
         }
