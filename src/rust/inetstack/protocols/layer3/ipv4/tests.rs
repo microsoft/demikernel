@@ -18,7 +18,6 @@ use ::anyhow::Result;
 // Helper Functions
 //======================================================================================================================
 
-/// Builds an IPv4 header.
 /// NOTE: that we can use this function to create invalid IPv4 headers
 fn build_ipv4_header(
     buf: &mut [u8],
@@ -109,7 +108,6 @@ fn test_ipv4_header_parse_good() -> Result<()> {
         // Payload
         buf[header_size..datagram_size].copy_from_slice(&data);
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf[..datagram_size]) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -160,7 +158,6 @@ fn test_ipv4_header_parse_invalid_version() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -201,7 +198,6 @@ fn test_ipv4_header_parse_invalid_ihl() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -243,7 +239,6 @@ fn test_ipv4_header_parse_invalid_total_length() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit in a DemiBuffer: {:?}", e),
@@ -285,7 +280,6 @@ fn test_ipv4_header_parse_invalid_flags() -> Result<()> {
         None,
     );
 
-    // Do it.
     let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
         Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -324,7 +318,6 @@ fn test_ipv4_header_parse_invalid_ttl() -> Result<()> {
         None,
     );
 
-    // Do it.
     let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
         Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -363,7 +356,6 @@ fn test_ipv4_header_parse_invalid_protocol() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -405,7 +397,6 @@ fn test_ipv4_header_parse_invalid_header_checksum() -> Result<()> {
         Some(hdr_checksum),
     );
 
-    // Do it.
     let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
         Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -448,7 +439,6 @@ fn test_ipv4_header_parse_unsupported_dscp() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -490,7 +480,6 @@ fn test_ipv4_header_parse_unsupported_ecn() -> Result<()> {
             None,
         );
 
-        // Do it.
         let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
             Ok(buf) => buf,
             Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -535,7 +524,6 @@ fn test_ipv4_header_parse_unsupported_fragmentation() -> Result<()> {
         None,
     );
 
-    // Do it.
     let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
         Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -566,7 +554,6 @@ fn test_ipv4_header_parse_unsupported_fragmentation() -> Result<()> {
         None,
     );
 
-    // Do it.
     let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
         Ok(buf) => buf,
         Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
@@ -614,7 +601,6 @@ fn test_ipv4_header_parse_unsupported_protocol() -> Result<()> {
                     None,
                 );
 
-                // Do it.
                 let mut buf: DemiBuffer = match DemiBuffer::from_slice(&buf) {
                     Ok(buf) => buf,
                     Err(e) => anyhow::bail!("'buf' should fit: {:?}", e),
