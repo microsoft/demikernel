@@ -12,7 +12,7 @@ use crate::{
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
-    inetstack::protocols::{layer1::PhysicalLayer, MAX_HEADER_SIZE},
+    inetstack::protocols::{layer1::PhysicalLayer, layer4::Socket, Protocol, MAX_HEADER_SIZE},
     runtime::{
         fail::Fail,
         libxdp,
@@ -24,6 +24,7 @@ use crate::{
 use ::arrayvec::ArrayVec;
 use ::libc::c_void;
 use ::std::{borrow::BorrowMut, mem};
+use std::{borrow::Borrow, net::SocketAddr};
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
     System::SystemInformation::{
@@ -44,6 +45,7 @@ struct CatpowderRuntimeInner {
     api: XdpApi,
     tx: TxRing,
     rx_rings: Vec<RxRing>,
+    rules: Vec<(Protocol, u16)>,
 }
 //======================================================================================================================
 // Implementations
@@ -85,7 +87,78 @@ impl SharedCatpowderRuntime {
         }
         trace!("Created {} RX rings.", rx_rings.len());
 
-        Ok(Self(SharedObject::new(CatpowderRuntimeInner { api, tx, rx_rings })))
+        Ok(Self(SharedObject::new(CatpowderRuntimeInner {
+            api,
+            tx,
+            rx_rings,
+            rules: vec![],
+        })))
+    }
+
+    /// Reprograms the runtime with the current rule set. If new_rules is None, the current ruleset
+    /// is used. If roll_back is true, the ruleset for each updated queue is rolled back to the
+    /// previous rule set if any error occurs during reprogramming. stop_idx is the index of the
+    /// last queue to reprogram, useful when rolling back partially updated rule sets.
+    fn reprogram(
+        &mut self,
+        new_rules: Option<&Vec<(Protocol, u16)>>,
+        roll_back: bool,
+        stop_idx: usize,
+    ) -> Result<(), Fail> {
+        let inner_self: &mut CatpowderRuntimeInner = self.0.borrow_mut();
+        let mut err: Option<Fail> = None;
+
+        for (idx, rx) in inner_self.rx_rings.iter_mut().take(stop_idx).enumerate() {
+            if let Err(e) = rx.reprogram(&mut inner_self.api, &new_rules.unwrap_or(&inner_self.rules)) {
+                if roll_back {
+                    if let Err(sub_err) = self.reprogram(None, false, idx) {
+                        error!("Failed to roll back rule set: {:?}", sub_err);
+                    }
+                    return Err(e);
+                } else {
+                    err = Some(e);
+                }
+            }
+        }
+
+        err.map_or(Ok(()), |e| Err(e))
+    }
+
+    /// Updates the rule set to a new rule vector, triggering a reprogram of the XDP runtime. If
+    /// roll_back is false, the rule set is updated even if the reprogram fails.
+    fn update_rule_set(&mut self, new_rules: Vec<(Protocol, u16)>, roll_back: bool) -> Result<(), Fail> {
+        let result: Result<(), Fail> = self.reprogram(Some(&new_rules), roll_back, self.0.borrow().rx_rings.len());
+        if result.is_ok() || !roll_back {
+            self.0.borrow_mut().rules = new_rules;
+        }
+        result
+    }
+
+    /// Adds a rule to the current rule set, triggering a reprogram of the XDP runtime.
+    fn add_rule(&mut self, protocol: Protocol, port: u16) -> Result<(), Fail> {
+        let inner_self: &mut CatpowderRuntimeInner = self.0.borrow_mut();
+        let mut rules: Vec<(Protocol, u16)> = inner_self.rules.clone();
+        rules.push((protocol, port));
+        self.update_rule_set(rules, true)
+    }
+
+    /// Removes a rule from the current rule set, triggering a reprogram of the XDP runtime.
+    pub fn remove_rule(&mut self, protocol: Protocol, port: u16) -> Result<(), Fail> {
+        let inner_self: &mut CatpowderRuntimeInner = self.0.borrow_mut();
+        let mut rules: Vec<(Protocol, u16)> = inner_self.rules.clone();
+        rules.retain(|(p, prt)| *p != protocol || *prt != port);
+        self.update_rule_set(rules, false)
+    }
+
+    /// Add a rule for a port binding, triggering a reprogram of the XDP runtime. On success,
+    pub fn bind(&mut self, socket: &Socket, local: SocketAddr) -> Result<(Protocol, u16), Fail> {
+        let protocol: Protocol = match socket {
+            Socket::Udp(_) => Protocol::Udp,
+            Socket::Tcp(_) => Protocol::Tcp,
+        };
+
+        self.add_rule(protocol, local.port())?;
+        Ok((protocol, local.port()))
     }
 }
 

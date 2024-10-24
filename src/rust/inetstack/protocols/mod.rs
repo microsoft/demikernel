@@ -28,6 +28,7 @@ pub const MAX_HEADER_SIZE: usize =
 // Structures
 //======================================================================================================================
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
     Tcp,
     Udp,
