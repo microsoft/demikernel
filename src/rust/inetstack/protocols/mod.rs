@@ -20,6 +20,7 @@ use ::std::slice::ChunksExact;
 // Structures
 //======================================================================================================================
 
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum Protocol {
     Tcp,
     Udp,

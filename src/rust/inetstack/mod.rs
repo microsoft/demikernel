@@ -24,7 +24,10 @@ use crate::{
 use ::socket2::{Domain, Type};
 #[cfg(test)]
 use ::std::{collections::HashMap, hash::RandomState, net::Ipv4Addr, time::Duration};
-use protocols::{layer1::PhysicalLayer, layer2::SharedLayer2Endpoint, layer3::SharedLayer3Endpoint};
+use protocols::{
+    layer1::PhysicalLayer, layer2::SharedLayer2Endpoint, layer3::SharedLayer3Endpoint,
+    layer4::ephemeral::EphemeralPorts,
+};
 
 use ::futures::FutureExt;
 use ::std::{
@@ -70,10 +73,11 @@ impl SharedInetStack {
         layer1_endpoint: P,
     ) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
+        let ports: EphemeralPorts = layer1_endpoint.ephemeral_ports();
         let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
         let layer3_endpoint: SharedLayer3Endpoint =
             SharedLayer3Endpoint::new(config, runtime.clone(), layer2_endpoint, rng_seed)?;
-        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed)?;
+        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed, ports)?;
         let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
             runtime: runtime.clone(),
             layer4_endpoint,

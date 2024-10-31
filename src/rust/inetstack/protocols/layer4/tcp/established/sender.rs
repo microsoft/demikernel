@@ -453,6 +453,13 @@ impl Sender {
                 cb.sender.unacked_queue.len()
             );
         }
+
+        if cb.sender.unacked_queue.len() > 0 {
+            trace!(
+                "send_segment(): unacked_queue.len() = {:?}",
+                cb.sender.unacked_queue.len()
+            );
+        }
         cb.sender.unacked_queue.push(unacked_segment);
 
         // Set the retransmit timer.

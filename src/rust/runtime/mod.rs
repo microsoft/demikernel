@@ -50,7 +50,6 @@ use ::std::pin::Pin;
 use ::std::{
     any::Any,
     collections::HashMap,
-    net::SocketAddrV4,
     ops::{Deref, DerefMut},
     pin::pin,
     rc::Rc,
@@ -373,11 +372,6 @@ impl SharedDemiRuntime {
                 None
             },
         }
-    }
-
-    pub fn is_addr_in_use(&self, socket_addrv4: SocketAddrV4) -> bool {
-        trace!("Check address in use: {:?}", socket_addrv4);
-        self.socket_id_to_qdesc_map.is_in_use(socket_addrv4)
     }
 
     pub fn poll_background_tasks(&mut self) {
