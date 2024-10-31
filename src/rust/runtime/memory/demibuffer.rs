@@ -248,7 +248,7 @@ impl MetaData {
 // Since our MetaData structure is 64-byte aligned, the lower 6 bits of a pointer to it are guaranteed to be zero.
 // We currently only use the lower 2 of those bits to hold the type tag.
 #[derive(PartialEq)]
-enum Tag {
+pub(super) enum Tag {
     Heap = 1,
     #[cfg(feature = "libdpdk")]
     Dpdk = 2,
@@ -491,6 +491,21 @@ impl DemiBuffer {
     // Public Functions
     // ----------------
 
+    // Determine if a DemiBuffer was allocted from a specific BufferPool.
+    pub fn is_from_pool(&self, pool: &BufferPool) -> bool {
+        match self.get_tag() {
+            Tag::Heap => {
+                if let Some(check) = self.as_metadata().pool.as_ref() {
+                    Rc::ptr_eq(&check, pool.pool())
+                } else {
+                    false
+                }
+            },
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => false,
+        }
+    }
+
     /// Returns `true` if this `DemiBuffer` was allocated off of the heap, and `false` otherwise.
     pub fn is_heap_allocated(&self) -> bool {
         self.get_tag() == Tag::Heap
@@ -506,6 +521,11 @@ impl DemiBuffer {
     // Note that while we return a usize here (for convenience), the value is guaranteed to never exceed u16::MAX.
     pub fn len(&self) -> usize {
         self.as_metadata().data_len as usize
+    }
+
+    /// Returns the amount of headroom available in the packet.
+    pub fn headroom(&self) -> u16 {
+        self.as_metadata().data_off
     }
 
     /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
@@ -752,6 +772,12 @@ impl DemiBuffer {
     // ------------------
     // Internal Functions
     // ------------------
+
+    /// Returns the number of bytes subtracted from the beginning of the allocated buffer returned when calling
+    /// `into_raw`.
+    pub(super) fn metadata_size(tag: Tag) -> usize {
+        size_of::<MetaData>() - tag as usize
+    }
 
     // Gets the tag containing the type of DemiBuffer.
     #[inline]

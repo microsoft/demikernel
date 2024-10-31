@@ -8,7 +8,7 @@
 use crate::{
     catpowder::win::{
         api::XdpApi,
-        ring::{RxRing, TxRing, XdpBuffer},
+        ring::{RxRing, TxRing},
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
@@ -18,7 +18,6 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        libxdp,
         memory::{DemiBuffer, MemoryRuntime},
         Runtime, SharedObject,
     },
@@ -52,14 +51,6 @@ struct CatpowderRuntimeInner {
 // Implementations
 //======================================================================================================================
 impl SharedCatpowderRuntime {
-    ///
-    /// Number of buffers in the rings.
-    ///
-    /// **NOTE:** To introduce batch support (i.e., having more than one buffer in the ring), we need to revisit current
-    /// implementation. It is not all about just changing this constant.
-    ///
-    const RING_LENGTH: u32 = 1;
-
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
@@ -67,8 +58,10 @@ impl SharedCatpowderRuntime {
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
+        let (tx_buffer_count, tx_ring_size) = config.tx_buffer_config()?;
+
         // Open TX and RX rings
-        let tx: TxRing = TxRing::new(&mut api, Self::RING_LENGTH, ifindex, 0)?;
+        let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, ifindex, 0)?;
 
         let cohost_mode = config.xdp_cohost_mode()?;
         let (tcp_ports, udp_ports) = if cohost_mode {
@@ -79,25 +72,38 @@ impl SharedCatpowderRuntime {
             (vec![], vec![])
         };
 
-        let make_ring = |api: &mut XdpApi, length: u32, ifindex: u32, queueid: u32| -> Result<RxRing, Fail> {
+        let make_ring = |api: &mut XdpApi,
+                         rx_ring_size: u32,
+                         rx_buffer_count: u32,
+                         ifindex: u32,
+                         queueid: u32|
+         -> Result<RxRing, Fail> {
             if cohost_mode {
                 RxRing::new_cohost(
                     api,
-                    length,
+                    rx_ring_size,
+                    rx_buffer_count,
                     ifindex,
                     queueid,
                     tcp_ports.as_slice(),
                     udp_ports.as_slice(),
                 )
             } else {
-                RxRing::new_redirect_all(api, length, ifindex, queueid)
+                RxRing::new_redirect_all(api, rx_ring_size, rx_buffer_count, ifindex, queueid)
             }
         };
 
         let queue_count: u32 = deduce_rss_settings(&mut api, ifindex)?;
         let mut rx_rings: Vec<RxRing> = Vec::with_capacity(queue_count as usize);
+        let (rx_buffer_count, rx_ring_size) = config.rx_buffer_config()?;
         for queueid in 0..queue_count {
-            rx_rings.push(make_ring(&mut api, Self::RING_LENGTH, ifindex, queueid as u32)?);
+            rx_rings.push(make_ring(
+                &mut api,
+                rx_ring_size,
+                rx_buffer_count,
+                ifindex,
+                queueid as u32,
+            )?);
         }
         trace!("Created {} RX rings on interface {}", rx_rings.len(), ifindex);
 
@@ -106,7 +112,13 @@ impl SharedCatpowderRuntime {
             let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
             let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
             for queueid in 0..vf_queue_count {
-                vf_rx_rings.push(make_ring(&mut api, Self::RING_LENGTH, vf_if_index, queueid as u32)?);
+                vf_rx_rings.push(make_ring(
+                    &mut api,
+                    rx_ring_size,
+                    rx_buffer_count,
+                    vf_if_index,
+                    queueid as u32,
+                )?);
             }
             trace!(
                 "Created {} RX rings on VF interface {}.",
@@ -139,97 +151,57 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        let mut idx: u32 = 0;
+        self.0.borrow_mut().tx.return_buffers();
 
-        if self.0.borrow_mut().tx.reserve_tx(Self::RING_LENGTH, &mut idx) != Self::RING_LENGTH {
-            let cause = format!("failed to reserve producer space for packet");
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
+        let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
+        me.tx.transmit_buffer(&mut me.api, pkt)?;
 
-        let mut buf: XdpBuffer = self.0.borrow_mut().tx.get_buffer(idx, pkt_size);
-        buf.copy_from_slice(&pkt);
-
-        self.0.borrow_mut().tx.submit_tx(Self::RING_LENGTH);
-
-        // Notify socket.
-        let mut outflags: i32 = libxdp::XSK_NOTIFY_RESULT_FLAGS::default();
-        let flags: i32 =
-            libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX;
-
-        if let Err(e) = self.0.borrow_mut().notify_socket(flags, u32::MAX, &mut outflags) {
-            let cause = format!("failed to notify socket: {:?}", e);
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
-
-        if self
-            .0
-            .borrow_mut()
-            .tx
-            .reserve_tx_completion(Self::RING_LENGTH, &mut idx)
-            != Self::RING_LENGTH
-        {
-            let cause = format!("failed to send packet");
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
-
-        self.0.borrow_mut().tx.release_tx_completion(Self::RING_LENGTH);
         Ok(())
     }
 
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        let mut idx: u32 = 0;
 
         for rx in self.0.borrow_mut().rx_rings.iter_mut() {
-            if rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
-                let xdp_buffer: XdpBuffer = rx.get_buffer(idx);
-                let dbuf: DemiBuffer = DemiBuffer::from_slice(&*xdp_buffer)?;
-                rx.release_rx(Self::RING_LENGTH);
-
+            let start_len: usize = ret.len() as usize;
+            let remaining: u32 = (ret.capacity() - start_len) as u32;
+            rx.process_rx(remaining, |dbuf: DemiBuffer| {
                 ret.push(dbuf);
+                Ok(())
+            })?;
 
-                rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
-                // NB for now there is only ever one element in the fill ring, so we don't have to
-                // change the ring contents.
-                rx.submit_rx_fill(Self::RING_LENGTH);
+            if ret.len() > start_len {
+                rx.provide_buffers();
+            }
 
-                if ret.is_full() {
-                    break;
-                }
+            if ret.is_full() {
+                break;
             }
         }
 
+        if ret.is_full() {
+            return Ok(ret);
+        }
+
         for rx in self.0.borrow_mut().vf_rx_rings.iter_mut() {
-            if rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
-                let xdp_buffer: XdpBuffer = rx.get_buffer(idx);
-                let dbuf: DemiBuffer = DemiBuffer::from_slice(&*xdp_buffer)?;
-                rx.release_rx(Self::RING_LENGTH);
-
+            let start_len: usize = ret.len() as usize;
+            let remaining: u32 = (ret.capacity() - start_len) as u32;
+            rx.process_rx(remaining, |dbuf: DemiBuffer| {
                 ret.push(dbuf);
+                Ok(())
+            })?;
 
-                rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
-                // NB for now there is only ever one element in the fill ring, so we don't have to
-                // change the ring contents.
-                rx.submit_rx_fill(Self::RING_LENGTH);
+            if ret.len() > start_len {
+                rx.provide_buffers();
+            }
 
-                if ret.is_full() {
-                    break;
-                }
+            if ret.is_full() {
+                break;
             }
         }
 
         Ok(ret)
-    }
-}
-
-impl CatpowderRuntimeInner {
-    /// Notifies the socket that there are packets to be transmitted.
-    fn notify_socket(&mut self, flags: i32, timeout: u32, outflags: &mut i32) -> Result<(), Fail> {
-        self.tx.notify_socket(&mut self.api, flags, timeout, outflags)
     }
 }
 
@@ -289,12 +261,13 @@ fn count_processor_cores() -> Result<usize, Fail> {
 /// Deduces the RSS settings for the given interface. Returns the number of valid RSS queues for the interface.
 fn deduce_rss_settings(api: &mut XdpApi, ifindex: u32) -> Result<u32, Fail> {
     const DUMMY_QUEUE_LENGTH: u32 = 1;
+    const DUMMY_BUFFER_COUNT: u32 = 1;
     let sys_proc_count: u32 = count_processor_cores()? as u32;
 
     // NB there will always be at least one queue available, hence starting the loop at 1. There should not be more
     // queues than the number of processors on the system.
     for queueid in 1..sys_proc_count {
-        match TxRing::new(api, DUMMY_QUEUE_LENGTH, ifindex, queueid) {
+        match TxRing::new(api, DUMMY_QUEUE_LENGTH, DUMMY_BUFFER_COUNT, ifindex, queueid) {
             Ok(_) => (),
             Err(e) => {
                 warn!(
@@ -332,9 +305,18 @@ impl MemoryRuntime for SharedCatpowderRuntime {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
 
-        // First allocate the underlying DemiBuffer.
-        // Always allocate with header space for now even if we do not need it.
-        let buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
+        // Allocate buffer from sender pool.
+        let mut buf: DemiBuffer = match self.0.tx.get_buffer() {
+            None => return Err(Fail::new(libc::ENOBUFS, "out of buffers")),
+            Some(buf) => buf,
+        };
+
+        if size > buf.len() - MAX_HEADER_SIZE {
+            return Err(Fail::new(libc::EINVAL, "size too large for buffer"));
+        }
+
+        // Reserve space for headers.
+        buf.adjust(MAX_HEADER_SIZE).expect("buffer size invariant violation");
 
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
         let data: *const u8 = buf.as_ptr();

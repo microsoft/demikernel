@@ -13,6 +13,10 @@ raw_socket:
   # xdp_udp_ports: [53]
   # Enable the following line if you have a VF interface
   # xdp_vf_interface_index: 0
+  tx_buffer_count: 1
+  rx_buffer_count: 1
+  tx_ring_size: 1
+  rx_ring_size: 1
 dpdk:
   eal_init: ["-c", "0xff", "-n", "4", "-a", "WW:WW.W", "--proc-type=auto", "--vdev=net_vdev_netvsc0,iface=abcde"]
 tcp_socket_options:
