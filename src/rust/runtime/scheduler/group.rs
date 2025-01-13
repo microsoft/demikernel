@@ -149,12 +149,8 @@ impl TaskGroup {
     }
 
     /// Translates an internal task id to an external one. Expects the task to exist.
-    pub fn unchecked_internal_to_external_id(&self, internal_id: InternalId) -> TaskId {
+    fn unchecked_internal_to_external_id(&self, internal_id: InternalId) -> TaskId {
         expect_some!(self.tasks.get(internal_id.into()), "Invalid offset: {:?}", internal_id).get_id()
-    }
-
-    pub fn unchecked_external_to_internal_id(&self, task_id: &TaskId) -> InternalId {
-        expect_some!(self.ids.get(task_id), "Invalid id: {:?}", task_id)
     }
 
     fn get_pinned_task_ptr(&mut self, pin_slab_index: usize) -> Pin<&mut Box<dyn Task>> {

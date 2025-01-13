@@ -22,8 +22,9 @@
 // Receive ACK on FIN segment.
 +.1 TCP < F. seq 1(0) ack 2 win 65535 <nop>
 
+// Succeed to close connection immediately because we have linger set to 0.
++0 wait(500, ...) = 0
+
 // Send ACK on FIN segment.
 +.0 TCP > . seq 2(0) ack 2 win 65534 <nop>
 
-// Succeed to close connection after 2 MLS.
-+240 wait(500, ...) = 0

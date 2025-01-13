@@ -43,6 +43,7 @@ const MAX_RETRIES_ID_ALLOC: usize = 500;
 /// This data structure is a general-purpose map for obfuscating ids from external modules. It takes an external id type
 /// and an internal id type and translates between the two. The ID types must be basic types that can be converted back
 /// and forth between u64 and therefore each other.
+#[derive(Debug)]
 pub struct IdMap<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Copy> {
     /// Map between external and internal ids.
     ids: HashMap<E, I>,

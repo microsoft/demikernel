@@ -261,18 +261,6 @@ impl NetworkLibOSWrapper {
         }
     }
 
-    /// Waits for any operation in an I/O queue.
-    pub fn poll(&mut self) {
-        match self {
-            #[cfg(feature = "catpowder-libos")]
-            NetworkLibOSWrapper::Catpowder(libos) => libos.poll(),
-            #[cfg(all(feature = "catnap-libos"))]
-            NetworkLibOSWrapper::Catnap(libos) => libos.poll(),
-            #[cfg(feature = "catnip-libos")]
-            NetworkLibOSWrapper::Catnip(libos) => libos.poll(),
-        }
-    }
-
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         match self {

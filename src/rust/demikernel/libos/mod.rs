@@ -128,8 +128,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -140,8 +138,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.set_socket_option(sockqd, option),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -154,8 +150,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -165,8 +159,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.getpeername(sockqd),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -178,8 +170,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -193,8 +183,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -206,8 +194,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -218,8 +204,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -238,8 +222,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -249,8 +231,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.async_close(qd),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -263,8 +243,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -276,8 +254,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -299,8 +275,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -357,12 +331,5 @@ impl LibOS {
         };
 
         result
-    }
-
-    pub fn poll(&mut self) {
-        // No profiling scope here because we may enter a coroutine scope.
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.poll(),
-        }
     }
 }

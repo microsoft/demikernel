@@ -19,22 +19,13 @@ use crate::{
                 udp::header::UdpHeader,
             },
         },
-        test_helpers::{
-            self,
-            engine::{SharedEngine, TIMEOUT_SECONDS},
-            physical_layer::SharedTestPhysicalLayer,
-        },
+        test_helpers::{self, engine::SharedEngine, physical_layer::SharedTestPhysicalLayer},
     },
     runtime::{memory::DemiBuffer, OperationResult},
     MacAddress, QDesc, QToken,
 };
-use anyhow::Result;
-use network_simulator::glue::{
-    AcceptArgs, Action, BindArgs, CloseArgs, ConnectArgs, DemikernelSyscall, Event, ListenArgs, PacketDirection,
-    PacketEvent, PopArgs, PushArgs, PushToArgs, SocketArgs, SocketDomain, SocketProtocol, SocketType, SyscallEvent,
-    TcpOption, TcpPacket, UdpPacket, WaitArgs,
-};
-use std::{
+use ::anyhow::Result;
+use ::std::{
     collections::VecDeque,
     env,
     fs::{DirEntry, File},
@@ -43,13 +34,11 @@ use std::{
     path::{self, Path, PathBuf},
     time::Instant,
 };
-
-//======================================================================================================================
-// Constants
-//======================================================================================================================
-
-/// This value was empirically chosen so as to have operations to successfully complete.
-const MAX_POP_RETRIES: usize = 5;
+use network_simulator::glue::{
+    AcceptArgs, Action, BindArgs, CloseArgs, ConnectArgs, DemikernelSyscall, Event, ListenArgs, PacketDirection,
+    PacketEvent, PopArgs, PushArgs, PushToArgs, SocketArgs, SocketDomain, SocketProtocol, SocketType, SyscallEvent,
+    TcpOption, TcpPacket, UdpPacket, WaitArgs,
+};
 
 //======================================================================================================================
 // Tests
@@ -224,7 +213,7 @@ impl Simulation {
         }
 
         // Ensure that there are no more events to be processed.
-        let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
+        let frames: VecDeque<DemiBuffer> = self.engine.pop_expected_frames(0);
         if !frames.is_empty() {
             for frame in &frames {
                 info!("run(): {:?}", frame);
@@ -513,10 +502,6 @@ impl Simulation {
         match self.engine.tcp_push(syscall_qd, buf) {
             Ok(push_qt) => {
                 self.inflight.push_back(push_qt);
-                // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
-                // TODO: Remove this once we separate the poll and advance clock functions.
-                self.engine.poll();
-
                 Ok(())
             },
             Err(err) if ret as i32 == err.errno => Ok(()),
@@ -604,9 +589,9 @@ impl Simulation {
                 OperationResult::Failed(e) => {
                     unreachable!("operation failed unexpectedly (qd={:?}, errno={:?})", qd, e.errno);
                 },
-                _ => unreachable!("unexpected operation has completed coroutine has completed"),
+                _ => unreachable!("unexpected operation has completed"),
             },
-            _ => unreachable!("no operation has completed coroutine has completed, but it should"),
+            _ => unreachable!("no operation has completed, but it should"),
         }
     }
 
@@ -644,10 +629,6 @@ impl Simulation {
         match self.engine.udp_pushto(remote_qd, buf, remote_addr) {
             Ok(push_qt) => {
                 self.inflight.push_back(push_qt);
-                // We need an extra poll because we now perform all work for the push inside the asynchronous coroutine.
-                // TODO: Remove this once we separate the poll and advance clock functions.
-                self.engine.poll();
-
                 Ok(())
             },
             _ => {
@@ -794,14 +775,12 @@ impl Simulation {
     fn run_incoming_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
         let buf: DemiBuffer = self.build_tcp_segment(&tcp_packet);
         self.engine.push_frame(buf);
-        self.engine.poll();
         Ok(())
     }
 
     fn run_incoming_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
         let buf: DemiBuffer = self.build_udp_datagram(&udp_packet);
         self.engine.push_frame(buf);
-        self.engine.poll();
         Ok(())
     }
 
@@ -884,38 +863,25 @@ impl Simulation {
 
     fn has_operation_completed(&mut self) -> Result<(QDesc, OperationResult)> {
         match self.inflight.pop_front() {
-            Some(qt) => Ok(self.engine.wait(qt, TIMEOUT_SECONDS)?),
+            Some(qt) => Ok(self.engine.wait(qt)?),
             None => anyhow::bail!("should have an inflight queue token"),
         }
     }
 
     fn run_outgoing_packet(&mut self, tcp_packet: &TcpPacket) -> Result<()> {
-        let mut num_tries: usize = 0;
-        let mut frames: VecDeque<DemiBuffer> = loop {
-            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
-            if frames.is_empty() {
-                if num_tries > MAX_POP_RETRIES {
-                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
-                } else {
-                    self.engine.poll();
-                    num_tries += 1;
-                }
-            } else {
-                // FIXME: We currently do not support multi-frame segments.
-                ensure_eq!(frames.len(), 1);
-                break frames;
-            }
-        };
-        let mut pkt: DemiBuffer = frames.pop_front().unwrap();
-        let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(&mut pkt)?;
+        let mut frames: VecDeque<DemiBuffer> = self.engine.pop_expected_frames(1);
+        ensure_eq!(frames.len(), 1);
+
+        let pkt: &mut DemiBuffer = &mut frames[0];
+        let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(pkt)?;
         self.check_ethernet2_header(&eth2_header)?;
 
-        let ipv4_header: Ipv4Header = Ipv4Header::parse_and_strip(&mut pkt)?;
+        let ipv4_header: Ipv4Header = Ipv4Header::parse_and_strip(pkt)?;
         self.check_ipv4_header(&ipv4_header, IpProtocol::TCP)?;
 
         let src_ipv4_addr: Ipv4Addr = ipv4_header.get_src_addr();
         let dest_ipv4_addr: Ipv4Addr = ipv4_header.get_dest_addr();
-        let tcp_header: TcpHeader = TcpHeader::parse_and_strip(&src_ipv4_addr, &dest_ipv4_addr, &mut pkt, true)?;
+        let tcp_header: TcpHeader = TcpHeader::parse_and_strip(&src_ipv4_addr, &dest_ipv4_addr, pkt, true)?;
         ensure_eq!(tcp_packet.seqnum.win as usize, pkt.len());
         self.check_tcp_header(&tcp_header, &tcp_packet)?;
 
@@ -923,31 +889,18 @@ impl Simulation {
     }
 
     fn run_outgoing_udp_packet(&mut self, udp_packet: &UdpPacket) -> Result<()> {
-        let mut n: usize = 0;
-        let mut frames: VecDeque<DemiBuffer> = loop {
-            let frames: VecDeque<DemiBuffer> = self.engine.pop_all_frames();
-            if frames.is_empty() {
-                if n > MAX_POP_RETRIES {
-                    anyhow::bail!("did not emit a frame after {:?} loops", MAX_POP_RETRIES);
-                } else {
-                    self.engine.poll();
-                    n += 1;
-                }
-            } else {
-                // FIXME: We currently do not support multi-frame segments.
-                ensure_eq!(frames.len(), 1);
-                break frames;
-            }
-        };
-        let mut pkt: DemiBuffer = frames.pop_front().unwrap();
-        let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(&mut pkt)?;
+        let mut frames: VecDeque<DemiBuffer> = self.engine.pop_expected_frames(1);
+        // FIXME: We currently do not support multi-frame segments.
+        ensure_eq!(frames.len(), 1);
+        let pkt: &mut DemiBuffer = &mut frames[0];
+        let eth2_header: Ethernet2Header = Ethernet2Header::parse_and_strip(pkt)?;
         self.check_ethernet2_header(&eth2_header)?;
 
-        let ipv4_header: Ipv4Header = Ipv4Header::parse_and_strip(&mut pkt)?;
+        let ipv4_header: Ipv4Header = Ipv4Header::parse_and_strip(pkt)?;
         self.check_ipv4_header(&ipv4_header, IpProtocol::UDP)?;
 
         let udp_header: UdpHeader =
-            UdpHeader::parse_and_strip(&self.local_sockaddr.ip(), &self.remote_sockaddr.ip(), &mut pkt, true)?;
+            UdpHeader::parse_and_strip(&self.local_sockaddr.ip(), &self.remote_sockaddr.ip(), pkt, true)?;
         ensure_eq!(udp_packet.len as usize, pkt.len());
         self.check_udp_header(&udp_header, &udp_packet)?;
 

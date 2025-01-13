@@ -191,7 +191,7 @@ impl SharedPassiveSocket {
             .fuse();
         match self
             .runtime
-            .insert_background_coroutine("bgc::inetstack::tcp::passiveopen::background", Box::pin(future))
+            .insert_coroutine("bgc::inetstack::tcp::passiveopen::background", None, Box::pin(future))
         {
             Ok(qt) => qt,
             Err(e) => {

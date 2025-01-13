@@ -21,21 +21,12 @@ use ::demikernel::{
 };
 use ::std::{
     ops::{Deref, DerefMut},
-    time::{Duration, Instant},
+    time::Duration,
 };
-
-//======================================================================================================================
-// Constants
-//======================================================================================================================
-
-/// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be quite small to make
-/// timeouts fast.
-const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(1);
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
-
 pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack>);
 
 //======================================================================================================================
@@ -65,36 +56,8 @@ impl DummyLibOS {
         Ok(data)
     }
 
-    #[allow(dead_code)]
-    pub fn wait(&mut self, qt: QToken, timeout: Option<Duration>) -> Result<(QDesc, OperationResult), Fail> {
-        // First check if the task has already completed.
-        if let Some(result) = self.get_runtime().get_completed_task(&qt) {
-            return Ok(result);
-        }
-
-        // Otherwise, actually run the scheduler.
-        // Put the QToken into a single element array.
-        let qt_array: [QToken; 1] = [qt];
-        let mut prev: Instant = Instant::now();
-        let mut remaining_time: Duration = timeout.unwrap_or(TIMEOUT_MILLISECONDS);
-
-        // Call run_any() until the task finishes.
-        loop {
-            // Run for one quanta and if one of our queue tokens completed, then return.
-            if let Some((offset, qd, qr)) = self.get_runtime().run_any(&qt_array, remaining_time) {
-                debug_assert_eq!(offset, 0);
-                return Ok((qd, qr));
-            }
-            let now: Instant = Instant::now();
-            let elapsed_time: Duration = now - prev;
-            if elapsed_time >= remaining_time {
-                break;
-            } else {
-                remaining_time = remaining_time - elapsed_time;
-                prev = now;
-            }
-        }
-        Err(Fail::new(libc::ETIMEDOUT, "wait timed out"))
+    pub fn wait(&mut self, qt: QToken, timeout: Duration) -> Result<(QDesc, OperationResult), Fail> {
+        self.get_runtime().wait(qt, timeout)
     }
 }
 

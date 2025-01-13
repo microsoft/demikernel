@@ -11,7 +11,6 @@ mod qtype;
 //======================================================================================================================
 
 use crate::runtime::{fail::Fail, scheduler::TaskWithResult};
-use ::futures::future::FusedFuture;
 use ::slab::{Iter, Slab};
 use ::std::{any::Any, net::SocketAddrV4};
 
@@ -21,8 +20,6 @@ use ::std::{any::Any, net::SocketAddrV4};
 
 pub use self::{operation_result::OperationResult, qdesc::QDesc, qtoken::QToken, qtype::QType};
 
-// Coroutine for running an operation on an I/O Queue.
-pub type Operation = dyn FusedFuture<Output = (QDesc, OperationResult)>;
 // Task for running I/O operations
 pub type OperationTask = TaskWithResult<(QDesc, OperationResult)>;
 /// Background coroutines never return so they do not need a [ResultType].
