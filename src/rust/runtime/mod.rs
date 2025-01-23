@@ -363,7 +363,8 @@ impl SharedDemiRuntime {
     pub fn poll_background_tasks(&mut self) {
         let background_group_id: TaskId = self.background_group_id;
         // Ignore any results from tasks that completed because background tasks do not return anything.
-        self.scheduler.poll_group_once(background_group_id).pop();
+        self.scheduler
+            .poll_group_once(background_group_id, Some(TIMER_RESOLUTION));
     }
 
     pub fn poll_foreground_tasks(&mut self) -> Vec<OperationTask> {
@@ -371,7 +372,7 @@ impl SharedDemiRuntime {
 
         let completed_tasks = self
             .scheduler
-            .poll_group_until_unrunnable(foreground_group_id, TIMER_RESOLUTION);
+            .poll_group_until_unrunnable(foreground_group_id, Some(TIMER_RESOLUTION));
 
         completed_tasks
             .into_iter()

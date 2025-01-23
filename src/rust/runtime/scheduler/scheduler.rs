@@ -63,44 +63,55 @@ impl Scheduler {
         group.insert(Box::new(task))
     }
 
-    #[cfg(test)]
-    /// Remove a task from the given group.
-    fn remove_task(&mut self, group_id: TaskId, task_id: TaskId) -> Option<Box<dyn Task>> {
-        let group: &mut TaskGroup = self.get_mut_group(group_id)?;
-        group.remove(task_id)
-    }
-
-    pub fn poll_group_once(&mut self, group_id: TaskId) -> Vec<Box<dyn Task>> {
+    /// Polls all ready tasks in this group until there are no runnable ones. Do not use this function on coroutines
+    /// that use poll_yield, unless max_iterations is set.
+    pub fn poll_group_until_unrunnable(
+        &mut self,
+        group_id: TaskId,
+        max_iterations: Option<usize>,
+    ) -> Vec<Box<dyn Task>> {
         let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
+        // Keep running as long as there are runnable tasks.
+        let mut polled_iterations: usize = 0;
         // Expect is safe here because something has really gone wrong if we are polling a group that doesn't exist.
         let group: &mut TaskGroup = self.get_mut_group(group_id).expect("group being polled doesn't exist");
-        let ready_tasks: Vec<InternalId> = group.get_offsets_for_ready_tasks();
-        for id in ready_tasks {
+
+        // Keep polling the group and checking for runnable tasks until there are none left.
+        while let Some(next_ready_task_offset) = match group.get_next_runnable_task() {
+            Some(offset) => Some(offset),
+            None => {
+                group.check_for_new_ready_tasks();
+                group.get_next_runnable_task()
+            },
+        } {
             // Now that we have a runnable task, actually poll it.
-            if let Some(task) = group.poll_notified_task_and_remove_if_ready(id) {
+            if let Some(task) = group.poll_runnable_task(next_ready_task_offset) {
                 completed_tasks.push(task);
+            }
+            match max_iterations {
+                Some(max_iterations) if polled_iterations >= max_iterations => return completed_tasks,
+                _ => polled_iterations += 1,
             }
         }
         completed_tasks
     }
 
-    pub fn poll_group_until_unrunnable(&mut self, group_id: TaskId, max_iterations: usize) -> Vec<Box<dyn Task>> {
+    /// Polls all of the ready tasks in this group. Only check for new tasks at the beginning.
+    pub fn poll_group_once(&mut self, group_id: TaskId, max_iterations: Option<usize>) -> Vec<Box<dyn Task>> {
         let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
-        // Keep running as long as there are runnable tasks.
-        let mut iterations: usize = 0;
+        let mut polled_iterations: usize = 0;
         // Expect is safe here because something has really gone wrong if we are polling a group that doesn't exist.
         let group: &mut TaskGroup = self.get_mut_group(group_id).expect("group being polled doesn't exist");
-        while iterations < max_iterations {
-            let ready_tasks: Vec<InternalId> = group.get_offsets_for_ready_tasks();
-            if ready_tasks.is_empty() {
-                break;
+        // Only do this once.
+        group.check_for_new_ready_tasks();
+        // Loop over the ready tasks.
+        while let Some(next_ready_task_offset) = group.get_next_runnable_task() {
+            if let Some(task) = group.poll_runnable_task(next_ready_task_offset) {
+                completed_tasks.push(task);
             }
-            for id in ready_tasks {
-                // Now that we have a runnable task, actually poll it.
-                if let Some(task) = group.poll_notified_task_and_remove_if_ready(id) {
-                    completed_tasks.push(task);
-                }
-                iterations += 1;
+            match max_iterations {
+                Some(max_iterations) if polled_iterations >= max_iterations => return completed_tasks,
+                _ => polled_iterations += 1,
             }
         }
         completed_tasks
@@ -253,7 +264,7 @@ mod tests {
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
-        if let Some(task) = scheduler.poll_group_once(group_id).pop() {
+        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
             crate::ensure_eq!(task.get_id(), task_id);
         } else {
             anyhow::bail!("task should have completed");
@@ -274,7 +285,7 @@ mod tests {
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
-        if let Some(task) = scheduler.poll_group_once(group_id).pop() {
+        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
             crate::ensure_eq!(task_id, task.get_id());
             Ok(())
         } else {
@@ -298,11 +309,11 @@ mod tests {
         // By polling once, this future should make a transition.
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
-        let result = scheduler.poll_group_once(group_id).pop();
+        let result = scheduler.poll_group_once(group_id, None).pop();
         crate::ensure_eq!(result.is_some(), false);
 
         // This shall make the future ready.
-        if let Some(task) = scheduler.poll_group_once(group_id).pop() {
+        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
             crate::ensure_eq!(task.get_id(), task_id);
         } else {
             anyhow::bail!("task should have completed");
@@ -323,7 +334,7 @@ mod tests {
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling until the task completes, our future should complete.
-        if let Some(task) = scheduler.poll_group_until_unrunnable(group_id, 10).pop() {
+        if let Some(task) = scheduler.poll_group_until_unrunnable(group_id, None).pop() {
             crate::ensure_eq!(task_id, task.get_id());
             Ok(())
         } else {
@@ -343,7 +354,7 @@ mod tests {
             anyhow::bail!("insert() failed")
         };
 
-        if let Some(task) = scheduler.poll_group_once(group_id).pop() {
+        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
             crate::ensure_eq!(task.get_id(), task_id);
         } else {
             anyhow::bail!("task should have completed");
@@ -356,43 +367,6 @@ mod tests {
         };
         // Ensure that the second task has a unique id.
         crate::ensure_neq!(task_id2, task_id);
-
-        Ok(())
-    }
-
-    #[test]
-    fn remove_removes_task_id() -> Result<()> {
-        let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
-
-        // Arbitrarily large number.
-        const NUM_TASKS: usize = 8192;
-        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
-
-        crate::ensure_eq!(scheduler.num_tasks(), 0);
-
-        for val in 0..NUM_TASKS {
-            let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
-            let Some(task_id) = scheduler.insert_task(group_id, task) else {
-                panic!("insert() failed");
-            };
-            task_ids.push(task_id);
-        }
-
-        // Remove tasks one by one and check if remove is only removing the task requested to be removed.
-        let mut curr_num_tasks: usize = NUM_TASKS;
-        for i in 0..NUM_TASKS {
-            let task_id: TaskId = task_ids[i];
-            // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
-            crate::ensure_eq!(true, scheduler.is_valid_task(&group_id, &task_id));
-            scheduler.remove_task(group_id, task_id);
-            curr_num_tasks = curr_num_tasks - 1;
-            crate::ensure_eq!(scheduler.num_tasks(), curr_num_tasks);
-            // The id map does not dictate whether the id is valid, so we need to check the task slab as well.
-            crate::ensure_eq!(false, scheduler.is_valid_task(&group_id, &task_id));
-        }
-
-        crate::ensure_eq!(scheduler.num_tasks(), 0);
 
         Ok(())
     }
@@ -413,7 +387,7 @@ mod tests {
     }
 
     #[bench]
-    fn benchmark_poll(b: &mut Bencher) {
+    fn benchmark_poll_one_task(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
         let group_id: TaskId = scheduler.create_group();
 
@@ -429,16 +403,16 @@ mod tests {
         }
 
         b.iter(|| {
-            black_box(scheduler.poll_group_until_unrunnable(group_id, 100000000));
+            black_box(scheduler.poll_group_once(group_id, Some(1)));
         });
     }
 
     #[bench]
-    fn benchmark_next(b: &mut Bencher) {
+    fn benchmark_poll_many_tasks_until_done(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
         let group_id: TaskId = scheduler.create_group();
 
-        const NUM_TASKS: usize = 1024;
+        const NUM_TASKS: usize = 8;
         let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
 
         for val in 0..NUM_TASKS {
@@ -450,7 +424,7 @@ mod tests {
         }
 
         b.iter(|| {
-            black_box(scheduler.poll_group_until_unrunnable(group_id, 100000000));
+            black_box(scheduler.poll_group_until_unrunnable(group_id, None));
         });
     }
 }
