@@ -182,7 +182,7 @@ impl From<InternalId> for u64 {
 //======================================================================================================================
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use crate::{
         expect_some,
         runtime::scheduler::{
@@ -200,7 +200,7 @@ mod tests {
     use ::test::{black_box, Bencher};
 
     #[derive(Default)]
-    struct DummyCoroutine {
+    pub struct DummyCoroutine {
         pub val: usize,
     }
 
@@ -226,7 +226,7 @@ mod tests {
         }
     }
 
-    type DummyTask = TaskWithResult<()>;
+    pub type DummyTask = TaskWithResult<()>;
 
     /// Tests if when inserting multiple tasks into the scheduler at once each, of them gets a unique identifier.
     #[test]

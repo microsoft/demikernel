@@ -196,3 +196,88 @@ impl TaskGroup {
         self.ids.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        expect_some,
+        runtime::{
+            scheduler::{
+                group::TaskGroup,
+                scheduler::tests::{DummyCoroutine, DummyTask},
+                TaskId,
+            },
+            Task,
+        },
+    };
+    use ::futures::FutureExt;
+    use ::test::{black_box, Bencher};
+
+    #[bench]
+    fn benchmark_new_task(b: &mut Bencher) {
+        let mut group: TaskGroup = TaskGroup::default();
+
+        const NUM_TASKS: usize = 1024;
+        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
+
+        for val in 0..NUM_TASKS {
+            let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
+            let Some(task_id) = group.insert(Box::new(task)) else {
+                panic!("insert() failed");
+            };
+            task_ids.push(task_id);
+        }
+
+        b.iter(|| {
+            let task: Box<dyn Task> = Box::new(DummyTask::new(
+                "testing",
+                Box::pin(black_box(DummyCoroutine::default().fuse())),
+            ));
+            black_box(task);
+        });
+    }
+
+    #[bench]
+    fn benchmark_insert(b: &mut Bencher) {
+        let mut group: TaskGroup = TaskGroup::default();
+
+        const NUM_TASKS: usize = 1024;
+        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
+
+        for val in 0..NUM_TASKS {
+            let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
+            let Some(task_id) = group.insert(Box::new(task)) else {
+                panic!("insert() failed");
+            };
+            task_ids.push(task_id);
+        }
+
+        b.iter(|| {
+            let task: DummyTask = DummyTask::new("testing", Box::pin(black_box(DummyCoroutine::default().fuse())));
+            black_box(group.insert(Box::new(task)));
+        });
+    }
+
+    #[bench]
+    fn benchmark_remove(b: &mut Bencher) {
+        let mut group: TaskGroup = TaskGroup::default();
+
+        const NUM_TASKS: usize = 1024;
+        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
+
+        for val in 0..NUM_TASKS {
+            let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
+            let Some(task_id) = group.insert(Box::new(task)) else {
+                panic!("insert() failed");
+            };
+            task_ids.push(task_id);
+        }
+
+        b.iter(|| {
+            let task: DummyTask = DummyTask::new("testing", Box::pin(black_box(DummyCoroutine::default().fuse())));
+            let _: TaskId = expect_some!(group.insert(Box::new(task)), "couldn't insert future in scheduler");
+            let returned_task: Box<dyn Task> = group.remove(NUM_TASKS).expect("should return a task");
+            black_box(returned_task);
+        });
+    }
+}
