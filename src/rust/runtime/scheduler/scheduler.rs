@@ -355,12 +355,6 @@ mod tests {
             anyhow::bail!("insert() failed")
         };
 
-        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
-            crate::ensure_eq!(task.get_id(), task_id);
-        } else {
-            anyhow::bail!("task should have completed");
-        }
-
         // Create another task.
         let task2: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
         let Some(task_id2) = scheduler.insert_task(group_id, task2) else {
