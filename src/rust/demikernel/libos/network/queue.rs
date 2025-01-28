@@ -37,8 +37,6 @@ pub struct NetworkQueue<T: NetworkTransport> {
     state_machine: SocketStateMachine,
     /// Underlying socket.
     socket: T::SocketDescriptor,
-    /// The local address to which the socket is bound.
-    local: Option<SocketAddr>,
     /// The remote address to which the socket is connected.
     remote: Option<SocketAddr>,
     /// Underlying network transport.
@@ -70,7 +68,6 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             qtype,
             state_machine: SocketStateMachine::new_unbound(typ),
             socket,
-            local: None,
             remote: None,
             transport: transport.clone(),
         })))
@@ -104,7 +101,6 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
         // Bind underlying socket.
         match self.transport.clone().bind(&mut self.socket, local) {
             Ok(_) => {
-                self.local = Some(local);
                 self.state_machine.commit();
                 Ok(())
             },
@@ -172,7 +168,6 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             qtype: self.qtype,
             state_machine: SocketStateMachine::new_established(),
             socket: new_socket,
-            local: None,
             remote: Some(saddr),
             transport: self.transport.clone(),
         })))
@@ -349,11 +344,6 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             },
         }
     }
-
-    pub fn local(&self) -> Option<SocketAddr> {
-        self.local
-    }
-
     pub fn remote(&self) -> Option<SocketAddr> {
         self.remote
     }

@@ -73,6 +73,7 @@ impl Peer {
         runtime: SharedDemiRuntime,
         layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
+        ephemeral_ports: EphemeralPorts,
     ) -> Result<Self, Fail> {
         let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer3_endpoint.clone())?;
         let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
@@ -81,7 +82,7 @@ impl Peer {
             tcp,
             udp,
             layer3_endpoint,
-            ephemeral_ports: EphemeralPorts::default(),
+            ephemeral_ports,
         })
     }
 
@@ -185,8 +186,8 @@ impl Peer {
             Socket::Udp(socket) => self.udp.bind(socket, socket_addr_v4),
         }?;
 
-        if EphemeralPorts::is_private(socket_addr_v4.port()) {
-            self.ephemeral_ports.reserve(socket_addr_v4.port())?;
+        if self.ephemeral_ports.is_private(socket_addr_v4.port()) {
+            let _ = self.ephemeral_ports.reserve(socket_addr_v4.port());
         }
 
         Ok(())
@@ -319,7 +320,7 @@ impl Peer {
             },
         };
         match local_port {
-            Some(port) if EphemeralPorts::is_private(port) => self.ephemeral_ports.free(port),
+            Some(port) if self.ephemeral_ports.is_private(port) => self.ephemeral_ports.free(port),
             _ => Ok(()),
         }
     }
@@ -346,7 +347,7 @@ impl Peer {
             },
         };
         match local_port {
-            Some(port) if EphemeralPorts::is_private(port) => self.ephemeral_ports.free(port),
+            Some(port) if self.ephemeral_ports.is_private(port) => self.ephemeral_ports.free(port),
             _ => Ok(()),
         }
     }
