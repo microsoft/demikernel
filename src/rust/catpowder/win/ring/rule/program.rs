@@ -55,7 +55,10 @@ impl XdpProgram {
             };
             let error: Error = Error::from_hresult(result);
             match error.code().is_ok() {
-                true => Ok(Self(handle)),
+                true => {
+                    trace!("Created XDP program {}", handle.0);
+                    Ok(Self(handle))
+                },
                 false => Err(Fail::from(&error)),
             }
         } else {
@@ -72,8 +75,9 @@ impl XdpProgram {
 
 impl Drop for XdpProgram {
     fn drop(&mut self) {
-        if let Err(_) = unsafe { Foundation::CloseHandle(self.0) } {
-            error!("drop(): Failed to close xdp program handle");
+        trace!("drop(): freeing XDP program {}", self.0 .0);
+        if let Err(e) = unsafe { Foundation::CloseHandle(self.0) } {
+            error!("drop(): Failed to close xdp program handle: {:?}", e);
         }
     }
 }

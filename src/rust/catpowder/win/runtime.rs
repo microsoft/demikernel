@@ -6,15 +6,16 @@
 //======================================================================================================================
 
 use crate::{
+    catnap::transport::error::expect_last_wsa_error,
     catpowder::win::{
         api::XdpApi,
-        ring::{RxRing, TxRing},
+        ring::{RuleSet, RxRing, TxRing},
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
     inetstack::{
         consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
-        protocols::layer1::PhysicalLayer,
+        protocols::{layer1::PhysicalLayer, layer4::ephemeral::EphemeralPorts, Protocol},
     },
     runtime::{
         fail::Fail,
@@ -24,9 +25,14 @@ use crate::{
 };
 use arrayvec::ArrayVec;
 use libc::c_void;
-use std::{borrow::BorrowMut, mem};
+use std::{borrow::BorrowMut, mem, rc::Rc};
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
+    Networking::WinSock::{
+        closesocket, socket, WSACleanup, WSAIoctl, WSAStartup, AF_INET, INET_PORT_RANGE,
+        INET_PORT_RESERVATION_INSTANCE, INVALID_SOCKET, IPPROTO_TCP, IPPROTO_UDP, SIO_ACQUIRE_PORT_RESERVATION, SOCKET,
+        SOCK_DGRAM, SOCK_STREAM, WSADATA,
+    },
     System::SystemInformation::{
         GetLogicalProcessorInformationEx, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     },
@@ -46,6 +52,8 @@ struct CatpowderRuntimeInner {
     tx: TxRing,
     rx_rings: Vec<RxRing>,
     vf_rx_rings: Vec<RxRing>,
+    reserved_socket: SOCKET,
+    reserved_ports: Vec<u16>,
 }
 //======================================================================================================================
 // Implementations
@@ -54,6 +62,27 @@ impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
+
+        let mut data: WSADATA = WSADATA::default();
+        if unsafe { WSAStartup(0x202u16, &mut data as *mut WSADATA) } != 0 {
+            return Err(expect_last_wsa_error());
+        }
+
+        let reserved_protocol: Option<Protocol> = config.xdp_reserved_port_protocol()?;
+        let reserved_port_count: Option<u16> = config.xdp_reserved_port_count()?;
+
+        let (reserved_socket, reserved_ports): (SOCKET, Vec<u16>) =
+            if reserved_protocol.is_some() && reserved_port_count.is_some() {
+                trace!(
+                    "reserving {} ports with protocol {:?}",
+                    reserved_port_count.unwrap(),
+                    reserved_protocol.unwrap()
+                );
+                reserve_port_blocks(reserved_port_count.unwrap(), reserved_protocol.unwrap())?
+            } else {
+                trace!("reserved port options not set; no ports reserved");
+                (INVALID_SOCKET, vec![])
+            };
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
@@ -64,45 +93,47 @@ impl SharedCatpowderRuntime {
         let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, ifindex, 0)?;
 
         let cohost_mode = config.xdp_cohost_mode()?;
-        let (tcp_ports, udp_ports) = if cohost_mode {
-            trace!("XDP cohost mode enabled.");
-            config.xdp_cohost_ports()?
+        let (mut tcp_ports, mut udp_ports) = if cohost_mode {
+            let (tcp_ports, udp_ports) = config.xdp_cohost_ports()?;
+            trace!(
+                "XDP cohost mode enabled. TCP ports: {:?}, UDP ports: {:?}",
+                tcp_ports,
+                udp_ports
+            );
+            (tcp_ports, udp_ports)
         } else {
             trace!("XDP not cohosted; will redirect all traffic");
             (vec![], vec![])
         };
 
-        let make_ring = |api: &mut XdpApi,
-                         rx_ring_size: u32,
-                         rx_buffer_count: u32,
-                         ifindex: u32,
-                         queueid: u32|
-         -> Result<RxRing, Fail> {
-            if cohost_mode {
-                RxRing::new_cohost(
-                    api,
-                    rx_ring_size,
-                    rx_buffer_count,
-                    ifindex,
-                    queueid,
-                    tcp_ports.as_slice(),
-                    udp_ports.as_slice(),
-                )
-            } else {
-                RxRing::new_redirect_all(api, rx_ring_size, rx_buffer_count, ifindex, queueid)
+        if let Some(protocol) = reserved_protocol {
+            match protocol {
+                Protocol::Tcp => tcp_ports.extend(reserved_ports.iter().cloned()),
+                Protocol::Udp => udp_ports.extend(reserved_ports.iter().cloned()),
             }
+        }
+
+        let ruleset: Rc<RuleSet> = if cohost_mode {
+            RuleSet::new_cohost(
+                config.local_ipv4_addr()?.into(),
+                tcp_ports.as_slice(),
+                udp_ports.as_slice(),
+            )
+        } else {
+            RuleSet::new_redirect_all()
         };
 
         let queue_count: u32 = deduce_rss_settings(&mut api, ifindex)?;
         let mut rx_rings: Vec<RxRing> = Vec::with_capacity(queue_count as usize);
         let (rx_buffer_count, rx_ring_size) = config.rx_buffer_config()?;
         for queueid in 0..queue_count {
-            rx_rings.push(make_ring(
+            rx_rings.push(RxRing::new(
                 &mut api,
                 rx_ring_size,
                 rx_buffer_count,
                 ifindex,
-                queueid as u32,
+                queueid,
+                ruleset.clone(),
             )?);
         }
         trace!("Created {} RX rings on interface {}", rx_rings.len(), ifindex);
@@ -112,12 +143,13 @@ impl SharedCatpowderRuntime {
             let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
             let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
             for queueid in 0..vf_queue_count {
-                vf_rx_rings.push(make_ring(
+                vf_rx_rings.push(RxRing::new(
                     &mut api,
                     rx_ring_size,
                     rx_buffer_count,
                     vf_if_index,
-                    queueid as u32,
+                    queueid,
+                    ruleset.clone(),
                 )?);
             }
             trace!(
@@ -136,6 +168,8 @@ impl SharedCatpowderRuntime {
             tx,
             rx_rings,
             vf_rx_rings,
+            reserved_socket,
+            reserved_ports,
         })))
     }
 }
@@ -163,10 +197,12 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
+        let mut queue: usize = 0;
         for rx in self.0.borrow_mut().rx_rings.iter_mut() {
             let start_len: usize = ret.len() as usize;
             let remaining: u32 = (ret.capacity() - start_len) as u32;
             rx.process_rx(remaining, |dbuf: DemiBuffer| {
+                trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                 ret.push(dbuf);
                 Ok(())
             })?;
@@ -176,18 +212,17 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             }
 
             if ret.is_full() {
-                break;
+                return Ok(ret);
             }
+            queue += 1;
         }
 
-        if ret.is_full() {
-            return Ok(ret);
-        }
-
+        queue = 0;
         for rx in self.0.borrow_mut().vf_rx_rings.iter_mut() {
             let start_len: usize = ret.len() as usize;
             let remaining: u32 = (ret.capacity() - start_len) as u32;
             rx.process_rx(remaining, |dbuf: DemiBuffer| {
+                trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                 ret.push(dbuf);
                 Ok(())
             })?;
@@ -197,17 +232,109 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             }
 
             if ret.is_full() {
-                break;
+                return Ok(ret);
             }
+            queue += 1;
         }
 
         Ok(ret)
+    }
+
+    fn ephemeral_ports(&self) -> EphemeralPorts {
+        let ports: &[u16] = self.0.reserved_ports.as_slice();
+        if ports.len() == 0 {
+            EphemeralPorts::default()
+        } else {
+            EphemeralPorts::new(ports).unwrap()
+        }
     }
 }
 
 //======================================================================================================================
 // Functions
 //======================================================================================================================
+
+fn reserve_port_blocks(port_count: u16, protocol: Protocol) -> Result<(SOCKET, Vec<u16>), Fail> {
+    const MAX_HALVINGS: usize = 5;
+    let mut ports: Vec<u16> = Vec::with_capacity(port_count as usize);
+
+    let mut reservation_len: u16 = port_count;
+    let mut halvings: usize = 0;
+
+    let (sock_type, protocol) = match protocol {
+        Protocol::Tcp => (SOCK_STREAM, IPPROTO_TCP.0),
+        Protocol::Udp => (SOCK_DGRAM, IPPROTO_UDP.0),
+    };
+
+    let s: SOCKET = unsafe { socket(AF_INET.0.into(), sock_type, protocol) };
+    if s == INVALID_SOCKET {
+        return Err(expect_last_wsa_error());
+    }
+
+    while ports.len() < port_count as usize {
+        trace!("reserve_port_blocks(): trying reservation length: {}", reservation_len);
+        match reserve_ports(reservation_len, s) {
+            Ok((start, count, _)) if count > 0 => {
+                let end: u16 = start + (count - 1);
+                trace!("reserve_port_blocks(): reserved ports: {}-{}", start, end);
+                ports.extend(start..=end);
+            },
+            Ok(_) => {
+                panic!("reserve_port_blocks(): reserved zero ports");
+            },
+            Err(e) => {
+                halvings += 1;
+                if halvings >= MAX_HALVINGS || reservation_len == 1 {
+                    error!("reserve_port_blocks(): failed to reserve ports; giving up: {:?}", e);
+                    let _ = unsafe { closesocket(s) };
+                    return Err(e);
+                } else {
+                    trace!(
+                        "reserve_port_blocks(): failed to reserve ports; halving reservation size: {:?}",
+                        e
+                    );
+                    reservation_len /= 2;
+                }
+            },
+        }
+    }
+
+    Ok((s, ports))
+}
+
+fn reserve_ports(port_count: u16, s: SOCKET) -> Result<(u16, u16, u64), Fail> {
+    let port_range: INET_PORT_RANGE = INET_PORT_RANGE {
+        StartPort: 0,
+        NumberOfPorts: port_count,
+    };
+
+    let mut reservation: INET_PORT_RESERVATION_INSTANCE = INET_PORT_RESERVATION_INSTANCE::default();
+    let mut bytes_out: u32 = 0;
+
+    let result: i32 = unsafe {
+        WSAIoctl(
+            s,
+            SIO_ACQUIRE_PORT_RESERVATION,
+            Some(&port_range as *const INET_PORT_RANGE as *mut libc::c_void),
+            std::mem::size_of::<INET_PORT_RANGE>() as u32,
+            Some(&mut reservation as *mut INET_PORT_RESERVATION_INSTANCE as *mut libc::c_void),
+            std::mem::size_of::<INET_PORT_RESERVATION_INSTANCE>() as u32,
+            &mut bytes_out,
+            None,
+            None,
+        )
+    };
+
+    if result != 0 {
+        return Err(expect_last_wsa_error());
+    }
+
+    Ok((
+        u16::from_be(reservation.Reservation.StartPort),
+        reservation.Reservation.NumberOfPorts,
+        reservation.Token.Token,
+    ))
+}
 
 fn count_processor_cores() -> Result<usize, Fail> {
     let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
@@ -337,3 +464,13 @@ impl MemoryRuntime for SharedCatpowderRuntime {
 
 /// Runtime trait implementation for XDP Runtime.
 impl Runtime for SharedCatpowderRuntime {}
+
+impl Drop for SharedCatpowderRuntime {
+    fn drop(&mut self) {
+        if self.0.reserved_socket != INVALID_SOCKET {
+            let _ = unsafe { closesocket(self.0.reserved_socket) };
+        }
+
+        let _ = unsafe { WSACleanup() };
+    }
+}

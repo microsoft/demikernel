@@ -13,11 +13,7 @@ use crate::{
         fail::Fail,
         limits,
         memory::DemiBuffer,
-        network::{
-            socket::{option::SocketOption, SocketId},
-            transport::NetworkTransport,
-            unwrap_socketaddr,
-        },
+        network::{socket::option::SocketOption, transport::NetworkTransport, unwrap_socketaddr},
         queue::{downcast_queue, IoQueue, OperationResult},
         types::{demi_accept_result_t, demi_opcode_t, demi_qr_value_t, demi_qresult_t, demi_sgarray_t},
         QDesc, QToken, SharedDemiRuntime, SharedObject,
@@ -119,15 +115,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        if self.runtime.is_addr_in_use(socket_addrv4) {
-            let cause: String = format!("address is already bound to a socket (qd={:?}", qd);
-            error!("bind(): {}", &cause);
-            return Err(Fail::new(libc::EADDRINUSE, &cause));
-        }
         self.get_shared_queue(&qd)?.bind(socket_addr)?;
-        // Insert into address to queue descriptor table.
-        self.runtime
-            .insert_socket_id_to_qd(SocketId::Passive(socket_addrv4.clone()), qd);
 
         Ok(())
     }
@@ -270,14 +258,6 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         // Wait for close operation to complete.
         match queue.close_coroutine().await {
             Ok(()) => {
-                // If the queue was bound, remove from the socket id to queue descriptor table.
-                if let Some(local) = queue.local() {
-                    // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
-                    self.runtime.remove_socket_id_to_qd(&SocketId::Passive(expect_ok!(
-                        unwrap_socketaddr(local),
-                        "we only support IPv4"
-                    )));
-                }
                 // Remove the queue from the queue table. Expect is safe here because we looked up the queue to
                 // schedule this coroutine and no other close coroutine should be able to run due to state machine
                 // checks.

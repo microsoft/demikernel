@@ -35,7 +35,7 @@ use ::futures::never::Never;
 // TODO: Review this value (and its purpose).  It (16 segments) seems awfully small (would make fast retransmit less
 // useful), and this mechanism isn't the best way to protect ourselves against deliberate out-of-order segment attacks.
 // Ideally, we'd limit out-of-order data to that which (along with the unread data) will fit in the receive window.
-const MAX_OUT_OF_ORDER_SIZE_FRAMES: usize = 16;
+const MAX_OUT_OF_ORDER_SIZE_FRAMES: usize = 1024;
 
 //======================================================================================================================
 // Structures

@@ -9,6 +9,7 @@ use crate::runtime::fail::Fail;
 #[cfg(not(debug_assertions))]
 use ::rand::prelude::{SeedableRng, SliceRandom, SmallRng};
 use ::std::collections::VecDeque;
+use std::collections::HashSet;
 
 //======================================================================================================================
 // Constants
@@ -28,6 +29,7 @@ const EPHEMERAL_PORT_SEED: u64 = 12345;
 
 pub struct EphemeralPorts {
     port_numbers: VecDeque<u16>,
+    range_min: u16,
 }
 
 //======================================================================================================================
@@ -35,8 +37,31 @@ pub struct EphemeralPorts {
 //======================================================================================================================
 
 impl EphemeralPorts {
-    pub fn is_private(port_number: u16) -> bool {
-        port_number >= FIRST_PRIVATE_PORT_NUMBER
+    pub fn new(ports: &[u16]) -> Result<Self, Fail> {
+        if ports.is_empty() {
+            return Err(Fail::new(libc::EINVAL, "no ports specified"));
+        }
+
+        let port_set: HashSet<u16> = HashSet::from_iter(ports.iter().cloned());
+
+        let mut port_numbers: Vec<u16> = Vec::<u16>::new();
+        port_numbers.extend(port_set.iter().cloned());
+        let range_min: u16 = *port_numbers.iter().min().unwrap();
+
+        #[cfg(not(debug_assertions))]
+        {
+            let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
+            port_numbers.shuffle(&mut rng);
+        };
+
+        Ok(Self {
+            port_numbers: VecDeque::from(port_numbers),
+            range_min,
+        })
+    }
+
+    pub fn is_private(&self, port_number: u16) -> bool {
+        port_number >= self.range_min
     }
 
     // Any port number will be allocated.
@@ -59,7 +84,7 @@ impl EphemeralPorts {
     }
 
     pub fn free(&mut self, port_number: u16) -> Result<(), Fail> {
-        if !Self::is_private(port_number) {
+        if !self.is_private(port_number) {
             let cause: String = format!("port_number {} is not in the ephemeral range", port_number);
             error!("free(): {}", &cause);
             return Err(Fail::new(libc::EINVAL, &cause));
@@ -92,8 +117,10 @@ impl Default for EphemeralPorts {
             let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
             port_numbers.shuffle(&mut rng);
         }
+
         Self {
             port_numbers: VecDeque::from(port_numbers),
+            range_min: FIRST_PRIVATE_PORT_NUMBER,
         }
     }
 }
