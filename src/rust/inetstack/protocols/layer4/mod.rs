@@ -94,7 +94,9 @@ impl Peer {
                     self.receive_batch(batch)
                 }
             },
-            Err(_) => warn!("Could not receive from network interface, continuing ..."),
+            Err(e) => {
+                warn!("Could not receive from network interface: {:?}", e)
+            },
         }
     }
 

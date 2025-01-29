@@ -10,10 +10,13 @@ use std::{
 
 use windows::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
 
-use crate::runtime::{
-    fail::Fail,
-    libxdp,
-    memory::{BufferPool, DemiBuffer},
+use crate::{
+    catpowder::win::{api::XdpApi, socket::XdpSocket},
+    runtime::{
+        fail::Fail,
+        libxdp,
+        memory::{BufferPool, DemiBuffer},
+    },
 };
 
 //======================================================================================================================
@@ -25,6 +28,7 @@ pub struct UmemReg {
     _buffer: Vec<MaybeUninit<u8>>,
     pool: BufferPool,
     umem: libxdp::XSK_UMEM_REG,
+    buf_offset_from_chunk: isize,
 }
 
 //======================================================================================================================
@@ -33,47 +37,77 @@ pub struct UmemReg {
 
 impl UmemReg {
     /// Creates a new XDP user memory region with `count` blocks of `chunk_size` bytes.
-    pub fn new(count: NonZeroU32, chunk_size: NonZeroU16) -> Result<Self, Fail> {
-        if chunk_size.get() as usize <= BufferPool::overhead_bytes() {
-            return Err(Fail::new(libc::EINVAL, "buffer size too small"));
-        }
+    pub fn new(
+        api: &mut XdpApi,
+        socket: &mut XdpSocket,
+        count: NonZeroU32,
+        chunk_size: NonZeroU16,
+    ) -> Result<Self, Fail> {
+        let pool: BufferPool =
+            BufferPool::new(chunk_size.get()).map_err(|_| Fail::new(libc::EINVAL, "bad buffer size"))?;
+        assert!(pool.pool().layout().size() >= chunk_size.get() as usize);
 
-        let buffer_size: u16 = chunk_size.get() - BufferPool::overhead_bytes() as u16;
-        let pool: BufferPool = BufferPool::new(buffer_size).map_err(|_| Fail::new(libc::EINVAL, "bad buffer size"))?;
-        assert!(pool.pool().layout().size() == chunk_size.get() as usize);
-
-        let total_size: u64 = count.get() as u64 * chunk_size.get() as u64;
-        let mut buffer: Vec<MaybeUninit<u8>> = Vec::with_capacity(total_size as usize + pool.pool().layout().align());
+        let real_chunk_size: usize = pool.pool().layout().size();
+        let headroom: usize = real_chunk_size - chunk_size.get() as usize;
+        let buf_offset_from_chunk: isize =
+            isize::try_from(headroom - BufferPool::overhead_bytes()).map_err(Fail::from)?;
 
         let page_size: NonZeroUsize = get_page_size();
-        unsafe { pool.pool().populate(NonNull::from(buffer.as_mut_slice()), page_size)? };
+        let align: usize = std::cmp::max(page_size.get(), pool.pool().layout().align());
+        let total_size: u64 = count.get() as u64 * real_chunk_size as u64 + align as u64;
+
+        trace!(
+            "creating umem region with {} blocks of {} bytes aligned to {} with headroom {} and DemiBuffer offset of {}",
+            count.get(),
+            real_chunk_size,
+            align,
+            headroom,
+            buf_offset_from_chunk
+        );
+        let mut buffer: Vec<MaybeUninit<u8>> = Vec::new();
+        buffer.resize(total_size as usize, MaybeUninit::uninit());
+
+        let offset: usize = buffer.as_mut_ptr().align_offset(align);
+        let total_size: u64 = total_size - offset as u64;
+
+        // Round down to the nearest multiple of the real chunk size.
+        let total_size: u64 = total_size - (total_size % real_chunk_size as u64);
+
+        let buffer_ptr: NonNull<[MaybeUninit<u8>]> = NonNull::from(&mut buffer[offset..(offset + total_size as usize)]);
+        unsafe { pool.pool().populate(buffer_ptr, page_size)? };
 
         if pool.pool().is_empty() {
             return Err(Fail::new(libc::ENOMEM, "out of memory"));
         }
 
+        let headroom: u32 = u32::try_from(headroom).map_err(Fail::from)?;
         let umem: libxdp::XSK_UMEM_REG = libxdp::XSK_UMEM_REG {
             TotalSize: total_size,
-            ChunkSize: chunk_size.get() as u32,
-            Headroom: u32::try_from(BufferPool::overhead_bytes()).map_err(Fail::from)?,
-            Address: buffer.as_mut_ptr() as *mut core::ffi::c_void,
+            ChunkSize: real_chunk_size as u32,
+            Headroom: headroom,
+            Address: buffer_ptr.as_ptr() as *mut core::ffi::c_void,
         };
+
+        // Register the UMEM region.
+        trace!("registering umem region");
+        socket.setsockopt(
+            api,
+            libxdp::XSK_SOCKOPT_UMEM_REG,
+            &umem as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
+            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
+        )?;
 
         Ok(Self {
             _buffer: buffer,
             pool,
             umem,
+            buf_offset_from_chunk,
         })
     }
 
     /// Get a buffer from the umem pool.
     pub fn get_buffer(&self) -> Option<DemiBuffer> {
         DemiBuffer::new_in_pool(&self.pool)
-    }
-
-    /// Gets a reference to the underlying XDP user memory region.
-    pub fn as_ref(&self) -> &libxdp::XSK_UMEM_REG {
-        &self.umem
     }
 
     /// Returns a raw pointer to the the start address of the user memory region.
@@ -101,36 +135,69 @@ impl UmemReg {
         self.region().contains(&data)
     }
 
-    /// Dehydrates a DemiBuffer into a usize that can be rehydrated later. This operation consumes the DemiBuffer.
-    pub fn dehydrate_buffer(&self, buf: DemiBuffer) -> usize {
-        let data: *const u8 = buf.as_ptr();
-        let basis: NonNull<u8> = buf.into_raw();
+    /// Same as `self.dehydrate_buffer(self.get_buffer()?)`, but returns only the base address of
+    /// the buffer. Useful for publishing to receive rings.
+    pub fn get_dehydrated_buffer(&self) -> Option<u64> {
+        let buf: DemiBuffer = self.get_buffer()?;
+        let desc: libxdp::XSK_BUFFER_DESCRIPTOR = self.dehydrate_buffer(buf);
+        assert!(
+            unsafe { desc.Address.__bindgen_anon_1.Offset() }
+                == (self.overhead_bytes() as u64 + self.buf_offset_from_chunk as u64)
+        );
+        Some(unsafe { desc.Address.__bindgen_anon_1.BaseAddress() })
+    }
 
-        // Safety: MemoryPool guarantees that the metadata is located immediately prior to the data in a single
-        // allocated object.
-        if unsafe { data.offset_from(basis.as_ptr()) } != BufferPool::overhead_bytes() as isize {
-            panic!("buffer is not properly aligned");
-        }
+    /// Dehydrates a DemiBuffer into a usize that can be rehydrated later. This operation consumes the DemiBuffer.
+    pub fn dehydrate_buffer(&self, buf: DemiBuffer) -> libxdp::XSK_BUFFER_DESCRIPTOR {
+        let data_len: usize = buf.len();
+        let data: *const u8 = buf.as_ptr();
+        let basis: NonNull<u8> = if buf.is_direct() {
+            buf.into_raw()
+        } else {
+            let direct: DemiBuffer = buf.into_direct();
+            direct.into_raw()
+        };
+
+        let basis: NonNull<u8> = unsafe { basis.offset(-self.buf_offset_from_chunk) };
 
         // Safety: MemoryPool guarantees that the DemiBuffer data is allocated from the allocated object pointed to
         // by `self.address()`.
-        unsafe { basis.offset_from(self.address().cast::<u8>()) as usize }
+        let base_address: usize = unsafe { basis.offset_from(self.address().cast::<u8>()) as usize };
+        let offset: usize = unsafe { data.offset_from(basis.as_ptr()) as usize };
+
+        if (self.umem.TotalSize - self.umem.ChunkSize as u64) < base_address as u64 {
+            panic!("buffer {} not in region", base_address);
+        }
+
+        let addr: libxdp::XSK_BUFFER_ADDRESS = unsafe {
+            let mut addr: libxdp::XSK_BUFFER_ADDRESS = std::mem::zeroed();
+            addr.__bindgen_anon_1.set_BaseAddress(base_address as u64);
+            addr.__bindgen_anon_1.set_Offset(offset as u64);
+            addr
+        };
+
+        libxdp::XSK_BUFFER_DESCRIPTOR {
+            Address: addr,
+            Length: data_len as u32,
+            Reserved: 0,
+        }
     }
 
     /// Rehydrates a buffer from an XSK_BUFFER_DESCRIPTOR that was previously dehydrated by `dehydrate_buffer`.
     pub fn rehydrate_buffer_desc(&self, desc: &libxdp::XSK_BUFFER_DESCRIPTOR) -> Result<DemiBuffer, Fail> {
-        if desc.Length < BufferPool::overhead_bytes() as u32 {
-            return Err(Fail::new(libc::EINVAL, "invalid buffer descriptor"));
-        }
-
         self.rehydrate_buffer_offset(unsafe { desc.Address.__bindgen_anon_1.BaseAddress() })
+            .and_then(|mut buf: DemiBuffer| -> Result<DemiBuffer, Fail> {
+                buf.trim(buf.len().saturating_sub(desc.Length as usize))?;
+                Ok(buf)
+            })
     }
 
     /// Rehydrates a buffer from a usize that was previously dehydrated by `dehydrate_buffer`.
     pub fn rehydrate_buffer_offset(&self, offset: u64) -> Result<DemiBuffer, Fail> {
         let token: NonNull<u8> = unsafe { self.address().offset(isize::try_from(offset).map_err(Fail::from)?) };
+        let demi_token: NonNull<u8> = unsafe { token.offset(self.buf_offset_from_chunk) };
 
-        Ok(unsafe { DemiBuffer::from_raw(token) })
+        Ok(unsafe { DemiBuffer::from_raw(demi_token) })
     }
 }
 

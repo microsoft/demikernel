@@ -15,7 +15,7 @@ use crate::{
 };
 use ::std::{cell::RefCell, rc::Rc};
 use std::{
-    mem::{self, MaybeUninit},
+    mem::MaybeUninit,
     num::{NonZeroU16, NonZeroU32},
 };
 
@@ -33,33 +33,37 @@ pub struct TxRing {
     tx_completion_ring: XdpRing<u64>,
     /// Underlying XDP socket.
     socket: XdpSocket,
+    /// Whether to always poke the socket, or only when the ring flag indicates to do so.
+    always_poke: bool,
 }
 
 impl TxRing {
     /// Creates a new ring for transmitting packets.
-    pub fn new(api: &mut XdpApi, length: u32, buf_count: u32, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
+    pub fn new(
+        api: &mut XdpApi,
+        length: u32,
+        buf_count: u32,
+        ifindex: u32,
+        queueid: u32,
+        always_poke: bool,
+    ) -> Result<Self, Fail> {
         // Create an XDP socket.
         trace!("creating xdp socket");
         let mut socket: XdpSocket = XdpSocket::create(api)?;
 
         // Create a UMEM region.
-        trace!("creating umem region");
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
         let chunk_size: NonZeroU16 =
             NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
-        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(buf_count, chunk_size)?));
-
-        // Register the UMEM region.
-        trace!("registering umem region");
-        socket.setsockopt(
-            api,
-            libxdp::XSK_SOCKOPT_UMEM_REG,
-            mem.borrow().as_ref() as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
-            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
-        )?;
+        trace!(
+            "creating umem region with {} buffers of size {}",
+            buf_count.get(),
+            chunk_size.get()
+        );
+        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size)?));
 
         // Set tx ring size.
-        trace!("setting tx ring size");
+        trace!("setting tx ring size to {}", length);
         socket.setsockopt(
             api,
             libxdp::XSK_SOCKOPT_TX_RING_SIZE,
@@ -68,7 +72,7 @@ impl TxRing {
         )?;
 
         // Set tx completion ring size.
-        trace!("setting tx completion ring size");
+        trace!("setting tx completion ring size to {}", length);
         socket.setsockopt(
             api,
             libxdp::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
@@ -77,7 +81,7 @@ impl TxRing {
         )?;
 
         // Bind tx queue.
-        trace!("binding tx queue");
+        trace!("binding tx queue to interface {} and queue {}", ifindex, queueid);
         socket.bind(api, ifindex, queueid, libxdp::_XSK_BIND_FLAGS_XSK_BIND_FLAG_TX)?;
 
         // Activate socket to enable packet transmission.
@@ -104,19 +108,21 @@ impl TxRing {
             tx_ring,
             tx_completion_ring,
             socket,
+            always_poke,
         })
     }
 
+    pub fn socket(&self) -> &XdpSocket {
+        &self.socket
+    }
+
     /// Notifies the socket that there are packets to be transmitted.
-    fn notify_socket(
-        &self,
-        api: &mut XdpApi,
-        flags: i32,
-        count: u32,
-        outflags: &mut libxdp::XSK_NOTIFY_RESULT_FLAGS,
-    ) -> Result<(), Fail> {
-        if self.tx_ring.needs_poke() {
-            self.socket.notify(api, flags, count, outflags)?;
+    pub fn poke(&self, api: &mut XdpApi) -> Result<(), Fail> {
+        let mut outflags: i32 = libxdp::XSK_NOTIFY_RESULT_FLAGS::default();
+        let flags: i32 = libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX;
+
+        if self.always_poke || self.tx_ring.needs_poke() {
+            self.socket.notify(api, flags, u32::MAX, &mut outflags)?;
         }
 
         Ok(())
@@ -150,6 +156,7 @@ impl TxRing {
 
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
         let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
+            trace!("copying buffer to umem region");
             let mut copy: DemiBuffer = self
                 .mem
                 .borrow()
@@ -168,12 +175,13 @@ impl TxRing {
             buf
         };
 
-        let len: u32 = buf.len() as u32;
-        let buf_offset: usize = self.mem.borrow().dehydrate_buffer(buf);
-
-        let mut address: libxdp::_XSK_BUFFER_ADDRESS__bindgen_ty_1 = unsafe { mem::zeroed() };
-        address.set_BaseAddress(buf_offset as u64);
-        address.set_Offset(self.mem.borrow().overhead_bytes() as u64);
+        let buf_desc: libxdp::XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
+        trace!(
+            "transmitting buffer at offset {}, offset {} with length {}",
+            unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
+            unsafe { buf_desc.Address.__bindgen_anon_1.Offset() },
+            buf_desc.Length
+        );
 
         let mut idx: u32 = 0;
         if self.tx_ring.producer_reserve(1, &mut idx) != 1 {
@@ -181,21 +189,12 @@ impl TxRing {
         }
 
         let b: &mut MaybeUninit<libxdp::XSK_BUFFER_DESCRIPTOR> = self.tx_ring.get_element(idx);
-        b.write(libxdp::XSK_BUFFER_DESCRIPTOR {
-            Address: libxdp::XSK_BUFFER_ADDRESS {
-                __bindgen_anon_1: address,
-            },
-            Length: len,
-            Reserved: 0,
-        });
+        b.write(buf_desc);
 
         self.tx_ring.producer_submit(1);
 
         // Notify socket.
-        let mut outflags: i32 = libxdp::XSK_NOTIFY_RESULT_FLAGS::default();
-        let flags: i32 = libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX;
-
-        if let Err(e) = self.notify_socket(api, flags, u32::MAX, &mut outflags) {
+        if let Err(e) = self.poke(api) {
             let cause = format!("failed to notify socket: {:?}", e);
             warn!("{}", cause);
             return Err(Fail::new(libc::EAGAIN, &cause));
@@ -216,6 +215,7 @@ impl TxRing {
             let buf_offset: u64 = unsafe { b.assume_init_read() };
 
             // NB dropping the buffer returns it to the pool.
+            trace!("returning buffer at offset {}", buf_offset);
             if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {
                 error!("failed to return buffer: {:?}", e);
             }
@@ -224,6 +224,7 @@ impl TxRing {
         }
 
         if returned > 0 {
+            trace!("returning {} buffers", returned);
             self.tx_completion_ring.consumer_release(returned);
         }
     }

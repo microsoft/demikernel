@@ -66,3 +66,6 @@ impl Drop for XdpApi {
         }
     }
 }
+
+unsafe impl Send for XdpApi {}
+unsafe impl Sync for XdpApi {}

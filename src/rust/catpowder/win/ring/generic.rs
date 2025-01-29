@@ -60,6 +60,7 @@ impl<T> XdpRing<T> {
         unsafe { &mut *libxdp::_XskRingGetElement(&self.0, idx).cast() }
     }
 
+    #[allow(dead_code)]
     pub(super) fn needs_poke(&self) -> bool {
         unsafe { libxdp::_XskRingProducerNeedPoke(&self.0) != 0 }
     }

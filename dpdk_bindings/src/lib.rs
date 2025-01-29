@@ -30,6 +30,8 @@ extern "C" {
     fn rte_eth_rx_offload_udp_cksum_() -> c_int;
     fn rte_eth_tx_offload_multi_segs_() -> c_int;
     fn rte_pktmbuf_prepend_(m: *mut rte_mbuf, len: u16) -> *mut c_char;
+    fn rte_mbuf_from_indirect_(m: *mut rte_mbuf) -> *mut rte_mbuf;
+    fn rte_pktmbuf_detach_(m: *mut rte_mbuf);
 }
 
 #[cfg(all(feature = "mlx5", target_os = "windows"))]
@@ -155,4 +157,14 @@ pub unsafe fn rte_eth_tx_offload_multi_segs() -> c_int {
 #[inline]
 pub unsafe fn rte_pktmbuf_prepend(m: *mut rte_mbuf, len: u16) -> *mut c_char {
     rte_pktmbuf_prepend_(m, len)
+}
+
+#[inline]
+pub unsafe fn rte_mbuf_from_indirect(m: *mut rte_mbuf) -> *mut rte_mbuf {
+    rte_mbuf_from_indirect_(m)
+}
+
+#[inline]
+pub unsafe fn rte_pktmbuf_detach(m: *mut rte_mbuf) {
+    rte_pktmbuf_detach_(m)
 }
