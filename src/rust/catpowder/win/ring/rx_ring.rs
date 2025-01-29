@@ -66,16 +66,7 @@ impl RxRing {
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
         let chunk_size: NonZeroU16 =
             NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
-        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(buf_count, chunk_size)?));
-
-        // Register the UMEM region.
-        trace!("registering umem region");
-        socket.setsockopt(
-            api,
-            libxdp::XSK_SOCKOPT_UMEM_REG,
-            mem.borrow().as_ref() as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
-            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
-        )?;
+        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size)?));
 
         // Set rx ring size.
         trace!("setting rx ring size: {}", length);
@@ -140,18 +131,44 @@ impl RxRing {
         Ok(())
     }
 
+    pub fn socket(&self) -> &XdpSocket {
+        &self.socket
+    }
+
+    fn check_error(&self, api: &mut XdpApi) -> Result<(), Fail> {
+        if self.rx_ring.has_error() {
+            let mut error: libxdp::XSK_ERROR = 0;
+            let mut len: u32 = std::mem::size_of::<libxdp::XSK_ERROR>() as u32;
+            self.socket.getsockopt(
+                api,
+                libxdp::XSK_SOCKOPT_RX_ERROR,
+                &mut error as *mut i32 as *mut core::ffi::c_void,
+                &mut len,
+            )?;
+
+            let errno: i32 = match error {
+                libxdp::_XSK_ERROR_XSK_ERROR_INTERFACE_DETACH => libc::ENODEV,
+                libxdp::_XSK_ERROR_XSK_ERROR_INVALID_RING => libc::EINVAL,
+                libxdp::_XSK_ERROR_XSK_NO_ERROR => return Ok(()),
+                _ => libc::EIO,
+            };
+            return Err(Fail::new(errno, "rx ring has error"));
+        }
+        Ok(())
+    }
+
     pub fn provide_buffers(&mut self) {
         let mut idx: u32 = 0;
         let available: u32 = self.rx_fill_ring.producer_reserve(u32::MAX, &mut idx);
         let mut published: u32 = 0;
         let mem: std::cell::Ref<'_, UmemReg> = self.mem.borrow();
         for i in 0..available {
-            if let Some(buf) = mem.get_buffer() {
+            if let Some(buf_offset) = mem.get_dehydrated_buffer() {
                 // Safety: Buffer is allocated from the memory pool, which must be in the contiguous memory range
                 // starting at the UMEM base region address.
-                let buf_offset: usize = mem.dehydrate_buffer(buf);
                 let b: &mut MaybeUninit<u64> = self.rx_fill_ring.get_element(idx + i);
                 b.write(buf_offset as u64);
+                trace!("provided buffer at offset {}", buf_offset);
                 published += 1;
             } else {
                 break;
@@ -159,11 +176,17 @@ impl RxRing {
         }
 
         if published > 0 {
+            trace!(
+                "provided {} buffers to RxRing interface {} queue {}",
+                published,
+                self.ifindex,
+                self.queueid
+            );
             self.rx_fill_ring.producer_submit(published);
         }
     }
 
-    pub fn process_rx<Fn>(&mut self, count: u32, mut callback: Fn) -> Result<(), Fail>
+    pub fn process_rx<Fn>(&mut self, api: &mut XdpApi, count: u32, mut callback: Fn) -> Result<(), Fail>
     where
         Fn: FnMut(DemiBuffer) -> Result<(), Fail>,
     {
@@ -172,14 +195,27 @@ impl RxRing {
         let mut consumed: u32 = 0;
         let mut err: Option<Fail> = None;
 
+        if available > 0 {
+            trace!(
+                "processing {} buffers from RxRing interface {} queue {}",
+                available,
+                self.ifindex,
+                self.queueid
+            );
+        }
+
         for i in 0..available {
             // Safety: Ring entries are intialized by the XDP runtime.
             let desc: &libxdp::XSK_BUFFER_DESCRIPTOR = unsafe { self.rx_ring.get_element(idx + i).assume_init_ref() };
-            let mut db: DemiBuffer = self.mem.borrow().rehydrate_buffer_desc(desc)?;
+            trace!(
+                "processing buffer at address {} offset {}",
+                unsafe { desc.Address.__bindgen_anon_1.BaseAddress() },
+                unsafe { desc.Address.__bindgen_anon_1.Offset() }
+            );
+            let db: DemiBuffer = self.mem.borrow().rehydrate_buffer_desc(desc)?;
 
             // Trim buffer to actual length. Descriptor length should not be greater than buffer length, but guard
             // against it anyway.
-            db.trim(std::cmp::max(db.len(), desc.Length as usize) - desc.Length as usize)?;
             consumed += 1;
             if let Err(e) = callback(db) {
                 err = Some(e);
@@ -191,6 +227,7 @@ impl RxRing {
             self.rx_ring.consumer_release(consumed);
         }
 
+        self.check_error(api)?;
         err.map_or(Ok(()), |e| Err(e))
     }
 }

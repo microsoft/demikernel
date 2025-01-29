@@ -13,6 +13,10 @@ use ::windows::{
     core::{Error, HRESULT},
     Win32::{Foundation, Foundation::HANDLE},
 };
+use windows::Win32::{
+    Foundation::{DUPLICATE_SAME_ACCESS, FALSE},
+    System::Threading::GetCurrentProcess,
+};
 
 //======================================================================================================================
 // Structures
@@ -172,5 +176,15 @@ impl Drop for XdpSocket {
         if let Err(_) = unsafe { Foundation::CloseHandle(self.0) } {
             error!("drop(): failed to close socket");
         }
+    }
+}
+
+impl Clone for XdpSocket {
+    fn clone(&self) -> Self {
+        let mut dup: HANDLE = self.0;
+        let proc: HANDLE = unsafe { GetCurrentProcess() };
+        unsafe { Foundation::DuplicateHandle(proc, self.0, proc, &mut dup, 0, FALSE, DUPLICATE_SAME_ACCESS) }
+            .expect("clone(): failed to duplicate handle");
+        Self(dup)
     }
 }

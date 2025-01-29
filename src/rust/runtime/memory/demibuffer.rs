@@ -528,6 +528,64 @@ impl DemiBuffer {
         self.as_metadata().data_off
     }
 
+    /// Returns a flag indicating whether this DemiBuffer is direct, i.e., that this instance is
+    /// not a clone of some other DemiBuffer.
+    pub fn is_direct(&self) -> bool {
+        self.as_metadata().ol_flags & METADATA_F_INDIRECT == 0
+    }
+
+    /// Get the direct DemiBuffer from an indirect DemiBuffer.
+    pub fn into_direct(self) -> DemiBuffer {
+        if self.is_direct() {
+            return self;
+        }
+
+        match self.get_tag() {
+            Tag::Heap => {
+                let metadata: &mut MetaData = self.as_metadata();
+
+                // Step 1: get the direct buffer.
+                let offset: isize = -(size_of::<MetaData>() as isize);
+                let direct: &mut MetaData = unsafe {
+                    // Safety: The offset call is safe as `offset` is known to be "in bounds" for buf_addr.
+                    // Safety: The as_mut call is safe as the pointer is aligned, dereferenceable, and
+                    // points to an initialized MetaData instance.
+                    // The returned address is known to be non-Null, so the unwrap call will never panic.
+                    metadata.buf_addr.offset(offset).cast::<MetaData>().as_mut().unwrap()
+                };
+
+                // Step 2: increment the reference count of the direct buffer.
+                direct.inc_refcnt();
+
+                // Step 3: detach the indirect buffer.
+                metadata.buf_addr = null_mut();
+                metadata.buf_len = 0;
+                metadata.ol_flags = metadata.ol_flags & !METADATA_F_INDIRECT;
+
+                // Step 4: reconstitute the direct DemiBuffer.
+                let direct: NonNull<MetaData> = NonNull::from(direct);
+                let tagged: NonNull<MetaData> = direct.with_addr(direct.addr() | Tag::Heap);
+
+                unsafe { DemiBuffer::from_raw(tagged.cast()) }
+            },
+
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                // Step 1: get the direct buffer.
+                let direct: *mut rte_mbuf = rte_mbuf_from_indirect(self.as_mbuf());
+
+                // Step 2: incrememnt the reference count of the direct buffer.
+                rte_mbuf_refcnt_update(direct, 1);
+
+                // Step 3: detach the indirect buffer.
+                rte_pktmbuf_detach(self.as_mbuf());
+
+                // Step 4: reconstitute the direct DemiBuffer.
+                return DemiBuffer::from_mbuf(direct);
+            },
+        }
+    }
+
     /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
     // Note: If `nbytes` is greater than the length of the first segment in the chain, then this function will fail and
     // return an error, rather than remove the remaining bytes from subsequent segments in the chain.  This is to match

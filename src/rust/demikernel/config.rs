@@ -67,6 +67,11 @@ mod raw_socket_config {
     #[cfg(target_os = "windows")]
     pub const LOCAL_INTERFACE_INDEX: &str = "xdp_interface_index";
 
+    // Whether XDP should always poke the TX ring, versus only poking when the ring flags indicate
+    // to do so.
+    #[cfg(target_os = "windows")]
+    pub const XDP_ALWAYS_POKE_TX: &str = "xdp_always_poke_tx";
+
     // N.B. hyper-V VMs can have both NetVSC and VF interfaces working in tandem, in which case
     // we need to listen to the corresponding VF interface as well.
     #[cfg(target_os = "windows")]
@@ -334,6 +339,15 @@ impl Config {
         let tx_ring_size: u32 =
             self.get_int_env_or_option(raw_socket_config::TX_RING_SIZE, Self::get_raw_socket_config)?;
         Ok((tx_buffer_count, tx_ring_size))
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    pub fn xdp_always_poke_tx(&self) -> Result<bool, Fail> {
+        if let Some(always_poke) = Self::get_typed_env_option(raw_socket_config::XDP_ALWAYS_POKE_TX)? {
+            Ok(always_poke)
+        } else {
+            Self::get_bool_option(self.get_raw_socket_config()?, raw_socket_config::XDP_ALWAYS_POKE_TX)
+        }
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
