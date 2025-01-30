@@ -16,10 +16,7 @@ use demikernel::{
     runtime::types::{demi_opcode_t, demi_qresult_t},
     LibOS, QDesc, QToken,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    net::SocketAddr,
-};
+use std::{collections::HashSet, net::SocketAddr};
 
 //======================================================================================================================
 // Constants
@@ -91,13 +88,11 @@ impl TcpClient {
 
     pub fn run_concurrent(&mut self, num_clients: usize) -> Result<()> {
         let mut qtokens: Vec<QToken> = Vec::default();
-        let mut qtokens_reverse: HashMap<QToken, QDesc> = HashMap::default();
 
         for _ in 0..num_clients {
             let qd: QDesc = self.create_and_register_socket()?;
             let qt: QToken = self.libos.connect(qd, self.remote_socket_addr)?;
 
-            qtokens_reverse.insert(qt, qd);
             qtokens.push(qt);
         }
 
@@ -110,10 +105,7 @@ impl TcpClient {
 
             let qr: demi_qresult_t = {
                 let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&qtokens, Some(TIMEOUT_SECONDS))?;
-                let qt: QToken = qtokens.remove(index);
-                qtokens_reverse
-                    .remove(&qt)
-                    .ok_or(anyhow::anyhow!("unregistered queue token"))?;
+                qtokens.remove(index);
                 qr
             };
 
@@ -266,8 +258,9 @@ impl TcpClient {
 
     /// Issues the close() and wait() operations, and deregisters the queue descriptor.
     fn issue_close_and_deregister_qd(&mut self, qd: QDesc) -> Result<()> {
-        helper_functions::close_and_wait(&mut self.libos, qd)?;
-        self.open_qds.remove(&qd);
+        if self.open_qds.remove(&qd) {
+            helper_functions::close_and_wait(&mut self.libos, qd)?;
+        }
         Ok(())
     }
 }

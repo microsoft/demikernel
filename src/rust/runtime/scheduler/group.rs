@@ -42,6 +42,8 @@ pub struct TaskGroup {
     tasks: PinSlab<Box<dyn Task>>,
     /// Holds the waker bits for controlling task scheduling.
     waker_page_refs: Vec<WakerPageRef>,
+    /// List of ready tasks.
+    ready_tasks: Vec<usize>,
 }
 
 //======================================================================================================================
@@ -49,29 +51,26 @@ pub struct TaskGroup {
 //======================================================================================================================
 
 impl TaskGroup {
-    /// Given a handle to a task, remove it from the scheduler
-    pub fn remove(&mut self, task_id: TaskId) -> Option<Box<dyn Task>> {
+    /// Given a handle to a task, remove it from the scheduler.
+    pub fn remove(&mut self, pin_slab_index: usize) -> Option<Box<dyn Task>> {
         // We should not have a scheduler handle that refers to an invalid id, so unwrap and expect are safe here.
-        let pin_slab_index: usize =
-            expect_some!(self.ids.remove(&task_id), "Token should be in the token table").into();
         let (waker_page_ref, waker_page_offset): (&WakerPageRef, usize) = {
             let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(pin_slab_index)?;
             (&self.waker_page_refs[waker_page_index], waker_page_offset)
         };
         waker_page_ref.clear(waker_page_offset);
         if let Some(task) = self.tasks.remove_unpin(pin_slab_index) {
+            let task_id: TaskId = task.get_id();
             trace!(
                 "remove(): name={:?}, id={:?}, pin_slab_index={:?}",
                 task.get_name(),
                 task_id,
                 pin_slab_index
             );
+            self.ids.remove(&task_id).expect("Should be in the id table");
             Some(task)
         } else {
-            warn!(
-                "Unable to unpin and remove: id={:?}, pin_slab_index={:?}",
-                task_id, pin_slab_index
-            );
+            warn!("Unable to unpin and remove: pin_slab_index={:?}", pin_slab_index);
             None
         }
     }
@@ -134,27 +133,15 @@ impl TaskGroup {
         (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
     }
 
-    pub fn get_offsets_for_ready_tasks(&mut self) -> Vec<InternalId> {
-        let mut result: Vec<InternalId> = vec![];
+    pub fn check_for_new_ready_tasks(&mut self) {
         for i in 0..self.get_num_waker_pages() {
             // Grab notified bits.
             let notified: u64 = self.waker_page_refs[i].take_notified();
-            // Turn into bit iter.
-            let mut offset: Vec<InternalId> = BitIter::from(notified)
-                .map(|x| Self::get_pin_slab_index(i, x).into())
+            let mut runnable_pin_slab_offsets: Vec<usize> = BitIter::from(notified)
+                .map(|x| Self::get_pin_slab_index(i, x))
                 .collect();
-            result.append(&mut offset);
+            self.ready_tasks.append(&mut runnable_pin_slab_offsets);
         }
-        result
-    }
-
-    /// Translates an internal task id to an external one. Expects the task to exist.
-    pub fn unchecked_internal_to_external_id(&self, internal_id: InternalId) -> TaskId {
-        expect_some!(self.tasks.get(internal_id.into()), "Invalid offset: {:?}", internal_id).get_id()
-    }
-
-    pub fn unchecked_external_to_internal_id(&self, task_id: &TaskId) -> InternalId {
-        expect_some!(self.ids.get(task_id), "Invalid id: {:?}", task_id)
     }
 
     fn get_pinned_task_ptr(&mut self, pin_slab_index: usize) -> Pin<&mut Box<dyn Task>> {
@@ -166,27 +153,32 @@ impl TaskGroup {
         )
     }
 
-    pub fn get_waker(&self, internal_task_id: InternalId) -> Option<Waker> {
-        let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(internal_task_id.into())?;
+    pub fn get_waker(&self, task_offset: usize) -> Option<Waker> {
+        let (waker_page_index, waker_page_offset) = self.get_waker_page_index_and_offset(task_offset)?;
 
         let raw_waker: NonNull<u8> = self.waker_page_refs[waker_page_index].into_raw_waker_ref(waker_page_offset);
         Some(unsafe { Waker::from_raw(WakerRef::new(raw_waker).into()) })
     }
 
-    pub fn poll_notified_task_and_remove_if_ready(&mut self, internal_task_id: InternalId) -> Option<Box<dyn Task>> {
+    /// Get the next runnable
+    pub fn get_next_runnable_task(&mut self) -> Option<usize> {
+        self.ready_tasks.pop()
+    }
+
+    // Runs a single ready task. If the task completes after running, returns.
+    pub fn poll_runnable_task(&mut self, pin_slab_index: usize) -> Option<Box<dyn Task>> {
         // Perform the actual work of running the task.
         let poll_result: Poll<()> = {
-            let waker: Waker = self.get_waker(internal_task_id)?;
+            let waker: Waker = self.get_waker(pin_slab_index)?;
             let mut waker_context: Context = Context::from_waker(&waker);
-            let mut pinned_ptr = self.get_pinned_task_ptr(internal_task_id.into());
+            let mut pinned_ptr = self.get_pinned_task_ptr(pin_slab_index);
             let pinned_ref = unsafe { Pin::new_unchecked(&mut *pinned_ptr) };
 
             Future::poll(pinned_ref, &mut waker_context)
         };
 
-        if let Poll::Ready(()) = poll_result {
-            let task_id: TaskId = self.unchecked_internal_to_external_id(internal_task_id);
-            return self.remove(task_id);
+        if poll_result == Poll::Ready(()) {
+            return self.remove(pin_slab_index);
         }
         None
     }

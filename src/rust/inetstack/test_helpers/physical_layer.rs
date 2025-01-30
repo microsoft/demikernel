@@ -43,7 +43,7 @@ pub struct SharedTestPhysicalLayer(SharedObject<TestPhysicalLayer>);
 //======================================================================================================================
 
 impl SharedTestPhysicalLayer {
-    pub fn new_test(now: Instant) -> Self {
+    pub fn new(now: Instant) -> Self {
         logging::initialize();
         Self(SharedObject::<TestPhysicalLayer>::new(TestPhysicalLayer {
             incoming: VecDeque::new(),

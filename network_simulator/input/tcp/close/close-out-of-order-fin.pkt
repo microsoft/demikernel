@@ -29,6 +29,9 @@
 // Receive data packet
 +.1 TCP < P. seq 1(1000) ack 1001 win 65535 <nop>
 
+// Send finished.
++.0 wait(500, ...) = 0
+
 // Send ACK packet for data and FIN.
 +.0 TCP > . seq 1001(0) ack 1002 win 64534 <nop>
 

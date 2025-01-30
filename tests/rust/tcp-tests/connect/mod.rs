@@ -6,9 +6,9 @@
 //======================================================================================================================
 
 use crate::check_for_network_error;
-use anyhow::Result;
-use demikernel::{runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
-use std::{
+use ::anyhow::{ensure, Result};
+use ::demikernel::{runtime::types::demi_opcode_t, LibOS, QDesc, QToken};
+use ::std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration,
 };
@@ -71,44 +71,27 @@ fn connect_unbound_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<()> 
     // Succeed to connect socket.
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
 
-    // Whether the connect finished before close.
-    let mut connect_finished: bool = false;
-
-    // Poll once to ensure that the connect() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
-        // If completes successfully, something has gone wrong.
+    // Poll the scheduler once to ensure that the connect() co-routine runs. No coroutines should have completed.
+    ensure!(libos
+        .wait_next_n(|_| { false }, Some(Duration::ZERO))
+        .is_err_and(|e| { e.errno == libc::ETIMEDOUT }));
+    // Succeed to close socket.
+    libos.close(sockqd)?;
+    // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
+    match libos.wait(qt, Some(Duration::ZERO)) {
+        Ok(qr) if check_for_network_error(&qr) => Ok(()),
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on connect() after close(), instead returned this \
+                 unknown error: {:?}",
+            qr.qr_ret
+        ),
+        // If connect() completes successfully, something has gone wrong.
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
             anyhow::bail!("connect() should not succeed because remote does not exist")
         },
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
+        Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
     }
-
-    // Succeed to close socket.
-    libos.close(sockqd)?;
-
-    if !connect_finished {
-        // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
-        match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if check_for_network_error(&qr) => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
-                "wait() should succeed with a specified error on connect() after close(), instead returned this \
-                 unknown error: {:?}",
-                qr.qr_ret
-            ),
-            // If connect() completes successfully, something has gone wrong.
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
-                anyhow::bail!("connect() should not succeed because remote does not exist")
-            },
-            Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
-            Err(_) => anyhow::bail!("wait() should not time out"),
-        }
-    }
-
-    Ok(())
 }
 
 /// Attempts to connect a TCP socket to a remote that is not accepting connections.
@@ -157,44 +140,28 @@ fn connect_bound_socket(libos: &mut LibOS, local: &SocketAddr, remote: &SocketAd
     // Succeed to connect socket.
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
 
-    // Whether the connect finished before close.
-    let mut connect_finished: bool = false;
-
-    // Poll once to ensure that the connect() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
-        // If completes successfully, something has gone wrong.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
-            anyhow::bail!("connect() should not succeed because remote does not exist")
-        },
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
-    }
-
+    // Poll the scheduler once to ensure that the connect() co-routine runs. No coroutines should have completed.
+    ensure!(libos
+        .wait_next_n(|_| { false }, Some(Duration::ZERO))
+        .is_err_and(|e| { e.errno == libc::ETIMEDOUT }));
     // Succeed to close socket.
     libos.close(sockqd)?;
 
-    if !connect_finished {
-        // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
-        match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if check_for_network_error(&qr) => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
-                "wait() should succeed with a specified error on connect() after close(), instead returned this \
+    // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
+    match libos.wait(qt, Some(Duration::ZERO)) {
+        Ok(qr) if check_for_network_error(&qr) => Ok(()),
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on connect() after close(), instead returned this \
                  unknown error: {:?}",
-                qr.qr_ret
-            ),
-            // If connect() completes successfully, something has gone wrong.
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
-                anyhow::bail!("connect() should not succeed because remote does not exist")
-            },
-            Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
-            Err(_) => anyhow::bail!("wait() should not time out"),
-        }
+            qr.qr_ret
+        ),
+        // If connect() completes successfully, something has gone wrong.
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
+            anyhow::bail!("connect() should not succeed because remote does not exist")
+        },
+        Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
     }
-
-    Ok(())
 }
 
 /// Attempts to connect a TCP socket that is listening.
@@ -222,54 +189,36 @@ fn connect_connecting_socket(libos: &mut LibOS, remote: &SocketAddr) -> Result<(
     // Create a connecting socket.
     let sockqd: QDesc = libos.socket(AF_INET, SOCK_STREAM, 0)?;
     let qt: QToken = libos.connect(sockqd, remote.to_owned())?;
-    // Whether the connect finished before connecting again.
-    let mut connect_finished: bool = false;
 
-    // Poll once to ensure that the connect() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        // Can only complete with ECONNREFUSED because remote does not exist.
-        Ok(qr) if check_for_network_error(&qr) => connect_finished = true,
-        // If completes successfully, something has gone wrong.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
-            anyhow::bail!("connect() should not succeed because remote does not exist")
-        },
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
-    }
-
-    // If the previous connect hasn't finished, calling connect again should fail.
-    if !connect_finished {
-        // Fail to connect().
-        match libos.connect(sockqd, remote.to_owned()) {
-            Err(e) if e.errno == libc::EINPROGRESS => (),
-            Err(e) => anyhow::bail!("connect() failed with {}", e),
-            Ok(_) => anyhow::bail!("connect() a socket that is connecting should fail"),
-        };
-    }
+    // Poll the scheduler once to ensure that the connect() co-routine runs. No coroutines should have completed.
+    ensure!(libos
+        .wait_next_n(|_| { false }, Some(Duration::ZERO))
+        .is_err_and(|e| { e.errno == libc::ETIMEDOUT }));
+    // Fail to connect().
+    match libos.connect(sockqd, remote.to_owned()) {
+        Err(e) if e.errno == libc::EINPROGRESS => (),
+        Err(e) => anyhow::bail!("connect() failed with {}", e),
+        Ok(_) => anyhow::bail!("connect() a socket that is connecting should fail"),
+    };
 
     // Succeed to close socket.
     libos.close(sockqd)?;
 
-    if !connect_finished {
-        // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
-        match libos.wait(qt, Some(Duration::from_micros(0))) {
-            Ok(qr) if check_for_network_error(&qr) => {},
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
-                "wait() should succeed with a specified error on accept() after close(), instead returned this \
+    // Poll again to check that the connect() co-routine returns an err, either canceled or refused.
+    match libos.wait(qt, Some(Duration::ZERO)) {
+        Ok(qr) if check_for_network_error(&qr) => Ok(()),
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
+            "wait() should succeed with a specified error on accept() after close(), instead returned this \
                  unknown error: {:?}",
-                qr.qr_ret
-            ),
-            // If connect() completes successfully, something has gone wrong.
-            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
-                anyhow::bail!("connect() should not succeed because remote does not exist")
-            },
-            Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
-            Err(_) => anyhow::bail!("wait() should not time out"),
-        }
+            qr.qr_ret
+        ),
+        // If connect() completes successfully, something has gone wrong.
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CONNECT && qr.qr_ret == 0 => {
+            anyhow::bail!("connect() should not succeed because remote does not exist")
+        },
+        Ok(_) => anyhow::bail!("wait() should return an error on connect() after close()"),
+        Err(_) => anyhow::bail!("wait() should not time out"),
     }
-
-    Ok(())
 }
 
 /// Attempts to connect a TCP socket that is accepting connections.
@@ -280,17 +229,10 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
     libos.listen(sockqd, 16)?;
     let qt: QToken = libos.accept(sockqd)?;
 
-    // Poll once to ensure that the accept() co-routine runs.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Err(e) if e.errno == libc::ETIMEDOUT => {},
-        // If we found a connection to accept, something has gone wrong.
-        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_ACCEPT && qr.qr_ret == 0 => {
-            anyhow::bail!("accept() should not succeed because remote should not be connecting")
-        },
-        Ok(_) => anyhow::bail!("wait() should not succeed"),
-        Err(_) => anyhow::bail!("wait() should timeout"),
-    }
-
+    // Poll the scheduler once to ensure that the connect() co-routine runs. No coroutines should have completed.
+    ensure!(libos
+        .wait_next_n(|_| { false }, Some(Duration::ZERO))
+        .is_err_and(|e| { e.errno == libc::ETIMEDOUT }));
     // Fail to connect().
     match libos.connect(sockqd, remote.to_owned()) {
         // Note that EOPNOTSUPP and ENOTSUP are the same error code.
@@ -303,8 +245,8 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
     libos.close(sockqd)?;
 
     // Poll again to check that the accept() co-routine completed with an error and was properly canceled.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
-        Ok(qr) if check_for_network_error(&qr) => {},
+    match libos.wait(qt, Some(Duration::ZERO)) {
+        Ok(qr) if check_for_network_error(&qr) => Ok(()),
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!(
             "wait() should succeed with a specified error on accept() after close(), instead returned this unknown \
              error: {:?}",
@@ -317,8 +259,6 @@ fn connect_accepting_socket(libos: &mut LibOS, local: &SocketAddr, remote: &Sock
         Ok(_) => anyhow::bail!("wait() should return an error on accept() after close()"),
         Err(_) => anyhow::bail!("wait() should not time out"),
     }
-
-    Ok(())
 }
 
 /// Attempts to connect a TCP socket that is closed.

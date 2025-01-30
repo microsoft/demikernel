@@ -57,8 +57,6 @@ pub enum LibOS {
 
 impl LibOS {
     pub fn new(libos_name: LibOSName, _perf_callback: Option<demi_callback_t>) -> Result<Self, Fail> {
-        timer!("demikernel::new");
-
         logging::initialize();
 
         let config_path: String = match env::var("CONFIG_PATH") {
@@ -125,13 +123,10 @@ impl LibOS {
         protocol: libc::c_int,
     ) -> Result<QDesc, Fail> {
         let result: Result<QDesc, Fail> = {
-            timer!("demikernel::socket");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.socket(domain, socket_type, protocol),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -144,8 +139,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -157,8 +150,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -169,21 +160,16 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
     #[allow(unused_variables)]
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            timer!("demikernel::bind");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.bind(sockqd, local),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -192,13 +178,10 @@ impl LibOS {
     #[allow(unused_variables)]
     pub fn listen(&mut self, sockqd: QDesc, backlog: usize) -> Result<(), Fail> {
         let result: Result<(), Fail> = {
-            timer!("demikernel::listen");
             match self {
                 LibOS::NetworkLibOS(libos) => libos.listen(sockqd, backlog),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -211,8 +194,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -223,8 +204,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.connect(sockqd, remote),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -243,8 +222,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -254,8 +231,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.async_close(qd),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -268,8 +243,6 @@ impl LibOS {
             }
         };
 
-        self.poll();
-
         result
     }
 
@@ -281,8 +254,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.pushto(qd, sga, to),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -304,8 +275,6 @@ impl LibOS {
                 LibOS::NetworkLibOS(libos) => libos.pop(qd, size),
             }
         };
-
-        self.poll();
 
         result
     }
@@ -362,12 +331,5 @@ impl LibOS {
         };
 
         result
-    }
-
-    pub fn poll(&mut self) {
-        // No profiling scope here because we may enter a coroutine scope.
-        match self {
-            LibOS::NetworkLibOS(libos) => libos.poll(),
-        }
     }
 }

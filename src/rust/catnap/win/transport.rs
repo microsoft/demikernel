@@ -75,7 +75,7 @@ impl SharedCatnapTransport {
             runtime: runtime.clone(),
         }));
 
-        runtime.insert_background_coroutine(
+        runtime.insert_io_polling_coroutine(
             "bgc::catnap::transport::epoll",
             Box::pin({
                 let mut me: Self = me.clone();

@@ -4,10 +4,7 @@
 use crate::{
     inetstack::{
         consts::MAX_HEADER_SIZE,
-        test_helpers::{
-            self,
-            engine::{SharedEngine, TIMEOUT_SECONDS},
-        },
+        test_helpers::{self, engine::SharedEngine},
     },
     runtime::{
         memory::DemiBuffer,
@@ -84,7 +81,7 @@ fn udp_push_pop() -> Result<()> {
     let buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
         .expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
-    match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+    match bob.wait(bob_qt)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
@@ -94,11 +91,10 @@ fn udp_push_pop() -> Result<()> {
     carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
 
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
-        match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
-            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-            _ => anyhow::bail!("Pop failed"),
-        };
+    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match carrie.wait(carrie_qt)? {
+        (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+        _ => anyhow::bail!("Pop failed"),
+    };
     assert_eq!(remote_addr.unwrap(), bob_addr);
     assert_eq!(received_buf[..], buf[..]);
 
@@ -135,7 +131,7 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     let buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
         .expect("slice should fit in DemiBuffer");
     let qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
-    match bob.wait(qt, TIMEOUT_SECONDS)? {
+    match bob.wait(qt)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
@@ -145,11 +141,10 @@ fn udp_push_pop_wildcard_address() -> Result<()> {
     // Take a packet from Bob and deliver to Carrie.
     carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
-    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
-        match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
-            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-            _ => anyhow::bail!("Pop failed"),
-        };
+    let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match carrie.wait(carrie_qt)? {
+        (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+        _ => anyhow::bail!("Pop failed"),
+    };
     assert_eq!(remote_addr.unwrap(), bob_addr);
     assert_eq!(received_buf[..], buf[..]);
     // Close peers.
@@ -185,7 +180,7 @@ fn udp_ping_pong() -> Result<()> {
     let buf_a: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
         .expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf_a.clone(), carrie_addr)?;
-    match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+    match bob.wait(bob_qt)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
@@ -194,13 +189,11 @@ fn udp_ping_pong() -> Result<()> {
     // Take a packet from Bob and deliver to Carrie.
     carrie.push_frame(bob.pop_frame());
     let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
-    carrie.poll();
 
-    let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
-        match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
-            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-            _ => anyhow::bail!("Pop failed"),
-        };
+    let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) = match carrie.wait(carrie_qt)? {
+        (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+        _ => anyhow::bail!("Pop failed"),
+    };
     assert_eq!(remote_addr.unwrap(), bob_addr);
     assert_eq!(received_buf_a[..], buf_a[..]);
 
@@ -210,17 +203,16 @@ fn udp_ping_pong() -> Result<()> {
     let buf_b: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
         .expect("slice should fit in DemiBuffer");
     let carrie_qt2: QToken = carrie.udp_pushto(carrie_fd, buf_b.clone(), bob_addr)?;
-    match carrie.wait(carrie_qt2, TIMEOUT_SECONDS)? {
+    match carrie.wait(carrie_qt2)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    carrie.poll();
     now += Duration::from_micros(1);
 
     // Take a packet from Carrie and deliver to Bob.
     bob.push_frame(carrie.pop_frame());
     let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-    let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+    let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
         (_, OperationResult::Pop(addr, buf)) => (addr, buf),
         _ => anyhow::bail!("Pop failed"),
     };
@@ -319,22 +311,20 @@ fn udp_loop2_push_pop() -> Result<()> {
         let buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![(b % 256) as u8; 32][..], MAX_HEADER_SIZE)
             .expect("slice should fit");
         let bob_qt: QToken = bob.udp_pushto(bob_fd, buf.clone(), carrie_addr)?;
-        match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+        match bob.wait(bob_qt)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
-        bob.poll();
 
         now += Duration::from_micros(1);
 
         // Take a packet from Bob and deliver to Carrie.
         carrie.push_frame(bob.pop_frame());
         let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
-        let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) =
-            match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
-                (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-                _ => anyhow::bail!("Pop failed"),
-            };
+        let (remote_addr, received_buf): (Option<SocketAddrV4>, DemiBuffer) = match carrie.wait(carrie_qt)? {
+            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+            _ => anyhow::bail!("Pop failed"),
+        };
         assert_eq!(remote_addr.unwrap(), bob_addr);
         assert_eq!(received_buf[..], buf[..]);
     }
@@ -384,22 +374,20 @@ fn udp_loop2_ping_pong() -> Result<()> {
         let buf_a: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
             .expect("slice should fit in DemiBuffer");
         let bob_qt: QToken = bob.udp_pushto(bob_fd, buf_a.clone(), carrie_addr)?;
-        match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+        match bob.wait(bob_qt)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
-        bob.poll();
 
         now += Duration::from_micros(1);
 
         // Take a packet from Bob and deliver to Carrie.
         carrie.push_frame(bob.pop_frame());
         let carrie_qt: QToken = carrie.udp_pop(carrie_fd)?;
-        let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) =
-            match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
-                (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-                _ => anyhow::bail!("Pop failed"),
-            };
+        let (remote_addr, received_buf_a): (Option<SocketAddrV4>, DemiBuffer) = match carrie.wait(carrie_qt)? {
+            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+            _ => anyhow::bail!("Pop failed"),
+        };
         assert_eq!(remote_addr.unwrap(), bob_addr);
         assert_eq!(received_buf_a[..], buf_a[..]);
 
@@ -409,7 +397,7 @@ fn udp_loop2_ping_pong() -> Result<()> {
         let buf_b: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
             .expect("slice should fit in DemiBuffer");
         let carrie_qt: QToken = carrie.udp_pushto(carrie_fd, buf_b.clone(), bob_addr)?;
-        match carrie.wait(carrie_qt, TIMEOUT_SECONDS)? {
+        match carrie.wait(carrie_qt)? {
             (_, OperationResult::Push) => {},
             _ => anyhow::bail!("Push failed"),
         };
@@ -419,11 +407,10 @@ fn udp_loop2_ping_pong() -> Result<()> {
         // Take a packet from Carrie and deliver to Bob.
         bob.push_frame(carrie.pop_frame());
         let bob_qt: QToken = bob.udp_pop(bob_fd)?;
-        let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) =
-            match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
-                (_, OperationResult::Pop(addr, buf)) => (addr, buf),
-                _ => anyhow::bail!("Pop failed"),
-            };
+        let (remote_addr, received_buf_b): (Option<SocketAddrV4>, DemiBuffer) = match bob.wait(bob_qt)? {
+            (_, OperationResult::Pop(addr, buf)) => (addr, buf),
+            _ => anyhow::bail!("Pop failed"),
+        };
         assert_eq!(remote_addr.unwrap(), carrie_addr);
         assert_eq!(received_buf_b[..], buf_b[..]);
     }
@@ -460,11 +447,10 @@ fn udp_pop_not_bound() -> Result<()> {
     let buf: DemiBuffer = DemiBuffer::from_slice_with_headroom(&vec![0x5a; 32][..], MAX_HEADER_SIZE)
         .expect("slice should fit in DemiBuffer");
     let bob_qt: QToken = bob.udp_pushto(bob_fd, buf, carrie_addr)?;
-    match bob.wait(bob_qt, TIMEOUT_SECONDS)? {
+    match bob.wait(bob_qt)? {
         (_, OperationResult::Push) => {},
         _ => anyhow::bail!("Push failed"),
     };
-    bob.poll();
 
     now += Duration::from_micros(1);
 

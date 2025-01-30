@@ -103,7 +103,7 @@ BOOLEAN
 _XskRingProducerNeedPoke(
     _In_ const XSK_RING *Ring
     );
-    
+
 BOOLEAN
 _XskRingError(
     _In_ const XSK_RING *Ring

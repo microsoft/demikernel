@@ -18,10 +18,7 @@ use demikernel::{
     runtime::types::{demi_opcode_t, demi_qresult_t},
     LibOS, QDesc, QToken,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    net::SocketAddr,
-};
+use std::{collections::HashSet, net::SocketAddr};
 
 //======================================================================================================================
 // Constants
@@ -48,7 +45,6 @@ pub struct TcpServer {
     sockqd: QDesc,
     connected_client_qds: HashSet<QDesc>,
     pending_qtokens: Vec<QToken>,
-    qtokens_to_qdesc_map: HashMap<QToken, QDesc>,
     num_accepted_clients: usize,
     num_closed_clients: usize,
     /// Test passed flag to allow cleanup in drop() only if the test fails.
@@ -72,7 +68,6 @@ impl TcpServer {
             sockqd,
             connected_client_qds: HashSet::default(),
             pending_qtokens: Vec::default(),
-            qtokens_to_qdesc_map: HashMap::default(),
             num_accepted_clients: 0,
             num_closed_clients: 0,
             has_test_passed: false,
@@ -125,13 +120,7 @@ impl TcpServer {
 
                     self.libos.sgafree(sga)?;
 
-                    let qts_cancelled: Vec<QToken> = self.handle_connection_termination(qd)?;
-
-                    // Ensure that the client has no pending operations.
-                    assert!(
-                        qts_cancelled.is_empty(),
-                        "client should not have any pending operations, but it has"
-                    );
+                    self.handle_connection_termination(qd)?;
                 },
                 demi_opcode_t::DEMI_OPC_FAILED => {
                     let qd: QDesc = qr.qr_qd.into();
@@ -144,7 +133,7 @@ impl TcpServer {
                         )
                     }
 
-                    let _: Vec<QToken> = self.handle_connection_termination(qd)?;
+                    self.handle_connection_termination(qd)?;
                 },
                 _ => {
                     anyhow::bail!("unexpected result")
@@ -214,41 +203,19 @@ impl TcpServer {
         );
     }
 
-    fn unregister_client(&mut self, qd: QDesc) {
-        assert_eq!(
-            self.connected_client_qds.remove(&qd),
-            true,
-            "client isn't registered and it should be"
-        );
-    }
-
-    fn cancel_pending_operations(&mut self, qd: QDesc) -> Vec<QToken> {
-        let qts_drained: HashMap<QToken, QDesc> = self.qtokens_to_qdesc_map.extract_if(|_k, v| *v == qd).collect();
-        let qts_dropped: Vec<QToken> = self
-            .pending_qtokens
-            .extract_if(|x| qts_drained.contains_key(x))
-            .collect();
-        qts_dropped
-    }
-
     fn mark_completed_operation(&mut self, index: usize) -> Result<()> {
-        let qt: QToken = self.pending_qtokens.remove(index);
-        self.qtokens_to_qdesc_map
-            .remove(&qt)
-            .ok_or(anyhow::anyhow!("unregistered queue token"))?;
+        self.pending_qtokens.remove(index);
         Ok(())
     }
 
     fn issue_accept(&mut self) -> Result<()> {
         let qt: QToken = self.libos.accept(self.sockqd)?;
-        self.qtokens_to_qdesc_map.insert(qt, self.sockqd);
         self.pending_qtokens.push(qt);
         Ok(())
     }
 
     fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
         let qt: QToken = self.libos.pop(qd, None)?;
-        self.qtokens_to_qdesc_map.insert(qt, qd);
         self.pending_qtokens.push(qt);
         Ok(())
     }
@@ -262,13 +229,13 @@ impl TcpServer {
         Ok(())
     }
 
-    fn handle_connection_termination(&mut self, qd: QDesc) -> Result<Vec<QToken>> {
-        let qts_cancelled: Vec<QToken> = self.cancel_pending_operations(qd);
-        self.unregister_client(qd);
-        helper_functions::close_and_wait(&mut self.libos, qd)?;
-        self.num_closed_clients += 1;
-        println!("{} clients closed", self.num_closed_clients);
-        Ok(qts_cancelled)
+    fn handle_connection_termination(&mut self, qd: QDesc) -> Result<()> {
+        if self.connected_client_qds.remove(&qd) {
+            helper_functions::close_and_wait(&mut self.libos, qd)?;
+            self.num_closed_clients += 1;
+            println!("{} clients closed", self.num_closed_clients);
+        }
+        Ok(())
     }
 }
 

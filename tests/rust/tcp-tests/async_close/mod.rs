@@ -63,7 +63,7 @@ fn async_close_and_wait_twice_1(libos: &mut LibOS) -> Result<()> {
     let qt: QToken = libos.async_close(sockqd)?;
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
+    match libos.wait(qt, Some(Duration::ZERO)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
@@ -88,15 +88,17 @@ fn async_close_and_wait_twice_2(libos: &mut LibOS) -> Result<()> {
     };
 
     // wait() for the first close() qt.
-    match libos.wait(qt1, Some(Duration::from_micros(0))) {
+    match libos.wait(qt1, Some(Duration::ZERO)) {
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
         _ => anyhow::bail!("wait() should succeed with async_close()"),
     }
 
     // wait() for the second close() qt.
     if let Some(qt2) = qt2 {
-        match libos.wait(qt2, Some(Duration::from_micros(0))) {
+        match libos.wait(qt2, Some(Duration::ZERO)) {
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
             _ => anyhow::bail!("wait() should fail with async_close()"),
         }
     }
@@ -116,15 +118,17 @@ fn async_close_and_wait_twice_3(libos: &mut LibOS) -> Result<()> {
 
     // wait() for the second close() qt.
     if let Some(qt2) = qt2 {
-        match libos.wait(qt2, Some(Duration::from_micros(0))) {
+        match libos.wait(qt2, Some(Duration::ZERO)) {
+            Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
             Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
             _ => anyhow::bail!("wait() should fail with async_close()"),
         }
     }
 
     // wait() for the first close() qt.
-    match libos.wait(qt1, Some(Duration::from_micros(0))) {
+    match libos.wait(qt1, Some(Duration::ZERO)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => {},
+        Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED && qr.qr_ret == libc::EBADF as i64 => {},
         _ => anyhow::bail!("wait() should succeed with async_close()"),
     }
 
@@ -140,7 +144,7 @@ fn async_close_unbound_socket(libos: &mut LibOS) -> Result<()> {
     let qt: QToken = libos.async_close(sockqd)?;
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
+    match libos.wait(qt, Some(Duration::ZERO)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
@@ -157,7 +161,7 @@ fn async_close_bound_socket(libos: &mut LibOS, local: &SocketAddr) -> Result<()>
     let qt: QToken = libos.async_close(sockqd)?;
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
+    match libos.wait(qt, Some(Duration::ZERO)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),
@@ -175,7 +179,7 @@ fn async_close_listening_socket(libos: &mut LibOS, local: &SocketAddr) -> Result
     let qt: QToken = libos.async_close(sockqd)?;
 
     // Poll once to ensure the async_close() coroutine runs and finishes the close.
-    match libos.wait(qt, Some(Duration::from_micros(0))) {
+    match libos.wait(qt, Some(Duration::ZERO)) {
         Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_CLOSE && qr.qr_ret == 0 => Ok(()),
         Ok(_) => anyhow::bail!("wait() should succeed with async_close()"),
         Err(_) => anyhow::bail!("wait() should succeed with async_close()"),

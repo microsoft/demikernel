@@ -104,6 +104,7 @@ impl<T> PinSlab<T> {
         self.internal_get(key).is_some()
     }
 
+    #[allow(unused)]
     /// Gets a read only unpinned reference.
     pub fn get(&self, key: usize) -> Option<&T> {
         self.internal_get(key)

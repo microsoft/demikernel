@@ -88,7 +88,7 @@ impl SharedCatnapTransport {
             options: TcpSocketOptions::new(config)?,
         }));
         let mut me2: Self = me.clone();
-        runtime.insert_background_coroutine(
+        runtime.insert_io_polling_coroutine(
             "bgc::catnap::transport::epoll",
             Box::pin(async move { me2.poll().await }.fuse()),
         )?;

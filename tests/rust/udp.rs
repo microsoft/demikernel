@@ -11,11 +11,11 @@ mod test {
 
     use crate::common::{libos::*, ALICE_CONFIG_PATH, ALICE_IP, BOB_CONFIG_PATH, BOB_IP, PORT_NUMBER};
     use ::anyhow::Result;
+    use ::crossbeam_channel::{Receiver, Sender};
     use ::demikernel::runtime::{
         memory::{DemiBuffer, MemoryRuntime},
         OperationResult, QDesc, QToken,
     };
-    use crossbeam_channel::{Receiver, Sender};
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
@@ -26,7 +26,7 @@ mod test {
         net::SocketAddr,
         sync::{Arc, Barrier},
         thread::{self, JoinHandle},
-        time::{Duration, Instant},
+        time::Duration,
     };
 
     //==============================================================================
@@ -113,7 +113,7 @@ mod test {
     #[test]
     fn udp_setup() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -129,7 +129,7 @@ mod test {
     #[test]
     fn udp_connect_loopback() -> Result<()> {
         let (tx, rx): (Sender<DemiBuffer>, Receiver<DemiBuffer>) = crossbeam_channel::unbounded();
-        let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, tx, rx) {
+        let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_CONFIG_PATH, tx, rx) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
         };
@@ -177,7 +177,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::Builder::new().name(format!("alice")).spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
+            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -246,7 +246,7 @@ mod test {
         })?;
 
         let bob: JoinHandle<Result<()>> = thread::Builder::new().name(format!("bob")).spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new_test(BOB_CONFIG_PATH, bob_tx, alice_rx) {
+            let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -336,7 +336,7 @@ mod test {
         let alice_barrier: Arc<Barrier> = bob_barrier.clone();
 
         let alice: JoinHandle<Result<()>> = thread::Builder::new().name(format!("alice")).spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
+            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_CONFIG_PATH, alice_tx, bob_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -405,7 +405,7 @@ mod test {
         })?;
 
         let bob = thread::Builder::new().name(format!("bob")).spawn(move || {
-            let mut libos: DummyLibOS = match DummyLibOS::new_test(ALICE_CONFIG_PATH, bob_tx, alice_rx) {
+            let mut libos: DummyLibOS = match DummyLibOS::new(ALICE_CONFIG_PATH, bob_tx, alice_rx) {
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
             };
@@ -480,34 +480,9 @@ mod test {
 
     /// Safe call to `wait2()`.
     fn safe_wait(libos: &mut DummyLibOS, qt: QToken) -> Result<(QDesc, OperationResult)> {
-        // First check if the task has already completed.
-        if let Some(result) = libos.get_runtime().get_completed_task(&qt) {
-            return Ok(result);
+        match libos.wait(qt, TIMEOUT_MILLISECONDS) {
+            Ok(result) => Ok(result),
+            Err(_) => anyhow::bail!("wait timed out"),
         }
-
-        // Otherwise, actually run the scheduler.
-        // Put the QToken into a single element array.
-        let qt_array: [QToken; 1] = [qt];
-        let mut prev: Instant = Instant::now();
-        let mut remaining_time: Duration = TIMEOUT_MILLISECONDS;
-
-        // Call run_any() until the task finishes.
-        loop {
-            // Run for one quanta and if one of our queue tokens completed, then return.
-            if let Some((offset, qd, qr)) = libos.get_runtime().run_any(&qt_array, remaining_time) {
-                debug_assert_eq!(offset, 0);
-                return Ok((qd, qr));
-            }
-            let now: Instant = Instant::now();
-            let elapsed_time: Duration = now - prev;
-            if elapsed_time >= remaining_time {
-                break;
-            } else {
-                remaining_time = remaining_time - elapsed_time;
-                prev = now;
-            }
-        }
-
-        anyhow::bail!("wait timed out")
     }
 }

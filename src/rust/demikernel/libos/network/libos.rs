@@ -147,7 +147,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().accept_coroutine(qd).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::accept", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::accept", coroutine)
         };
 
         queue.accept(coroutine_constructor)
@@ -198,7 +198,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().connect_coroutine(qd, remote).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::connect", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::connect", coroutine)
         };
 
         queue.connect(coroutine_constructor)
@@ -238,7 +238,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().close_coroutine(qd).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::close", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::close", coroutine)
         };
 
         queue.close(coroutine_constructor)
@@ -290,7 +290,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().push_coroutine(qd, buf).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::push", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::push", coroutine)
         };
 
         queue.push(coroutine_constructor)
@@ -333,7 +333,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().pushto_coroutine(qd, buf, remote).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::pushto", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::pushto", coroutine)
         };
 
         queue.push(coroutine_constructor)
@@ -374,7 +374,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
             let coroutine = Box::pin(self.clone().pop_coroutine(qd, size).fuse());
             self.runtime
                 .clone()
-                .insert_io_coroutine("ioc::network::libos::pop", coroutine)
+                .insert_nonpolling_coroutine("ioc::network::libos::pop", coroutine)
         };
 
         queue.pop(coroutine_constructor)
@@ -435,9 +435,10 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         mut acceptor: Acceptor,
         timeout: Duration,
     ) -> Result<(), Fail> {
-        self.runtime
-            .clone()
-            .wait_next_n(|qt, qd, result| acceptor(self.create_result(result, qd, qt)), timeout)
+        self.runtime.clone().wait_next_n(
+            |qt, qd, result| acceptor(self.create_result(result.clone(), qd, qt)),
+            timeout,
+        )
     }
 
     pub fn create_result(&self, result: OperationResult, qd: QDesc, qt: QToken) -> demi_qresult_t {
@@ -520,11 +521,6 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
         self.transport.sgaalloc(size)
-    }
-
-    /// Runs all runnable coroutines.
-    pub fn poll(&mut self) {
-        self.runtime.poll()
     }
 
     /// Releases a scatter-gather array.

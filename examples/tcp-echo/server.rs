@@ -13,7 +13,7 @@ use demikernel::{
     LibOS, QDesc, QToken,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -39,7 +39,6 @@ pub struct TcpEchoServer {
     listening_sockqd: QDesc,
     connected_clients: HashSet<QDesc>,
     pending_qtokens: Vec<QToken>,
-    pending_qtokens_reverse: HashMap<QToken, QDesc>,
 }
 
 //======================================================================================================================
@@ -69,7 +68,6 @@ impl TcpEchoServer {
             listening_sockqd,
             connected_clients: HashSet::default(),
             pending_qtokens: Vec::default(),
-            pending_qtokens_reverse: HashMap::default(),
         });
     }
 
@@ -103,7 +101,7 @@ impl TcpEchoServer {
             let qr: demi_qresult_t = {
                 let (index, qr): (usize, demi_qresult_t) =
                     self.libos.wait_any(&self.pending_qtokens, Some(TIMEOUT_SECONDS))?;
-                self.unregister_operation(index)?;
+                self.pending_qtokens.remove(index);
                 qr
             };
 
@@ -123,19 +121,19 @@ impl TcpEchoServer {
 
     fn issue_accept(&mut self) -> Result<()> {
         let qt: QToken = self.libos.accept(self.listening_sockqd)?;
-        self.register_operation(self.listening_sockqd, qt);
+        self.pending_qtokens.push(qt);
         Ok(())
     }
 
     fn issue_push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<()> {
         let qt: QToken = self.libos.push(qd, &sga)?;
-        self.register_operation(qd, qt);
+        self.pending_qtokens.push(qt);
         Ok(())
     }
 
     fn issue_pop(&mut self, qd: QDesc) -> Result<()> {
         let qt: QToken = self.libos.pop(qd, None)?;
-        self.register_operation(qd, qt);
+        self.pending_qtokens.push(qt);
         Ok(())
     }
 
@@ -198,26 +196,10 @@ impl TcpEchoServer {
     }
 
     fn handle_close(&mut self, qd: QDesc) -> Result<()> {
-        let qts_drained: HashMap<QToken, QDesc> = self.pending_qtokens_reverse.extract_if(|_k, v| v == &qd).collect();
-        let _: Vec<_> = self
-            .pending_qtokens
-            .extract_if(|x| qts_drained.contains_key(x))
-            .collect();
-        self.connected_clients.remove(&qd);
-        self.libos.close(qd)?;
-        Ok(())
-    }
+        if self.connected_clients.remove(&qd) {
+            self.libos.close(qd)?;
+        }
 
-    fn register_operation(&mut self, qd: QDesc, qt: QToken) {
-        self.pending_qtokens_reverse.insert(qt, qd);
-        self.pending_qtokens.push(qt);
-    }
-
-    fn unregister_operation(&mut self, index: usize) -> Result<()> {
-        let qt: QToken = self.pending_qtokens.remove(index);
-        self.pending_qtokens_reverse
-            .remove(&qt)
-            .ok_or(anyhow::anyhow!("unregistered queue token"))?;
         Ok(())
     }
 }
