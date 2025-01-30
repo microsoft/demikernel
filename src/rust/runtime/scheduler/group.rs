@@ -80,7 +80,7 @@ impl TaskGroup {
         let task_name: &'static str = task.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: usize = self.tasks.insert(task)?;
-        let task_id: TaskId = self.ids.insert_with_new_id(pin_slab_index.into());
+        let task_id: TaskId = self.ids.insert_with_new_id(pin_slab_index.into())?;
 
         self.add_new_pages_up_to_pin_slab_index(pin_slab_index.into());
 
@@ -191,7 +191,6 @@ impl TaskGroup {
         }
     }
 
-    #[cfg(not(feature = "direct-mapping"))]
     #[cfg(test)]
     pub fn num_tasks(&self) -> usize {
         self.ids.len()
