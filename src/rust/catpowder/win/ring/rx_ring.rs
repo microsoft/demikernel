@@ -9,7 +9,6 @@ use crate::{
     catpowder::win::{
         api::XdpApi,
         ring::{
-            buffer::XdpBuffer,
             generic::XdpRing,
             rule::{XdpProgram, XdpRule},
             umemreg::UmemReg,
@@ -17,9 +16,14 @@ use crate::{
         socket::XdpSocket,
     },
     inetstack::protocols::Protocol,
-    runtime::{fail::Fail, libxdp, limits},
+    runtime::{fail::Fail, libxdp, limits, memory::DemiBuffer},
 };
-use ::std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::RefCell,
+    mem::MaybeUninit,
+    num::{NonZeroU16, NonZeroU32},
+    rc::Rc,
+};
 
 //======================================================================================================================
 // Structures
@@ -34,13 +38,14 @@ pub struct RxRing {
     /// A user memory region where receive buffers are stored.
     mem: Rc<RefCell<UmemReg>>,
     /// A ring for receiving packets.
-    rx_ring: XdpRing,
+    rx_ring: XdpRing<libxdp::XSK_BUFFER_DESCRIPTOR>,
     /// A ring for returning receive buffers to the kernel.
-    rx_fill_ring: XdpRing,
+    rx_fill_ring: XdpRing<u64>,
     /// Underlying XDP socket.
     socket: XdpSocket, // NOTE: we keep this here to prevent the socket from being dropped.
     /// Underlying XDP program.
-    _program: Option<XdpProgram>, // NOTE: we keep this here to prevent the program from being dropped.
+    /// NOTE: we keep this here to prevent the program from being dropped.
+    _program: Option<XdpProgram>,
 }
 
 //======================================================================================================================
@@ -49,23 +54,17 @@ pub struct RxRing {
 
 impl RxRing {
     /// Creates a new ring for receiving packets.
-    fn new(api: &mut XdpApi, length: u32, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
+    pub fn new(api: &mut XdpApi, length: u32, buf_count: u32, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
         // Create an XDP socket.
         trace!("creating xdp socket");
         let mut socket: XdpSocket = XdpSocket::create(api)?;
 
         // Create a UMEM region.
         trace!("creating umem region");
-        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(length, limits::RECVBUF_SIZE_MAX as u32)));
-
-        // Register the UMEM region.
-        trace!("registering umem region");
-        socket.setsockopt(
-            api,
-            libxdp::XSK_SOCKOPT_UMEM_REG,
-            mem.borrow().as_ref() as *const libxdp::XSK_UMEM_REG as *const core::ffi::c_void,
-            std::mem::size_of::<libxdp::XSK_UMEM_REG>() as u32,
-        )?;
+        let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
+        let chunk_size: NonZeroU16 =
+            NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
+        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size)?));
 
         // Set rx ring size.
         trace!("setting rx ring size: {}", length);
@@ -105,16 +104,8 @@ impl RxRing {
         )?;
 
         // Initialize rx and rx fill rings.
-        let mut rx_fill_ring: XdpRing = XdpRing::new(&ring_info.Fill);
-        let rx_ring: XdpRing = XdpRing::new(&ring_info.Rx);
-
-        // Submit rx buffer to the kernel.
-        trace!("submitting rx ring buffer");
-        let mut ring_index: u32 = 0;
-        rx_fill_ring.producer_reserve(length, &mut ring_index);
-        let b: *mut u64 = rx_fill_ring.get_element(ring_index) as *mut u64;
-        unsafe { *b = 0 };
-        rx_fill_ring.producer_submit(length);
+        let rx_fill_ring: XdpRing<u64> = XdpRing::new(&ring_info.Fill);
+        let rx_ring: XdpRing<libxdp::XSK_BUFFER_DESCRIPTOR> = XdpRing::new(&ring_info.Rx);
 
         Ok(Self {
             ifindex,
@@ -128,8 +119,14 @@ impl RxRing {
     }
 
     /// Create a new RxRing which redirects all traffic on the (if, queue) pair.
-    pub fn new_redirect_all(api: &mut XdpApi, length: u32, ifindex: u32, queueid: u32) -> Result<Self, Fail> {
-        let mut ring: Self = Self::new(api, length, ifindex, queueid)?;
+    pub fn new_redirect_all(
+        api: &mut XdpApi,
+        length: u32,
+        buf_count: u32,
+        ifindex: u32,
+        queueid: u32,
+    ) -> Result<Self, Fail> {
+        let mut ring: Self = Self::new(api, length, buf_count, ifindex, queueid)?;
         let rules: [XdpRule; 1] = [XdpRule::new(&ring.socket)];
         ring.reprogram(api, &rules)?;
         Ok(ring)
@@ -139,12 +136,13 @@ impl RxRing {
     pub fn new_cohost(
         api: &mut XdpApi,
         length: u32,
+        buf_count: u32,
         ifindex: u32,
         queueid: u32,
         tcp_ports: &[u16],
         udp_ports: &[u16],
     ) -> Result<Self, Fail> {
-        let mut ring: Self = Self::new(api, length, ifindex, queueid)?;
+        let mut ring: Self = Self::new(api, length, buf_count, ifindex, queueid)?;
 
         let rules: Vec<XdpRule> = tcp_ports
             .iter()
@@ -179,31 +177,103 @@ impl RxRing {
         Ok(())
     }
 
-    /// Reserves a consumer slot in the rx ring.
-    pub fn reserve_rx(&mut self, count: u32, idx: &mut u32) -> u32 {
-        self.rx_ring.consumer_reserve(count, idx)
+    pub fn socket(&self) -> &XdpSocket {
+        &self.socket
     }
 
-    /// Releases a consumer slot in the rx ring.
-    pub fn release_rx(&mut self, count: u32) {
-        self.rx_ring.consumer_release(count);
+    fn check_error(&self, api: &mut XdpApi) -> Result<(), Fail> {
+        if self.rx_ring.has_error() {
+            let mut error: libxdp::XSK_ERROR = 0;
+            let mut len: u32 = std::mem::size_of::<libxdp::XSK_ERROR>() as u32;
+            self.socket.getsockopt(
+                api,
+                libxdp::XSK_SOCKOPT_RX_ERROR,
+                &mut error as *mut i32 as *mut core::ffi::c_void,
+                &mut len,
+            )?;
+
+            let errno: i32 = match error {
+                libxdp::_XSK_ERROR_XSK_ERROR_INTERFACE_DETACH => libc::ENODEV,
+                libxdp::_XSK_ERROR_XSK_ERROR_INVALID_RING => libc::EINVAL,
+                libxdp::_XSK_ERROR_XSK_NO_ERROR => return Ok(()),
+                _ => libc::EIO,
+            };
+            return Err(Fail::new(errno, "rx ring has error"));
+        }
+        Ok(())
     }
 
-    /// Reserves a producer slot in the rx fill ring.
-    pub fn reserve_rx_fill(&mut self, count: u32, idx: &mut u32) -> u32 {
-        self.rx_fill_ring.producer_reserve(count, idx)
+    pub fn provide_buffers(&mut self) {
+        let mut idx: u32 = 0;
+        let available: u32 = self.rx_fill_ring.producer_reserve(u32::MAX, &mut idx);
+        let mut published: u32 = 0;
+        let mem: std::cell::Ref<'_, UmemReg> = self.mem.borrow();
+        for i in 0..available {
+            if let Some(buf_offset) = mem.get_dehydrated_buffer() {
+                // Safety: Buffer is allocated from the memory pool, which must be in the contiguous memory range
+                // starting at the UMEM base region address.
+                let b: &mut MaybeUninit<u64> = self.rx_fill_ring.get_element(idx + i);
+                b.write(buf_offset as u64);
+                trace!("provided buffer at offset {}", buf_offset);
+                published += 1;
+            } else {
+                break;
+            }
+        }
+
+        if published > 0 {
+            trace!(
+                "provided {} buffers to RxRing interface {} queue {}",
+                published,
+                self.ifindex,
+                self.queueid
+            );
+            self.rx_fill_ring.producer_submit(published);
+        }
     }
 
-    /// Submits a producer slot in the rx fill ring.
-    pub fn submit_rx_fill(&mut self, count: u32) {
-        self.rx_fill_ring.producer_submit(count);
-    }
+    pub fn process_rx<Fn>(&mut self, api: &mut XdpApi, count: u32, mut callback: Fn) -> Result<(), Fail>
+    where
+        Fn: FnMut(DemiBuffer) -> Result<(), Fail>,
+    {
+        let mut idx: u32 = 0;
+        let available: u32 = self.rx_ring.consumer_reserve(count, &mut idx);
+        let mut consumed: u32 = 0;
+        let mut err: Option<Fail> = None;
 
-    /// Gets the buffer at the target index.
-    pub fn get_buffer(&self, idx: u32) -> XdpBuffer {
-        XdpBuffer::new(
-            self.rx_ring.get_element(idx) as *mut libxdp::XSK_BUFFER_DESCRIPTOR,
-            self.mem.clone(),
-        )
+        if available > 0 {
+            trace!(
+                "processing {} buffers from RxRing interface {} queue {}",
+                available,
+                self.ifindex,
+                self.queueid
+            );
+        }
+
+        for i in 0..available {
+            // Safety: Ring entries are intialized by the XDP runtime.
+            let desc: &libxdp::XSK_BUFFER_DESCRIPTOR = unsafe { self.rx_ring.get_element(idx + i).assume_init_ref() };
+            trace!(
+                "processing buffer at address {} offset {}",
+                unsafe { desc.Address.__bindgen_anon_1.BaseAddress() },
+                unsafe { desc.Address.__bindgen_anon_1.Offset() }
+            );
+            let db: DemiBuffer = self.mem.borrow().rehydrate_buffer_desc(desc)?;
+
+            // Trim buffer to actual length. Descriptor length should not be greater than buffer length, but guard
+            // against it anyway.
+            consumed += 1;
+            if let Err(e) = callback(db) {
+                err = Some(e);
+                break;
+            }
+        }
+
+        if consumed > 0 {
+            self.rx_ring.consumer_release(consumed);
+        }
+
+        self.check_error(api)?;
+        err.map_or(Ok(()), |e| Err(e))
     }
 }

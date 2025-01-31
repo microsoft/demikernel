@@ -8,7 +8,8 @@
 use crate::{
     catpowder::win::{
         api::XdpApi,
-        ring::{RxRing, TxRing, XdpBuffer},
+        ring::{RxRing, TxRing},
+        socket::XdpSocket,
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
@@ -18,14 +19,20 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        libxdp,
+        libxdp::{XSK_SOCKOPT_STATISTICS, XSK_STATISTICS},
         memory::{DemiBuffer, MemoryRuntime},
         Runtime, SharedObject,
     },
 };
 use arrayvec::ArrayVec;
 use libc::c_void;
-use std::{borrow::BorrowMut, mem};
+use std::{
+    borrow::BorrowMut,
+    mem,
+    sync::{Arc, Condvar, Mutex, MutexGuard},
+    thread::JoinHandle,
+    time::Duration,
+};
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
     System::SystemInformation::{
@@ -47,19 +54,15 @@ struct CatpowderRuntimeInner {
     tx: TxRing,
     rx_rings: Vec<RxRing>,
     vf_rx_rings: Vec<RxRing>,
+
+    exit_mtx: Arc<Mutex<bool>>,
+    cnd_var: Arc<Condvar>,
+    thrd: Option<JoinHandle<()>>,
 }
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
 impl SharedCatpowderRuntime {
-    ///
-    /// Number of buffers in the rings.
-    ///
-    /// **NOTE:** To introduce batch support (i.e., having more than one buffer in the ring), we need to revisit current
-    /// implementation. It is not all about just changing this constant.
-    ///
-    const RING_LENGTH: u32 = 1;
-
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
@@ -67,8 +70,34 @@ impl SharedCatpowderRuntime {
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
+        let (tx_buffer_count, tx_ring_size) = config.tx_buffer_config()?;
+        if !tx_ring_size.is_power_of_two() {
+            let cause: String = format!("rx_ring_size must be a power of two: {:?}", tx_ring_size);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        if tx_buffer_count < tx_ring_size {
+            let cause: String = format!("tx_buffer_count must be greater than or equal to tx_ring_size");
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        let (rx_buffer_count, rx_ring_size) = config.rx_buffer_config()?;
+        if !rx_ring_size.is_power_of_two() {
+            let cause: String = format!("rx_ring_size must be a power of two: {:?}", rx_ring_size);
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        if rx_buffer_count < rx_ring_size {
+            let cause: String = format!("rx_buffer_count must be greater than or equal to rx_ring_size");
+            return Err(Fail::new(libc::EINVAL, &cause));
+        }
+
+        let mut sockets: Vec<(String, XdpSocket)> = Vec::new();
+
         // Open TX and RX rings
-        let tx: TxRing = TxRing::new(&mut api, Self::RING_LENGTH, ifindex, 0)?;
+        let always_poke: bool = config.xdp_always_poke_tx()?;
+        let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, ifindex, 0, always_poke)?;
+        sockets.push((String::from("tx socket"), tx.socket().clone()));
 
         let cohost_mode = config.xdp_cohost_mode()?;
         let (tcp_ports, udp_ports) = if cohost_mode {
@@ -79,25 +108,31 @@ impl SharedCatpowderRuntime {
             (vec![], vec![])
         };
 
-        let make_ring = |api: &mut XdpApi, length: u32, ifindex: u32, queueid: u32| -> Result<RxRing, Fail> {
-            if cohost_mode {
-                RxRing::new_cohost(
-                    api,
-                    length,
-                    ifindex,
-                    queueid,
-                    tcp_ports.as_slice(),
-                    udp_ports.as_slice(),
-                )
-            } else {
-                RxRing::new_redirect_all(api, length, ifindex, queueid)
-            }
-        };
+        let make_ring =
+            |api: &mut XdpApi, length: u32, buf_count: u32, ifindex: u32, queueid: u32| -> Result<RxRing, Fail> {
+                if cohost_mode {
+                    RxRing::new_cohost(
+                        api,
+                        length,
+                        buf_count,
+                        ifindex,
+                        queueid,
+                        tcp_ports.as_slice(),
+                        udp_ports.as_slice(),
+                    )
+                } else {
+                    RxRing::new_redirect_all(api, length, buf_count, ifindex, queueid)
+                }
+            };
 
         let queue_count: u32 = deduce_rss_settings(&mut api, ifindex)?;
         let mut rx_rings: Vec<RxRing> = Vec::with_capacity(queue_count as usize);
+
         for queueid in 0..queue_count {
-            rx_rings.push(make_ring(&mut api, Self::RING_LENGTH, ifindex, queueid as u32)?);
+            let mut ring: RxRing = make_ring(&mut api, rx_ring_size, rx_buffer_count, ifindex, queueid as u32)?;
+            ring.provide_buffers();
+            sockets.push((format!("RX on if {} queue {}", ifindex, queueid), ring.socket().clone()));
+            rx_rings.push(ring);
         }
         trace!("Created {} RX rings on interface {}", rx_rings.len(), ifindex);
 
@@ -106,7 +141,13 @@ impl SharedCatpowderRuntime {
             let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
             let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
             for queueid in 0..vf_queue_count {
-                vf_rx_rings.push(make_ring(&mut api, Self::RING_LENGTH, vf_if_index, queueid as u32)?);
+                let mut ring: RxRing = make_ring(&mut api, rx_ring_size, rx_buffer_count, vf_if_index, queueid as u32)?;
+                ring.provide_buffers();
+                sockets.push((
+                    format!("RX on if {} queue {}", vf_if_index, queueid),
+                    ring.socket().clone(),
+                ));
+                vf_rx_rings.push(ring);
             }
             trace!(
                 "Created {} RX rings on VF interface {}.",
@@ -119,11 +160,23 @@ impl SharedCatpowderRuntime {
             vec![]
         };
 
+        let exit_mtx: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+        let exit_mtx_clone: Arc<Mutex<bool>> = exit_mtx.clone();
+        let cnd_var: Arc<Condvar> = Arc::new(Condvar::new());
+        let cnd_var_clone: Arc<Condvar> = cnd_var.clone();
+        let api_2: XdpApi = XdpApi::new()?;
+        let thrd: JoinHandle<()> = std::thread::spawn(move || {
+            run_stats_thread(api_2, sockets, exit_mtx_clone, cnd_var_clone);
+        });
+
         Ok(Self(SharedObject::new(CatpowderRuntimeInner {
             api,
             tx,
             rx_rings,
             vf_rx_rings,
+            exit_mtx,
+            cnd_var,
+            thrd: Some(thrd),
         })))
     }
 }
@@ -139,103 +192,134 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        let mut idx: u32 = 0;
+        let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
+        me.tx.return_buffers();
 
-        if self.0.borrow_mut().tx.reserve_tx(Self::RING_LENGTH, &mut idx) != Self::RING_LENGTH {
-            let cause = format!("failed to reserve producer space for packet");
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
+        me.tx.transmit_buffer(&mut me.api, pkt)?;
 
-        let mut buf: XdpBuffer = self.0.borrow_mut().tx.get_buffer(idx, pkt_size);
-        buf.copy_from_slice(&pkt);
-
-        self.0.borrow_mut().tx.submit_tx(Self::RING_LENGTH);
-
-        // Notify socket.
-        let mut outflags: i32 = libxdp::XSK_NOTIFY_RESULT_FLAGS::default();
-        let flags: i32 =
-            libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_POKE_TX | libxdp::_XSK_NOTIFY_FLAGS_XSK_NOTIFY_FLAG_WAIT_TX;
-
-        if let Err(e) = self.0.borrow_mut().notify_socket(flags, u32::MAX, &mut outflags) {
-            let cause = format!("failed to notify socket: {:?}", e);
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
-
-        if self
-            .0
-            .borrow_mut()
-            .tx
-            .reserve_tx_completion(Self::RING_LENGTH, &mut idx)
-            != Self::RING_LENGTH
-        {
-            let cause = format!("failed to send packet");
-            warn!("{}", cause);
-            return Err(Fail::new(libc::EAGAIN, &cause));
-        }
-
-        self.0.borrow_mut().tx.release_tx_completion(Self::RING_LENGTH);
         Ok(())
     }
 
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        let mut idx: u32 = 0;
 
-        for rx in self.0.borrow_mut().rx_rings.iter_mut() {
-            if rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
-                let xdp_buffer: XdpBuffer = rx.get_buffer(idx);
-                let dbuf: DemiBuffer = DemiBuffer::from_slice(&*xdp_buffer)?;
-                rx.release_rx(Self::RING_LENGTH);
+        let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
+        me.tx.return_buffers();
 
-                ret.push(dbuf);
-
-                rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
-                // NB for now there is only ever one element in the fill ring, so we don't have to
-                // change the ring contents.
-                rx.submit_rx_fill(Self::RING_LENGTH);
-
-                if ret.is_full() {
-                    break;
-                }
-            }
+        for rx in me.rx_rings.iter_mut() {
+            rx.provide_buffers();
         }
 
-        for rx in self.0.borrow_mut().vf_rx_rings.iter_mut() {
-            if rx.reserve_rx(Self::RING_LENGTH, &mut idx) == Self::RING_LENGTH {
-                let xdp_buffer: XdpBuffer = rx.get_buffer(idx);
-                let dbuf: DemiBuffer = DemiBuffer::from_slice(&*xdp_buffer)?;
-                rx.release_rx(Self::RING_LENGTH);
+        for rx in me.vf_rx_rings.iter_mut() {
+            rx.provide_buffers();
+        }
 
+        let mut queue: usize = 0;
+        for rx in me.rx_rings.iter_mut() {
+            let remaining: u32 = ret.remaining_capacity() as u32;
+            rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                 ret.push(dbuf);
+                Ok(())
+            })?;
 
-                rx.reserve_rx_fill(Self::RING_LENGTH, &mut idx);
-                // NB for now there is only ever one element in the fill ring, so we don't have to
-                // change the ring contents.
-                rx.submit_rx_fill(Self::RING_LENGTH);
-
-                if ret.is_full() {
-                    break;
-                }
+            if ret.is_full() {
+                return Ok(ret);
             }
+            queue += 1;
+        }
+
+        queue = 0;
+        for rx in me.vf_rx_rings.iter_mut() {
+            let remaining: u32 = ret.remaining_capacity() as u32;
+            rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
+                ret.push(dbuf);
+                Ok(())
+            })?;
+
+            if ret.is_full() {
+                return Ok(ret);
+            }
+            queue += 1;
         }
 
         Ok(ret)
     }
 }
 
-impl CatpowderRuntimeInner {
-    /// Notifies the socket that there are packets to be transmitted.
-    fn notify_socket(&mut self, flags: i32, timeout: u32, outflags: &mut i32) -> Result<(), Fail> {
-        self.tx.notify_socket(&mut self.api, flags, timeout, outflags)
-    }
-}
-
 //======================================================================================================================
 // Functions
 //======================================================================================================================
+
+fn run_stats_thread(
+    mut api: XdpApi,
+    mut sockets: Vec<(String, XdpSocket)>,
+    exit_mtx: Arc<Mutex<bool>>,
+    cnd_var: Arc<Condvar>,
+) {
+    const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
+        RxDropped: 0,
+        RxInvalidDescriptors: 0,
+        RxTruncated: 0,
+        TxInvalidDescriptors: 0,
+    };
+    let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
+
+    let mut exit_guard: MutexGuard<'_, bool> = exit_mtx.lock().unwrap();
+    while !*exit_guard {
+        for (i, (name, socket)) in sockets.iter_mut().enumerate() {
+            if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
+                warn!("{}: Failed to update stats: {:?}", name, e);
+            }
+        }
+
+        exit_guard = cnd_var.wait_timeout(exit_guard, Duration::from_secs(1)).unwrap().0;
+    }
+}
+
+fn update_stats(api: &mut XdpApi, name: &str, socket: &mut XdpSocket, stats: &mut XSK_STATISTICS) -> Result<(), Fail> {
+    let mut new_stats: XSK_STATISTICS = unsafe { std::mem::zeroed() };
+    let mut len: u32 = std::mem::size_of::<XSK_STATISTICS>() as u32;
+    socket.getsockopt(
+        api,
+        XSK_SOCKOPT_STATISTICS,
+        &mut new_stats as *mut _ as *mut c_void,
+        &mut len,
+    )?;
+
+    if stats.RxDropped < new_stats.RxDropped {
+        warn!("{}: XDP RX dropped: {}", name, new_stats.RxDropped - stats.RxDropped);
+    }
+
+    if stats.RxInvalidDescriptors < new_stats.RxInvalidDescriptors {
+        warn!(
+            "{}: XDP RX invalid descriptors: {}",
+            name,
+            new_stats.RxInvalidDescriptors - stats.RxInvalidDescriptors
+        );
+    }
+
+    if stats.RxTruncated < new_stats.RxTruncated {
+        warn!(
+            "{}: XDP RX truncated packets: {}",
+            name,
+            new_stats.RxTruncated - stats.RxTruncated
+        );
+    }
+
+    if stats.TxInvalidDescriptors < new_stats.TxInvalidDescriptors {
+        warn!(
+            "{}: XDP TX invalid descriptors: {}",
+            name,
+            new_stats.TxInvalidDescriptors - stats.TxInvalidDescriptors
+        );
+    }
+
+    *stats = new_stats;
+    Ok(())
+}
 
 fn count_processor_cores() -> Result<usize, Fail> {
     let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
@@ -289,12 +373,13 @@ fn count_processor_cores() -> Result<usize, Fail> {
 /// Deduces the RSS settings for the given interface. Returns the number of valid RSS queues for the interface.
 fn deduce_rss_settings(api: &mut XdpApi, ifindex: u32) -> Result<u32, Fail> {
     const DUMMY_QUEUE_LENGTH: u32 = 1;
+    const DUMMY_BUFFER_COUNT: u32 = 1;
     let sys_proc_count: u32 = count_processor_cores()? as u32;
 
     // NB there will always be at least one queue available, hence starting the loop at 1. There should not be more
     // queues than the number of processors on the system.
     for queueid in 1..sys_proc_count {
-        match TxRing::new(api, DUMMY_QUEUE_LENGTH, ifindex, queueid) {
+        match TxRing::new(api, DUMMY_QUEUE_LENGTH, DUMMY_BUFFER_COUNT, ifindex, queueid, false) {
             Ok(_) => (),
             Err(e) => {
                 warn!(
@@ -332,9 +417,18 @@ impl MemoryRuntime for SharedCatpowderRuntime {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
 
-        // First allocate the underlying DemiBuffer.
-        // Always allocate with header space for now even if we do not need it.
-        let buf: DemiBuffer = DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16);
+        // Allocate buffer from sender pool.
+        let mut buf: DemiBuffer = match self.0.tx.get_buffer() {
+            None => return Err(Fail::new(libc::ENOBUFS, "out of buffers")),
+            Some(buf) => buf,
+        };
+
+        if size > buf.len() - MAX_HEADER_SIZE {
+            return Err(Fail::new(libc::EINVAL, "size too large for buffer"));
+        }
+
+        // Reserve space for headers.
+        buf.adjust(MAX_HEADER_SIZE).expect("buffer size invariant violation");
 
         // Create a scatter-gather segment to expose the DemiBuffer to the user.
         let data: *const u8 = buf.as_ptr();
@@ -355,3 +449,16 @@ impl MemoryRuntime for SharedCatpowderRuntime {
 
 /// Runtime trait implementation for XDP Runtime.
 impl Runtime for SharedCatpowderRuntime {}
+
+impl Drop for CatpowderRuntimeInner {
+    fn drop(&mut self) {
+        if let Some(thrd) = self.thrd.take() {
+            if let Ok(mut guard) = self.exit_mtx.lock() {
+                *guard = true;
+                std::mem::drop(guard);
+                self.cnd_var.notify_all();
+                let _ = thrd.join();
+            }
+        }
+    }
+}

@@ -7,11 +7,11 @@
 
 use crate::{pal::KeepAlive, runtime::fail::Fail, MacAddress};
 #[cfg(any(feature = "catnip-libos"))]
-use ::std::ffi::CString;
-use ::std::{collections::HashMap, fs::File, io::Read, net::Ipv4Addr, ops::Index, str::FromStr, time::Duration};
-use ::yaml_rust::{Yaml, YamlLoader};
+use std::ffi::CString;
+use std::{collections::HashMap, fs::File, io::Read, net::Ipv4Addr, ops::Index, str::FromStr, time::Duration};
 #[cfg(any(feature = "catnip-libos"))]
 use yaml_rust::yaml::Array;
+use yaml_rust::{Yaml, YamlLoader};
 
 //======================================================================================================================
 // Constants
@@ -65,6 +65,11 @@ mod raw_socket_config {
     #[cfg(target_os = "windows")]
     pub const LOCAL_INTERFACE_INDEX: &str = "xdp_interface_index";
 
+    // Whether XDP should always poke the TX ring, versus only poking when the ring flags indicate
+    // to do so.
+    #[cfg(target_os = "windows")]
+    pub const XDP_ALWAYS_POKE_TX: &str = "xdp_always_poke_tx";
+
     // N.B. hyper-V VMs can have both NetVSC and VF interfaces working in tandem, in which case
     // we need to listen to the corresponding VF interface as well.
     #[cfg(target_os = "windows")]
@@ -82,6 +87,18 @@ mod raw_socket_config {
     // UDP ports for XDP to redirect when cohosting.
     #[cfg(target_os = "windows")]
     pub const XDP_UDP_PORTS: &str = "xdp_udp_ports";
+
+    // Buffer counts for XDP backend.
+    #[cfg(target_os = "windows")]
+    pub const RX_BUFFER_COUNT: &str = "rx_buffer_count";
+    #[cfg(target_os = "windows")]
+    pub const TX_BUFFER_COUNT: &str = "tx_buffer_count";
+
+    // Ring sizes for XDP backend.
+    #[cfg(target_os = "windows")]
+    pub const RX_RING_SIZE: &str = "rx_ring_size";
+    #[cfg(target_os = "windows")]
+    pub const TX_RING_SIZE: &str = "tx_ring_size";
 }
 
 //======================================================================================================================
@@ -258,30 +275,17 @@ impl Config {
     }
 
     pub fn arp_cache_ttl(&self) -> Result<Duration, Fail> {
-        let ttl: u64 = if let Some(ttl) = Self::get_typed_env_option(inetstack_config::ARP_CACHE_TTL)? {
-            ttl
-        } else {
-            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_CACHE_TTL)?
-        };
-        Ok(Duration::from_secs(ttl))
+        self.get_int_env_or_option(inetstack_config::ARP_CACHE_TTL, Self::get_inetstack_config)
+            .map(|ttl: u64| Duration::from_secs(ttl))
     }
 
     pub fn arp_request_timeout(&self) -> Result<Duration, Fail> {
-        let timeout: u64 = if let Some(timeout) = Self::get_typed_env_option(inetstack_config::ARP_REQUEST_TIMEOUT)? {
-            timeout
-        } else {
-            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_REQUEST_TIMEOUT)?
-        };
-        Ok(Duration::from_secs(timeout))
+        self.get_int_env_or_option(inetstack_config::ARP_REQUEST_TIMEOUT, Self::get_inetstack_config)
+            .map(|timeout: u64| Duration::from_secs(timeout))
     }
 
     pub fn arp_request_retries(&self) -> Result<usize, Fail> {
-        let retries: usize = if let Some(retries) = Self::get_typed_env_option(inetstack_config::ARP_REQUEST_RETRIES)? {
-            retries
-        } else {
-            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::ARP_REQUEST_RETRIES)?
-        };
-        Ok(retries)
+        self.get_int_env_or_option(inetstack_config::ARP_REQUEST_RETRIES, Self::get_inetstack_config)
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "linux"))]
@@ -304,11 +308,37 @@ impl Config {
     /// Global config: Reads the "local interface index" parameter from the environment variable and then the underlying
     /// configuration file.
     pub fn local_interface_index(&self) -> Result<u32, Fail> {
-        // Parse local MAC address.
-        if let Some(addr) = Self::get_typed_env_option(raw_socket_config::LOCAL_INTERFACE_INDEX)? {
-            Ok(addr)
+        self.get_int_env_or_option(raw_socket_config::LOCAL_INTERFACE_INDEX, Self::get_raw_socket_config)
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    /// Global config: Reads the "rx_buffer_count" and "rx_ring_size" parameters from the environment variable and
+    /// then the underlying configuration file. Returns the tuple (buffer count, ring size).
+    pub fn rx_buffer_config(&self) -> Result<(u32, u32), Fail> {
+        let rx_buffer_count: u32 =
+            self.get_int_env_or_option(raw_socket_config::RX_BUFFER_COUNT, Self::get_raw_socket_config)?;
+        let rx_ring_size: u32 =
+            self.get_int_env_or_option(raw_socket_config::RX_RING_SIZE, Self::get_raw_socket_config)?;
+        Ok((rx_buffer_count, rx_ring_size))
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    /// Global config: Reads the "rx_buffer_count" and "rx_ring_size" parameters from the environment variable and
+    /// then the underlying configuration file. Returns the tuple (buffer count, ring size).
+    pub fn tx_buffer_config(&self) -> Result<(u32, u32), Fail> {
+        let tx_buffer_count: u32 =
+            self.get_int_env_or_option(raw_socket_config::TX_BUFFER_COUNT, Self::get_raw_socket_config)?;
+        let tx_ring_size: u32 =
+            self.get_int_env_or_option(raw_socket_config::TX_RING_SIZE, Self::get_raw_socket_config)?;
+        Ok((tx_buffer_count, tx_ring_size))
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    pub fn xdp_always_poke_tx(&self) -> Result<bool, Fail> {
+        if let Some(always_poke) = Self::get_typed_env_option(raw_socket_config::XDP_ALWAYS_POKE_TX)? {
+            Ok(always_poke)
         } else {
-            Self::get_int_option(self.get_raw_socket_config()?, raw_socket_config::LOCAL_INTERFACE_INDEX)
+            Self::get_bool_option(self.get_raw_socket_config()?, raw_socket_config::XDP_ALWAYS_POKE_TX)
         }
     }
 
@@ -391,11 +421,7 @@ impl Config {
     }
 
     pub fn mtu(&self) -> Result<u16, Fail> {
-        if let Some(addr) = Self::get_typed_env_option(inetstack_config::MTU)? {
-            Ok(addr)
-        } else {
-            Self::get_int_option(self.get_inetstack_config()?, inetstack_config::MTU)
-        }
+        self.get_int_env_or_option(inetstack_config::MTU, Self::get_inetstack_config)
     }
 
     pub fn mss(&self) -> Result<usize, Fail> {
@@ -498,6 +524,17 @@ impl Config {
                 let message: String = format!("parameter \"{}\" is out of range", index);
                 Err(Fail::new(libc::ERANGE, message.as_str()))
             },
+        }
+    }
+
+    fn get_int_env_or_option<T, Fn>(&self, index: &str, resolve_yaml: Fn) -> Result<T, Fail>
+    where
+        T: TryFrom<i64> + FromStr,
+        for<'a> Fn: FnOnce(&'a Self) -> Result<&'a Yaml, Fail>,
+    {
+        match Self::get_typed_env_option(index)? {
+            Some(val) => Ok(val),
+            None => Self::get_int_option(resolve_yaml(self)?, index),
         }
     }
 

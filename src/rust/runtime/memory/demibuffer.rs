@@ -248,7 +248,7 @@ impl MetaData {
 // Since our MetaData structure is 64-byte aligned, the lower 6 bits of a pointer to it are guaranteed to be zero.
 // We currently only use the lower 2 of those bits to hold the type tag.
 #[derive(PartialEq)]
-enum Tag {
+pub(super) enum Tag {
     Heap = 1,
     #[cfg(feature = "libdpdk")]
     Dpdk = 2,
@@ -491,6 +491,21 @@ impl DemiBuffer {
     // Public Functions
     // ----------------
 
+    // Determine if a DemiBuffer was allocted from a specific BufferPool.
+    pub fn is_from_pool(&self, pool: &BufferPool) -> bool {
+        match self.get_tag() {
+            Tag::Heap => {
+                if let Some(check) = self.as_metadata().pool.as_ref() {
+                    Rc::ptr_eq(&check, pool.pool())
+                } else {
+                    false
+                }
+            },
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => false,
+        }
+    }
+
     /// Returns `true` if this `DemiBuffer` was allocated off of the heap, and `false` otherwise.
     pub fn is_heap_allocated(&self) -> bool {
         self.get_tag() == Tag::Heap
@@ -506,6 +521,77 @@ impl DemiBuffer {
     // Note that while we return a usize here (for convenience), the value is guaranteed to never exceed u16::MAX.
     pub fn len(&self) -> usize {
         self.as_metadata().data_len as usize
+    }
+
+    /// Returns the amount of headroom available in the packet.
+    pub fn headroom(&self) -> u16 {
+        self.as_metadata().data_off
+    }
+
+    /// Returns a flag indicating whether this DemiBuffer is direct, i.e., that this instance is
+    /// not a clone of some other DemiBuffer.
+    pub fn is_direct(&self) -> bool {
+        self.as_metadata().ol_flags & METADATA_F_INDIRECT == 0
+    }
+
+    /// Get the direct DemiBuffer from an indirect DemiBuffer.
+    pub fn into_direct(self) -> DemiBuffer {
+        if self.is_direct() {
+            return self;
+        }
+
+        match self.get_tag() {
+            Tag::Heap => {
+                let metadata: &mut MetaData = self.as_metadata();
+
+                // Step 1: get the direct buffer.
+                let offset: isize = -(size_of::<MetaData>() as isize);
+                let direct: &mut MetaData = unsafe {
+                    // Safety: The offset call is safe as `offset` is known to be "in bounds" for buf_addr.
+                    // Safety: The as_mut call is safe as the pointer is aligned, dereferenceable, and
+                    // points to an initialized MetaData instance.
+                    // The returned address is known to be non-Null, so the unwrap call will never panic.
+                    metadata.buf_addr.offset(offset).cast::<MetaData>().as_mut().unwrap()
+                };
+
+                // Step 2: unlike DPDK implementation, we do *not* incrememnt the direct buffer
+                // reference count, as we are taking over the ownership of the existing refcount
+                // from self.
+                let refcnt: u16 = direct.refcnt;
+
+                // Step 3: detach the indirect buffer.
+                metadata.buf_addr = null_mut();
+                metadata.buf_len = 0;
+                metadata.ol_flags = metadata.ol_flags & !METADATA_F_INDIRECT;
+
+                // Step 4: reconstitute the direct DemiBuffer.
+                let direct: NonNull<MetaData> = NonNull::from(direct);
+                let tagged: NonNull<MetaData> = direct.with_addr(direct.addr() | Tag::Heap);
+                let direct: DemiBuffer = unsafe { DemiBuffer::from_raw(tagged.cast()) };
+
+                // Drop self and ensure our refcounting assumptions are correct.
+                std::mem::drop(self);
+                assert!(refcnt == direct.as_metadata().refcnt);
+
+                direct
+            },
+
+            #[cfg(feature = "libdpdk")]
+            Tag::Dpdk => {
+                // Step 1: get the direct buffer.
+                let direct: *mut rte_mbuf = rte_mbuf_from_indirect(self.as_mbuf());
+
+                // Step 2: incrememnt the reference count of the direct buffer. This is necessary
+                // because rte_pktmbuf_detach will decrement the refcount of the direct buffer.
+                rte_mbuf_refcnt_update(direct, 1);
+
+                // Step 3: detach the indirect buffer.
+                rte_pktmbuf_detach(self.as_mbuf());
+
+                // Step 4: reconstitute the direct DemiBuffer.
+                return DemiBuffer::from_mbuf(direct);
+            },
+        }
     }
 
     /// Removes `nbytes` bytes from the beginning of the `DemiBuffer` chain.
@@ -752,6 +838,12 @@ impl DemiBuffer {
     // ------------------
     // Internal Functions
     // ------------------
+
+    /// Returns the number of bytes subtracted from the beginning of the allocated buffer returned when calling
+    /// `into_raw`.
+    pub(super) fn metadata_size(tag: Tag) -> usize {
+        size_of::<MetaData>() - tag as usize
+    }
 
     // Gets the tag containing the type of DemiBuffer.
     #[inline]
