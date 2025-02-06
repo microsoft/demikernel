@@ -149,7 +149,7 @@ fn os_build() -> Result<()> {
         .allowlist_var("RTE_PKTMBUF_HEADROOM")
         .clang_arg(cflags)
         .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate_comments(false)
         .generate()?;
     let bindings_out: PathBuf = out_dir.join("bindings.rs");
