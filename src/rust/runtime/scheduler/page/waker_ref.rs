@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_wake(b: &mut Bencher) {
+    fn wake_bench(b: &mut Bencher) {
         let p: WakerPageRef = WakerPageRef::default();
         let ix: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
 
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_wake_by_ref(b: &mut Bencher) {
+    fn wake_by_ref_bench(b: &mut Bencher) {
         let p: WakerPageRef = WakerPageRef::default();
         let ix: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
 

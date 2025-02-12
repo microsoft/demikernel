@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_notify(b: &mut Bencher) {
+    fn notify_bench(b: &mut Bencher) {
         let pg: WakerPage = WakerPage::default();
         let x: usize = rand::thread_rng().gen_range(0..WAKER_BIT_LENGTH);
 
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_take_notified(b: &mut Bencher) {
+    fn take_notified_bench(b: &mut Bencher) {
         let pg: WakerPage = WakerPage::default();
 
         // Initialize 8 random bits.

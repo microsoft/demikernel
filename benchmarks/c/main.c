@@ -23,9 +23,9 @@
  *====================================================================================================================*/
 
 /**
- * @brief Microbenchmark for demi_wait_any().
+ * @brief Benchmark for demi_wait_any().
  */
-static void microbench_wait_any(const unsigned NUM_ITERS, const unsigned NUM_QTS)
+static void wait_any_bench(const unsigned NUM_ITERS, const unsigned NUM_QTS)
 {
     demi_qtoken_t *qts = NULL;
 
@@ -81,7 +81,7 @@ int main(int argc, char *const argv[])
     };
     assert(demi_init(&args) == 0);
 
-    microbench_wait_any(100000, 1048576);
+    wait_any_bench(100000, 1048576);
 
     return (EXIT_SUCCESS);
 }

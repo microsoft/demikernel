@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_alloc_free(b: &mut Bencher) {
+    fn alloc_free_bench(b: &mut Bencher) {
         let mut ioqueue_table: IoQueueTable = IoQueueTable::default();
 
         b.iter(|| {

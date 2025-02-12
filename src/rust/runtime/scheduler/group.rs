@@ -12,13 +12,12 @@
 //======================================================================================================================
 
 use crate::{
-    collections::{id_map::IdMap, pin_slab::PinSlab},
+    collections::pin_slab::PinSlab,
     expect_some,
     runtime::scheduler::{
         page::{WakerPageRef, WakerRef},
-        scheduler::InternalId,
         waker64::{WAKER_BIT_LENGTH, WAKER_BIT_LENGTH_SHIFT},
-        Task, TaskId,
+        SchedulerId, Task,
     },
 };
 use ::bit_iter::BitIter;
@@ -37,7 +36,6 @@ use ::std::{
 /// same task group as the allocating task.
 #[derive(Default)]
 pub struct TaskGroup {
-    ids: IdMap<TaskId, InternalId>,
     /// Stores all the tasks that are held by the scheduler.
     tasks: PinSlab<Box<dyn Task>>,
     /// Holds the waker bits for controlling task scheduling.
@@ -60,14 +58,12 @@ impl TaskGroup {
         };
         waker_page_ref.clear(waker_page_offset);
         if let Some(task) = self.tasks.remove_unpin(pin_slab_index) {
-            let task_id: TaskId = task.get_id();
             trace!(
                 "remove(): name={:?}, id={:?}, pin_slab_index={:?}",
                 task.get_name(),
-                task_id,
+                task.get_id(),
                 pin_slab_index
             );
-            self.ids.remove(&task_id).expect("Should be in the id table");
             Some(task)
         } else {
             warn!("Unable to unpin and remove: pin_slab_index={:?}", pin_slab_index);
@@ -76,11 +72,10 @@ impl TaskGroup {
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert(&mut self, task: Box<dyn Task>) -> Option<TaskId> {
+    pub fn insert(&mut self, task: Box<dyn Task>) -> Option<SchedulerId> {
         let task_name: &'static str = task.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: usize = self.tasks.insert(task)?;
-        let task_id: TaskId = self.ids.insert_with_new_id(pin_slab_index.into());
 
         self.add_new_pages_up_to_pin_slab_index(pin_slab_index.into());
 
@@ -91,15 +86,12 @@ impl TaskGroup {
         };
         waker_page_ref.initialize(waker_page_offset);
 
-        trace!(
-            "insert(): name={:?}, id={:?}, pin_slab_index={:?}",
-            task_name,
-            task_id,
-            pin_slab_index
-        );
-        // Set this task's id.
-        expect_some!(self.tasks.get_pin_mut(pin_slab_index), "just allocated!").set_id(task_id);
-        Some(task_id)
+        trace!("insert(): name={:?}, pin_slab_index={:?}", task_name, pin_slab_index);
+        Some(pin_slab_index.into())
+    }
+
+    pub fn get_mut_task(&mut self, pin_slab_index: usize) -> Option<Pin<&mut Box<dyn Task>>> {
+        self.tasks.get_pin_mut(pin_slab_index)
     }
 
     /// Computes the page and page offset of a given task based on its total offset.
@@ -181,18 +173,5 @@ impl TaskGroup {
             return self.remove(pin_slab_index);
         }
         None
-    }
-
-    pub fn is_valid_task(&self, task_id: &TaskId) -> bool {
-        if let Some(internal_id) = self.ids.get(task_id) {
-            self.tasks.contains(internal_id.into())
-        } else {
-            false
-        }
-    }
-
-    #[cfg(test)]
-    pub fn num_tasks(&self) -> usize {
-        self.ids.len()
     }
 }
