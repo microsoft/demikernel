@@ -270,9 +270,12 @@ impl Receiver {
             warn!("Got packet with URG bit set!");
         }
 
-        if data.len() > 0 {
+        let has_data: bool = if data.len() > 0 {
             Self::process_data(cb, layer3_endpoint, data, seg_start, seg_end, seg_len)?;
-        }
+            true
+        } else {
+            false
+        };
 
         // Deal with FIN flag, saving the FIN for later if it is out of order.
         if header.fin {
@@ -314,10 +317,10 @@ impl Receiver {
             let timeout: Duration = cb.receiver.ack_delay_timeout_secs;
             // Getting the current time is extremely cheap as it is just a variable lookup.
             cb.receiver.ack_deadline_time_secs.set(Some(now + timeout));
-        } else {
+        } else if has_data {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
             cb.receiver.ack_deadline_time_secs.set(None);
-            trace!("process_packet(): sending ack on deadline expiration");
+            trace!("process_packet(): sending ack on second packet");
             Sender::send_ack(cb, layer3_endpoint);
         }
 
@@ -507,7 +510,10 @@ impl Receiver {
     ) -> Result<(), Fail> {
         // We can only process in-order data.  Check for out-of-order segment.
         if seg_start != cb.receiver.receive_next_seq_no {
-            debug!("Received out-of-order segment");
+            debug!(
+                "Received out-of-order segment; out_of_order_frames.len() = {:?}",
+                cb.receiver.out_of_order_frames.len()
+            );
             debug_assert_ne!(seg_len, 0);
             // This segment is out-of-order.  If it carries data, we should store it for later processing
             // after the "hole" in the sequence number space has been filled.

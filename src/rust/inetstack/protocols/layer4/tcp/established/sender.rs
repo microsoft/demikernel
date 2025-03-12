@@ -225,12 +225,18 @@ impl Sender {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
+        trace!("push(): unsent_queue.len() = {:?}", cb.sender.unsent_queue.len());
+
         // Place the buffer in the unsent queue.
         cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
         if cb.sender.send_window.get() > 0 {
             Self::send_segment(cb, layer3_endpoint, runtime.get_now(), &mut buf);
         }
         if buf.len() > 0 {
+            if cb.sender.unacked_queue.len() > 0 {
+                trace!("push(): unacked_queue.len() = {:?}", cb.sender.unacked_queue.len());
+            }
+
             cb.sender.unsent_queue.push(Some(buf));
         }
 
@@ -440,6 +446,13 @@ impl Sender {
             bytes: Some(segment_data),
             initial_tx: Some(now),
         };
+
+        if cb.sender.unacked_queue.len() > 0 {
+            trace!(
+                "send_segment(): unacked_queue.len() = {:?}",
+                cb.sender.unacked_queue.len()
+            );
+        }
         cb.sender.unacked_queue.push(unacked_segment);
 
         // Set the retransmit timer.
