@@ -139,7 +139,7 @@ impl SharedUdpPeer {
                     return;
                 },
             };
-        debug!("UDP received {:?}", hdr);
+        debug!("L4 INCOMING {:?}", hdr);
 
         let local: SocketAddrV4 = SocketAddrV4::new(self.local_ipv4_addr, hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, hdr.src_port());
