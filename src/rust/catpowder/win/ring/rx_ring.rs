@@ -66,7 +66,8 @@ impl RxRing {
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
         let chunk_size: NonZeroU16 =
             NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
-        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size)?));
+        let mem: Rc<RefCell<UmemReg>> =
+            Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size, 0)?));
 
         // Set rx ring size.
         trace!("setting rx ring size: {}", length);
@@ -163,14 +164,15 @@ impl RxRing {
         let mut published: u32 = 0;
         let mem: std::cell::Ref<'_, UmemReg> = self.mem.borrow();
         for i in 0..available {
-            if let Some(buf_offset) = mem.get_dehydrated_buffer() {
+            if let Some(buf_offset) = mem.get_dehydrated_buffer(false) {
                 // Safety: Buffer is allocated from the memory pool, which must be in the contiguous memory range
                 // starting at the UMEM base region address.
                 let b: &mut MaybeUninit<u64> = self.rx_fill_ring.get_element(idx + i);
                 b.write(buf_offset as u64);
-                trace!("provided buffer at offset {}", buf_offset);
+                // trace!("provided buffer at offset {}", buf_offset);
                 published += 1;
             } else {
+                warn!("out of buffers; {} buffers unprovided", available - i);
                 break;
             }
         }
@@ -191,27 +193,29 @@ impl RxRing {
         Fn: FnMut(DemiBuffer) -> Result<(), Fail>,
     {
         let mut idx: u32 = 0;
-        let available: u32 = self.rx_ring.consumer_reserve(count, &mut idx);
+        let available: u32 = self.rx_ring.consumer_reserve(u32::MAX, &mut idx);
         let mut consumed: u32 = 0;
         let mut err: Option<Fail> = None;
 
+        let to_consume: u32 = std::cmp::min(count, available);
         if available > 0 {
             trace!(
-                "processing {} buffers from RxRing interface {} queue {}",
+                "processing {} buffers from RxRing out of {} total interface {} queue {}",
+                to_consume,
                 available,
                 self.ifindex,
                 self.queueid
             );
         }
 
-        for i in 0..available {
+        for i in 0..to_consume {
             // Safety: Ring entries are intialized by the XDP runtime.
             let desc: &libxdp::XSK_BUFFER_DESCRIPTOR = unsafe { self.rx_ring.get_element(idx + i).assume_init_ref() };
-            trace!(
-                "processing buffer at address {} offset {}",
-                unsafe { desc.Address.__bindgen_anon_1.BaseAddress() },
-                unsafe { desc.Address.__bindgen_anon_1.Offset() }
-            );
+            // trace!(
+            //     "processing buffer at address {} offset {}",
+            //     unsafe { desc.Address.__bindgen_anon_1.BaseAddress() },
+            //     unsafe { desc.Address.__bindgen_anon_1.Offset() }
+            // );
             let db: DemiBuffer = self.mem.borrow().rehydrate_buffer_desc(desc)?;
 
             // Trim buffer to actual length. Descriptor length should not be greater than buffer length, but guard

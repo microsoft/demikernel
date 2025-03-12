@@ -31,9 +31,12 @@ use std::{
     borrow::BorrowMut,
     mem,
     rc::Rc,
-    sync::{Arc, Condvar, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Condvar, Mutex, MutexGuard,
+    },
     thread::JoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
@@ -47,6 +50,12 @@ use windows::Win32::{
     },
 };
 
+//=======================================================================================================================
+// Constants
+//======================================================================================================================
+/// The minimum latency between polls before we start worrying about it.
+const MIN_LATENCY_IOTA: u64 = 1000;
+
 //======================================================================================================================
 // Structures
 //======================================================================================================================
@@ -54,6 +63,15 @@ use windows::Win32::{
 /// A LibOS built on top of Windows XDP.
 #[derive(Clone)]
 pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntimeInner>);
+
+/// State for the monitor thread.
+struct MonitorThreadState {
+    exit_mtx: Mutex<bool>,
+    cnd_var: Condvar,
+    max_poll_latency: AtomicU64,
+}
+
+unsafe impl Send for MonitorThreadState {}
 
 /// The inner state of the Catpowder runtime.
 struct CatpowderRuntimeInner {
@@ -63,11 +81,13 @@ struct CatpowderRuntimeInner {
     vf_rx_rings: Vec<RxRing>,
     reserved_socket: SOCKET,
     reserved_ports: Vec<u16>,
+    last_poll: Instant,
+    max_poll_latency: u64,
 
-    exit_mtx: Arc<Mutex<bool>>,
-    cnd_var: Arc<Condvar>,
+    thrd_state: Arc<MonitorThreadState>,
     thrd: Option<JoinHandle<()>>,
 }
+
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
@@ -208,13 +228,16 @@ impl SharedCatpowderRuntime {
             vec![]
         };
 
-        let exit_mtx: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-        let exit_mtx_clone: Arc<Mutex<bool>> = exit_mtx.clone();
-        let cnd_var: Arc<Condvar> = Arc::new(Condvar::new());
-        let cnd_var_clone: Arc<Condvar> = cnd_var.clone();
+        let thrd_state: Arc<MonitorThreadState> = Arc::<MonitorThreadState>::new(MonitorThreadState {
+            exit_mtx: Mutex::new(false),
+            cnd_var: Condvar::new(),
+            max_poll_latency: AtomicU64::new(0),
+        });
+
+        let thread_state_clone = thrd_state.clone();
         let api_2: XdpApi = XdpApi::new()?;
         let thrd: JoinHandle<()> = std::thread::spawn(move || {
-            run_stats_thread(api_2, sockets, exit_mtx_clone, cnd_var_clone);
+            run_stats_thread(api_2, sockets, thread_state_clone);
         });
 
         Ok(Self(SharedObject::new(CatpowderRuntimeInner {
@@ -224,8 +247,9 @@ impl SharedCatpowderRuntime {
             vf_rx_rings,
             reserved_socket,
             reserved_ports,
-            exit_mtx,
-            cnd_var,
+            last_poll: Instant::now(),
+            max_poll_latency: 0,
+            thrd_state,
             thrd: Some(thrd),
         })))
     }
@@ -254,6 +278,35 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
+        let now: Instant = std::time::Instant::now();
+
+        // Safety: this is the only place this member is modified, and only one thread can be here.
+        let last_poll: Instant = std::mem::replace(&mut self.0.last_poll, now);
+
+        let poll_latency: u64 = now.duration_since(last_poll).as_micros() as u64;
+
+        // NB only one thread can be in this method, so we're only synchronizing with the monitor
+        // thread, which will occasionally reset the value.
+        if poll_latency > MIN_LATENCY_IOTA {
+            if poll_latency > self.0.max_poll_latency {
+                self.0
+                    .thrd_state
+                    .max_poll_latency
+                    .store(poll_latency, Ordering::Release);
+                self.0.max_poll_latency = poll_latency;
+            } else {
+                if let Ok(_) = self.0.thrd_state.max_poll_latency.compare_exchange(
+                    0,
+                    poll_latency,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    // This indicates that the monitor thread reset the value.
+                    self.0.max_poll_latency = poll_latency;
+                }
+            }
+        }
+
         let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
         me.tx.return_buffers();
 
@@ -270,13 +323,13 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push(dbuf);
+                ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                 Ok(())
             })?;
 
-            if ret.is_full() {
-                return Ok(ret);
-            }
+            // if ret.is_full() {
+            //     return Ok(ret);
+            // }
             queue += 1;
         }
 
@@ -285,13 +338,13 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push(dbuf);
+                ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                 Ok(())
             })?;
 
-            if ret.is_full() {
-                return Ok(ret);
-            }
+            // if ret.is_full() {
+            //     return Ok(ret);
+            // }
             queue += 1;
         }
 
@@ -312,12 +365,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 // Functions
 //======================================================================================================================
 
-fn run_stats_thread(
-    mut api: XdpApi,
-    mut sockets: Vec<(String, XdpSocket)>,
-    exit_mtx: Arc<Mutex<bool>>,
-    cnd_var: Arc<Condvar>,
-) {
+fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thrd_state: Arc<MonitorThreadState>) {
     const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
         RxDropped: 0,
         RxInvalidDescriptors: 0,
@@ -326,7 +374,7 @@ fn run_stats_thread(
     };
     let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
 
-    let mut exit_guard: MutexGuard<'_, bool> = exit_mtx.lock().unwrap();
+    let mut exit_guard: MutexGuard<'_, bool> = thrd_state.exit_mtx.lock().unwrap();
     while !*exit_guard {
         for (i, (name, socket)) in sockets.iter_mut().enumerate() {
             if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
@@ -334,7 +382,16 @@ fn run_stats_thread(
             }
         }
 
-        exit_guard = cnd_var.wait_timeout(exit_guard, Duration::from_secs(1)).unwrap().0;
+        let max_latency: u64 = thrd_state.max_poll_latency.swap(0, std::sync::atomic::Ordering::AcqRel);
+        if max_latency > MIN_LATENCY_IOTA {
+            debug!("max latency between polls last interval is {}", max_latency);
+        }
+
+        exit_guard = thrd_state
+            .cnd_var
+            .wait_timeout(exit_guard, Duration::from_secs(1))
+            .unwrap()
+            .0;
     }
 }
 
@@ -594,10 +651,10 @@ impl Runtime for SharedCatpowderRuntime {}
 impl Drop for CatpowderRuntimeInner {
     fn drop(&mut self) {
         if let Some(thrd) = self.thrd.take() {
-            if let Ok(mut guard) = self.exit_mtx.lock() {
+            if let Ok(mut guard) = self.thrd_state.exit_mtx.lock() {
                 *guard = true;
                 std::mem::drop(guard);
-                self.cnd_var.notify_all();
+                self.thrd_state.cnd_var.notify_all();
                 let _ = thrd.join();
             }
         }

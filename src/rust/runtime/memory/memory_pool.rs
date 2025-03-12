@@ -65,10 +65,13 @@ struct PackingIterator<'a> {
 impl MemoryPool {
     /// Create a new empty pool of buffers of the specified size.
     pub fn new(size: NonZeroUsize, align: NonZeroUsize) -> Result<Rc<Self>, LayoutError> {
-        Ok(Rc::new(Self {
+        let me = Rc::new(Self {
             buffers: UnsafeCell::new(Vec::new()),
             buf_layout: Layout::from_size_align(size.get(), align.get())?,
-        }))
+        });
+
+        trace!("created memory pool {:?}", me.as_ref() as *const _);
+        Ok(me)
     }
 
     /// Get the buffer layout for this pool.
@@ -80,13 +83,24 @@ impl MemoryPool {
     pub fn get(self: &Rc<Self>) -> Option<PoolBuf> {
         let buffers: &mut Vec<NonNull<[MaybeUninit<u8>]>> = unsafe { &mut *self.buffers.get() };
         let pool: Rc<Self> = self.clone();
-        buffers
-            .pop()
-            .map(|buffer: NonNull<[MaybeUninit<u8>]>| PoolBuf { buffer, pool })
+        buffers.pop().map(|buffer: NonNull<[MaybeUninit<u8>]>| {
+            // trace!(
+            //     "get: buffer = {:?}, pool = {:?}",
+            //     buffer.as_ptr(),
+            //     self.as_ref() as *const _
+            // );
+            PoolBuf { buffer, pool }
+        })
     }
 
     /// Return a buffer to the pool.
     fn return_buffer(self: &Rc<Self>, buffer: NonNull<[MaybeUninit<u8>]>) {
+        // trace!(
+        //     "return_buffer: buffer = {:?}, pool = {:?}",
+        //     buffer.as_ptr(),
+        //     self.as_ref() as *const _
+        // );
+
         // Safety: buffers is only granted a &mut alias during the methods of this class. As long as these methods are
         // neither called asynchronously nor nested, aliasing is obeyed.
         let buffers: &mut Vec<NonNull<[MaybeUninit<u8>]>> = unsafe { &mut *self.buffers.get() };
