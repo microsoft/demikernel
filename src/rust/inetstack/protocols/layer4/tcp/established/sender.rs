@@ -221,7 +221,7 @@ impl Sender {
         debug_assert!(cb.sender.fin_seq_no.is_none());
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF {
+        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
@@ -637,13 +637,16 @@ impl Sender {
         } else {
             // Duplicate ACK (doesn't acknowledge anything new).  We can mostly ignore this, except for fast-retransmit.
             // TODO: Implement fast-retransmit.  In which case, we'd increment our dup-ack counter here.
-            warn!("process_ack(): received duplicate ack ({:?})", header.ack_num);
+            trace!(
+                "process_ack(): received duplicate ack ({:?}); unacked len = {:?}",
+                header.ack_num,
+                cb.sender.unacked_queue.len()
+            );
         }
     }
 
     /// Send an ACK to our peer, reflecting our current state.
     pub fn send_ack(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint) {
-        trace!("sending ack");
         let header: TcpHeader = Self::tcp_header(cb, None);
         Self::emit(cb, layer3_endpoint, header, None);
     }

@@ -75,7 +75,12 @@ impl RtoCalculator {
         // Note: We use clamp() below as it is clearer in intent than a min/max combination.  However, if we were
         // concerned that new_rto could be NaN here (we're not) we wouldn't want to use clamp() as it would pass NaN
         // through.  We'd use "self.rto = f64::min(new_rto.max(LOWER_BOUND_SEC), UPPER_BOUND_SEC);" below instead.
-        self.rto = new_rto.clamp(LOWER_BOUND_SEC, UPPER_BOUND_SEC);
+        let new_rto = new_rto.clamp(LOWER_BOUND_SEC, UPPER_BOUND_SEC);
+
+        if new_rto != self.rto {
+            trace!("RTO updated: old RTO = {}, new RTO = {}", self.rto, new_rto);
+        }
+        self.rto = new_rto;
     }
 
     /// Performs an exponential "back off" of the RTO (doubles the current timeout).

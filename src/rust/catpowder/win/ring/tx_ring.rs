@@ -5,6 +5,8 @@
 // Imports
 //======================================================================================================================
 
+use demikernel_xdp_bindings::XSK_BUFFER_DESCRIPTOR;
+
 use crate::{
     catpowder::win::{
         api::XdpApi,
@@ -55,12 +57,19 @@ impl TxRing {
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
         let chunk_size: NonZeroU16 =
             NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
+        let reserve_count: u32 = length;
         trace!(
             "creating umem region with {} buffers of size {}",
             buf_count.get(),
             chunk_size.get()
         );
-        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size)?));
+        let mem: Rc<RefCell<UmemReg>> = Rc::new(RefCell::new(UmemReg::new(
+            api,
+            &mut socket,
+            buf_count,
+            chunk_size,
+            reserve_count,
+        )?));
 
         // Set tx ring size.
         trace!("setting tx ring size to {}", length);
@@ -151,7 +160,7 @@ impl TxRing {
     }
 
     pub fn get_buffer(&self) -> Option<DemiBuffer> {
-        self.mem.borrow().get_buffer()
+        self.mem.borrow().get_buffer(false)
     }
 
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
@@ -160,7 +169,7 @@ impl TxRing {
             let mut copy: DemiBuffer = self
                 .mem
                 .borrow()
-                .get_buffer()
+                .get_buffer(true)
                 .ok_or_else(|| Fail::new(libc::ENOMEM, "out of memory"))?;
 
             if copy.len() < buf.len() {
@@ -175,7 +184,7 @@ impl TxRing {
             buf
         };
 
-        let buf_desc: libxdp::XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
+        let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
         trace!(
             "transmitting buffer at offset {}, offset {} with length {}",
             unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
@@ -224,7 +233,7 @@ impl TxRing {
         }
 
         if returned > 0 {
-            trace!("returning {} buffers", returned);
+            // trace!("returning {} buffers", returned);
             self.tx_completion_ring.consumer_release(returned);
         }
     }
