@@ -228,7 +228,7 @@ impl SharedTcpPeer {
                 return;
             },
         };
-        debug!("TCP received {:?}", tcp_hdr);
+        debug!("L4 INCOMING {:?}", tcp_hdr);
         let local: SocketAddrV4 = SocketAddrV4::new(self.local_ipv4_addr, tcp_hdr.dst_port);
         let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, tcp_hdr.src_port);
 

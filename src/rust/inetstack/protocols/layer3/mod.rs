@@ -87,7 +87,7 @@ impl SharedLayer3Endpoint {
                             continue;
                         },
                     };
-                    debug!("Ipv4 received {:?}", header);
+                    debug!("L3 INCOMING {:?}", header);
 
                     // Check that the destination matches our IP address; otherwise, discard.
                     if header.get_dest_addr() != self.local_ipv4_addr && !header.get_dest_addr().is_broadcast() {
@@ -158,6 +158,7 @@ impl SharedLayer3Endpoint {
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let ipv4_header: Ipv4Header = Ipv4Header::new(self.local_ipv4_addr, remote_ipv4_addr, ip_protocol);
+        debug!("L3 OUTGOING {:?}", ipv4_header);
         ipv4_header.serialize_and_attach(&mut pkt);
         self.layer2_endpoint.transmit_ipv4_packet(remote_link_addr, pkt)
     }

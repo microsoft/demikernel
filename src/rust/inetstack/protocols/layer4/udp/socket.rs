@@ -87,7 +87,7 @@ impl SharedUdpSocket {
             return Err(Fail::new(libc::ENOTSUP, &cause));
         };
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
-        debug!("UDP send {:?}", udp_header);
+        debug!("L4 OUTGOING  {:?}", udp_header);
         udp_header.serialize_and_attach(&mut buf, &self.local_ipv4_addr, remote.ip(), self.checksum_offload);
         // Send the packet to the lower layer.
         self.layer3_endpoint

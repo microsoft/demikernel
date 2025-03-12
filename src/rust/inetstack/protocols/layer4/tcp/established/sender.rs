@@ -658,11 +658,11 @@ impl Sender {
         // Only perform this debug print in debug builds.  debug_assertions is compiler set in non-optimized builds.
         let mut pkt = match body {
             Some(body) => {
-                debug!("Sending {} bytes + {:?}", body.len(), header);
+                debug!("L4 OUTGOING {} bytes + {:?}", body.len(), header);
                 body
             },
             _ => {
-                debug!("Sending 0 bytes + {:?}", header);
+                debug!("L4 OUTGOING 0 bytes + {:?}", header);
                 DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
             },
         };

@@ -64,7 +64,7 @@ impl SharedLayer2Endpoint {
                     continue;
                 },
             };
-            debug!("Engine received {:?}", header);
+            debug!("L2 INCOMING {:?}", header);
             if self.local_link_addr != header.dst_addr()
                 && !header.dst_addr().is_broadcast()
                 && !header.dst_addr().is_multicast()
@@ -92,6 +92,7 @@ impl SharedLayer2Endpoint {
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
+        debug!("L2 OUTGOING {:?}", eth2_header);
         eth2_header.serialize_and_attach(&mut pkt);
         self.layer1_endpoint.transmit(pkt)
     }
