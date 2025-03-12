@@ -9,6 +9,7 @@ edition = "2021"
 description = "Rust Bindings for XDP"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
+license-file = "LICENSE.txt"
 
 [dependencies]
 windows = { version = "0.57.0", features = [

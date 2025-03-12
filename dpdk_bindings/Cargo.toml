@@ -3,13 +3,13 @@
 
 [package]
 name = "demikernel-dpdk-bindings"
-version = "1.1.7"
+version = "1.1.8"
 authors = ["Microsoft Corporation"]
 edition = "2021"
 description = "Rust Bindings for Libdpdk"
 homepage = "https://aka.ms/demikernel"
 repository = "https://github.com/demikernel/demikernel"
-license = "MIT"
+license-file = "LICENSE.txt"
 
 [dependencies]
 cfg-if = "1.0.0"

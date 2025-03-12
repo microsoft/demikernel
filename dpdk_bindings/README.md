@@ -10,6 +10,8 @@ We have tested this crate on Windows and Linux.
 - Install DPDK.
 - Set the env. var CFLAGS to add include path to DPDK installation for header files. (-I<path_to_dpdk_headers>)
 - Set the env. var LIBDPDK_PATH to point to the root of the DPDK installation.
+- Install Clang.
+- Set the env. var CC to point to the clang compiler. Add the clang compiler path to PATH variable.
 
 ## Related crates:
 

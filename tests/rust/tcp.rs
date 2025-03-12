@@ -518,7 +518,7 @@ mod test {
         let local2: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER + 1);
 
         // Invalid queue descriptor.
-        match libos.listen(QDesc::from(0), SOMAXCONN as usize) {
+        match libos.listen(QDesc::from(1000), SOMAXCONN as usize) {
             Err(e) if e.errno == libc::EBADF => (),
             _ => {
                 // Close socket if not error because this test cannot continue.
@@ -591,7 +591,7 @@ mod test {
         };
 
         // Invalid queue descriptor.
-        match libos.accept(QDesc::from(0)) {
+        match libos.accept(QDesc::from(1000)) {
             Err(e) if e.errno == libc::EBADF => (),
             _ => {
                 // Close socket if we somehow got a socket back?
@@ -654,7 +654,7 @@ mod test {
             let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
             // Bad queue descriptor.
-            match libos.connect(QDesc::from(0), remote) {
+            match libos.connect(QDesc::from(1000), remote) {
                 Err(e) if e.errno == libc::EBADF => (),
                 _ => {
                     // Close socket if not error because this test cannot continue.
@@ -742,8 +742,8 @@ mod test {
             };
 
             // Close bad queue descriptor.
-            match libos.async_close(QDesc::from(2)) {
-                Ok(_) => anyhow::bail!("close() invalid file descriptir should fail"),
+            match libos.async_close(QDesc::from(2000)) {
+                Ok(_) => anyhow::bail!("close() invalid file descriptor should fail"),
                 Err(_) => (),
             };
 
@@ -783,7 +783,7 @@ mod test {
             }
 
             // Close bad queue descriptor.
-            match libos.async_close(QDesc::from(2)) {
+            match libos.async_close(QDesc::from(2000)) {
                 // Should not be able to close bad queue descriptor.
                 Ok(_) => anyhow::bail!("close() invalid queue descriptor should fail"),
                 Err(_) => (),
@@ -889,7 +889,7 @@ mod test {
             }
 
             let bytes = libos.prepare_dummy_buffer(32)?;
-            match libos.push(QDesc::from(2), &bytes) {
+            match libos.push(QDesc::from(2000), &bytes) {
                 Ok(_) => {
                     // Close socket if not error because this test cannot continue.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633
@@ -980,7 +980,7 @@ mod test {
             };
 
             // Pop from bad socket.
-            match libos.pop(QDesc::from(2), None) {
+            match libos.pop(QDesc::from(2000), None) {
                 Ok(_) => {
                     // Close socket if not error.
                     // FIXME: https://github.com/demikernel/demikernel/issues/633

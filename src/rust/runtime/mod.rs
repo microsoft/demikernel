@@ -34,7 +34,7 @@ pub use demikernel_xdp_bindings as libxdp;
 use crate::coroutine_timer;
 
 use crate::{
-    collections::id_map::IdMap,
+    collections::id_map::Id64Map,
     expect_some,
     runtime::{
         fail::Fail,
@@ -72,7 +72,7 @@ pub struct DemiRuntime {
     qtable: IoQueueTable,
     // Holds the mapping between qtoken and task id. Initialized to invalid id until we insert the task into the
     // scheduler and get the real id.
-    qtoken_to_scheduler_id: IdMap<QToken, SchedulerId>,
+    qtoken_to_scheduler_id: Id64Map<QToken, SchedulerId>,
     scheduler: SharedScheduler,
     foreground_group_id: SchedulerId,
     background_group_id: SchedulerId,
@@ -116,7 +116,7 @@ impl SharedDemiRuntime {
         let background_group_id: SchedulerId = scheduler.create_group();
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
-            qtoken_to_scheduler_id: IdMap::default(),
+            qtoken_to_scheduler_id: Id64Map::default(),
             scheduler,
             foreground_group_id,
             background_group_id,
@@ -469,7 +469,7 @@ impl Default for SharedDemiRuntime {
         let background_group_id: SchedulerId = scheduler.create_group();
         Self(SharedObject::<DemiRuntime>::new(DemiRuntime {
             qtable: IoQueueTable::default(),
-            qtoken_to_scheduler_id: IdMap::default(),
+            qtoken_to_scheduler_id: Id64Map::default(),
             scheduler,
             foreground_group_id,
             background_group_id,

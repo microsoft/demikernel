@@ -306,7 +306,6 @@ fn os_build() -> Result<()> {
         .allowlist_var("RTE_MAX_ETHPORTS")
         .allowlist_var("RTE_MBUF_DEFAULT_BUF_SIZE")
         .allowlist_var("RTE_PKTMBUF_HEADROOM")
-        .clang_arg("-std=c11")
         .clang_arg("-mavx")
         .header("wrapper.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
@@ -321,7 +320,6 @@ fn os_build() -> Result<()> {
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
     builder.pic(true);
-    builder.flag("-std=c11");
     builder.flag("-march=native");
     builder.file("inlined.c");
     for header_location in &header_locations {

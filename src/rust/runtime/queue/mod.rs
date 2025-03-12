@@ -10,7 +10,11 @@ mod qtype;
 // Imports
 //======================================================================================================================
 
-use crate::runtime::{fail::Fail, scheduler::TaskWithResult};
+use crate::{
+    collections::id_map::Id32Map,
+    expect_some,
+    runtime::{fail::Fail, scheduler::TaskWithResult},
+};
 use ::slab::{Iter, Slab};
 use ::std::{any::Any, net::SocketAddrV4};
 
@@ -29,6 +33,9 @@ pub type BackgroundTask = TaskWithResult<()>;
 // Structures
 //======================================================================================================================
 
+#[derive(Clone, Copy)]
+struct InternalId(usize);
+
 pub trait IoQueue: Any {
     fn get_qtype(&self) -> QType;
     fn as_any_ref(&self) -> &dyn Any;
@@ -43,6 +50,7 @@ pub trait NetworkQueue: IoQueue {
 
 /// I/O queue descriptors table.
 pub struct IoQueueTable {
+    qd_to_offset: Id32Map<QDesc, InternalId>,
     table: Slab<Box<dyn IoQueue>>,
 }
 
@@ -52,100 +60,43 @@ pub struct IoQueueTable {
 
 /// Associated functions for I/O queue descriptors tables.
 impl IoQueueTable {
-    /// Offset for I/O queue descriptors.
-    ///
-    /// When Demikernel is interposing system calls of the underlying OS
-    /// this offset enables us to distinguish I/O queue descriptors from
-    /// file descriptors.
-    ///
-    /// NOTE: This is intentionally set to be half of FD_SETSIZE (1024) in Linux.
-    const BASE_QD: u32 = 500;
-
     /// Allocates a new entry in the target I/O queue descriptors table.
     pub fn alloc<T: IoQueue>(&mut self, queue: T) -> QDesc {
         let index: usize = self.table.insert(Box::new(queue));
-
-        // Ensure that the allocation would yield to a safe conversion between usize to u32.
-        // Note: This imposes a limit on the number of open queue descriptors in u32::MAX.
-        assert!(
-            (index as u32) + Self::BASE_QD <= u32::MAX,
-            "I/O descriptors table overflow"
+        let qd: QDesc = expect_some!(
+            self.qd_to_offset.insert_with_new_id(InternalId(index)),
+            "should be able to allocate an id"
         );
-
-        QDesc::from((index as u32) + Self::BASE_QD)
+        trace!("inserting queue, index {:?} qd {:?}", index, qd);
+        qd
     }
 
     /// Gets the type of the queue.
     pub fn get_type(&self, qd: &QDesc) -> Result<QType, Fail> {
-        let index: u32 = match self.get_index(qd) {
-            Some(index) => index,
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get_type(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
-        };
-        match self.table.get(index as usize) {
-            Some(boxed_queue_ptr) => Ok(boxed_queue_ptr.get_qtype()),
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get_type(): {}", &cause);
-                Err(Fail::new(libc::EBADF, &cause))
-            },
-        }
+        Ok(self.get_queue_ref(qd)?.get_qtype())
     }
 
     /// Gets/borrows a reference to the queue metadata associated with an I/O queue descriptor.
     pub fn get<'a, T: IoQueue>(&'a self, qd: &QDesc) -> Result<&'a T, Fail> {
-        let index: u32 = match self.get_index(qd) {
-            Some(index) => index,
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
-        };
-        match self.table.get(index as usize) {
-            Some(boxed_queue_ptr) => Ok(downcast_queue_ptr::<T>(boxed_queue_ptr)?),
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get(): {}", &cause);
-                Err(Fail::new(libc::EBADF, &cause))
-            },
-        }
+        Ok(downcast_queue_ptr::<T>(self.get_queue_ref(qd)?)?)
     }
 
     /// Gets/borrows a mutable reference to the queue metadata associated with an I/O queue descriptor
     pub fn get_mut<'a, T: IoQueue>(&'a mut self, qd: &QDesc) -> Result<&'a mut T, Fail> {
-        let index: u32 = match self.get_index(qd) {
-            Some(index) => index,
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get_mut(): {}", &cause);
-                return Err(Fail::new(libc::EBADF, &cause));
-            },
-        };
-        match self.table.get_mut(index as usize) {
-            Some(boxed_queue_ptr) => Ok(downcast_mut_ptr::<T>(boxed_queue_ptr)?),
-            None => {
-                let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
-                error!("get_mut(): {}", &cause);
-                Err(Fail::new(libc::EBADF, &cause))
-            },
-        }
+        Ok(downcast_mut_ptr::<T>(self.get_mut_queue_ref(qd)?)?)
     }
 
     /// Releases the entry associated with an I/O queue descriptor.
     pub fn free<T: IoQueue>(&mut self, qd: &QDesc) -> Result<T, Fail> {
-        let index: u32 = match self.get_index(qd) {
-            Some(index) => index,
+        let internal_id: InternalId = match self.qd_to_offset.remove(qd) {
+            Some(id) => id,
             None => {
                 let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
                 error!("free(): {}", &cause);
                 return Err(Fail::new(libc::EBADF, &cause));
             },
         };
-        Ok(downcast_queue::<T>(self.table.remove(index as usize))?)
+        Ok(downcast_queue::<T>(self.table.remove(internal_id.into()))?)
     }
 
     /// Gets an iterator over all registered queues.
@@ -158,16 +109,28 @@ impl IoQueueTable {
     }
 
     /// Gets the index in the I/O queue descriptors table to which a given I/O queue descriptor refers to.
-    fn get_index(&self, qd: &QDesc) -> Option<u32> {
-        if Into::<u32>::into(*qd) < Self::BASE_QD {
-            None
-        } else {
-            let rawqd: u32 = Into::<u32>::into(*qd) - Self::BASE_QD;
-            if !self.table.contains(rawqd as usize) {
-                return None;
+    fn get_queue_ref(&self, qd: &QDesc) -> Result<&Box<dyn IoQueue>, Fail> {
+        if let Some(internal_id) = self.qd_to_offset.get(qd) {
+            if let Some(queue) = self.table.get(internal_id.into()) {
+                return Ok(queue);
             }
-            Some(rawqd)
         }
+
+        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+        error!("get(): {}", &cause);
+        Err(Fail::new(libc::EBADF, &cause))
+    }
+
+    fn get_mut_queue_ref(&mut self, qd: &QDesc) -> Result<&mut Box<dyn IoQueue>, Fail> {
+        if let Some(internal_id) = self.qd_to_offset.get(qd) {
+            if let Some(queue) = self.table.get_mut(internal_id.into()) {
+                return Ok(queue);
+            }
+        }
+
+        let cause: String = format!("invalid queue descriptor (qd={:?})", qd);
+        error!("get(): {}", &cause);
+        Err(Fail::new(libc::EBADF, &cause))
     }
 }
 
@@ -228,8 +191,41 @@ pub fn downcast_queue<T: IoQueue>(boxed_queue: Box<dyn IoQueue>) -> Result<T, Fa
 impl Default for IoQueueTable {
     fn default() -> Self {
         Self {
+            qd_to_offset: Id32Map::<QDesc, InternalId>::default(),
             table: Slab::<Box<dyn IoQueue>>::new(),
         }
+    }
+}
+
+impl From<InternalId> for u64 {
+    fn from(val: InternalId) -> Self {
+        val.0 as u64
+    }
+}
+
+impl From<u32> for InternalId {
+    fn from(val: u32) -> Self {
+        InternalId(val as usize)
+    }
+}
+
+impl From<InternalId> for u32 {
+    fn from(val: InternalId) -> Self {
+        TryInto::<u32>::try_into(val.0).unwrap()
+    }
+}
+
+impl From<InternalId> for usize {
+    /// Converts a [InternalId] to a [usize].
+    fn from(val: InternalId) -> Self {
+        val.0
+    }
+}
+
+impl From<usize> for InternalId {
+    /// Converts a [usize] to a [InternalId].
+    fn from(val: usize) -> Self {
+        InternalId(val)
     }
 }
 

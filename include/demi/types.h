@@ -149,6 +149,9 @@ extern "C"
         char *const *argv;        /**< Command-line Arguments.           */
         demi_callback_t callback; /**< Callback Function.                */
     };
+#ifdef _WIN32
+#pragma pack(pop)
+#endif
 
 #ifdef __cplusplus
 }

@@ -492,9 +492,23 @@ impl Simulation {
         };
 
         let syscall_qd: QDesc = match args.qd {
-            Some(qd) => qd.into(),
-            None => {
-                anyhow::bail!("remote queue descriptor must have been previously assigned");
+            // 500 in the annotation will represent the local queue descriptor number because they are allocated
+            // starting at 500.
+            Some(qd) if qd == 500 => match self.local_qd {
+                Some((_, qd)) => qd,
+                None => {
+                    let cause: String = format!("unexpected return for push syscall");
+                    info!("run_push_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+            _ => match self.remote_qd {
+                Some((_, Some(qd))) => qd,
+                _ => {
+                    let cause: String = format!("unexpected return for push syscall");
+                    info!("run_push_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
             },
         };
 
@@ -514,7 +528,24 @@ impl Simulation {
     }
 
     fn run_pop_syscall(&mut self, args: &PopArgs, ret: i32) -> Result<()> {
-        let remote_qd: QDesc = args.qd.into();
+        let remote_qd: QDesc = match args.qd {
+            qd if qd == 500 => match self.local_qd {
+                Some((_, qd)) => qd,
+                None => {
+                    let cause: String = format!("unexpected return for pushto syscall");
+                    info!("run_pop_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+            _ => match self.remote_qd {
+                Some((_, Some(qd))) => qd,
+                _ => {
+                    let cause: String = format!("unexpected return for pop syscall");
+                    info!("run_pop_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+        };
 
         match self.protocol {
             Some(IpProtocol::TCP) => match self.engine.tcp_pop(remote_qd) {
@@ -549,18 +580,9 @@ impl Simulation {
         }
     }
 
-    fn run_wait_syscall(&mut self, args: &WaitArgs, ret: i32) -> Result<()> {
-        let args_qd: QDesc = match args.qd {
-            Some(qd) => QDesc::from(qd),
-            None => {
-                let cause: String = format!("queue descriptor must be informed");
-                info!("run_wait_syscall(): {:?}", cause);
-                anyhow::bail!(cause);
-            },
-        };
-
+    fn run_wait_syscall(&mut self, _: &WaitArgs, ret: i32) -> Result<()> {
         match self.has_operation_completed() {
-            Ok((qd, qr)) if args_qd == qd => match qr {
+            Ok((qd, qr)) => match qr {
                 OperationResult::Accept((remote_qd, remote_addr)) if ret == 0 => {
                     info!("connection accepted (qd={:?}, addr={:?})", qd, remote_addr);
                     self.remote_qd = Some((self.remote_qd.unwrap().0, Some(remote_qd)));
@@ -619,9 +641,21 @@ impl Simulation {
         };
 
         let remote_qd: QDesc = match args.qd {
-            Some(qd) => qd.into(),
-            None => {
-                anyhow::bail!("remote queue descriptor must have been previously assigned");
+            Some(qd) if qd == 500 => match self.local_qd {
+                Some((_, qd)) => qd,
+                None => {
+                    let cause: String = format!("unexpected return for pushto syscall");
+                    info!("run_pushto_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+            _ => match self.remote_qd {
+                Some((_, Some(qd))) => qd,
+                _ => {
+                    let cause: String = format!("unexpected return for pushto syscall");
+                    info!("run_pushto_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
             },
         };
 
@@ -640,9 +674,26 @@ impl Simulation {
     }
 
     fn run_close_syscall(&mut self, args: &CloseArgs, ret: i32) -> Result<()> {
-        let args_qd: QDesc = args.qd.into();
+        let qd: QDesc = match args.qd {
+            qd if qd == 500 => match self.local_qd {
+                Some((_, qd)) => qd,
+                None => {
+                    let cause: String = format!("unexpected return for close syscall");
+                    info!("run_close_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+            _ => match self.remote_qd {
+                Some((_, Some(qd))) => qd,
+                _ => {
+                    let cause: String = format!("unexpected return for close syscall");
+                    info!("run_close_syscall(): ret={:?}", ret);
+                    anyhow::bail!(cause);
+                },
+            },
+        };
 
-        match self.engine.tcp_async_close(args_qd) {
+        match self.engine.tcp_async_close(qd) {
             Ok(close_qt) => {
                 self.inflight.push_back(close_qt);
                 Ok(())
