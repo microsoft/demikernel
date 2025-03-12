@@ -41,6 +41,6 @@ mod waker64;
 //======================================================================================================================
 
 pub use self::{
-    scheduler::SharedScheduler,
-    task::{Task, TaskId, TaskWithResult},
+    scheduler::{SchedulerId, SharedScheduler},
+    task::{Task, TaskWithResult},
 };

@@ -66,11 +66,7 @@ jobs:
                      sudo ip addr flush dev eth1"
     - name: Run
       run: |
-        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          branch_name="${{ github.head_ref }}"
-        else
-          branch_name="${{ github.ref_name }}"
-        fi
+        branch_name=${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
         python3 tools/demikernel_ci.py \
           --platform linux \
           --server $SERVER \
@@ -134,11 +130,7 @@ jobs:
                      sudo ip addr flush dev eth1"
     - name: Run
       run: |
-        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          branch_name="${{ github.head_ref }}"
-        else
-          branch_name="${{ github.ref_name }}"
-        fi
+        branch_name=${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
         python3 tools/demikernel_ci.py \
           --platform linux \
           --server $SERVER \
@@ -186,11 +178,7 @@ jobs:
     - name: Parse Statistics
       id: parse-stats
       run: |
-        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          branch_name="${{ github.head_ref }}"
-        else
-          branch_name="${{ github.ref_name }}"
-        fi
+        branch_name=${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
         pip install pandas tabulate
         stats=$(python3 tools/perf.py \
           --branch origin/$branch_name \

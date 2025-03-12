@@ -100,7 +100,7 @@ mod tests {
     use ::test::{black_box, Bencher};
 
     #[bench]
-    fn bench_fetch_and(b: &mut Bencher) {
+    fn fetch_and_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
         let w64: Waker64 = Waker64::new(0);
 
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_fetch_or(b: &mut Bencher) {
+    fn fetch_or_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
         let w64: Waker64 = Waker64::new(0);
 
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_fetch_add(b: &mut Bencher) {
+    fn fetch_add_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
         let w64: Waker64 = Waker64::new(0);
 
@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_fetch_sub(b: &mut Bencher) {
+    fn fetch_sub_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
 
         b.iter(|| {
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_load(b: &mut Bencher) {
+    fn load_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
         let w64: Waker64 = Waker64::new(x);
 
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_swap(b: &mut Bencher) {
+    fn swap_bench(b: &mut Bencher) {
         let x: u64 = rand::thread_rng().gen_range(0..64);
         let w64: Waker64 = Waker64::new(0);
 

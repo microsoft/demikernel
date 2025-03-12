@@ -13,6 +13,7 @@ fn os_build() -> Result<()> {
     let out_dir_s: String = env::var("OUT_DIR")?;
     let out_dir: &Path = Path::new(&out_dir_s);
 
+    let devxlib_path: String = env::var("DEVX_LIB_PATH")?;
     let libdpdk_path: String = env::var("LIBDPDK_PATH")?;
 
     let include_path: String = format!("{}{}", libdpdk_path, "\\include");
@@ -64,18 +65,19 @@ fn os_build() -> Result<()> {
         "librte_stack",
         "librte_telemetry",
         "librte_timer",
-        "mlx5devx",
     ];
 
     let cflags: &str = "-mavx";
 
     // Step 1: Now that we've compiled and installed DPDK, point cargo to the libraries.
     println!("cargo:rustc-link-search={}", library_path);
+    println!("cargo:rustc-link-search={}", devxlib_path);
 
     for lib in &libraries {
         println!("cargo:rustc-link-lib=static:-bundle,+whole-archive={}", lib);
     }
 
+    println!("cargo:rustc-link-lib=dylib={}", "mlx5devx");
     println!("cargo:rustc-link-lib=dylib={}", "setupapi");
     println!("cargo:rustc-link-lib=dylib={}", "dbghelp");
     println!("cargo:rustc-link-lib=dylib={}", "mincore");
@@ -83,6 +85,9 @@ fn os_build() -> Result<()> {
     // Step 2: Generate bindings for the DPDK headers.
     let bindings: Bindings = Builder::default()
         .clang_arg(&format!("-I{}", include_path))
+        .clang_arg("-std=c11")
+        .clang_arg("-mrtm")
+        .clang_arg("-mcldemote")
         .allowlist_recursively(true)
         .allowlist_function("rte_auxiliary_register")
         .allowlist_function("rte_delay_us_block")
@@ -147,7 +152,7 @@ fn os_build() -> Result<()> {
         .allowlist_var("RTE_PKTMBUF_HEADROOM")
         .clang_arg(cflags)
         .header("wrapper.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate_comments(false)
         .generate()?;
     let bindings_out: PathBuf = out_dir.join("bindings.rs");
@@ -157,7 +162,11 @@ fn os_build() -> Result<()> {
     // that aren't compiled into the libraries.
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
+    builder.flag("-std=c11");
     builder.flag("-march=native");
+    builder.flag("-mavx");
+    builder.flag("-mrtm");
+    builder.flag("-mcldemote");
     builder.file("inlined.c");
     builder.include(include_path);
     builder.compile("inlined");
@@ -297,6 +306,7 @@ fn os_build() -> Result<()> {
         .allowlist_var("RTE_MAX_ETHPORTS")
         .allowlist_var("RTE_MBUF_DEFAULT_BUF_SIZE")
         .allowlist_var("RTE_PKTMBUF_HEADROOM")
+        .clang_arg("-std=c11")
         .clang_arg("-mavx")
         .header("wrapper.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
@@ -311,6 +321,7 @@ fn os_build() -> Result<()> {
     let mut builder: Build = cc::Build::new();
     builder.opt_level(3);
     builder.pic(true);
+    builder.flag("-std=c11");
     builder.flag("-march=native");
     builder.file("inlined.c");
     for header_location in &header_locations {

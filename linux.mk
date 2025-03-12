@@ -76,6 +76,15 @@ ifeq ($(PROFILER),yes)
 CARGO_FEATURES += --features=profiler
 endif
 
+export DIRECT_MAPPING ?= not-set
+ifeq ($(DIRECT_MAPPING),yes)
+CARGO_FEATURES += --features=direct-mapping
+else ifneq ($(DIRECT_MAPPING),no)
+ifeq ($(DEBUG),no)
+CARGO_FEATURES += --features=direct-mapping
+endif
+endif
+
 CARGO_FEATURES += $(FEATURES)
 
 #=======================================================================================================================
@@ -158,6 +167,9 @@ clean-examples-rust:
 #=======================================================================================================================
 # Benchmarks
 #=======================================================================================================================
+
+bench:
+	$(CARGO) bench $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture
 
 all-benchmarks-c: all-libs
 	$(MAKE) -C benchmarks all

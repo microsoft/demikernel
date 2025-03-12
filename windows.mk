@@ -106,6 +106,20 @@ CARGO_FEATURES = $(CARGO_FEATURES) --features=libxdp
 CARGO_FEATURES = $(CARGO_FEATURES) --features=profiler
 !endif
 
+!ifndef DIRECT_MAPPING
+DIRECT_MAPPING = "not-set"
+!endif
+
+!if $(DIRECT_MAPPING) == "yes"
+CARGO_FEATURES = $(CARGO_FEATURES) --features=direct-mapping
+!else
+!if $(DIRECT_MAPPING) != "no"
+!if "$(DEBUG)" == "no"
+CARGO_FEATURES = $(CARGO_FEATURES) --features=direct-mapping
+!endif
+!endif
+!endif
+
 CARGO_FEATURES = $(CARGO_FEATURES) $(FEATURES)
 
 #=======================================================================================================================
@@ -192,6 +206,13 @@ clean-examples-c:
 clean-examples-rust:
 	set BINDIR=$(BINDIR)
 	$(MAKE) /C /F examples/rust/windows.mk clean
+
+#=======================================================================================================================
+# Benchmarks
+#=======================================================================================================================
+
+bench:
+	$(CARGO) bench $(CARGO_FEATURES) $(CARGO_FLAGS) -- --nocapture
 
 #=======================================================================================================================
 # Code formatting

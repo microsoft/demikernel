@@ -12,25 +12,29 @@
 //======================================================================================================================
 
 use crate::runtime::{
-    scheduler::{group::TaskGroup, Task, TaskId},
+    scheduler::{group::TaskGroup, Task},
     SharedObject,
 };
 use ::slab::Slab;
-use ::std::ops::{Deref, DerefMut};
+use ::std::{
+    ops::{Deref, DerefMut},
+    pin::Pin,
+};
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
-
-/// Internal offset into the slab that holds the task state.
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub struct InternalId(usize);
 
 #[derive(Default)]
 pub struct Scheduler {
     // A list of groups. We just use direct mapping for identifying these because they are never externalized.
     groups: Slab<TaskGroup>,
 }
+
+/// Internal ids used by the scheduler. These should NEVER be exposed to the application without first going through
+/// the runtime.
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct SchedulerId(pub usize);
 
 #[derive(Clone, Default)]
 pub struct SharedScheduler(SharedObject<Scheduler>);
@@ -40,34 +44,30 @@ pub struct SharedScheduler(SharedObject<Scheduler>);
 //======================================================================================================================
 
 impl Scheduler {
-    pub fn create_group(&mut self) -> TaskId {
-        let internal_id: InternalId = self.groups.insert(TaskGroup::default()).into();
-        // Returns an identifier for the group directly derived from the offset.
-        Into::<u64>::into(internal_id).into()
+    pub fn create_group(&mut self) -> SchedulerId {
+        self.groups.insert(TaskGroup::default()).into()
     }
 
-    fn get_group(&self, id: TaskId) -> Option<&TaskGroup> {
-        // Get the internal id of the parent task or group.
-        let group_id: InternalId = Into::<u64>::into(id).into();
-        self.groups.get(group_id.into())
-    }
-
-    fn get_mut_group(&mut self, id: TaskId) -> Option<&mut TaskGroup> {
-        let group_id: InternalId = Into::<u64>::into(id).into();
-        self.groups.get_mut(group_id.into())
+    fn get_mut_group(&mut self, id: SchedulerId) -> Option<&mut TaskGroup> {
+        self.groups.get_mut(id.into())
     }
 
     /// The parent id can either be the id of the group or another task in the same group.
-    pub fn insert_task<T: Task>(&mut self, group_id: TaskId, task: T) -> Option<TaskId> {
+    pub fn insert_task<T: Task>(&mut self, group_id: SchedulerId, task: T) -> Option<SchedulerId> {
         let group: &mut TaskGroup = self.get_mut_group(group_id)?;
         group.insert(Box::new(task))
+    }
+
+    pub fn get_mut_task(&mut self, group_id: SchedulerId, task_id: SchedulerId) -> Option<Pin<&mut Box<dyn Task>>> {
+        let group: &mut TaskGroup = self.get_mut_group(group_id)?;
+        group.get_mut_task(task_id.into())
     }
 
     /// Polls all ready tasks in this group until there are no runnable ones. Do not use this function on coroutines
     /// that use poll_yield, unless max_iterations is set.
     pub fn poll_group_until_unrunnable(
         &mut self,
-        group_id: TaskId,
+        group_id: SchedulerId,
         max_iterations: Option<usize>,
     ) -> Vec<Box<dyn Task>> {
         let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
@@ -97,7 +97,7 @@ impl Scheduler {
     }
 
     /// Polls all of the ready tasks in this group. Only check for new tasks at the beginning.
-    pub fn poll_group_once(&mut self, group_id: TaskId, max_iterations: Option<usize>) -> Vec<Box<dyn Task>> {
+    pub fn poll_group_once(&mut self, group_id: SchedulerId, max_iterations: Option<usize>) -> Vec<Box<dyn Task>> {
         let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
         let mut polled_iterations: usize = 0;
         // Expect is safe here because something has really gone wrong if we are polling a group that doesn't exist.
@@ -115,23 +115,6 @@ impl Scheduler {
             }
         }
         completed_tasks
-    }
-
-    pub fn is_valid_task(&self, group_id: &TaskId, task_id: &TaskId) -> bool {
-        if let Some(group) = self.get_group(*group_id) {
-            group.is_valid_task(&task_id)
-        } else {
-            false
-        }
-    }
-
-    #[cfg(test)]
-    pub fn num_tasks(&self) -> usize {
-        let mut num_tasks: usize = 0;
-        for (_, group) in self.groups.iter() {
-            num_tasks += group.num_tasks();
-        }
-        num_tasks
     }
 }
 
@@ -153,26 +136,26 @@ impl DerefMut for SharedScheduler {
     }
 }
 
-impl From<usize> for InternalId {
+impl From<usize> for SchedulerId {
     fn from(value: usize) -> Self {
         Self(value)
     }
 }
 
-impl From<InternalId> for usize {
-    fn from(value: InternalId) -> Self {
+impl From<SchedulerId> for usize {
+    fn from(value: SchedulerId) -> Self {
         value.0
     }
 }
 
-impl From<u64> for InternalId {
+impl From<u64> for SchedulerId {
     fn from(value: u64) -> Self {
         Self(value as usize)
     }
 }
 
-impl From<InternalId> for u64 {
-    fn from(value: InternalId) -> Self {
+impl From<SchedulerId> for u64 {
+    fn from(value: SchedulerId) -> Self {
         value.0 as u64
     }
 }
@@ -186,7 +169,7 @@ mod tests {
     use crate::{
         expect_some,
         runtime::scheduler::{
-            scheduler::{Scheduler, TaskId},
+            scheduler::{Scheduler, SchedulerId},
             task::TaskWithResult,
         },
     };
@@ -232,7 +215,7 @@ mod tests {
     #[test]
     fn insert_creates_unique_tasks_ids() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         // Insert a task and make sure the task id is not a simple counter.
         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
@@ -252,41 +235,19 @@ mod tests {
     }
 
     #[test]
-    fn poll_once_with_one_small_task_completes_it() -> Result<()> {
+    fn poll_group_with_one_small_task_completes_it() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert_task(group_id, task) else {
+        let Some(_) = scheduler.insert_task(group_id, task) else {
             anyhow::bail!("insert() failed")
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, our future should complete.
-        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
-            crate::ensure_eq!(task.get_id(), task_id);
-        } else {
-            anyhow::bail!("task should have completed");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn poll_next_with_one_small_task_completes_it() -> Result<()> {
-        let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
-
-        // Insert a single future in the scheduler. This future shall complete with a single poll operation.
-        let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert_task(group_id, task) else {
-            anyhow::bail!("insert() failed")
-        };
-
-        // All futures are inserted in the scheduler with notification flag set.
-        // By polling once, our future should complete.
-        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
-            crate::ensure_eq!(task_id, task.get_id());
+        if let Some(_) = scheduler.poll_group_once(group_id, None).pop() {
             Ok(())
         } else {
             anyhow::bail!("task should have completed")
@@ -294,48 +255,44 @@ mod tests {
     }
 
     #[test]
-    fn poll_twice_with_one_long_task_completes_it() -> Result<()> {
+    fn poll_group_twice_with_one_long_task_completes_it() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         // Insert a single future in the scheduler. This future shall complete
         // with two poll operations.
         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(1).fuse()));
-        let Some(task_id) = scheduler.insert_task(group_id, task) else {
+        let Some(_) = scheduler.insert_task(group_id, task) else {
             anyhow::bail!("insert() failed")
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling once, this future should make a transition.
-        // All futures are inserted in the scheduler with notification flag set.
-        // By polling once, our future should complete.
         let result = scheduler.poll_group_once(group_id, None).pop();
         crate::ensure_eq!(result.is_some(), false);
 
         // This shall make the future ready.
-        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
-            crate::ensure_eq!(task.get_id(), task_id);
+        if let Some(_) = scheduler.poll_group_once(group_id, None).pop() {
+            Ok(())
         } else {
             anyhow::bail!("task should have completed");
         }
-        Ok(())
     }
 
     #[test]
-    fn poll_next_with_one_long_task_completes_it() -> Result<()> {
+    fn poll_until_unrunnable_with_one_long_task_completes_it() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
-        let Some(task_id) = scheduler.insert_task(group_id, task) else {
+        let Some(_) = scheduler.insert_task(group_id, task) else {
             anyhow::bail!("insert() failed")
         };
 
         // All futures are inserted in the scheduler with notification flag set.
         // By polling until the task completes, our future should complete.
-        if let Some(task) = scheduler.poll_group_until_unrunnable(group_id, None).pop() {
-            crate::ensure_eq!(task_id, task.get_id());
+        if let Some(_) = scheduler.poll_group_until_unrunnable(group_id, None).pop() {
             Ok(())
         } else {
             anyhow::bail!("task should have completed")
@@ -346,19 +303,13 @@ mod tests {
     #[test]
     fn insert_consecutive_creates_unique_task_ids() -> Result<()> {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         // Create and run a task.
         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
         let Some(task_id) = scheduler.insert_task(group_id, task) else {
             anyhow::bail!("insert() failed")
         };
-
-        if let Some(task) = scheduler.poll_group_once(group_id, None).pop() {
-            crate::ensure_eq!(task.get_id(), task_id);
-        } else {
-            anyhow::bail!("task should have completed");
-        }
 
         // Create another task.
         let task2: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(0).fuse()));
@@ -372,13 +323,13 @@ mod tests {
     }
 
     #[bench]
-    fn benchmark_insert(b: &mut Bencher) {
+    fn insert_bench(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         b.iter(|| {
             let task: DummyTask = DummyTask::new("testing", Box::pin(black_box(DummyCoroutine::default().fuse())));
-            let task_id: TaskId = expect_some!(
+            let task_id: SchedulerId = expect_some!(
                 scheduler.insert_task(group_id, task),
                 "couldn't insert future in scheduler"
             );
@@ -387,12 +338,12 @@ mod tests {
     }
 
     #[bench]
-    fn benchmark_poll_one_task(b: &mut Bencher) {
+    fn benchmark_poll_one_task_at_a_time(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         const NUM_TASKS: usize = 1024;
-        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
+        let mut task_ids: Vec<SchedulerId> = Vec::<SchedulerId>::with_capacity(NUM_TASKS);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
@@ -403,17 +354,17 @@ mod tests {
         }
 
         b.iter(|| {
-            black_box(scheduler.poll_group_once(group_id, Some(1)));
+            black_box(scheduler.poll_group_once(group_id, None));
         });
     }
 
     #[bench]
-    fn benchmark_poll_many_tasks_until_done(b: &mut Bencher) {
+    fn poll_many_tasks_until_done_bench(b: &mut Bencher) {
         let mut scheduler: Scheduler = Scheduler::default();
-        let group_id: TaskId = scheduler.create_group();
+        let group_id: SchedulerId = scheduler.create_group();
 
         const NUM_TASKS: usize = 8;
-        let mut task_ids: Vec<TaskId> = Vec::<TaskId>::with_capacity(NUM_TASKS);
+        let mut task_ids: Vec<SchedulerId> = Vec::<SchedulerId>::with_capacity(NUM_TASKS);
 
         for val in 0..NUM_TASKS {
             let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val).fuse()));
