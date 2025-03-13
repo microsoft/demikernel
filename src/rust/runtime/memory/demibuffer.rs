@@ -349,6 +349,8 @@ impl DemiBuffer {
             None => return None,
         };
 
+        //trace!("new_in_pool: buffer = {:?}, pool = {:?}", buffer, pool.pool().as_ref);
+
         let (mut buffer, pool): (NonNull<[MaybeUninit<u8>]>, Rc<MemoryPool>) = PoolBuf::into_raw(buffer);
 
         // Safety: the buffer size and alignment requirements are enforced by BufferPool.
@@ -555,7 +557,7 @@ impl DemiBuffer {
                 };
 
                 // Step 2: increment the reference count of the direct buffer.
-                direct.inc_refcnt();
+                //direct.inc_refcnt();
 
                 // Step 3: detach the indirect buffer.
                 metadata.buf_addr = null_mut();
