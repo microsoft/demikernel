@@ -221,7 +221,7 @@ impl Sender {
         debug_assert!(cb.sender.fin_seq_no.is_none());
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
+        if cb.sender.unsent_queue.len() >= UNSENT_QUEUE_CUTOFF {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 

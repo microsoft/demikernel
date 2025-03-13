@@ -9,7 +9,10 @@ use std::{alloc::LayoutError, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     pal::CPU_DATA_CACHE_LINE_SIZE_IN_BYTES,
-    runtime::memory::{demibuffer::MetaData, memory_pool::MemoryPool},
+    runtime::memory::{
+        demibuffer::{DemiBuffer, MetaData, Tag},
+        memory_pool::MemoryPool,
+    },
 };
 
 //======================================================================================================================
@@ -36,6 +39,12 @@ impl BufferPool {
     /// Get a reference to the underlying [`MemoryPool`].
     pub fn pool(&self) -> &Rc<MemoryPool> {
         &self.0
+    }
+
+    /// Get the number of bytes of overhead between the user data and the pointer returned by DemiBuffer::into_raw.
+    /// Useful for passing buffer pointers to and from other APIs.
+    pub fn overhead_bytes() -> usize {
+        DemiBuffer::metadata_size(Tag::Heap)
     }
 }
 

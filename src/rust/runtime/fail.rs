@@ -66,3 +66,9 @@ impl From<io::Error> for Fail {
         }
     }
 }
+
+impl From<std::num::TryFromIntError> for Fail {
+    fn from(_: std::num::TryFromIntError) -> Self {
+        Fail::new(libc::ERANGE, "integer conversion error")
+    }
+}
