@@ -30,8 +30,8 @@
 
 #[cfg(feature = "libdpdk")]
 use crate::runtime::libdpdk::{
-    rte_errno, rte_mbuf, rte_mempool, rte_pktmbuf_adj, rte_pktmbuf_clone, rte_pktmbuf_free, rte_pktmbuf_prepend,
-    rte_pktmbuf_trim,
+    rte_errno, rte_mbuf, rte_mbuf_from_indirect, rte_mempool, rte_pktmbuf_adj, rte_pktmbuf_clone, rte_pktmbuf_detach,
+    rte_pktmbuf_free, rte_pktmbuf_prepend, rte_pktmbuf_trim,
 };
 use crate::{
     pal::CPU_DATA_CACHE_LINE_SIZE_IN_BYTES,
@@ -556,10 +556,7 @@ impl DemiBuffer {
                     metadata.buf_addr.offset(offset).cast::<MetaData>().as_mut().unwrap()
                 };
 
-                // Step 2: increment the reference count of the direct buffer.
-                //direct.inc_refcnt();
-
-                // Step 3: detach the indirect buffer.
+                // Step 2: detach the indirect buffer.
                 metadata.buf_addr = null_mut();
                 metadata.buf_len = 0;
                 metadata.ol_flags = metadata.ol_flags & !METADATA_F_INDIRECT;
@@ -572,14 +569,11 @@ impl DemiBuffer {
             },
 
             #[cfg(feature = "libdpdk")]
-            Tag::Dpdk => {
+            Tag::Dpdk => unsafe {
                 // Step 1: get the direct buffer.
                 let direct: *mut rte_mbuf = rte_mbuf_from_indirect(self.as_mbuf());
 
-                // Step 2: incrememnt the reference count of the direct buffer.
-                rte_mbuf_refcnt_update(direct, 1);
-
-                // Step 3: detach the indirect buffer.
+                // Step 2: detach the indirect buffer.
                 rte_pktmbuf_detach(self.as_mbuf());
 
                 // Step 4: reconstitute the direct DemiBuffer.
