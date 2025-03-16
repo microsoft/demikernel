@@ -5,6 +5,8 @@
 // Imports
 //======================================================================================================================
 
+#[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+use crate::inetstack::protocols::Protocol;
 use crate::{pal::KeepAlive, runtime::fail::Fail, MacAddress};
 #[cfg(any(feature = "catnip-libos"))]
 use ::std::ffi::CString;
@@ -87,6 +89,14 @@ mod raw_socket_config {
     // UDP ports for XDP to redirect when cohosting.
     #[cfg(target_os = "windows")]
     pub const XDP_UDP_PORTS: &str = "xdp_udp_ports";
+
+    // The number of ports to reserve in the Windows kernel for use by XDP.
+    #[cfg(target_os = "windows")]
+    pub const XDP_RESERVED_PORT_COUNT: &str = "xdp_reserved_port_count";
+
+    // The number of ports to reserve in the Windows kernel for use by XDP.
+    #[cfg(target_os = "windows")]
+    pub const XDP_RESERVED_PORT_PROTOCOL: &str = "xdp_reserved_port_protocol";
 
     // Buffer counts for XDP backend
     #[cfg(target_os = "windows")]
@@ -383,6 +393,57 @@ impl Config {
         let tcp_ports: Vec<u16> = parse_ports(raw_socket_config::XDP_TCP_PORTS)?;
         let udp_ports: Vec<u16> = parse_ports(raw_socket_config::XDP_UDP_PORTS)?;
         Ok((tcp_ports, udp_ports))
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    pub fn xdp_reserved_port_count(&self) -> Result<Option<u16>, Fail> {
+        if let Some(count) = Self::get_typed_env_option(raw_socket_config::XDP_RESERVED_PORT_COUNT)? {
+            Ok(Some(count))
+        } else {
+            match Self::get_option(
+                self.get_raw_socket_config()?,
+                raw_socket_config::XDP_RESERVED_PORT_COUNT,
+            ) {
+                Ok(value) => {
+                    if let Some(value) = value.as_i64() {
+                        u16::try_from(value)
+                            .map_err(|_| Fail::new(libc::ERANGE, "Port number out of range"))
+                            .map(Some)
+                    } else {
+                        Err(Fail::new(libc::EINVAL, "Invalid port number"))
+                    }
+                },
+                Err(_) => Ok(None),
+            }
+        }
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    pub fn xdp_reserved_port_protocol(&self) -> Result<Option<Protocol>, Fail> {
+        let parse = |value: &str| -> Result<Protocol, Fail> {
+            match value.to_ascii_lowercase().as_str() {
+                "tcp" => Ok(Protocol::Tcp),
+                "udp" => Ok(Protocol::Udp),
+                _ => Err(Fail::new(libc::EINVAL, "Invalid protocol")),
+            }
+        };
+
+        if let Some(protocol) = Self::get_env_option(raw_socket_config::XDP_RESERVED_PORT_PROTOCOL) {
+            parse(&protocol.as_str()).map(Some)
+        } else {
+            if let Ok(protocol) = Self::get_option(
+                self.get_raw_socket_config()?,
+                raw_socket_config::XDP_RESERVED_PORT_PROTOCOL,
+            ) {
+                if let Some(value) = protocol.as_str() {
+                    parse(value).map(Some)
+                } else {
+                    Err(Fail::new(libc::EINVAL, "Invalid protocol"))
+                }
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     #[cfg(feature = "catnip-libos")]

@@ -12,6 +12,9 @@ raw_socket:
   # Enable the following for XDP cohosting mode, or override in environment:
   # xdp_tcp_ports: [80, 443]
   # xdp_udp_ports: [53]
+  # Enable the following to reserve private port ranges from the OS for outgoing connections.
+  # xdp_reserved_port_count: 8000
+  # xdp_reserved_port_protocol: tcp
   # Enable the following line if you have a VF interface
   # xdp_vf_interface_index: 0
   # The number of buffers to allocate for sending packets. Must be larger than the tx_ring_size.

@@ -71,6 +71,7 @@ _XskRingGetElement(
 {
     return XskRingGetElement(Ring, Index);
 }
+}
 
 BOOLEAN
 _XskRingProducerNeedPoke(

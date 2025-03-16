@@ -18,6 +18,8 @@ use crate::runtime::{
     memory::{DemiBuffer, MemoryRuntime},
 };
 
+use super::layer4::ephemeral::EphemeralPorts;
+
 //======================================================================================================================
 // Traits
 //======================================================================================================================
@@ -30,4 +32,9 @@ pub trait PhysicalLayer: 'static + MemoryRuntime {
 
     /// Receives a batch of [DemiBuffer].
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail>;
+
+    /// Returns the ephemeral ports on which this physical layer may operate. If none, any valid ephemeral port may be used.
+    fn ephemeral_ports(&self) -> EphemeralPorts {
+        EphemeralPorts::default()
+    }
 }
