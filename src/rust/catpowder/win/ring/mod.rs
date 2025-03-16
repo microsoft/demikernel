@@ -7,6 +7,7 @@
 
 mod generic;
 mod rule;
+mod ruleset;
 mod rx_ring;
 mod tx_ring;
 mod umemreg;
@@ -15,5 +16,6 @@ mod umemreg;
 // Exports
 //======================================================================================================================
 
+pub use ruleset::RuleSet;
 pub use rx_ring::RxRing;
 pub use tx_ring::TxRing;

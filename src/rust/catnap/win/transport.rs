@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-mod error;
+pub mod error;
 mod overlapped;
 mod socket;
 mod winsock;

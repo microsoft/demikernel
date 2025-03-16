@@ -6,6 +6,7 @@
 //======================================================================================================================
 
 use crate::{
+    catnap::transport::error::expect_last_wsa_error,
     catpowder::win::{
         api::XdpApi,
         ring::{RuleSet, RxRing, TxRing},
@@ -15,7 +16,7 @@ use crate::{
     demikernel::config::Config,
     inetstack::{
         consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
-        protocols::layer1::PhysicalLayer,
+        protocols::{layer1::PhysicalLayer, layer4::ephemeral::EphemeralPorts, Protocol},
     },
     runtime::{
         fail::Fail,
@@ -39,6 +40,11 @@ use std::{
 };
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
+    Networking::WinSock::{
+        closesocket, socket, WSACleanup, WSAIoctl, WSAStartup, AF_INET, INET_PORT_RANGE,
+        INET_PORT_RESERVATION_INSTANCE, INVALID_SOCKET, IPPROTO_TCP, IPPROTO_UDP, SIO_ACQUIRE_PORT_RESERVATION, SOCKET,
+        SOCK_DGRAM, SOCK_STREAM, WSADATA,
+    },
     System::SystemInformation::{
         GetLogicalProcessorInformationEx, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     },
@@ -90,6 +96,27 @@ impl SharedCatpowderRuntime {
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
 
+        let mut data: WSADATA = WSADATA::default();
+        if unsafe { WSAStartup(0x202u16, &mut data as *mut WSADATA) } != 0 {
+            return Err(expect_last_wsa_error());
+        }
+
+        let reserved_protocol: Option<Protocol> = config.xdp_reserved_port_protocol()?;
+        let reserved_port_count: Option<u16> = config.xdp_reserved_port_count()?;
+
+        let (reserved_socket, reserved_ports): (SOCKET, Vec<u16>) =
+            if reserved_protocol.is_some() && reserved_port_count.is_some() {
+                trace!(
+                    "reserving {} ports with protocol {:?}",
+                    reserved_port_count.unwrap(),
+                    reserved_protocol.unwrap()
+                );
+                reserve_port_blocks(reserved_port_count.unwrap(), reserved_protocol.unwrap())?
+            } else {
+                trace!("reserved port options not set; no ports reserved");
+                (INVALID_SOCKET, vec![])
+            };
+
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
@@ -112,33 +139,34 @@ impl SharedCatpowderRuntime {
         sockets.push((String::from("tx socket"), tx.socket().clone()));
 
         let cohost_mode = config.xdp_cohost_mode()?;
-        let (tcp_ports, udp_ports) = if cohost_mode {
-            trace!("XDP cohost mode enabled.");
-            config.xdp_cohost_ports()?
+        let (mut tcp_ports, mut udp_ports) = if cohost_mode {
+            let (tcp_ports, udp_ports) = config.xdp_cohost_ports()?;
+            trace!(
+                "XDP cohost mode enabled. TCP ports: {:?}, UDP ports: {:?}",
+                tcp_ports,
+                udp_ports
+            );
+            (tcp_ports, udp_ports)
         } else {
             trace!("XDP not cohosted; will redirect all traffic");
             (vec![], vec![])
         };
 
-        let make_ring = |api: &mut XdpApi,
-                         rx_ring_size: u32,
-                         rx_buffer_count: u32,
-                         ifindex: u32,
-                         queueid: u32|
-         -> Result<RxRing, Fail> {
-            if cohost_mode {
-                RxRing::new_cohost(
-                    api,
-                    rx_ring_size,
-                    rx_buffer_count,
-                    ifindex,
-                    queueid,
-                    tcp_ports.as_slice(),
-                    udp_ports.as_slice(),
-                )
-            } else {
-                RxRing::new_redirect_all(api, rx_ring_size, rx_buffer_count, ifindex, queueid)
+        if let Some(protocol) = reserved_protocol {
+            match protocol {
+                Protocol::Tcp => tcp_ports.extend(reserved_ports.iter().cloned()),
+                Protocol::Udp => udp_ports.extend(reserved_ports.iter().cloned()),
             }
+        }
+
+        let ruleset: Rc<RuleSet> = if cohost_mode {
+            RuleSet::new_cohost(
+                config.local_ipv4_addr()?.into(),
+                tcp_ports.as_slice(),
+                udp_ports.as_slice(),
+            )
+        } else {
+            RuleSet::new_redirect_all()
         };
 
         let queue_count: u32 = deduce_rss_settings(&mut api, ifindex)?;
@@ -321,6 +349,15 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         }
 
         Ok(ret)
+    }
+
+    fn ephemeral_ports(&self) -> EphemeralPorts {
+        let ports: &[u16] = self.0.reserved_ports.as_slice();
+        if ports.len() == 0 {
+            EphemeralPorts::default()
+        } else {
+            EphemeralPorts::new(ports).unwrap()
+        }
     }
 }
 
