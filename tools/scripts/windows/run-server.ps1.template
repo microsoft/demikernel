@@ -1,0 +1,17 @@
+. $PSScriptRoot\env.ps1
+
+$SERVER_HOST="{{IPADDR}}"
+
+Write-Host "*******        Server Mode         ********************* "
+Write-Host "LIBOS:       $env:LIBOS"
+Write-Host "CONFIG:      $env:CONFIG_PATH"
+Write-Host "********************************************************"
+Write-Host " "
+
+# 1. tcp-echo server
+Write-Host "Starting TCP echo server..."
+.\bin\examples\rust\tcp-echo.exe --peer server --address $SERVER_HOST":"$TCP_SERVER_PORT --nthreads 1
+
+# 2. udp-echo server
+# Write-Host "Starting UDP echo server..."
+# .\bin\examples\rust\udp-echo.exe --local $SERVER_HOST":"$UDP_SERVER_PORT
