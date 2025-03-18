@@ -1,0 +1,20 @@
+#!/bin/bash
+
+source "$(dirname "${BASH_SOURCE[0]}")/env.bash"
+
+SERVER_HOST="{{IPADDR}}"
+
+echo " *******        Server Mode         ********************* "
+echo " LIBOS:       $LIBOS"
+echo " CONFIG:      $CONFIG_PATH"
+echo "**********************************************************"
+echo " "
+
+
+# 1. tcp-echo server
+echo "Starting TCP echo server..."
+bin/examples/rust/tcp-echo.elf --peer server --address "$SERVER_HOST:$TCP_SERVER_PORT" --nthreads 1
+
+# 2. udp-echo server
+# echo "Starting UDP echo server..."
+# bin/examples/rust/udp-echo.elf --local "$SERVER_HOST:$UDP_SERVER_PORT"
