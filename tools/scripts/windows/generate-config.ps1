@@ -10,11 +10,11 @@ if (Test-Path -Path $args[0]) {
     exit 1
 }
 
-$srvTemplateFile="$PSScriptRoot\run-server.ps1.template"
-if (Test-Path -Path $srvTemplateFile) {
-    $srvTemplateContent = Get-Content -Path $srvTemplateFile
+$serverTemplateFile="$PSScriptRoot\run-server.ps1.template"
+if (Test-Path -Path $serverTemplateFile) {
+    $serverTemplateContent = Get-Content -Path $serverTemplateFile
 } else {
-    Write-Output "File does not exist: $srvTemplateFile"
+    Write-Output "File does not exist: $serverTemplateFile"
     exit 1
 }
 
@@ -53,7 +53,7 @@ $adapter = Get-NetIPAddress | Where-Object { $_.IPAddress -eq $ipv4 }
 if ($adapter) {
   $configFileContent = $configFileContent -replace "{{IPADDR}}", $ipv4
   $configFileContent = $configFileContent -replace "{{XDPIFIDX}}", $adapter.InterfaceIndex
-  $srvTemplateContent = $srvTemplateContent -replace "{{IPADDR}}", $ipv4
+  $serverTemplateContent = $serverTemplateContent -replace "{{IPADDR}}", $ipv4
   $netAdapter = Get-NetAdapter | Where-Object { $_.InterfaceIndex -eq $adapter.InterfaceIndex }
   $mac = $($netAdapter.MacAddress)
 } else {
@@ -66,7 +66,7 @@ $mac = $mac -replace "-", ":"
 $configFileContent = $configFileContent -replace "{{MACADDR}}", $mac
 $target="$PSScriptRoot\config.yaml"
 Set-Content -Path $target -Value $configFileContent
-Set-Content -Path "$PSScriptRoot\run-server.ps1" -Value $srvTemplateContent
+Set-Content -Path "$PSScriptRoot\run-server.ps1" -Value $serverTemplateContent
 
 # Update the CLIENT_HOST in env.ps1
 $envPath = "$PSScriptRoot\env.ps1.template"
