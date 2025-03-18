@@ -7,7 +7,7 @@
 
 use crate::{
     collections::async_queue::AsyncQueue,
-    inetstack::protocols::{layer3::SharedLayer3Endpoint, layer4::udp::header::UdpHeader},
+    inetstack::protocols::{layer3::NetworkLayer, layer4::udp::header::UdpHeader},
     runtime::{fail::Fail, memory::DemiBuffer, network::unwrap_socketaddr, SharedObject},
 };
 use ::std::{
@@ -35,27 +35,23 @@ const SEND_QUEUE_MAX_SIZE: usize = 1024;
 //======================================================================================================================
 
 /// Per-queue metadata for a UDP socket.
-pub struct UdpSocket {
+pub struct UdpSocket<T: NetworkLayer> {
     local_ipv4_addr: Ipv4Addr,
     bound: Option<SocketAddrV4>,
-    layer3_endpoint: SharedLayer3Endpoint,
+    layer3_endpoint: T,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
     checksum_offload: bool,
 }
 #[derive(Clone)]
-pub struct SharedUdpSocket(SharedObject<UdpSocket>);
+pub struct SharedUdpSocket<T: NetworkLayer>(SharedObject<UdpSocket<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedUdpSocket {
-    pub fn new(
-        local_ipv4_addr: Ipv4Addr,
-        layer3_endpoint: SharedLayer3Endpoint,
-        checksum_offload: bool,
-    ) -> Result<Self, Fail> {
+impl<T: NetworkLayer> SharedUdpSocket<T> {
+    pub fn new(local_ipv4_addr: Ipv4Addr, layer3_endpoint: T, checksum_offload: bool) -> Result<Self, Fail> {
         Ok(Self(SharedObject::new(UdpSocket {
             local_ipv4_addr,
             bound: None,
@@ -90,8 +86,9 @@ impl SharedUdpSocket {
         debug!("L4 OUTGOING  {:?}", udp_header);
         udp_header.serialize_and_attach(&mut buf, &self.local_ipv4_addr, remote.ip(), self.checksum_offload);
         // Send the packet to the lower layer.
+        let flow_state: T::FlowState = T::FlowState::default();
         self.layer3_endpoint
-            .transmit_udp_packet_blocking(remote.ip().clone(), buf)
+            .transmit_udp_packet_blocking(remote.ip().clone(), &flow_state, buf)
             .await
     }
 
@@ -112,7 +109,7 @@ impl SharedUdpSocket {
         }
     }
 
-    pub fn receive(&mut self, remote: SocketAddrV4, buf: DemiBuffer) {
+    pub fn receive(&mut self, remote: SocketAddrV4, _flow_record: T::FlowRecord, buf: DemiBuffer) {
         // Push data to the receiver-side shared queue. This will cause the
         // associated pool operation to be ready.
         self.recv_queue.push((remote, buf));
@@ -138,21 +135,21 @@ impl SharedUdpSocket {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedUdpSocket {
-    type Target = UdpSocket;
+impl<T: NetworkLayer> Deref for SharedUdpSocket<T> {
+    type Target = UdpSocket<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedUdpSocket {
+impl<T: NetworkLayer> DerefMut for SharedUdpSocket<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl Debug for SharedUdpSocket {
+impl<T: NetworkLayer> Debug for SharedUdpSocket<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "UDP socket local={:?} remote={:?}", self.local(), self.remote())
     }

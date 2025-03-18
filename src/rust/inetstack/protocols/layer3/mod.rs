@@ -19,7 +19,7 @@ use crate::{
     demikernel::config::Config,
     inetstack::{
         consts::RECEIVE_BATCH_SIZE,
-        protocols::layer2::{EtherType2, SharedLayer2Endpoint},
+        protocols::layer2::{DataLinkLayer, EtherType2},
     },
     runtime::{
         fail::Fail,
@@ -39,40 +39,102 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct Layer3Endpoint {
-    layer2_endpoint: SharedLayer2Endpoint,
-    arp: SharedArpPeer,
-    icmpv4: SharedIcmpv4Peer,
+pub struct Layer3Endpoint<T: DataLinkLayer> {
+    layer2_endpoint: T,
+    arp: SharedArpPeer<T>,
+    icmpv4: SharedIcmpv4Peer<T>,
     local_ipv4_addr: Ipv4Addr,
 }
 
 #[derive(Clone)]
-pub struct SharedLayer3Endpoint(SharedObject<Layer3Endpoint>);
+pub struct SharedLayer3Endpoint<T: DataLinkLayer>(SharedObject<Layer3Endpoint<T>>);
+
+pub trait NetworkLayer: 'static + Clone + Sized + MemoryRuntime {
+    type DataLinkLayer: DataLinkLayer;
+    type FlowState: Default;
+    type FlowRecord: Clone;
+
+    fn receive(
+        &mut self,
+    ) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail>;
+    fn transmit_tcp_packet_nonblocking(
+        &mut self,
+        remote_ipv4_addr: Ipv4Addr,
+        flow: &Self::FlowState,
+        pkt: DemiBuffer,
+    ) -> Result<(), Fail>;
+    fn transmit_tcp_packet_blocking(
+        &mut self,
+        remote_ipv4_addr: Ipv4Addr,
+        flow: &Self::FlowState,
+        pkt: DemiBuffer,
+    ) -> impl std::future::Future<Output = Result<(), Fail>>;
+    fn transmit_udp_packet_blocking(
+        &mut self,
+        remote_ipv4_addr: Ipv4Addr,
+        flow: &Self::FlowState,
+        pkt: DemiBuffer,
+    ) -> impl std::future::Future<Output = Result<(), Fail>>;
+    fn transmit_packet(
+        &mut self,
+        remote_ipv4_addr: Ipv4Addr,
+        remote_link_addr: MacAddress,
+        ip_protocol: IpProtocol,
+        flow: &Self::FlowState,
+        pkt: DemiBuffer,
+    ) -> Result<(), Fail>;
+    fn get_local_addr(&self) -> Ipv4Addr;
+    fn update_flow_state(&mut self, flow: &mut Self::FlowState, record: Self::FlowRecord);
+}
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedLayer3Endpoint {
+impl<T: DataLinkLayer> SharedLayer3Endpoint<T> {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
+        layer2_endpoint: T,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
-        let arp: SharedArpPeer = SharedArpPeer::new(config, runtime.clone(), layer2_endpoint.clone())?;
+        let arp: SharedArpPeer<T> = SharedArpPeer::<T>::new(config, runtime.clone(), layer2_endpoint.clone())?;
 
-        Ok(SharedLayer3Endpoint(SharedObject::new(Layer3Endpoint {
+        Ok(SharedLayer3Endpoint(SharedObject::new(Layer3Endpoint::<T> {
             arp: arp.clone(),
-            icmpv4: SharedIcmpv4Peer::new(&config, runtime, layer2_endpoint.clone(), arp, rng_seed)?,
+            icmpv4: SharedIcmpv4Peer::<T>::new(&config, runtime, layer2_endpoint.clone(), arp, rng_seed)?,
             local_ipv4_addr: config.local_ipv4_addr()?,
             layer2_endpoint,
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        for (eth2_type, mut packet) in self.layer2_endpoint.receive()? {
+    #[cfg(test)]
+    pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
+        self.icmpv4.ping(addr, timeout).await
+    }
+
+    #[cfg(test)]
+    pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
+        self.arp.query(addr).await
+    }
+
+    #[cfg(test)]
+    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
+        self.arp.export_cache()
+    }
+}
+
+impl<T: DataLinkLayer> NetworkLayer for SharedLayer3Endpoint<T> {
+    type DataLinkLayer = T;
+    type FlowState = T::FlowState;
+    type FlowRecord = T::FlowRecord;
+
+    fn receive(
+        &mut self,
+    ) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, T::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, T::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> =
+            ArrayVec::new();
+        for (eth2_type, flow_record, mut packet) in self.layer2_endpoint.receive()? {
             match eth2_type {
                 EtherType2::Arp => {
                     self.arp.receive(packet);
@@ -112,7 +174,7 @@ impl SharedLayer3Endpoint {
                             self.icmpv4.receive(header, packet);
                             continue;
                         },
-                        _ => batch.push((header.get_src_addr(), protocol, packet)),
+                        _ => batch.push((header.get_src_addr(), protocol, flow_record, packet)),
                     }
                 },
                 EtherType2::Ipv6 => warn!("Ipv6 not supported yet"), // Ignore for now.
@@ -121,65 +183,62 @@ impl SharedLayer3Endpoint {
         Ok(batch)
     }
 
-    pub fn transmit_tcp_packet_nonblocking(&mut self, remote_ipv4_addr: Ipv4Addr, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit_tcp_packet_nonblocking(
+        &mut self,
+        remote_ipv4_addr: Ipv4Addr,
+        flow: &T::FlowState,
+        pkt: DemiBuffer,
+    ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = match self.arp.try_query(remote_ipv4_addr) {
             Some(addr) => addr,
             _ => return Err(Fail::new(libc::EAGAIN, "destination not in ARP cache")),
         };
 
-        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::TCP, pkt)
+        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::TCP, flow, pkt)
     }
 
-    pub async fn transmit_tcp_packet_blocking(
+    async fn transmit_tcp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
+        flow: &T::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = self.arp.query(remote_ipv4_addr).await?;
 
-        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::TCP, pkt)
+        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::TCP, flow, pkt)
     }
 
-    pub async fn transmit_udp_packet_blocking(
+    async fn transmit_udp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
+        flow: &T::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = self.arp.query(remote_ipv4_addr).await?;
 
-        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::UDP, pkt)
+        self.transmit_packet(remote_ipv4_addr, remote_link_addr, IpProtocol::UDP, flow, pkt)
     }
 
-    pub fn transmit_packet(
+    fn transmit_packet(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
         remote_link_addr: MacAddress,
         ip_protocol: IpProtocol,
+        flow: &T::FlowState,
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let ipv4_header: Ipv4Header = Ipv4Header::new(self.local_ipv4_addr, remote_ipv4_addr, ip_protocol);
         debug!("L3 OUTGOING {:?}", ipv4_header);
         ipv4_header.serialize_and_attach(&mut pkt);
-        self.layer2_endpoint.transmit_ipv4_packet(remote_link_addr, pkt)
+        self.layer2_endpoint.transmit_ipv4_packet(remote_link_addr, flow, pkt)
     }
 
-    pub fn get_local_addr(&self) -> Ipv4Addr {
+    fn get_local_addr(&self) -> Ipv4Addr {
         self.local_ipv4_addr
     }
 
-    #[cfg(test)]
-    pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
-        self.icmpv4.ping(addr, timeout).await
-    }
-
-    #[cfg(test)]
-    pub async fn arp_query(&mut self, addr: Ipv4Addr) -> Result<MacAddress, Fail> {
-        self.arp.query(addr).await
-    }
-
-    #[cfg(test)]
-    pub fn export_arp_cache(&self) -> HashMap<Ipv4Addr, MacAddress, RandomState> {
-        self.arp.export_cache()
+    fn update_flow_state(&mut self, flow: &mut Self::FlowState, record: Self::FlowRecord) {
+        self.layer2_endpoint.update_flow_state(flow, record)
     }
 }
 
@@ -187,22 +246,22 @@ impl SharedLayer3Endpoint {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedLayer3Endpoint {
-    type Target = Layer3Endpoint;
+impl<T: DataLinkLayer> Deref for SharedLayer3Endpoint<T> {
+    type Target = Layer3Endpoint<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedLayer3Endpoint {
+impl<T: DataLinkLayer> DerefMut for SharedLayer3Endpoint<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
 /// Memory Runtime Trait Implementation for Layer 3.
-impl MemoryRuntime for SharedLayer3Endpoint {
+impl<T: DataLinkLayer + MemoryRuntime> MemoryRuntime for SharedLayer3Endpoint<T> {
     fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
         self.layer2_endpoint.into_sgarray(buf)
     }

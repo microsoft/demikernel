@@ -160,7 +160,7 @@ fn arp_cache_timeout() -> Result<()> {
     let mut now: Instant = Instant::now();
     let other_remote_ipv4: Ipv4Addr = test_helpers::CARRIE_IPV4;
     let mut engine: SharedEngine = new_engine(now, test_helpers::ALICE_CONFIG_PATH)?;
-    let mut inetstack: SharedInetStack = engine.get_transport();
+    let mut inetstack: SharedInetStack<_> = engine.get_transport();
     let coroutine = Box::pin(async move { inetstack.arp_query(other_remote_ipv4).await }.fuse());
     let _qt: QToken = engine
         .get_runtime()

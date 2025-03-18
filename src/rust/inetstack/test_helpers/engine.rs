@@ -37,7 +37,7 @@ const MAX_LOOP_ITERATIONS: usize = 64;
 /// (libos) and the lowest (physical layer).
 #[derive(Clone)]
 pub struct Engine {
-    libos: SharedNetworkLibOS<SharedInetStack>,
+    libos: SharedNetworkLibOS<SharedInetStack<SharedTestPhysicalLayer>>,
     layer1_endpoint: SharedTestPhysicalLayer,
 }
 
@@ -51,10 +51,11 @@ impl SharedEngine {
     pub fn new(config_path: &str, layer1_endpoint: SharedTestPhysicalLayer, now: Instant) -> Result<Self, Fail> {
         let config: Config = Config::new(config_path.to_string())?;
         let runtime: SharedDemiRuntime = SharedDemiRuntime::new(now);
-        let transport: SharedInetStack = SharedInetStack::new(&config, runtime.clone(), layer1_endpoint.clone())?;
+        let transport: SharedInetStack<SharedTestPhysicalLayer> =
+            SharedInetStack::new(&config, runtime.clone(), layer1_endpoint.clone())?;
 
         Ok(Self(SharedObject::new(Engine {
-            libos: SharedNetworkLibOS::<SharedInetStack>::new(runtime, transport),
+            libos: SharedNetworkLibOS::<SharedInetStack<SharedTestPhysicalLayer>>::new(runtime, transport),
             layer1_endpoint,
         })))
     }
@@ -173,7 +174,7 @@ impl SharedEngine {
         self.libos.get_runtime().clone()
     }
 
-    pub fn get_transport(&self) -> SharedInetStack {
+    pub fn get_transport(&self) -> SharedInetStack<SharedTestPhysicalLayer> {
         self.libos.get_transport().clone()
     }
 }

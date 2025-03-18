@@ -14,7 +14,10 @@ use crate::{
     runtime::{
         fail::Fail,
         logging,
-        types::{demi_args_t, demi_callback_t, demi_qresult_t, demi_qtoken_t, demi_sgarray_t, demi_sgaseg_t},
+        types::{
+            demi_args_t, demi_callback_t, demi_log_callback_t, demi_metric_callback_t, demi_qresult_t, demi_qtoken_t,
+            demi_sgarray_t, demi_sgaseg_t,
+        },
         QToken,
     },
     SocketOption,
@@ -28,16 +31,59 @@ use ::std::{
     ptr, slice,
     time::Duration,
 };
+use flexi_logger::{writers::LogWriter, Logger};
 use libc::sockaddr;
 
 thread_local! {
     static THREAD_LOCAL_LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
 }
 
+struct CallbackLogWriter {
+    callback: demi_log_callback_t,
+}
+
+impl LogWriter for CallbackLogWriter {
+    fn write(&self, _now: &mut flexi_logger::DeferredNow, record: &log::Record) -> std::io::Result<()> {
+        let module: &str = record.module_path().unwrap_or("{unnamed}");
+        let file: &str = record.file().unwrap_or("{unknown file}");
+        let message: String = record.args().to_string();
+        ((self.callback)(
+            record.level() as i32,
+            module.as_ptr() as *const std::ffi::c_char,
+            module.len() as u32,
+            file.as_ptr() as *const std::ffi::c_char,
+            file.len() as u32,
+            record.line().unwrap_or(0),
+            message.as_ptr() as *const std::ffi::c_char,
+            message.len() as u32,
+        ));
+
+        Ok(())
+    }
+
+    fn flush(&self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[allow(unused)]
 #[no_mangle]
 pub extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
-    logging::initialize();
+    if args.is_null() {
+        logging::initialize();
+    } else {
+        let args: &demi_args_t = unsafe { &*args };
+        if let Some(callback) = args.log_callback {
+            logging::custom_initialize(move || {
+                Logger::try_with_env()
+                    .unwrap()
+                    .log_to_writer(Box::new(CallbackLogWriter { callback }))
+            });
+        } else {
+            logging::initialize();
+        }
+    };
+
     trace!("demi_init()");
 
     let libos_name: LibOSName = match LibOSName::from_env() {
@@ -62,7 +108,14 @@ pub extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
         args.callback
     };
 
-    match LibOS::new(libos_name, perf_callback) {
+    let metric_callback: Option<demi_metric_callback_t> = if args.is_null() {
+        None
+    } else {
+        let args: &demi_args_t = unsafe { &*args };
+        args.metric_callback
+    };
+
+    match LibOS::new_ex(libos_name, perf_callback, metric_callback) {
         Ok(libos) => {
             THREAD_LOCAL_LIBOS.with(move |demikernel_libos| {
                 *demikernel_libos.borrow_mut() = Some(libos);
@@ -639,7 +692,7 @@ pub extern "C" fn demi_setsockopt(
     let ret: Result<(), Fail> = match do_syscall(|libos| libos.set_socket_option(qd.into(), opt)) {
         Ok(result) => result,
         Err(e) => {
-            trace!("demi_getsockopt(): {:?}", e);
+            trace!("demi_setsockopt(): {:?}", e);
             return e.errno;
         },
     };
@@ -647,7 +700,7 @@ pub extern "C" fn demi_setsockopt(
     match ret {
         Ok(_) => 0,
         Err(e) => {
-            trace!("demi_getsockopt(): {:?}", e);
+            trace!("demi_setsockopt(): {:?}", e);
             e.errno
         },
     }

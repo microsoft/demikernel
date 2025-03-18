@@ -31,7 +31,6 @@ use protocols::{
 
 use ::futures::FutureExt;
 use ::std::{
-    fmt::Debug,
     net::{SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
 };
@@ -54,31 +53,27 @@ pub mod types;
 //======================================================================================================================
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
-pub struct InetStack {
+pub struct InetStack<P: PhysicalLayer> {
     runtime: SharedDemiRuntime,
-    layer4_endpoint: Peer,
+    layer4_endpoint: Peer<SharedLayer3Endpoint<SharedLayer2Endpoint<P>>>,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack(SharedObject<InetStack>);
+pub struct SharedInetStack<P: PhysicalLayer>(SharedObject<InetStack<P>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedInetStack {
-    pub fn new<P: PhysicalLayer>(
-        config: &Config,
-        mut runtime: SharedDemiRuntime,
-        layer1_endpoint: P,
-    ) -> Result<Self, Fail> {
+impl<P: PhysicalLayer> SharedInetStack<P> {
+    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, layer1_endpoint: P) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
         let ports: EphemeralPorts = layer1_endpoint.ephemeral_ports();
-        let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
-        let layer3_endpoint: SharedLayer3Endpoint =
+        let layer2_endpoint: SharedLayer2Endpoint<P> = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
+        let layer3_endpoint: SharedLayer3Endpoint<_> =
             SharedLayer3Endpoint::new(config, runtime.clone(), layer2_endpoint, rng_seed)?;
-        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed, ports)?;
-        let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
+        let layer4_endpoint: Peer<_> = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed, ports)?;
+        let me: Self = Self(SharedObject::<InetStack<P>>::new(InetStack {
             runtime: runtime.clone(),
             layer4_endpoint,
         }));
@@ -119,23 +114,23 @@ impl SharedInetStack {
 // Trait Implementation
 //======================================================================================================================
 
-impl Deref for SharedInetStack {
-    type Target = InetStack;
+impl<P: PhysicalLayer> Deref for SharedInetStack<P> {
+    type Target = InetStack<P>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedInetStack {
+impl<P: PhysicalLayer> DerefMut for SharedInetStack<P> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl NetworkTransport for SharedInetStack {
+impl<P: PhysicalLayer> NetworkTransport for SharedInetStack<P> {
     // Socket data structure used by upper level libOS to identify this socket.
-    type SocketDescriptor = Socket;
+    type SocketDescriptor = Socket<SharedLayer3Endpoint<SharedLayer2Endpoint<P>>>;
 
     ///
     /// **Brief**
@@ -292,7 +287,7 @@ impl NetworkTransport for SharedInetStack {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl MemoryRuntime for SharedInetStack {
+impl<P: PhysicalLayer> MemoryRuntime for SharedInetStack<P> {
     fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
         self.layer4_endpoint.clone_sgarray(sga)
     }
@@ -307,14 +302,5 @@ impl MemoryRuntime for SharedInetStack {
 
     fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
         self.layer4_endpoint.sgafree(sga)
-    }
-}
-
-impl Debug for Socket {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Socket::Tcp(socket) => socket.fmt(f),
-            Socket::Udp(socket) => socket.fmt(f),
-        }
     }
 }

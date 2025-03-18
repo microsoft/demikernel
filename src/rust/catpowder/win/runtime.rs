@@ -62,7 +62,7 @@ const MIN_LATENCY_IOTA: u64 = 1000;
 
 /// A LibOS built on top of Windows XDP.
 #[derive(Clone)]
-pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntimeInner>);
+pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntime>);
 
 /// State for the monitor thread.
 struct MonitorThreadState {
@@ -74,9 +74,10 @@ struct MonitorThreadState {
 unsafe impl Send for MonitorThreadState {}
 
 /// The inner state of the Catpowder runtime.
-struct CatpowderRuntimeInner {
+struct CatpowderRuntime {
     api: XdpApi,
     tx: TxRing,
+    vf_tx: Option<TxRing>,
     rx_rings: Vec<RxRing>,
     vf_rx_rings: Vec<RxRing>,
     reserved_socket: SOCKET,
@@ -88,6 +89,23 @@ struct CatpowderRuntimeInner {
     thrd: Option<JoinHandle<()>>,
 }
 
+pub struct FlowState {
+    sriov_flow_established: bool,
+}
+
+#[derive(Clone, Copy)]
+pub struct FlowRecord {
+    from_vf: bool,
+}
+
+impl Default for FlowState {
+    fn default() -> Self {
+        Self {
+            sriov_flow_established: false,
+        }
+    }
+}
+
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
@@ -95,6 +113,7 @@ impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
+        let mtu: u16 = config.mtu()?;
 
         let mut data: WSADATA = WSADATA::default();
         if unsafe { WSAStartup(0x202u16, &mut data as *mut WSADATA) } != 0 {
@@ -135,7 +154,20 @@ impl SharedCatpowderRuntime {
 
         // Open TX and RX rings
         let always_poke: bool = config.xdp_always_poke_tx()?;
-        let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, ifindex, 0, always_poke)?;
+        let tx_if: u32 = if config.xdp_always_send_on_vf()? {
+            if let Ok(vf_if_index) = config.local_vf_interface_index() {
+                trace!("Using VF interface {} for TX", vf_if_index);
+                vf_if_index
+            } else {
+                trace!("Using primary interface {} for TX", ifindex);
+                ifindex
+            }
+        } else {
+            trace!("Using primary interface {} for TX", ifindex);
+            ifindex
+        };
+
+        let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, mtu, tx_if, 0, always_poke)?;
         sockets.push((String::from("tx socket"), tx.socket().clone()));
 
         let cohost_mode = config.xdp_cohost_mode()?;
@@ -187,6 +219,7 @@ impl SharedCatpowderRuntime {
                 &mut api,
                 rx_ring_size,
                 rx_buffer_count,
+                mtu,
                 ifindex,
                 queueid,
                 ruleset.clone(),
@@ -197,36 +230,49 @@ impl SharedCatpowderRuntime {
         }
         trace!("Created {} RX rings on interface {}", rx_rings.len(), ifindex);
 
-        let vf_rx_rings: Vec<RxRing> = if let Ok(vf_if_index) = config.local_vf_interface_index() {
-            // Optionally create VF RX rings
-            let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
-            let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
-            for queueid in 0..vf_queue_count {
-                let mut ring: RxRing = RxRing::new(
+        let (vf_tx, vf_rx_rings): (Option<TxRing>, Vec<RxRing>) =
+            if let Ok(vf_if_index) = config.local_vf_interface_index() {
+                let vf_tx: TxRing = TxRing::new(
                     &mut api,
-                    rx_ring_size,
-                    rx_buffer_count,
+                    tx_ring_size,
+                    tx_buffer_count,
+                    mtu,
                     vf_if_index,
-                    queueid,
-                    ruleset.clone(),
+                    0,
+                    always_poke,
                 )?;
-                ring.provide_buffers();
-                sockets.push((
-                    format!("RX on if {} queue {}", vf_if_index, queueid),
-                    ring.socket().clone(),
-                ));
-                vf_rx_rings.push(ring);
-            }
-            trace!(
-                "Created {} RX rings on VF interface {}.",
-                vf_rx_rings.len(),
-                vf_if_index
-            );
+                sockets.push((String::from("vf tx socket"), tx.socket().clone()));
 
-            vf_rx_rings
-        } else {
-            vec![]
-        };
+                // Optionally create VF RX rings
+                let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
+                let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
+                for queueid in 0..vf_queue_count {
+                    let mut ring: RxRing = RxRing::new(
+                        &mut api,
+                        rx_ring_size,
+                        rx_buffer_count,
+                        mtu,
+                        vf_if_index,
+                        queueid,
+                        ruleset.clone(),
+                    )?;
+                    ring.provide_buffers();
+                    sockets.push((
+                        format!("RX on if {} queue {}", vf_if_index, queueid),
+                        ring.socket().clone(),
+                    ));
+                    vf_rx_rings.push(ring);
+                }
+                trace!(
+                    "Created {} RX rings on VF interface {}.",
+                    vf_rx_rings.len(),
+                    vf_if_index
+                );
+
+                (Some(vf_tx), vf_rx_rings)
+            } else {
+                (None, vec![])
+            };
 
         let thrd_state: Arc<MonitorThreadState> = Arc::<MonitorThreadState>::new(MonitorThreadState {
             exit_mtx: Mutex::new(false),
@@ -240,9 +286,10 @@ impl SharedCatpowderRuntime {
             run_stats_thread(api_2, sockets, thread_state_clone);
         });
 
-        Ok(Self(SharedObject::new(CatpowderRuntimeInner {
+        Ok(Self(SharedObject::new(CatpowderRuntime {
             api,
             tx,
+            vf_tx,
             rx_rings,
             vf_rx_rings,
             reserved_socket,
@@ -256,18 +303,29 @@ impl SharedCatpowderRuntime {
 }
 
 impl PhysicalLayer for SharedCatpowderRuntime {
+    type FlowState = FlowState;
+    type FlowRecord = FlowRecord;
+
     /// Transmits a packet.
-    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, flow: &FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
         let pkt_size: usize = pkt.len();
-        trace!("transmit(): pkt_size={:?}", pkt_size);
         if pkt_size >= u16::MAX as usize {
             let cause = format!("packet is too large: {:?}", pkt_size);
             warn!("{}", cause);
             return Err(Fail::new(libc::ENOTSUP, &cause));
         }
 
-        let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
+        let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.tx.return_buffers();
+
+        if let Some(vf_tx) = me.vf_tx.as_mut() {
+            vf_tx.return_buffers();
+
+            if flow.sriov_flow_established {
+                vf_tx.transmit_buffer(&mut me.api, pkt)?;
+                return Ok(());
+            }
+        }
 
         me.tx.transmit_buffer(&mut me.api, pkt)?;
 
@@ -275,8 +333,8 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     }
 
     /// Polls for received packets.
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
-        let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        let mut ret: ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
         let now: Instant = std::time::Instant::now();
 
@@ -307,8 +365,12 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             }
         }
 
-        let me: &mut CatpowderRuntimeInner = &mut self.0.borrow_mut();
+        let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.tx.return_buffers();
+
+        if let Some(vf_tx) = me.vf_tx.as_mut() {
+            vf_tx.return_buffers();
+        }
 
         for rx in me.rx_rings.iter_mut() {
             rx.provide_buffers();
@@ -323,7 +385,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
+                ret.push((FlowRecord { from_vf: false }, DemiBuffer::try_from(&*dbuf).unwrap()));
                 Ok(())
             })?;
 
@@ -338,7 +400,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
+                ret.push((FlowRecord { from_vf: true }, DemiBuffer::try_from(&*dbuf).unwrap()));
                 Ok(())
             })?;
 
@@ -349,6 +411,18 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         }
 
         Ok(ret)
+    }
+
+    /// Update the VF usage based on the last received packet.
+    fn update_flow_state(&mut self, flow: &mut FlowState, record: FlowRecord) {
+        if record.from_vf != flow.sriov_flow_established {
+            trace!(
+                "update_flow_state(): old={}, new={}",
+                flow.sriov_flow_established,
+                record.from_vf
+            );
+            flow.sriov_flow_established = record.from_vf;
+        }
     }
 
     fn ephemeral_ports(&self) -> EphemeralPorts {
@@ -572,12 +646,21 @@ fn count_processor_cores() -> Result<usize, Fail> {
 fn deduce_rss_settings(api: &mut XdpApi, ifindex: u32) -> Result<u32, Fail> {
     const DUMMY_QUEUE_LENGTH: u32 = 1;
     const DUMMY_BUFFER_COUNT: u32 = 1;
+    const DUMMY_MTU: u16 = 500;
     let sys_proc_count: u32 = count_processor_cores()? as u32;
 
     // NB there will always be at least one queue available, hence starting the loop at 1. There should not be more
     // queues than the number of processors on the system.
     for queueid in 1..sys_proc_count {
-        match TxRing::new(api, DUMMY_QUEUE_LENGTH, DUMMY_BUFFER_COUNT, ifindex, queueid, false) {
+        match TxRing::new(
+            api,
+            DUMMY_QUEUE_LENGTH,
+            DUMMY_BUFFER_COUNT,
+            DUMMY_MTU,
+            ifindex,
+            queueid,
+            false,
+        ) {
             Ok(_) => (),
             Err(e) => {
                 warn!(
@@ -611,13 +694,13 @@ impl MemoryRuntime for SharedCatpowderRuntime {
         }
 
         // We can't allocate more than a single buffer.
-        if size > u16::MAX as usize {
+        if size > u16::MAX as usize - MAX_HEADER_SIZE {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
 
         // Allocate buffer from sender pool.
         let mut buf: DemiBuffer = match self.0.tx.get_buffer() {
-            None => return Err(Fail::new(libc::ENOBUFS, "out of buffers")),
+            None => DemiBuffer::new((size + MAX_HEADER_SIZE) as u16),
             Some(buf) => buf,
         };
 
@@ -648,7 +731,7 @@ impl MemoryRuntime for SharedCatpowderRuntime {
 /// Runtime trait implementation for XDP Runtime.
 impl Runtime for SharedCatpowderRuntime {}
 
-impl Drop for CatpowderRuntimeInner {
+impl Drop for CatpowderRuntime {
     fn drop(&mut self) {
         if let Some(thrd) = self.thrd.take() {
             if let Ok(mut guard) = self.thrd_state.exit_mtx.lock() {

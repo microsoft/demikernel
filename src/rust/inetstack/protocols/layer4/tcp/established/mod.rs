@@ -21,10 +21,14 @@ use crate::{
         config::TcpConfig,
         consts::MSL,
         protocols::{
-            layer3::SharedLayer3Endpoint,
+            layer3::NetworkLayer,
             layer4::tcp::{
                 congestion_control::CongestionControlConstructor,
-                established::{ctrlblk::ControlBlock, ctrlblk::State, receiver::Receiver, sender::Sender},
+                established::{
+                    ctrlblk::{ControlBlock, State},
+                    receiver::Receiver,
+                    sender::Sender,
+                },
                 header::TcpHeader,
                 SeqNumber,
             },
@@ -57,27 +61,28 @@ const MAX_WINDOW_SIZE_WITH_SCALING: u32 = 1073741824;
 // Structures
 //======================================================================================================================
 
-pub struct EstablishedSocket {
+pub struct EstablishedSocket<T: NetworkLayer> {
     // All shared state for this established TCP connection.
-    cb: ControlBlock,
+    cb: ControlBlock<T>,
     runtime: SharedDemiRuntime,
-    layer3_endpoint: SharedLayer3Endpoint,
+    layer3_endpoint: T,
 }
 
 #[derive(Clone)]
-pub struct SharedEstablishedSocket(SharedObject<EstablishedSocket>);
+pub struct SharedEstablishedSocket<T: NetworkLayer>(SharedObject<EstablishedSocket<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedEstablishedSocket {
+impl<T: NetworkLayer> SharedEstablishedSocket<T> {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
         mut runtime: SharedDemiRuntime,
-        layer3_endpoint: SharedLayer3Endpoint,
-        data_from_ack: Option<(TcpHeader, DemiBuffer)>,
+        layer3_endpoint: T,
+        flow_state: T::FlowState,
+        data_from_ack: Option<(TcpHeader, T::FlowRecord, DemiBuffer)>,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         receiver_seq_no: SeqNumber,
@@ -155,6 +160,7 @@ impl SharedEstablishedSocket {
             default_socket_options,
             sender,
             receiver,
+            flow_state,
             congestion_control_algorithm,
         );
         let mut me: Self = Self(SharedObject::new(EstablishedSocket {
@@ -164,8 +170,8 @@ impl SharedEstablishedSocket {
         }));
 
         // Process data carried with the response to the SYN+ACK
-        if let Some((header, data)) = data_from_ack {
-            me.receive(header, data);
+        if let Some((header, flow, data)) = data_from_ack {
+            me.receive(header, flow, data);
         }
         let me2: Self = me.clone();
         runtime.insert_nonpolling_coroutine(
@@ -175,7 +181,7 @@ impl SharedEstablishedSocket {
         Ok(me)
     }
 
-    pub fn receive(&mut self, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, tcp_hdr: TcpHeader, flow_record: T::FlowRecord, buf: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.cb.state,
@@ -184,8 +190,15 @@ impl SharedEstablishedSocket {
         );
 
         let now: Instant = self.runtime.get_now();
-        let mut layer3_endpoint: SharedLayer3Endpoint = self.layer3_endpoint.clone();
-        Receiver::receive(&mut self.cb, &mut layer3_endpoint, tcp_hdr, buf, now);
+
+        let EstablishedSocket {
+            cb,
+            layer3_endpoint,
+            runtime: _,
+        } = self.0.as_mut();
+        layer3_endpoint.update_flow_state(&mut cb.flow_state, flow_record);
+
+        Receiver::receive(cb, layer3_endpoint, tcp_hdr, buf, now);
     }
 
     // This coroutine runs the close protocol.
@@ -237,9 +250,12 @@ impl SharedEstablishedSocket {
     }
 
     pub async fn push(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
-        let mut runtime: SharedDemiRuntime = self.runtime.clone();
-        let mut layer3_endpoint: SharedLayer3Endpoint = self.layer3_endpoint.clone();
-        Sender::push(&mut self.cb, &mut layer3_endpoint, &mut runtime, buf).await
+        let EstablishedSocket {
+            cb,
+            layer3_endpoint,
+            runtime,
+        } = self.0.as_mut();
+        Sender::push(cb, layer3_endpoint, runtime, buf).await
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
@@ -253,7 +269,7 @@ impl SharedEstablishedSocket {
     async fn background(self) {
         let mut me: Self = self.clone();
         let acknowledger = async_timer!("tcp::established::background::acknowledger", async {
-            let mut layer3_endpoint: SharedLayer3Endpoint = me.layer3_endpoint.clone();
+            let mut layer3_endpoint: T = me.layer3_endpoint.clone();
             Receiver::acknowledger(&mut me.cb, &mut layer3_endpoint).await
         })
         .fuse();
@@ -261,7 +277,7 @@ impl SharedEstablishedSocket {
 
         let mut me2: Self = self.clone();
         let retransmitter = async_timer!("tcp::established::background::retransmitter", async {
-            let mut layer3_endpoint: SharedLayer3Endpoint = me2.layer3_endpoint.clone();
+            let mut layer3_endpoint: T = me2.layer3_endpoint.clone();
             let mut runtime: SharedDemiRuntime = me2.runtime.clone();
             Sender::background_retransmitter(&mut me2.cb, &mut layer3_endpoint, &mut runtime).await
         })
@@ -270,9 +286,12 @@ impl SharedEstablishedSocket {
 
         let mut me3: Self = self.clone();
         let sender = async_timer!("tcp::established::background::sender", async {
-            let mut layer3_endpoint: SharedLayer3Endpoint = me3.layer3_endpoint.clone();
-            let mut runtime: SharedDemiRuntime = me3.runtime.clone();
-            Sender::background_sender(&mut me3.cb, &mut layer3_endpoint, &mut runtime).await
+            let EstablishedSocket {
+                cb,
+                layer3_endpoint,
+                runtime,
+            } = me3.0.as_mut();
+            Sender::background_sender(cb, layer3_endpoint, runtime).await
         })
         .fuse();
         pin_mut!(sender);
@@ -286,15 +305,15 @@ impl SharedEstablishedSocket {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedEstablishedSocket {
-    type Target = EstablishedSocket;
+impl<T: NetworkLayer> Deref for SharedEstablishedSocket<T> {
+    type Target = EstablishedSocket<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedEstablishedSocket {
+impl<T: NetworkLayer> DerefMut for SharedEstablishedSocket<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

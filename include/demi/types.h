@@ -15,6 +15,7 @@
 
 #ifdef _WIN32
 #include <WinSock2.h>
+#pragma pack(push, p0)
 #endif
 
 #ifdef __cplusplus
@@ -134,6 +135,20 @@ extern "C"
     // Callback Function.
     typedef void (*demi_callback_t)(const char *, uint32_t, uint64_t);
 
+    typedef void (*demi_metric_callback_t)(const char*, uint32_t, uint32_t);
+
+    typedef enum demi_log_level
+    {
+        DemiLogLevel_Error = 1,
+        DemiLogLevel_Warning = 2,
+        DemiLogLevel_Info = 3,
+        DemiLogLevel_Debug = 4,
+        DemiLogLevel_Trace = 5,
+    } demi_log_level_t;
+
+    // Logging callback. Arguments are: level, module name, module length, file name, file name length, line number, message, message length, 
+    typedef void (*demi_log_callback_t)(demi_log_level_t level, const char*, uint32_t, const char*, uint32_t, uint32_t, const char*, uint32_t);
+
 /**
  * @brief Arguments for Demikernel.
  */
@@ -148,6 +163,8 @@ extern "C"
         int argc;                 /**< Number of command-line arguments. */
         char *const *argv;        /**< Command-line Arguments.           */
         demi_callback_t callback; /**< Callback Function.                */
+        demi_log_callback_t logCallback; /**< Logging Callback.                */
+        demi_metric_callback_t metricCallback; /**< Metric Callback.                */
     };
 #ifdef _WIN32
 #pragma pack(pop)
@@ -155,6 +172,10 @@ extern "C"
 
 #ifdef __cplusplus
 }
+#endif
+
+#ifdef _WIN32
+#pragma pack(pop, p0)
 #endif
 
 #endif /* DEMI_TYPES_H_IS_INCLUDED */

@@ -27,7 +27,7 @@ use ::std::{
 //======================================================================================================================
 // Structures
 //======================================================================================================================
-pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack>);
+pub struct DummyLibOS(SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>);
 
 //======================================================================================================================
 // Associate Functions
@@ -42,7 +42,9 @@ impl DummyLibOS {
 
         logging::initialize();
         let transport = SharedInetStack::new(&config, runtime.clone(), network)?;
-        Ok(Self(SharedNetworkLibOS::<SharedInetStack>::new(runtime, transport)))
+        Ok(Self(SharedNetworkLibOS::<SharedInetStack<SharedDummyRuntime>>::new(
+            runtime, transport,
+        )))
     }
 
     pub fn prepare_dummy_buffer(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
@@ -66,7 +68,7 @@ impl DummyLibOS {
 //======================================================================================================================
 
 impl Deref for DummyLibOS {
-    type Target = SharedNetworkLibOS<SharedInetStack>;
+    type Target = SharedNetworkLibOS<SharedInetStack<SharedDummyRuntime>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

@@ -8,7 +8,7 @@
 use crate::{
     demikernel::config::Config,
     inetstack::protocols::{
-        layer3::SharedLayer3Endpoint,
+        layer3::NetworkLayer,
         layer4::udp::{header::UdpHeader, socket::SharedUdpSocket},
     },
     runtime::{fail::Fail, memory::DemiBuffer, SharedDemiRuntime, SharedObject},
@@ -27,19 +27,19 @@ use ::std::{
 /// Per-queue metadata: UDP Control Block
 
 /// UDP Peer
-pub struct UdpPeer {
+pub struct UdpPeer<T: NetworkLayer> {
     /// Underlying transport.
-    layer3_endpoint: SharedLayer3Endpoint,
+    layer3_endpoint: T,
     /// Local IPv4 address.
     local_ipv4_addr: Ipv4Addr,
     /// Offload checksum to hardware?
     checksum_offload: bool,
     /// Incoming routing table.
-    addresses: HashMap<SocketAddrV4, SharedUdpSocket>,
+    addresses: HashMap<SocketAddrV4, SharedUdpSocket<T>>,
 }
 
 #[derive(Clone)]
-pub struct SharedUdpPeer(SharedObject<UdpPeer>);
+pub struct SharedUdpPeer<T: NetworkLayer>(SharedObject<UdpPeer<T>>);
 
 //======================================================================================================================
 // Associate Functions
@@ -47,22 +47,18 @@ pub struct SharedUdpPeer(SharedObject<UdpPeer>);
 
 /// Associate functions for [SharedUdpPeer].
 
-impl SharedUdpPeer {
-    pub fn new(
-        config: &Config,
-        _runtime: SharedDemiRuntime,
-        layer3_endpoint: SharedLayer3Endpoint,
-    ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::<UdpPeer>::new(UdpPeer {
+impl<T: NetworkLayer> SharedUdpPeer<T> {
+    pub fn new(config: &Config, _runtime: SharedDemiRuntime, layer3_endpoint: T) -> Result<Self, Fail> {
+        Ok(Self(SharedObject::<UdpPeer<T>>::new(UdpPeer {
             layer3_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
             checksum_offload: config.udp_checksum_offload()?,
-            addresses: HashMap::<SocketAddrV4, SharedUdpSocket>::new(),
+            addresses: HashMap::<SocketAddrV4, SharedUdpSocket<T>>::new(),
         })))
     }
 
     /// Opens a UDP socket.
-    pub fn socket(&mut self) -> Result<SharedUdpSocket, Fail> {
+    pub fn socket(&mut self) -> Result<SharedUdpSocket<T>, Fail> {
         SharedUdpSocket::new(
             self.local_ipv4_addr,
             self.layer3_endpoint.clone(),
@@ -71,7 +67,7 @@ impl SharedUdpPeer {
     }
 
     /// Binds a UDP socket to a local endpoint address.
-    pub fn bind(&mut self, socket: &mut SharedUdpSocket, addr: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, socket: &mut SharedUdpSocket<T>, addr: SocketAddrV4) -> Result<(), Fail> {
         if let Some(_) = socket.local() {
             let cause: String = format!("cannot bind to already bound socket");
             error!("bind(): {}", cause);
@@ -84,7 +80,7 @@ impl SharedUdpPeer {
     }
 
     /// Closes a UDP socket.
-    pub fn hard_close(&mut self, socket: &mut SharedUdpSocket) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, socket: &mut SharedUdpSocket<T>) -> Result<(), Fail> {
         if let Some(addr) = socket.local() {
             self.addresses.remove(&addr);
         }
@@ -92,14 +88,14 @@ impl SharedUdpPeer {
     }
 
     /// Closes a UDP socket asynchronously.
-    pub async fn close(&mut self, socket: &mut SharedUdpSocket) -> Result<(), Fail> {
+    pub async fn close(&mut self, socket: &mut SharedUdpSocket<T>) -> Result<(), Fail> {
         self.hard_close(socket)
     }
 
     /// Pushes data to a remote UDP peer.
     pub async fn push(
         &mut self,
-        socket: &mut SharedUdpSocket,
+        socket: &mut SharedUdpSocket<T>,
         buf: &mut DemiBuffer,
         remote: Option<SocketAddr>,
     ) -> Result<(), Fail> {
@@ -118,7 +114,7 @@ impl SharedUdpPeer {
     /// Pops data from a socket.
     pub async fn pop(
         &mut self,
-        socket: &mut SharedUdpSocket,
+        socket: &mut SharedUdpSocket<T>,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         let (addr, buf) = socket.pop(size).await?;
@@ -126,7 +122,7 @@ impl SharedUdpPeer {
     }
 
     /// Consumes the payload from a buffer.
-    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, mut buf: DemiBuffer) {
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, flow_record: T::FlowRecord, mut buf: DemiBuffer) {
         timer!("udp::receive");
         // Parse datagram. Safe to use the local IP address here because the lower IP layer would have discarded the
         // packet if the destination did not match the local IP.
@@ -144,7 +140,7 @@ impl SharedUdpPeer {
         let local: SocketAddrV4 = SocketAddrV4::new(self.local_ipv4_addr, hdr.dest_port());
         let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, hdr.src_port());
 
-        let socket: &mut SharedUdpSocket = match self.get_socket_from_addr(&local) {
+        let socket: &mut SharedUdpSocket<T> = match self.get_socket_from_addr(&local) {
             Some(queue) => queue,
             None => {
                 // Handle wildcard address.
@@ -164,10 +160,10 @@ impl SharedUdpPeer {
             },
         };
         // TODO: Drop this packet if local address/port pair is not bound.
-        socket.receive(remote, buf)
+        socket.receive(remote, flow_record, buf)
     }
 
-    fn get_socket_from_addr(&mut self, local: &SocketAddrV4) -> Option<&mut SharedUdpSocket> {
+    fn get_socket_from_addr(&mut self, local: &SocketAddrV4) -> Option<&mut SharedUdpSocket<T>> {
         self.addresses.get_mut(local)
     }
 }
@@ -176,15 +172,15 @@ impl SharedUdpPeer {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedUdpPeer {
-    type Target = UdpPeer;
+impl<T: NetworkLayer> Deref for SharedUdpPeer<T> {
+    type Target = UdpPeer<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedUdpPeer {
+impl<T: NetworkLayer> DerefMut for SharedUdpPeer<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

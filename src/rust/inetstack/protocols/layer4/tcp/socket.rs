@@ -10,7 +10,7 @@ use crate::{
     inetstack::{
         config::TcpConfig,
         protocols::{
-            layer3::SharedLayer3Endpoint,
+            layer3::NetworkLayer,
             layer4::tcp::{
                 active_open::SharedActiveOpenSocket, established::SharedEstablishedSocket, header::TcpHeader,
                 passive_open::SharedPassiveSocket, SeqNumber,
@@ -37,13 +37,13 @@ use ::std::{
 // Enumerations
 //======================================================================================================================
 
-pub enum SocketState {
+pub enum SocketState<T: NetworkLayer> {
     Unbound,
     Bound(SocketAddrV4),
-    Listening(SharedPassiveSocket),
-    Connecting(SharedActiveOpenSocket),
-    Established(SharedEstablishedSocket),
-    Closing(SharedEstablishedSocket),
+    Listening(SharedPassiveSocket<T>),
+    Connecting(SharedActiveOpenSocket<T>),
+    Established(SharedEstablishedSocket<T>),
+    Closing(SharedEstablishedSocket<T>),
 }
 
 //======================================================================================================================
@@ -51,29 +51,29 @@ pub enum SocketState {
 //======================================================================================================================
 
 /// Per-queue metadata for the TCP socket.
-pub struct TcpSocket {
-    state: SocketState,
+pub struct TcpSocket<T: NetworkLayer> {
+    state: SocketState<T>,
     runtime: SharedDemiRuntime,
-    layer3_endpoint: SharedLayer3Endpoint,
+    layer3_endpoint: T,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
 }
 
-pub struct SharedTcpSocket(SharedObject<TcpSocket>);
+pub struct SharedTcpSocket<T: NetworkLayer>(SharedObject<TcpSocket<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedTcpSocket {
+impl<T: NetworkLayer> SharedTcpSocket<T> {
     /// Create a new shared queue.
     pub fn new(
         runtime: SharedDemiRuntime,
-        layer3_endpoint: SharedLayer3Endpoint,
+        layer3_endpoint: T,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
     ) -> Self {
-        Self(SharedObject::<TcpSocket>::new(TcpSocket {
+        Self(SharedObject::<TcpSocket<T>>::new(TcpSocket::<T> {
             state: SocketState::Unbound,
             runtime,
             layer3_endpoint,
@@ -83,13 +83,13 @@ impl SharedTcpSocket {
     }
 
     pub fn new_established(
-        socket: SharedEstablishedSocket,
+        socket: SharedEstablishedSocket<T>,
         runtime: SharedDemiRuntime,
-        layer3_endpoint: SharedLayer3Endpoint,
+        layer3_endpoint: T,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
     ) -> Self {
-        Self(SharedObject::<TcpSocket>::new(TcpSocket {
+        Self(SharedObject::<TcpSocket<T>>::new(TcpSocket {
             state: SocketState::Established(socket),
             runtime,
             layer3_endpoint,
@@ -141,7 +141,7 @@ impl SharedTcpSocket {
 
     /// Sets the target queue to listen for incoming connections.
     pub fn listen(&mut self, backlog: usize, nonce: u32) -> Result<(), Fail> {
-        let passive_socket: SharedPassiveSocket = SharedPassiveSocket::new(
+        let passive_socket: SharedPassiveSocket<T> = SharedPassiveSocket::<T>::new(
             expect_some!(
                 self.local(),
                 "If we were able to prepare, then the socket must be bound"
@@ -157,13 +157,13 @@ impl SharedTcpSocket {
         Ok(())
     }
 
-    pub async fn accept(&mut self) -> Result<SharedTcpSocket, Fail> {
+    pub async fn accept(&mut self) -> Result<SharedTcpSocket<T>, Fail> {
         // Wait for a new connection on the listening socket.
-        let mut listening_socket: SharedPassiveSocket = match self.state {
+        let mut listening_socket: SharedPassiveSocket<T> = match self.state {
             SocketState::Listening(ref listening_socket) => listening_socket.clone(),
             _ => unreachable!("State machine check should ensure that this socket is listening"),
         };
-        let new_socket: SharedEstablishedSocket = listening_socket.do_accept().await?;
+        let new_socket: SharedEstablishedSocket<T> = listening_socket.do_accept().await?;
         // Insert queue into queue table and get new queue descriptor.
         let new_queue = Self::new_established(
             new_socket,
@@ -182,7 +182,7 @@ impl SharedTcpSocket {
         local_isn: SeqNumber,
     ) -> Result<(), Fail> {
         // Create active socket.
-        let socket: SharedActiveOpenSocket = SharedActiveOpenSocket::new(
+        let socket: SharedActiveOpenSocket<T> = SharedActiveOpenSocket::<T>::new(
             local_isn,
             local,
             remote,
@@ -279,7 +279,7 @@ impl SharedTcpSocket {
         }
     }
 
-    pub fn receive(&mut self, ip_hdr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, ip_hdr: Ipv4Addr, tcp_hdr: TcpHeader, flow_record: T::FlowRecord, buf: DemiBuffer) {
         match self.state {
             SocketState::Unbound => {
                 warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.")
@@ -287,10 +287,10 @@ impl SharedTcpSocket {
             SocketState::Bound(_) => {
                 warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.")
             },
-            SocketState::Listening(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, buf),
-            SocketState::Connecting(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, buf),
-            SocketState::Established(ref mut socket) => socket.receive(tcp_hdr, buf),
-            SocketState::Closing(ref mut socket) => socket.receive(tcp_hdr, buf),
+            SocketState::Listening(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, flow_record, buf),
+            SocketState::Connecting(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, flow_record, buf),
+            SocketState::Established(ref mut socket) => socket.receive(tcp_hdr, flow_record, buf),
+            SocketState::Closing(ref mut socket) => socket.receive(tcp_hdr, flow_record, buf),
         }
     }
 
@@ -323,27 +323,27 @@ impl SharedTcpSocket {
 // Trait implementation
 //======================================================================================================================
 
-impl Deref for SharedTcpSocket {
-    type Target = TcpSocket;
+impl<T: NetworkLayer> Deref for SharedTcpSocket<T> {
+    type Target = TcpSocket<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedTcpSocket {
+impl<T: NetworkLayer> DerefMut for SharedTcpSocket<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl Clone for SharedTcpSocket {
+impl<T: NetworkLayer> Clone for SharedTcpSocket<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl Debug for SharedTcpSocket {
+impl<T: NetworkLayer> Debug for SharedTcpSocket<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TCP socket local={:?} remote={:?}", self.local(), self.remote())
     }

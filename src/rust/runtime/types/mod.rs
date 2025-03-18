@@ -23,6 +23,17 @@ pub use self::{
 
 /// A callback function.
 pub type demi_callback_t = extern "C" fn(*const std::ffi::c_char, u32, u64);
+pub type demi_log_callback_t = extern "C" fn(
+    std::ffi::c_int,
+    *const std::ffi::c_char,
+    u32,
+    *const std::ffi::c_char,
+    u32,
+    u32,
+    *const std::ffi::c_char,
+    u32,
+);
+pub type demi_metric_callback_t = extern "C" fn(*const std::ffi::c_char, u32, u32);
 
 /// Demikernel Arguments
 #[repr(C, packed)]
@@ -30,6 +41,8 @@ pub struct demi_args_t {
     pub argc: core::ffi::c_int,
     pub argv: *const *const core::ffi::c_char,
     pub callback: Option<demi_callback_t>,
+    pub log_callback: Option<demi_log_callback_t>,
+    pub metric_callback: Option<demi_metric_callback_t>,
 }
 
 impl Default for demi_args_t {
@@ -38,6 +51,8 @@ impl Default for demi_args_t {
             argc: 0,
             argv: std::ptr::null(),
             callback: None,
+            log_callback: None,
+            metric_callback: None,
         }
     }
 }

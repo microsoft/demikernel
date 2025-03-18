@@ -11,7 +11,7 @@ use crate::{
         ring::{generic::XdpRing, rule::XdpProgram, ruleset::RuleSet, umemreg::UmemReg},
         socket::XdpSocket,
     },
-    runtime::{fail::Fail, libxdp, limits, memory::DemiBuffer},
+    runtime::{fail::Fail, libxdp, memory::DemiBuffer},
 };
 use std::{
     cell::RefCell,
@@ -53,6 +53,7 @@ impl RxRing {
         api: &mut XdpApi,
         length: u32,
         buf_count: u32,
+        mtu: u16,
         ifindex: u32,
         queueid: u32,
         rules: Rc<RuleSet>,
@@ -64,8 +65,7 @@ impl RxRing {
         // Create a UMEM region.
         trace!("creating umem region");
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
-        let chunk_size: NonZeroU16 =
-            NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
+        let chunk_size: NonZeroU16 = NonZeroU16::try_from(mtu).map_err(Fail::from)?;
         let mem: Rc<RefCell<UmemReg>> =
             Rc::new(RefCell::new(UmemReg::new(api, &mut socket, buf_count, chunk_size, 0)?));
 

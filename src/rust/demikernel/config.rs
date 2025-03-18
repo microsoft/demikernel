@@ -77,6 +77,10 @@ mod raw_socket_config {
     #[cfg(target_os = "windows")]
     pub const LOCAL_VF_INTERFACE_INDEX: &str = "xdp_vf_interface_index";
 
+    // Whether to always send on VF interface (versus flow-based deduction of send interface).
+    #[cfg(target_os = "windows")]
+    pub const XDP_ALWAYS_SEND_ON_VF: &str = "xdp_always_send_on_vf";
+
     // Whether XDP should support its cohosting mode, wherein it will only redirect ports specified
     // in environmental variables.
     #[cfg(target_os = "windows")]
@@ -359,6 +363,25 @@ impl Config {
                 self.get_raw_socket_config()?,
                 raw_socket_config::LOCAL_VF_INTERFACE_INDEX,
             )
+        }
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    pub fn xdp_always_send_on_vf(&self) -> Result<bool, Fail> {
+        if let Some(val) = Self::get_typed_env_option(raw_socket_config::XDP_ALWAYS_SEND_ON_VF)? {
+            Ok(val)
+        } else {
+            if let Ok(val) = Self::get_option(&self.0, raw_socket_config::XDP_ALWAYS_SEND_ON_VF) {
+                if let Some(val) = val.as_bool() {
+                    Ok(val)
+                } else {
+                    let cause: String = format!("Invalid value for xdp_always_send_on_vf");
+                    error!("xdp_always_send_on_vf(): {:?}", cause);
+                    Err(Fail::new(libc::EINVAL, &cause))
+                }
+            } else {
+                Ok(false)
+            }
         }
     }
 

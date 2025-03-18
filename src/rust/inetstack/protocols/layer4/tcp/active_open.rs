@@ -12,7 +12,7 @@ use crate::{
         config::TcpConfig,
         consts::{FALLBACK_MSS, MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
         protocols::{
-            layer3::SharedLayer3Endpoint,
+            layer3::NetworkLayer,
             layer4::tcp::{
                 established::{
                     congestion_control::{self, CongestionControl},
@@ -46,38 +46,38 @@ enum State {
     Closed,
 }
 
-pub struct ActiveOpenSocket {
+pub struct ActiveOpenSocket<T: NetworkLayer> {
     local_isn: SeqNumber,
     local: SocketAddrV4,
     remote: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    layer3_endpoint: SharedLayer3Endpoint,
-    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
+    layer3_endpoint: T,
+    recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>,
     tcp_config: TcpConfig,
     socket_options: TcpSocketOptions,
     state: SharedAsyncValue<State>,
 }
 
 #[derive(Clone)]
-pub struct SharedActiveOpenSocket(SharedObject<ActiveOpenSocket>);
+pub struct SharedActiveOpenSocket<T: NetworkLayer>(SharedObject<ActiveOpenSocket<T>>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl SharedActiveOpenSocket {
+impl<T: NetworkLayer> SharedActiveOpenSocket<T> {
     pub fn new(
         local_isn: SeqNumber,
         local: SocketAddrV4,
         remote: SocketAddrV4,
         runtime: SharedDemiRuntime,
-        layer3_endpoint: SharedLayer3Endpoint,
+        layer3_endpoint: T,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
     ) -> Result<Self, Fail> {
         // TODO: Add fast path here when remote is already in the ARP cache (and subtract one retry).
 
-        Ok(Self(SharedObject::<ActiveOpenSocket>::new(ActiveOpenSocket {
+        Ok(Self(SharedObject::<ActiveOpenSocket<T>>::new(ActiveOpenSocket::<T> {
             local_isn,
             local,
             remote,
@@ -90,7 +90,11 @@ impl SharedActiveOpenSocket {
         })))
     }
 
-    fn process_ack(&mut self, header: TcpHeader) -> Result<SharedEstablishedSocket, Fail> {
+    fn process_ack(
+        &mut self,
+        header: TcpHeader,
+        flow_record: T::FlowRecord,
+    ) -> Result<SharedEstablishedSocket<T>, Fail> {
         let expected_seq: SeqNumber = self.local_isn + SeqNumber::from(1);
 
         // Bail if we didn't receive a ACK packet with the right sequence number.
@@ -136,8 +140,13 @@ impl SharedActiveOpenSocket {
             self.remote.ip(),
             self.tcp_config.get_rx_checksum_offload(),
         );
+        let flow_state: T::FlowState = {
+            let mut flow_state = T::FlowState::default();
+            self.layer3_endpoint.update_flow_state(&mut flow_state, flow_record);
+            flow_state
+        };
         self.layer3_endpoint
-            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, pkt)?;
+            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, &flow_state, pkt)?;
 
         let mut remote_window_scale_bits = None;
         let mut mss = FALLBACK_MSS;
@@ -193,11 +202,13 @@ impl SharedActiveOpenSocket {
             "Window scale: local {}, remote {}",
             local_window_scale_bits, remote_window_scale_bits
         );
+
         Ok(SharedEstablishedSocket::new(
             self.local,
             self.remote,
             self.runtime.clone(),
             self.layer3_endpoint.clone(),
+            flow_state,
             None,
             self.tcp_config.clone(),
             self.socket_options,
@@ -214,7 +225,7 @@ impl SharedActiveOpenSocket {
         )?)
     }
 
-    pub async fn connect(mut self) -> Result<SharedEstablishedSocket, Fail> {
+    pub async fn connect(mut self) -> Result<SharedEstablishedSocket<T>, Fail> {
         // Start connection handshake.
         let handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout = self.tcp_config.get_handshake_timeout();
@@ -244,9 +255,10 @@ impl SharedActiveOpenSocket {
                 self.tcp_config.get_rx_checksum_offload(),
             );
             // Send SYN.
+            let flow_state: T::FlowState = T::FlowState::default();
             if let Err(e) = self
                 .layer3_endpoint
-                .transmit_tcp_packet_blocking(dst_ipv4_addr, pkt)
+                .transmit_tcp_packet_blocking(dst_ipv4_addr, &flow_state, pkt)
                 .await
             {
                 warn!("Could not send SYN: {:?}", e);
@@ -254,7 +266,8 @@ impl SharedActiveOpenSocket {
             }
 
             // Wait for either a response or timeout.
-            let mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> = self.recv_queue.clone();
+            let mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)> =
+                self.recv_queue.clone();
             let mut state: SharedAsyncValue<State> = self.state.clone();
             select_biased! {
             r = state.wait_for_change(None).fuse() => if let Ok(r) = r {
@@ -265,7 +278,7 @@ impl SharedActiveOpenSocket {
                 }
             },
             r = recv_queue.pop(Some(handshake_timeout)).fuse() => match r {
-                Ok((_, header, _)) => match self.process_ack(header) {
+                Ok((_, header, flow_record, _)) => match self.process_ack(header, flow_record) {
                         Ok(socket) => return Ok(socket),
                         Err(Fail { errno, cause: _ }) if errno == libc::EAGAIN => continue,
                         Err(e) => return Err(e),
@@ -294,8 +307,8 @@ impl SharedActiveOpenSocket {
         (self.local, self.remote)
     }
 
-    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
-        self.recv_queue.push((ipv4_addr, tcp_hdr, buf))
+    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, flow_record: T::FlowRecord, buf: DemiBuffer) {
+        self.recv_queue.push((ipv4_addr, tcp_hdr, flow_record, buf))
     }
 }
 
@@ -303,15 +316,15 @@ impl SharedActiveOpenSocket {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedActiveOpenSocket {
-    type Target = ActiveOpenSocket;
+impl<T: NetworkLayer> Deref for SharedActiveOpenSocket<T> {
+    type Target = ActiveOpenSocket<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedActiveOpenSocket {
+impl<T: NetworkLayer> DerefMut for SharedActiveOpenSocket<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

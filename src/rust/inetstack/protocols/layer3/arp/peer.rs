@@ -8,7 +8,7 @@ use crate::{
     inetstack::{
         config::ArpConfig,
         protocols::{
-            layer2::SharedLayer2Endpoint,
+            layer2::DataLinkLayer,
             layer3::arp::{
                 cache::ArpCache,
                 header::{ArpHeader, ArpOperation},
@@ -41,8 +41,8 @@ use ::std::{
 ///
 /// Arp Peer
 ///
-pub struct ArpPeer {
-    layer2_endpoint: SharedLayer2Endpoint,
+pub struct ArpPeer<T: DataLinkLayer> {
+    layer2_endpoint: T,
     local_ipv4_addr: Ipv4Addr,
     cache: ArpCache,
     waiters: HashMap<Ipv4Addr, LinkedList<Sender<MacAddress>>>,
@@ -51,21 +51,17 @@ pub struct ArpPeer {
 }
 
 #[derive(Clone)]
-pub struct SharedArpPeer(SharedObject<ArpPeer>);
+pub struct SharedArpPeer<T: DataLinkLayer>(SharedObject<ArpPeer<T>>);
 
 //======================================================================================================================
 // Associate Functions
 //======================================================================================================================
 
-impl SharedArpPeer {
+impl<T: DataLinkLayer> SharedArpPeer<T> {
     /// ARP Cleanup timeout.
     const ARP_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
 
-    pub fn new(
-        config: &Config,
-        mut runtime: SharedDemiRuntime,
-        layer2_endpoint: SharedLayer2Endpoint,
-    ) -> Result<Self, Fail> {
+    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, layer2_endpoint: T) -> Result<Self, Fail> {
         let arp_config: ArpConfig = ArpConfig::new(config)?;
         let cache: ArpCache = ArpCache::new(
             runtime.get_now(),
@@ -74,7 +70,7 @@ impl SharedArpPeer {
             arp_config.is_enabled(),
         );
 
-        let peer: SharedArpPeer = Self(SharedObject::new(ArpPeer {
+        let peer: SharedArpPeer<T> = Self(SharedObject::new(ArpPeer::<T> {
             layer2_endpoint,
             local_ipv4_addr: config.local_ipv4_addr()?,
             cache,
@@ -210,10 +206,12 @@ impl SharedArpPeer {
                     );
                     debug!("Responding {:?}", reply_hdr);
 
-                    if let Err(e) = self
-                        .layer2_endpoint
-                        .transmit_arp_packet(header.get_sender_hardware_addr(), reply_hdr.create_and_serialize())
-                    {
+                    let flow: T::FlowState = T::FlowState::default();
+                    if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
+                        header.get_sender_hardware_addr(),
+                        &flow,
+                        reply_hdr.create_and_serialize(),
+                    ) {
                         // Ignore for now because the other end will retry.
                         // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
                         // FIXME: https://github.com/microsoft/demikernel/issues/1365
@@ -248,16 +246,21 @@ impl SharedArpPeer {
             MacAddress::broadcast(),
             ipv4_addr,
         );
-        let mut peer: SharedArpPeer = self.clone();
+        let mut peer: SharedArpPeer<T> = self.clone();
+
+        // TODO: use real flow states.
+        let flow: T::FlowState = T::FlowState::default();
+
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
         // > second, the maximum suggested by [RFC1122].
         let result = {
             for i in 0..self.arp_config.get_retry_count() + 1 {
-                if let Err(e) = self
-                    .layer2_endpoint
-                    .transmit_arp_packet(MacAddress::broadcast(), header.create_and_serialize())
-                {
+                if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
+                    MacAddress::broadcast(),
+                    &flow,
+                    header.create_and_serialize(),
+                ) {
                     warn!("Could not send packet: {:?}", e);
                     continue;
                 }
@@ -293,15 +296,15 @@ impl SharedArpPeer {
 // Trait Implementations
 //======================================================================================================================
 
-impl Deref for SharedArpPeer {
-    type Target = ArpPeer;
+impl<T: DataLinkLayer> Deref for SharedArpPeer<T> {
+    type Target = ArpPeer<T>;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl DerefMut for SharedArpPeer {
+impl<T: DataLinkLayer> DerefMut for SharedArpPeer<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

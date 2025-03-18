@@ -13,7 +13,7 @@ use crate::{
         ring::{generic::XdpRing, umemreg::UmemReg},
         socket::XdpSocket,
     },
-    runtime::{fail::Fail, libxdp, limits, memory::DemiBuffer},
+    runtime::{fail::Fail, libxdp, memory::DemiBuffer},
 };
 use ::std::{cell::RefCell, rc::Rc};
 use std::{
@@ -37,6 +37,8 @@ pub struct TxRing {
     socket: XdpSocket,
     /// Whether to always poke the socket, or only when the ring flag indicates to do so.
     always_poke: bool,
+    /// Interface index for the socket.
+    ifindex: u32,
 }
 
 impl TxRing {
@@ -45,6 +47,7 @@ impl TxRing {
         api: &mut XdpApi,
         length: u32,
         buf_count: u32,
+        mtu: u16,
         ifindex: u32,
         queueid: u32,
         always_poke: bool,
@@ -55,8 +58,7 @@ impl TxRing {
 
         // Create a UMEM region.
         let buf_count: NonZeroU32 = NonZeroU32::try_from(buf_count).map_err(Fail::from)?;
-        let chunk_size: NonZeroU16 =
-            NonZeroU16::try_from(u16::try_from(limits::RECVBUF_SIZE_MAX).map_err(Fail::from)?).map_err(Fail::from)?;
+        let chunk_size: NonZeroU16 = NonZeroU16::try_from(mtu).map_err(Fail::from)?;
         let reserve_count: u32 = length;
         trace!(
             "creating umem region with {} buffers of size {}",
@@ -118,6 +120,7 @@ impl TxRing {
             tx_completion_ring,
             socket,
             always_poke,
+            ifindex,
         })
     }
 
@@ -186,10 +189,11 @@ impl TxRing {
 
         let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
         trace!(
-            "transmitting buffer at offset {}, offset {} with length {}",
+            "transmit_buffer(): address={}, offset={}, length={}, ifindex={}",
             unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
             unsafe { buf_desc.Address.__bindgen_anon_1.Offset() },
-            buf_desc.Length
+            buf_desc.Length,
+            self.ifindex,
         );
 
         let mut idx: u32 = 0;

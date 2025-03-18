@@ -40,7 +40,7 @@ pub const DEFAULT_MSS: usize = 1450;
 /// Length of a [crate::memory::DemiBuffer] batch.
 ///
 /// TODO: This Should be Generic
-pub const RECEIVE_BATCH_SIZE: usize = 4;
+pub const RECEIVE_BATCH_SIZE: usize = 16;
 
 /// Maximum local and remote window scaling factor.
 /// See: RFC 1323, Section 2.3.
