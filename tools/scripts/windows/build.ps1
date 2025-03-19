@@ -55,4 +55,4 @@ $Command = "${Arguments}all"
 ##############################################################
 Write-Host "Using LibOS: $libos; running 'nmake $Command' to build Demikernel"
 
-nmake $Command
+Start-Process -FilePath "nmake" -ArgumentList $Command -NoNewWindow -Wait
