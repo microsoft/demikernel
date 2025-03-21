@@ -2,7 +2,7 @@
 
 ## Build Demikernel
 
-Run `build.ps1` from the repository root directory:
+Run `build.ps1` from the repository root directory within a Powershell terminal.
 
 ```powershell
 .\scripts\windows\build.ps1
@@ -18,13 +18,13 @@ See [build.ps1](build.ps1) for details.
 
 ## Generate config
 
-Run `generate-config.ps1` from the repository root directory
+Run `generate-config.ps1` from the repository root directory within a Powershell terminal.
 
 ```powershell
 .\scripts\windows\generate-config.ps1
 ```
 
-Note: (only applicable to Catpowder LibOS) if your machine has VF network adapter, please adjust `config.yaml`'s `xdp_vf_interface_index` entry to the VF interface's index
+Note: (only applicable to Catpowder LibOS) if your machine has VF network adapter, please adjust `config.yaml`'s `xdp_vf_interface_index` entry to the VF interface's index.
 
 ## Adjust environment variables
 
@@ -32,8 +32,8 @@ After generating config, edit `env.ps1` to adjust LibOS, Rust Log level and othe
 
 ## Run Client Program
 
-Run `run-client.ps1` from the repository root directory
+Run `run-client.ps1` from the repository root directory (using a Powershell terminal).
 
 ## Run Server Program
 
-Run `run-server.ps1` from the repository root directory
+Run `run-server.ps1` from the repository root directory (using a Powershell terminal).

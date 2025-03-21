@@ -1,8 +1,8 @@
-# Linux Scripts to Build and run Demikernel Programs
+# Linux scripts to Build and run Demikernel Programs
 
 ## Linux
 
-Run `build.bash` from the `scripts/linux` directory:
+Run `build.bash` from the `scripts/linux` directory.
 
 ```bash
 bash ./scripts/linux/build.bash
@@ -18,7 +18,7 @@ See [build.bash](build.bash) for details.
 
 ## Generate config
 
-Run `generate-config.bash` from the repository root directory
+Run `generate-config.bash` from the repository root directory.
 
 ```bash
 bash ./scripts/linux/generate-config.bash
@@ -30,8 +30,8 @@ After generating config, edit `env.bash` to adjust LibOS, Rust Log level and oth
 
 ## Run Client Program
 
-Run `run-client.bash` from the repository root directory
+Run `bash run-client.bash` from the repository root directory.
 
 ## Run Server Program
 
-Run `run-server.bash` from the repository root directory
+Run `bash run-server.bash` from the repository root directory.
