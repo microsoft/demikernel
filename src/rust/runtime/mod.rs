@@ -13,10 +13,11 @@ pub mod memory;
 pub mod network;
 pub mod queue;
 pub mod scheduler;
+pub mod tracing;
 pub mod types;
 pub use condition_variable::SharedConditionVariable;
 mod poll;
-mod timer;
+pub mod timer;
 pub use queue::{BackgroundTask, OperationResult, OperationTask, QDesc, QToken, QType};
 pub use scheduler::{SchedulerId, Task};
 
@@ -245,6 +246,7 @@ impl SharedDemiRuntime {
         mut acceptor: Acceptor,
         timeout: Duration,
     ) -> Result<(), Fail> {
+        self.advance_clock_to_now();
         let mut current_time: Instant = self.get_now();
         let deadline_time: Instant = current_time + timeout;
 

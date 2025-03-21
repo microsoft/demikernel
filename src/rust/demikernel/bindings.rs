@@ -14,9 +14,10 @@ use crate::{
     runtime::{
         fail::Fail,
         logging,
+        tracing::METRICS,
         types::{
-            demi_args_t, demi_callback_t, demi_log_callback_t, demi_metric_callback_t, demi_qresult_t, demi_qtoken_t,
-            demi_sgarray_t, demi_sgaseg_t,
+            demi_args_t, demi_callback_t, demi_log_callback_t, demi_metric_callback_t, demi_metric_descriptor_t,
+            demi_qresult_t, demi_qtoken_t, demi_sgarray_t, demi_sgaseg_t,
         },
         QToken,
     },
@@ -844,6 +845,38 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut SockAddr, addrlen: *mut
             return e.errno;
         },
     }
+}
+
+pub extern "C" fn demi_enumerate_metrics(metrics: *mut demi_metric_descriptor_t, num_metrics: *mut u32) -> c_int {
+    if num_metrics.is_null() {
+        return libc::EINVAL;
+    }
+
+    let array_size: u32 = unsafe { std::ptr::replace(num_metrics, METRICS.len() as u32) };
+
+    if array_size < METRICS.len() as u32 || metrics.is_null() {
+        // NB this is not necessarily a failure, as the caller may be passing in a null pointer to get the size of the
+        // array. Don't log.
+        return libc::ERANGE;
+    }
+
+    let metrics: &mut [MaybeUninit<demi_metric_descriptor_t>] =
+        unsafe { slice::from_raw_parts_mut(metrics.cast(), METRICS.len()) };
+
+    for (i, metric) in METRICS.iter().enumerate() {
+        metrics[i].write(demi_metric_descriptor_t {
+            id: metric.id(),
+            name: metric.name().as_ptr() as *const i8,
+            name_len: metric.name().len() as u32,
+            description: metric.description().as_ptr() as *const i8,
+            description_len: metric.description().len() as u32,
+            unit: metric.unit().as_ptr() as *const i8,
+            unit_len: metric.unit().len() as u32,
+            kind: metric.kind(),
+        });
+    }
+
+    0
 }
 
 //======================================================================================================================

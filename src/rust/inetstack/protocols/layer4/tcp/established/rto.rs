@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use crate::runtime::tracing::METRICS;
+
 // TCP Retransmission Timeout (RTO) Calculator.
 // See RFC 6298 for details.
 
@@ -79,6 +81,7 @@ impl RtoCalculator {
 
         if new_rto != self.rto {
             trace!("RTO updated: old RTO = {}, new RTO = {}", self.rto, new_rto);
+            METRICS.tcp_rto.emit(new_rto as u32);
         }
         self.rto = new_rto;
     }

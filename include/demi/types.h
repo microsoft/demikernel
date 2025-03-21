@@ -132,10 +132,33 @@ extern "C"
 #pragma pack(pop)
 #endif
 
+    typedef enum demi_metric_kind
+    {
+        // A metric which is emitted iff an event occurs.
+        DEMI_MK_EVENT = 1,
+        // A metric which samples some distribution of values.
+        DEMI_MK_SAMPLE = 2,
+        // A metric which represents a rate of some event measured at a predetermined time iota.
+        DEMI_MK_RATE = 3,
+    } demi_metric_kind_t;
+
+    typedef struct demi_metric_descriptor
+    {
+        uint32_t id;              /**< ID of the metric. */
+        const char* name;         /**< Name of the metric. */
+        uint32_t name_len;        /**< Length of the name. */
+        const char* description;  /**< Description of the metric. */
+        uint32_t description_len; /**< Length of the description. */
+        const char* unit;         /**< Unit of the metric. */
+        uint32_t unit_len;        /**< Length of the unit. */
+        demi_metric_kind_t kind;  /**< Kind of the metric. */
+    } demi_metric_descriptor_t;
+
     // Callback Function.
     typedef void (*demi_callback_t)(const char *, uint32_t, uint64_t);
 
-    typedef void (*demi_metric_callback_t)(const char*, uint32_t, uint32_t);
+    // Callback function to emit a metric. Arguments are: metric ID, value.
+    typedef void (*demi_metric_callback_t)(uint32_t, uint32_t);
 
     typedef enum demi_log_level
     {

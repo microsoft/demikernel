@@ -10,10 +10,12 @@
 #define _In_
 #define _In_z_
 #define _In_opt_
+#define _Inout_
 #define _In_reads_(s)
 #define _In_reads_bytes_(b)
 #define _Out_
 #define _Out_writes_to_(s, c)
+#define _Out_writes_to_opt_(s, c)
 #define _Deref_pre_z_
 #endif
 

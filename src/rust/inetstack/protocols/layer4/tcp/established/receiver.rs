@@ -23,7 +23,7 @@ use crate::{
             SeqNumber,
         },
     },
-    runtime::{fail::Fail, memory::DemiBuffer},
+    runtime::{fail::Fail, memory::DemiBuffer, tracing::METRICS},
 };
 
 use ::futures::never::Never;
@@ -180,6 +180,10 @@ impl Receiver {
                 }
             }
         }
+
+        METRICS
+            .tcp_out_of_order_frames
+            .emit(self.out_of_order_frames.len() as u32);
     }
 
     // Block until the remote sends a FIN (plus all previous data has arrived).
@@ -518,6 +522,7 @@ impl Receiver {
                 "Received out-of-order segment; out_of_order_frames.len() = {:?}",
                 cb.receiver.out_of_order_frames.len()
             );
+
             debug_assert_ne!(seg_len, 0);
             // This segment is out-of-order.  If it carries data, we should store it for later processing
             // after the "hole" in the sequence number space has been filled.
@@ -642,6 +647,10 @@ impl Receiver {
         while self.out_of_order_frames.len() > MAX_OUT_OF_ORDER_SIZE_FRAMES {
             self.out_of_order_frames.pop_back();
         }
+
+        METRICS
+            .tcp_out_of_order_frames
+            .emit(self.out_of_order_frames.len() as u32);
     }
 
     fn process_fin<T: NetworkLayer>(cb: &mut ControlBlock<T>) {
