@@ -37,6 +37,10 @@ struct MonitorThreadState {
     exit_mtx: Mutex<bool>,
     cnd_var: Condvar,
     max_poll_latency: AtomicU32,
+    tx_packets: AtomicU32,
+    tx_bytes: AtomicU32,
+    rx_packets: AtomicU32,
+    rx_bytes: AtomicU32,
 }
 
 unsafe impl Send for MonitorThreadState {}
@@ -66,6 +70,10 @@ impl CatpowderStats {
             exit_mtx: Mutex::new(false),
             cnd_var: Condvar::new(),
             max_poll_latency: AtomicU32::new(0),
+            tx_packets: AtomicU32::new(0),
+            tx_bytes: AtomicU32::new(0),
+            rx_packets: AtomicU32::new(0),
+            rx_bytes: AtomicU32::new(0),
         });
 
         let thread_state_clone = thread_state.clone();
@@ -112,13 +120,23 @@ impl CatpowderStats {
             }
         }
     }
+
+    pub fn inc_rx(&self, bytes: u32, packets: u32) {
+        self.thread_state.rx_bytes.fetch_add(bytes, Ordering::Relaxed);
+        self.thread_state.rx_packets.fetch_add(packets, Ordering::Relaxed);
+    }
+
+    pub fn inc_tx(&self, bytes: u32, packets: u32) {
+        self.thread_state.tx_bytes.fetch_add(bytes, Ordering::Relaxed);
+        self.thread_state.tx_packets.fetch_add(packets, Ordering::Relaxed);
+    }
 }
 
 //======================================================================================================================
 // Functions
 //======================================================================================================================
 
-fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thrd_state: Arc<MonitorThreadState>) {
+fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thread_state: Arc<MonitorThreadState>) {
     const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
         RxDropped: 0,
         RxInvalidDescriptors: 0,
@@ -126,8 +144,12 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thrd
         TxInvalidDescriptors: 0,
     };
     let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
+    let mut total_rx_packets: u32 = 0;
+    let mut total_rx_bytes: u32 = 0;
+    let mut total_tx_packets: u32 = 0;
+    let mut total_tx_bytes: u32 = 0;
 
-    let mut exit_guard: MutexGuard<'_, bool> = thrd_state.exit_mtx.lock().unwrap();
+    let mut exit_guard: MutexGuard<'_, bool> = thread_state.exit_mtx.lock().unwrap();
     while !*exit_guard {
         for (i, (name, socket)) in sockets.iter_mut().enumerate() {
             if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
@@ -135,13 +157,34 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thrd
             }
         }
 
-        let max_latency: u32 = thrd_state.max_poll_latency.swap(0, std::sync::atomic::Ordering::AcqRel);
+        let max_latency: u32 = thread_state
+            .max_poll_latency
+            .swap(0, std::sync::atomic::Ordering::AcqRel);
         if max_latency > MIN_LATENCY_IOTA {
             METRICS.xdp_high_poll_latency.emit(max_latency);
             debug!("max latency between polls last interval is {}", max_latency);
         }
 
-        exit_guard = thrd_state
+        let tx_packets: u32 = thread_state.tx_packets.swap(0, Ordering::Relaxed);
+        total_tx_packets = total_tx_packets.wrapping_add(tx_packets);
+        let tx_bytes: u32 = thread_state.tx_bytes.swap(0, Ordering::Relaxed);
+        total_tx_bytes = total_tx_bytes.wrapping_add(tx_bytes);
+        let rx_packets: u32 = thread_state.rx_packets.swap(0, Ordering::Relaxed);
+        total_rx_packets = total_rx_packets.wrapping_add(rx_packets);
+        let rx_bytes: u32 = thread_state.rx_bytes.swap(0, Ordering::Relaxed);
+        total_rx_bytes = total_rx_bytes.wrapping_add(rx_bytes);
+
+        METRICS.tx_packets.emit(total_tx_packets);
+        METRICS.tx_bytes.emit(total_tx_bytes);
+        METRICS.rx_packet_rate.emit(tx_packets);
+        METRICS.rx_byte_rate.emit(tx_bytes);
+
+        METRICS.rx_packets.emit(total_rx_packets);
+        METRICS.rx_bytes.emit(total_rx_bytes);
+        METRICS.rx_packet_rate.emit(rx_packets);
+        METRICS.rx_byte_rate.emit(rx_bytes);
+
+        exit_guard = thread_state
             .cnd_var
             .wait_timeout(exit_guard, Duration::from_secs(1))
             .unwrap()

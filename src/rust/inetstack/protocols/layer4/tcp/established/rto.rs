@@ -47,6 +47,8 @@ impl RtoCalculator {
         // Clock granularity in seconds.
         const GRANULARITY: f64 = 0.001f64;
 
+        METRICS.tcp_rtt.emit(rtt.as_micros() as u32);
+
         let rtt: f64 = rtt.as_secs_f64();
 
         if !self.received_sample {
@@ -81,7 +83,7 @@ impl RtoCalculator {
 
         if new_rto != self.rto {
             trace!("RTO updated: old RTO = {}, new RTO = {}", self.rto, new_rto);
-            METRICS.tcp_rto.emit(new_rto as u32);
+            METRICS.tcp_rto.emit((new_rto * 1000.0) as u32);
         }
         self.rto = new_rto;
     }

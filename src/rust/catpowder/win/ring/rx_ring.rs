@@ -169,7 +169,6 @@ impl RxRing {
                 // starting at the UMEM base region address.
                 let b: &mut MaybeUninit<u64> = self.rx_fill_ring.get_element(idx + i);
                 b.write(buf_offset as u64);
-                // trace!("provided buffer at offset {}", buf_offset);
                 published += 1;
             } else {
                 warn!("out of buffers; {} buffers unprovided", available - i);
@@ -179,7 +178,7 @@ impl RxRing {
 
         if published > 0 {
             trace!(
-                "provided {} buffers to RxRing interface {} queue {}",
+                "provided {} rx buffers to RxRing interface {} queue {}",
                 published,
                 self.ifindex,
                 self.queueid
@@ -211,11 +210,6 @@ impl RxRing {
         for i in 0..to_consume {
             // Safety: Ring entries are intialized by the XDP runtime.
             let desc: &libxdp::XSK_BUFFER_DESCRIPTOR = unsafe { self.rx_ring.get_element(idx + i).assume_init_ref() };
-            // trace!(
-            //     "processing buffer at address {} offset {}",
-            //     unsafe { desc.Address.__bindgen_anon_1.BaseAddress() },
-            //     unsafe { desc.Address.__bindgen_anon_1.Offset() }
-            // );
             let db: DemiBuffer = self.mem.borrow().rehydrate_buffer_desc(desc)?;
 
             // Trim buffer to actual length. Descriptor length should not be greater than buffer length, but guard

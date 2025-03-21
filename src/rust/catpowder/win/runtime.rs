@@ -148,6 +148,8 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
         me.interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
 
+        me.stats.inc_tx(1, pkt_size as u32);
+
         Ok(())
     }
 
@@ -158,44 +160,51 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         let mut ret: ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
-        me.interface.tx_ring.return_buffers();
         me.interface.provide_rx_buffers();
 
-        if let Some(vf_interface) = me.vf_interface.as_mut() {
-            vf_interface.return_tx_buffers();
-            vf_interface.provide_rx_buffers();
-        }
-
         let mut queue: usize = 0;
-        for rx in me.interface.rx_rings.iter_mut() {
-            let remaining: u32 = ret.remaining_capacity() as u32;
-            rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
-                trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push((FlowRecord { from_vf: false }, DemiBuffer::try_from(&*dbuf).unwrap()));
-                Ok(())
-            })?;
+        let mut rx_packets: u32 = 0;
+        let mut rx_bytes: u32 = 0;
 
-            if ret.is_full() {
-                return Ok(ret);
-            }
-            queue += 1;
-        }
-
-        queue = 0;
         if let Some(vf_interface) = me.vf_interface.as_mut() {
+            vf_interface.provide_rx_buffers();
             for rx in vf_interface.rx_rings.iter_mut() {
                 let remaining: u32 = ret.remaining_capacity() as u32;
                 rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                     trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
+                    rx_packets += 1;
+                    rx_bytes += dbuf.len() as u32;
+
                     ret.push((FlowRecord { from_vf: true }, DemiBuffer::try_from(&*dbuf).unwrap()));
                     Ok(())
                 })?;
 
                 if ret.is_full() {
+                    self.0.stats.inc_rx(rx_packets, rx_bytes);
                     return Ok(ret);
                 }
                 queue += 1;
             }
+
+            queue = 0;
+        }
+
+        for rx in me.interface.rx_rings.iter_mut() {
+            let remaining: u32 = ret.remaining_capacity() as u32;
+            rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
+                rx_packets += 1;
+                rx_bytes += dbuf.len() as u32;
+
+                ret.push((FlowRecord { from_vf: false }, DemiBuffer::try_from(&*dbuf).unwrap()));
+                Ok(())
+            })?;
+
+            if ret.is_full() {
+                self.0.stats.inc_rx(rx_packets, rx_bytes);
+                return Ok(ret);
+            }
+            queue += 1;
         }
 
         Ok(ret)

@@ -228,7 +228,6 @@ impl TxRing {
             let buf_offset: u64 = unsafe { b.assume_init_read() };
 
             // NB dropping the buffer returns it to the pool.
-            trace!("returning buffer at offset {}", buf_offset);
             if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {
                 error!("failed to return buffer: {:?}", e);
             }
@@ -237,7 +236,6 @@ impl TxRing {
         }
 
         if returned > 0 {
-            // trace!("returning {} buffers", returned);
             self.tx_completion_ring.consumer_release(returned);
         }
     }
