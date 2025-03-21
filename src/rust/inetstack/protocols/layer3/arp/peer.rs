@@ -206,10 +206,10 @@ impl<T: DataLinkLayer> SharedArpPeer<T> {
                     );
                     debug!("Responding {:?}", reply_hdr);
 
-                    let flow: T::FlowState = T::FlowState::default();
+                    let mut flow: T::FlowState = T::FlowState::default();
                     if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
                         header.get_sender_hardware_addr(),
-                        &flow,
+                        &mut flow,
                         reply_hdr.create_and_serialize(),
                     ) {
                         // Ignore for now because the other end will retry.
@@ -249,7 +249,7 @@ impl<T: DataLinkLayer> SharedArpPeer<T> {
         let mut peer: SharedArpPeer<T> = self.clone();
 
         // TODO: use real flow states.
-        let flow: T::FlowState = T::FlowState::default();
+        let mut flow: T::FlowState = T::FlowState::default();
 
         // from TCP/IP illustrated, chapter 4:
         // > The frequency of the ARP request is very close to one per
@@ -258,7 +258,7 @@ impl<T: DataLinkLayer> SharedArpPeer<T> {
             for i in 0..self.arp_config.get_retry_count() + 1 {
                 if let Err(e) = self.layer2_endpoint.transmit_arp_packet(
                     MacAddress::broadcast(),
-                    &flow,
+                    &mut flow,
                     header.create_and_serialize(),
                 ) {
                     warn!("Could not send packet: {:?}", e);

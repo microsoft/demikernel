@@ -85,7 +85,7 @@ impl PhysicalLayer for SharedTestPhysicalLayer {
     type FlowState = ();
     type FlowRecord = ();
 
-    fn transmit(&mut self, _flow: &Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, _flow: &mut Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
         debug!(
             "transmit frame: {:?} total packet size: {:?}",
             self.outgoing.len(),

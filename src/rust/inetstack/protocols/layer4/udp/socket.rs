@@ -41,6 +41,7 @@ pub struct UdpSocket<T: NetworkLayer> {
     layer3_endpoint: T,
     // A queue of incoming packets as remote address and data buffer pairs.
     recv_queue: AsyncQueue<(SocketAddrV4, DemiBuffer)>,
+    flow_state: T::FlowState,
     checksum_offload: bool,
 }
 #[derive(Clone)]
@@ -57,6 +58,7 @@ impl<T: NetworkLayer> SharedUdpSocket<T> {
             bound: None,
             layer3_endpoint,
             recv_queue: AsyncQueue::<(SocketAddrV4, DemiBuffer)>::default(),
+            flow_state: T::FlowState::default(),
             checksum_offload,
         })))
     }
@@ -85,19 +87,21 @@ impl<T: NetworkLayer> SharedUdpSocket<T> {
         let udp_header: UdpHeader = UdpHeader::new(port, remote.port());
         debug!("L4 OUTGOING  {:?}", udp_header);
         udp_header.serialize_and_attach(&mut buf, &self.local_ipv4_addr, remote.ip(), self.checksum_offload);
+        let UdpSocket::<T> {
+            layer3_endpoint,
+            flow_state,
+            ..
+        } = self.deref_mut();
         // Send the packet to the lower layer.
-        let flow_state: T::FlowState = T::FlowState::default();
-        self.layer3_endpoint
-            .transmit_udp_packet_blocking(remote.ip().clone(), &flow_state, buf)
+        layer3_endpoint
+            .transmit_udp_packet_blocking(remote.ip().clone(), flow_state, buf)
             .await
     }
 
     pub async fn pop(&mut self, size: usize) -> Result<(SocketAddrV4, DemiBuffer), Fail> {
         loop {
             match self.recv_queue.pop(None).await {
-                Ok(msg) => {
-                    let remote: SocketAddrV4 = msg.0;
-                    let mut buf: DemiBuffer = msg.1;
+                Ok((remote, mut buf)) => {
                     // We got more bytes than expected, so we trim the buffer.
                     if size < buf.len() {
                         buf.trim(size - buf.len())?;
@@ -109,10 +113,16 @@ impl<T: NetworkLayer> SharedUdpSocket<T> {
         }
     }
 
-    pub fn receive(&mut self, remote: SocketAddrV4, _flow_record: T::FlowRecord, buf: DemiBuffer) {
+    pub fn receive(&mut self, remote: SocketAddrV4, flow_record: T::FlowRecord, buf: DemiBuffer) {
         // Push data to the receiver-side shared queue. This will cause the
         // associated pool operation to be ready.
         self.recv_queue.push((remote, buf));
+        let UdpSocket::<T> {
+            layer3_endpoint,
+            flow_state,
+            ..
+        } = self.deref_mut();
+        layer3_endpoint.update_flow_state(flow_state, flow_record);
     }
 
     pub fn is_bound(&self) -> bool {

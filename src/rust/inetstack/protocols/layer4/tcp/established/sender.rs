@@ -718,7 +718,7 @@ impl Sender {
         );
 
         // Call lower L3 layer to send the segment.
-        if let Err(e) = layer3_endpoint.transmit_tcp_packet_nonblocking(remote_ipv4_addr, &cb.flow_state, pkt) {
+        if let Err(e) = layer3_endpoint.transmit_tcp_packet_nonblocking(remote_ipv4_addr, &mut cb.flow_state, pkt) {
             warn!("could not emit packet: {:?}", e);
             return;
         }

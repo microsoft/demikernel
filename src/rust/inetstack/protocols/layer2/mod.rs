@@ -42,7 +42,7 @@ pub struct SharedLayer2Endpoint<P: PhysicalLayer>(SharedObject<Layer2Endpoint<P>
 
 pub trait DataLinkLayer: 'static + Clone + Sized + MemoryRuntime {
     type PhysicalLayer: PhysicalLayer;
-    type FlowState: Default;
+    type FlowState: Default + Clone;
     type FlowRecord: Clone;
 
     fn receive(&mut self) -> Result<ArrayVec<(EtherType2, Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail>;
@@ -50,14 +50,14 @@ pub trait DataLinkLayer: 'static + Clone + Sized + MemoryRuntime {
     fn transmit_arp_packet(
         &mut self,
         remote_link_addr: MacAddress,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail>;
 
     fn transmit_ipv4_packet(
         &mut self,
         remote_link_addr: MacAddress,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail>;
 
@@ -82,7 +82,7 @@ impl<P: PhysicalLayer> SharedLayer2Endpoint<P> {
         &mut self,
         remote_link_addr: MacAddress,
         eth2_type: EtherType2,
-        flow: &P::FlowState,
+        flow: &mut P::FlowState,
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
@@ -125,7 +125,7 @@ impl<P: PhysicalLayer> DataLinkLayer for SharedLayer2Endpoint<P> {
     fn transmit_arp_packet(
         &mut self,
         remote_link_addr: MacAddress,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         self.transmit(remote_link_addr, EtherType2::Arp, flow, pkt)
@@ -134,7 +134,7 @@ impl<P: PhysicalLayer> DataLinkLayer for SharedLayer2Endpoint<P> {
     fn transmit_ipv4_packet(
         &mut self,
         remote_link_addr: MacAddress,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         self.transmit(remote_link_addr, EtherType2::Ipv4, flow, pkt)

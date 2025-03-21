@@ -51,7 +51,7 @@ pub struct SharedLayer3Endpoint<T: DataLinkLayer>(SharedObject<Layer3Endpoint<T>
 
 pub trait NetworkLayer: 'static + Clone + Sized + MemoryRuntime {
     type DataLinkLayer: DataLinkLayer;
-    type FlowState: Default;
+    type FlowState: Default + Clone;
     type FlowRecord: Clone;
 
     fn receive(
@@ -60,19 +60,19 @@ pub trait NetworkLayer: 'static + Clone + Sized + MemoryRuntime {
     fn transmit_tcp_packet_nonblocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail>;
     fn transmit_tcp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> impl std::future::Future<Output = Result<(), Fail>>;
     fn transmit_udp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> impl std::future::Future<Output = Result<(), Fail>>;
     fn transmit_packet(
@@ -80,7 +80,7 @@ pub trait NetworkLayer: 'static + Clone + Sized + MemoryRuntime {
         remote_ipv4_addr: Ipv4Addr,
         remote_link_addr: MacAddress,
         ip_protocol: IpProtocol,
-        flow: &Self::FlowState,
+        flow: &mut Self::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail>;
     fn get_local_addr(&self) -> Ipv4Addr;
@@ -186,7 +186,7 @@ impl<T: DataLinkLayer> NetworkLayer for SharedLayer3Endpoint<T> {
     fn transmit_tcp_packet_nonblocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &T::FlowState,
+        flow: &mut T::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = match self.arp.try_query(remote_ipv4_addr) {
@@ -200,7 +200,7 @@ impl<T: DataLinkLayer> NetworkLayer for SharedLayer3Endpoint<T> {
     async fn transmit_tcp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &T::FlowState,
+        flow: &mut T::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = self.arp.query(remote_ipv4_addr).await?;
@@ -211,7 +211,7 @@ impl<T: DataLinkLayer> NetworkLayer for SharedLayer3Endpoint<T> {
     async fn transmit_udp_packet_blocking(
         &mut self,
         remote_ipv4_addr: Ipv4Addr,
-        flow: &T::FlowState,
+        flow: &mut T::FlowState,
         pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let remote_link_addr: MacAddress = self.arp.query(remote_ipv4_addr).await?;
@@ -224,7 +224,7 @@ impl<T: DataLinkLayer> NetworkLayer for SharedLayer3Endpoint<T> {
         remote_ipv4_addr: Ipv4Addr,
         remote_link_addr: MacAddress,
         ip_protocol: IpProtocol,
-        flow: &T::FlowState,
+        flow: &mut T::FlowState,
         mut pkt: DemiBuffer,
     ) -> Result<(), Fail> {
         let ipv4_header: Ipv4Header = Ipv4Header::new(self.local_ipv4_addr, remote_ipv4_addr, ip_protocol);

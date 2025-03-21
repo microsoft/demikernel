@@ -50,21 +50,17 @@ struct CatpowderRuntime {
     stats: CatpowderStats,
 }
 
-pub struct FlowState {
-    sriov_flow_established: bool,
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum FlowState {
+    #[default]
+    New = 0,
+    SeenBefore = 1,
+    SriovFlowEstablished = 2,
 }
 
 #[derive(Clone, Copy)]
 pub struct FlowRecord {
     from_vf: bool,
-}
-
-impl Default for FlowState {
-    fn default() -> Self {
-        Self {
-            sriov_flow_established: false,
-        }
-    }
 }
 
 //======================================================================================================================
@@ -75,7 +71,6 @@ impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
-        let always_send_on_vf: bool = config.xdp_always_send_on_vf()?;
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
@@ -93,6 +88,7 @@ impl SharedCatpowderRuntime {
         };
 
         let stats: CatpowderStats = CatpowderStats::new(&interface, vf_interface.as_ref())?;
+        let always_send_on_vf: bool = config.xdp_always_send_on_vf()? && vf_interface.is_some();
 
         Ok(Self(SharedObject::new(CatpowderRuntime {
             api,
@@ -126,7 +122,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     type FlowRecord = FlowRecord;
 
     /// Transmits a packet.
-    fn transmit(&mut self, flow: &FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, flow: &mut FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
         let pkt_size: usize = pkt.len();
         if pkt_size >= u16::MAX as usize {
             let cause = format!("packet is too large: {:?}", pkt_size);
@@ -140,8 +136,29 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         if let Some(vf_interface) = me.vf_interface.as_mut() {
             vf_interface.return_tx_buffers();
 
-            if me.always_send_on_vf || flow.sriov_flow_established {
+            match *flow {
+                FlowState::New if me.always_send_on_vf => {
+                    // Even when always_send_on_vf is true, we will always send the first packet in a
+                    // flow on the non-VF interface. This prevents parts of the stack which don't
+                    // track flow from being sent on VF, which could result in packet drops.
+                    *flow = FlowState::SeenBefore;
+                },
+                FlowState::SeenBefore => {
+                    // We have either transmitted at least one packet on this flow (when
+                    // always_send_on_vf is true), or we have received a packet on the VF for this
+                    // flow (when always_send_on_vf is false). This indicates the first time sending
+                    // out on the VF. Since we expect the first packet to drop, we send this packet
+                    // out on both interfaces.
+                    if let Ok(_) = me.interface.tx_ring.transmit_copy(&mut me.api, &pkt) {
+                        *flow = FlowState::SriovFlowEstablished;
+                    }
+                },
+                _ => (),
+            }
+
+            if *flow == FlowState::SriovFlowEstablished {
                 vf_interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
+                me.stats.inc_tx(1, pkt_size as u32);
                 return Ok(());
             }
         }
@@ -212,13 +229,27 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
     /// Update the VF usage based on the last received packet.
     fn update_flow_state(&mut self, flow: &mut FlowState, record: FlowRecord) {
-        if record.from_vf != flow.sriov_flow_established {
-            trace!(
-                "update_flow_state(): old={}, new={}",
-                flow.sriov_flow_established,
-                record.from_vf
-            );
-            flow.sriov_flow_established = record.from_vf;
+        if self.0.always_send_on_vf {
+            return;
+        }
+
+        let new_flow: FlowState = match *flow {
+            // NB once entering SeenBefore, we will only move to SriovFlowEstablished after sending
+            // a packet out on both interfaces.
+            FlowState::New if record.from_vf => FlowState::SeenBefore,
+
+            // We are now receiving packets on non-VF after receiving on the VF. Return to the New
+            // state.
+            // NB this is possibly too aggressive. It might make more sense to track the number of
+            // packets received on the non-VF interface and only return to New if we have received
+            // a minimum number of packets.
+            FlowState::SriovFlowEstablished if !record.from_vf => FlowState::New,
+            f => f,
+        };
+
+        if new_flow != *flow {
+            trace!("update_flow_state(): {:?} -> {:?}", *flow, new_flow);
+            *flow = new_flow;
         }
     }
 

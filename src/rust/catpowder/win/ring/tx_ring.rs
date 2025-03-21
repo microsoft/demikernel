@@ -166,23 +166,31 @@ impl TxRing {
         self.mem.borrow().get_buffer(false)
     }
 
+    fn copy_into_buf(&self, buf: &DemiBuffer) -> Result<DemiBuffer, Fail> {
+        let mut copy: DemiBuffer = self
+            .mem
+            .borrow()
+            .get_buffer(true)
+            .ok_or_else(|| Fail::new(libc::ENOMEM, "out of memory"))?;
+
+        if copy.len() < buf.len() {
+            return Err(Fail::new(libc::EINVAL, "buffer too large"));
+        } else if copy.len() > buf.len() {
+            copy.trim(copy.len() - buf.len())?;
+        }
+
+        unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), copy.as_mut_ptr(), buf.len()) };
+        Ok(copy)
+    }
+
+    pub fn transmit_copy(&mut self, api: &mut XdpApi, buf: &DemiBuffer) -> Result<(), Fail> {
+        self.transmit_buffer(api, self.copy_into_buf(buf)?)
+    }
+
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
         let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
             trace!("copying buffer to umem region");
-            let mut copy: DemiBuffer = self
-                .mem
-                .borrow()
-                .get_buffer(true)
-                .ok_or_else(|| Fail::new(libc::ENOMEM, "out of memory"))?;
-
-            if copy.len() < buf.len() {
-                return Err(Fail::new(libc::EINVAL, "buffer too large"));
-            } else if copy.len() > buf.len() {
-                copy.trim(copy.len() - buf.len())?;
-            }
-
-            unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), copy.as_mut_ptr(), buf.len()) };
-            copy
+            self.copy_into_buf(&buf)?
         } else {
             buf
         };
@@ -236,6 +244,7 @@ impl TxRing {
         }
 
         if returned > 0 {
+            trace!("returned {} buffers to TxRing interface {}", returned, self.ifindex);
             self.tx_completion_ring.consumer_release(returned);
         }
     }

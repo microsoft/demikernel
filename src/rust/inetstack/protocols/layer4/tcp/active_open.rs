@@ -93,6 +93,7 @@ impl<T: NetworkLayer> SharedActiveOpenSocket<T> {
     fn process_ack(
         &mut self,
         header: TcpHeader,
+        flow_state: T::FlowState,
         flow_record: T::FlowRecord,
     ) -> Result<SharedEstablishedSocket<T>, Fail> {
         let expected_seq: SeqNumber = self.local_isn + SeqNumber::from(1);
@@ -140,13 +141,10 @@ impl<T: NetworkLayer> SharedActiveOpenSocket<T> {
             self.remote.ip(),
             self.tcp_config.get_rx_checksum_offload(),
         );
-        let flow_state: T::FlowState = {
-            let mut flow_state = T::FlowState::default();
-            self.layer3_endpoint.update_flow_state(&mut flow_state, flow_record);
-            flow_state
-        };
+        let mut flow_state: T::FlowState = flow_state;
+        self.layer3_endpoint.update_flow_state(&mut flow_state, flow_record);
         self.layer3_endpoint
-            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, &flow_state, pkt)?;
+            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, &mut flow_state, pkt)?;
 
         let mut remote_window_scale_bits = None;
         let mut mss = FALLBACK_MSS;
@@ -255,10 +253,10 @@ impl<T: NetworkLayer> SharedActiveOpenSocket<T> {
                 self.tcp_config.get_rx_checksum_offload(),
             );
             // Send SYN.
-            let flow_state: T::FlowState = T::FlowState::default();
+            let mut flow_state: T::FlowState = T::FlowState::default();
             if let Err(e) = self
                 .layer3_endpoint
-                .transmit_tcp_packet_blocking(dst_ipv4_addr, &flow_state, pkt)
+                .transmit_tcp_packet_blocking(dst_ipv4_addr, &mut flow_state, pkt)
                 .await
             {
                 warn!("Could not send SYN: {:?}", e);
@@ -278,7 +276,7 @@ impl<T: NetworkLayer> SharedActiveOpenSocket<T> {
                 }
             },
             r = recv_queue.pop(Some(handshake_timeout)).fuse() => match r {
-                Ok((_, header, flow_record, _)) => match self.process_ack(header, flow_record) {
+                Ok((_, header, flow_record, _)) => match self.process_ack(header, flow_state, flow_record) {
                         Ok(socket) => return Ok(socket),
                         Err(Fail { errno, cause: _ }) if errno == libc::EAGAIN => continue,
                         Err(e) => return Err(e),

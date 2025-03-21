@@ -68,7 +68,7 @@ impl PhysicalLayer for SharedDummyRuntime {
     type FlowRecord = ();
     type FlowState = ();
 
-    fn transmit(&mut self, _flow: &Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, _flow: &mut Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
         // The packet header and body must fit into whatever physical media we're transmitting over.
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
         assert!(pkt.len() < u16::MAX as usize);

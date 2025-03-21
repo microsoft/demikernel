@@ -28,12 +28,12 @@ use super::layer4::ephemeral::EphemeralPorts;
 /// sockets).
 pub trait PhysicalLayer: 'static + MemoryRuntime + Clone {
     /// State data required for managing flows.
-    type FlowState: Default;
+    type FlowState: Default + Clone;
 
     type FlowRecord: Clone;
 
     /// Transmits a single [PacketBuf].
-    fn transmit(&mut self, flow: &Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail>;
+    fn transmit(&mut self, flow: &mut Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail>;
 
     /// Receives a batch of [DemiBuffer].
     fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail>;

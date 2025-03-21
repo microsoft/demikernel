@@ -155,8 +155,8 @@ impl<T: DataLinkLayer> SharedIcmpv4Peer<T> {
             let ipv4_hdr: Ipv4Header = Ipv4Header::new(local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4);
             ipv4_hdr.serialize_and_attach(&mut buf);
 
-            let flow: T::FlowState = T::FlowState::default();
-            if let Err(e) = self.layer2_endpoint.transmit_ipv4_packet(dst_link_addr, &flow, buf) {
+            let mut flow: T::FlowState = T::FlowState::default();
+            if let Err(e) = self.layer2_endpoint.transmit_ipv4_packet(dst_link_addr, &mut flow, buf) {
                 warn!("Could not send packet: {:?}", e);
             }
         }
@@ -215,8 +215,8 @@ impl<T: DataLinkLayer> SharedIcmpv4Peer<T> {
         let ipv4_hdr: Ipv4Header = Ipv4Header::new(self.local_ipv4_addr, dst_ipv4_addr, IpProtocol::ICMPv4);
         ipv4_hdr.serialize_and_attach(&mut pkt);
 
-        let flow: T::FlowState = T::FlowState::default();
-        if let Err(e) = self.layer2_endpoint.transmit_ipv4_packet(dst_link_addr, &flow, pkt) {
+        let mut flow: T::FlowState = T::FlowState::default();
+        if let Err(e) = self.layer2_endpoint.transmit_ipv4_packet(dst_link_addr, &mut flow, pkt) {
             // Ignore for now because the other end will retry.
             // TODO: Implement a retry mechanism so we do not have to wait for the other end to time out.
             // FIXME: https://github.com/microsoft/demikernel/issues/1365
