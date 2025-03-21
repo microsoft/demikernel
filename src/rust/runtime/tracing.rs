@@ -66,11 +66,24 @@ macro_rules! define_metrics {
 //======================================================================================================================
 
 define_metrics! {
-    metric(tcp_retransmits, demi_metric_kind_t::DEMI_MK_EVENT, "An event triggered each time a TCP retransmit occurs", "event"),
-    metric(tcp_out_of_order_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP out-of-order frames", "packet"),
-    metric(tcp_unacked_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP which have not been ACK'd", "packet"),
-    metric(tcp_unset_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP frames waiting to be sent", "packet"),
-    metric(tcp_rto, demi_metric_kind_t::DEMI_MK_SAMPLE, "The TCP retransmission timeout", "second"),
+    metric(tcp_retransmits, demi_metric_kind_t::DEMI_MK_EVENT, "An event triggered each time a TCP retransmit occurs", "events"),
+    metric(tcp_out_of_order_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP out-of-order frames", "packets"),
+    metric(tcp_unacked_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP which have not been ACK'd", "packets"),
+    metric(tcp_unset_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP frames waiting to be sent", "packets"),
+    metric(tcp_rto, demi_metric_kind_t::DEMI_MK_SAMPLE, "The TCP retransmission timeout", "seconds"),
+    metric(tx_packets, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of packets sent", "packets"),
+    metric(tx_packet_rate, demi_metric_kind_t::DEMI_MK_RATE, "The number of packets sent", "packets"),
+    metric(tx_bytes, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of bytes sent", "bytes"),
+    metric(tx_byte_rate, demi_metric_kind_t::DEMI_MK_RATE, "The number of bytes sent", "bytes"),
+    metric(rx_packets, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of packets received", "packets"),
+    metric(rx_packet_rate, demi_metric_kind_t::DEMI_MK_RATE, "The number of packets received", "packets/second"),
+    metric(rx_bytes, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of bytes received", "bytes"),
+    metric(rx_byte_rate, demi_metric_kind_t::DEMI_MK_RATE, "The number of bytes received", "bytes/second"),
+    metric(rx_dropped_packets, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of packets dropped", "packets"),
+    metric(rx_invalid_descriptors, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of invalid descriptors", "packets"),
+    metric(rx_truncated_packets, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of truncated packets", "packets"),
+    metric(tx_invalid_descriptors, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of invalid descriptors", "packets"),
+    metric(xdp_high_poll_latency, demi_metric_kind_t::DEMI_MK_EVENT, "An event fired when the XDP poll latency exceeds a minimum threshhold", "microseconds"),
 }
 
 static TRACE_CALLBACK: StaticWrapper<demi_metric_callback_t> = StaticWrapper(OnceCell::new());

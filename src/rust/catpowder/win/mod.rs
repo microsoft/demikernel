@@ -6,6 +6,9 @@
 //======================================================================================================================
 
 mod api;
+mod cohosting;
+mod interface;
+mod observability;
 mod ring;
 mod socket;
 

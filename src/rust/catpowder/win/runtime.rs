@@ -6,55 +6,35 @@
 //======================================================================================================================
 
 use crate::{
-    catnap::transport::error::expect_last_wsa_error,
     catpowder::win::{
         api::XdpApi,
-        ring::{RuleSet, RxRing, TxRing},
+        cohosting::CohostingMode,
+        interface::Interface,
+        observability::CatpowderStats,
+        ring::{RuleSet, TxRing},
         socket::XdpSocket,
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
     inetstack::{
         consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
-        protocols::{layer1::PhysicalLayer, layer4::ephemeral::EphemeralPorts, Protocol},
+        protocols::{layer1::PhysicalLayer, layer4::ephemeral::EphemeralPorts},
     },
     runtime::{
         fail::Fail,
-        libxdp::{XSK_SOCKOPT_STATISTICS, XSK_STATISTICS},
         memory::{DemiBuffer, MemoryRuntime},
         Runtime, SharedObject,
     },
 };
 use arrayvec::ArrayVec;
 use libc::c_void;
-use std::{
-    borrow::BorrowMut,
-    mem,
-    rc::Rc,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Condvar, Mutex, MutexGuard,
-    },
-    thread::JoinHandle,
-    time::{Duration, Instant},
-};
+use std::{borrow::BorrowMut, mem, num::NonZeroU32, rc::Rc};
 use windows::Win32::{
     Foundation::ERROR_INSUFFICIENT_BUFFER,
-    Networking::WinSock::{
-        closesocket, socket, WSACleanup, WSAIoctl, WSAStartup, AF_INET, INET_PORT_RANGE,
-        INET_PORT_RESERVATION_INSTANCE, INVALID_SOCKET, IPPROTO_TCP, IPPROTO_UDP, SIO_ACQUIRE_PORT_RESERVATION, SOCKET,
-        SOCK_DGRAM, SOCK_STREAM, WSADATA,
-    },
     System::SystemInformation::{
         GetLogicalProcessorInformationEx, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
     },
 };
-
-//=======================================================================================================================
-// Constants
-//======================================================================================================================
-/// The minimum latency between polls before we start worrying about it.
-const MIN_LATENCY_IOTA: u64 = 1000;
 
 //======================================================================================================================
 // Structures
@@ -64,29 +44,16 @@ const MIN_LATENCY_IOTA: u64 = 1000;
 #[derive(Clone)]
 pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntime>);
 
-/// State for the monitor thread.
-struct MonitorThreadState {
-    exit_mtx: Mutex<bool>,
-    cnd_var: Condvar,
-    max_poll_latency: AtomicU64,
-}
-
-unsafe impl Send for MonitorThreadState {}
-
 /// The inner state of the Catpowder runtime.
 struct CatpowderRuntime {
     api: XdpApi,
-    tx: TxRing,
-    vf_tx: Option<TxRing>,
-    rx_rings: Vec<RxRing>,
-    vf_rx_rings: Vec<RxRing>,
-    reserved_socket: SOCKET,
-    reserved_ports: Vec<u16>,
-    last_poll: Instant,
-    max_poll_latency: u64,
+    interface: Interface,
+    vf_interface: Option<Interface>,
+    always_send_on_vf: bool,
 
-    thrd_state: Arc<MonitorThreadState>,
-    thrd: Option<JoinHandle<()>>,
+    cohosting_mode: CohostingMode,
+
+    stats: CatpowderStats,
 }
 
 pub struct FlowState {
@@ -109,195 +76,51 @@ impl Default for FlowState {
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
+
 impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
-        let mtu: u16 = config.mtu()?;
-
-        let mut data: WSADATA = WSADATA::default();
-        if unsafe { WSAStartup(0x202u16, &mut data as *mut WSADATA) } != 0 {
-            return Err(expect_last_wsa_error());
-        }
-
-        let reserved_protocol: Option<Protocol> = config.xdp_reserved_port_protocol()?;
-        let reserved_port_count: Option<u16> = config.xdp_reserved_port_count()?;
-
-        let (reserved_socket, reserved_ports): (SOCKET, Vec<u16>) =
-            if reserved_protocol.is_some() && reserved_port_count.is_some() {
-                trace!(
-                    "reserving {} ports with protocol {:?}",
-                    reserved_port_count.unwrap(),
-                    reserved_protocol.unwrap()
-                );
-                reserve_port_blocks(reserved_port_count.unwrap(), reserved_protocol.unwrap())?
-            } else {
-                trace!("reserved port options not set; no ports reserved");
-                (INVALID_SOCKET, vec![])
-            };
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
 
-        let (tx_buffer_count, tx_ring_size) = config.tx_buffer_config()?;
-        if !tx_ring_size.is_power_of_two() {
-            let cause: String = format!("rx_ring_size must be a power of two: {:?}", tx_ring_size);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        if tx_buffer_count < tx_ring_size {
-            let cause: String = format!("tx_buffer_count must be greater than or equal to tx_ring_size");
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        let mut sockets: Vec<(String, XdpSocket)> = Vec::new();
-
         // Open TX and RX rings
-        let always_poke: bool = config.xdp_always_poke_tx()?;
-        let tx_if: u32 = if config.xdp_always_send_on_vf()? {
-            if let Ok(vf_if_index) = config.local_vf_interface_index() {
-                trace!("Using VF interface {} for TX", vf_if_index);
-                vf_if_index
-            } else {
-                trace!("Using primary interface {} for TX", ifindex);
-                ifindex
-            }
+        let always_send_on_vf: bool = config.xdp_always_send_on_vf()?;
+
+        let cohosting_mode: CohostingMode = CohostingMode::new(config)?;
+
+        let ruleset: Rc<RuleSet> = cohosting_mode.create_ruleset();
+
+        let queue_count: NonZeroU32 =
+            NonZeroU32::try_from(deduce_rss_settings(&mut api, ifindex)?).map_err(Fail::from)?;
+
+        let interface: Interface = Interface::new(&mut api, ifindex, queue_count, ruleset.clone(), config)?;
+
+        let mut sockets: Vec<(String, XdpSocket)> = interface.sockets.clone();
+
+        let vf_interface: Option<Interface> = if let Ok(vf_if_index) = config.local_vf_interface_index() {
+            let vf_queue_count: NonZeroU32 =
+                NonZeroU32::try_from(deduce_rss_settings(&mut api, vf_if_index)?).map_err(Fail::from)?;
+
+            let vf_interface = Interface::new(&mut api, vf_if_index, vf_queue_count, ruleset.clone(), config)?;
+
+            sockets.extend_from_slice(vf_interface.sockets.as_slice());
+
+            Some(vf_interface)
         } else {
-            trace!("Using primary interface {} for TX", ifindex);
-            ifindex
+            None
         };
 
-        let tx: TxRing = TxRing::new(&mut api, tx_ring_size, tx_buffer_count, mtu, tx_if, 0, always_poke)?;
-        sockets.push((String::from("tx socket"), tx.socket().clone()));
-
-        let cohost_mode = config.xdp_cohost_mode()?;
-        let (mut tcp_ports, mut udp_ports) = if cohost_mode {
-            let (tcp_ports, udp_ports) = config.xdp_cohost_ports()?;
-            trace!(
-                "XDP cohost mode enabled. TCP ports: {:?}, UDP ports: {:?}",
-                tcp_ports,
-                udp_ports
-            );
-            (tcp_ports, udp_ports)
-        } else {
-            trace!("XDP not cohosted; will redirect all traffic");
-            (vec![], vec![])
-        };
-
-        if let Some(protocol) = reserved_protocol {
-            match protocol {
-                Protocol::Tcp => tcp_ports.extend(reserved_ports.iter().cloned()),
-                Protocol::Udp => udp_ports.extend(reserved_ports.iter().cloned()),
-            }
-        }
-
-        let ruleset: Rc<RuleSet> = if cohost_mode {
-            RuleSet::new_cohost(
-                config.local_ipv4_addr()?.into(),
-                tcp_ports.as_slice(),
-                udp_ports.as_slice(),
-            )
-        } else {
-            RuleSet::new_redirect_all()
-        };
-
-        let queue_count: u32 = deduce_rss_settings(&mut api, ifindex)?;
-        let mut rx_rings: Vec<RxRing> = Vec::with_capacity(queue_count as usize);
-        let (rx_buffer_count, rx_ring_size) = config.rx_buffer_config()?;
-        if !rx_ring_size.is_power_of_two() {
-            let cause: String = format!("rx_ring_size must be a power of two: {:?}", rx_ring_size);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        if rx_buffer_count < rx_ring_size {
-            let cause: String = format!("rx_buffer_count must be greater than or equal to rx_ring_size");
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        for queueid in 0..queue_count {
-            let mut ring: RxRing = RxRing::new(
-                &mut api,
-                rx_ring_size,
-                rx_buffer_count,
-                mtu,
-                ifindex,
-                queueid,
-                ruleset.clone(),
-            )?;
-            ring.provide_buffers();
-            sockets.push((format!("RX on if {} queue {}", ifindex, queueid), ring.socket().clone()));
-            rx_rings.push(ring);
-        }
-        trace!("Created {} RX rings on interface {}", rx_rings.len(), ifindex);
-
-        let (vf_tx, vf_rx_rings): (Option<TxRing>, Vec<RxRing>) =
-            if let Ok(vf_if_index) = config.local_vf_interface_index() {
-                let vf_tx: TxRing = TxRing::new(
-                    &mut api,
-                    tx_ring_size,
-                    tx_buffer_count,
-                    mtu,
-                    vf_if_index,
-                    0,
-                    always_poke,
-                )?;
-                sockets.push((String::from("vf tx socket"), tx.socket().clone()));
-
-                // Optionally create VF RX rings
-                let vf_queue_count: u32 = deduce_rss_settings(&mut api, vf_if_index)?;
-                let mut vf_rx_rings: Vec<RxRing> = Vec::with_capacity(vf_queue_count as usize);
-                for queueid in 0..vf_queue_count {
-                    let mut ring: RxRing = RxRing::new(
-                        &mut api,
-                        rx_ring_size,
-                        rx_buffer_count,
-                        mtu,
-                        vf_if_index,
-                        queueid,
-                        ruleset.clone(),
-                    )?;
-                    ring.provide_buffers();
-                    sockets.push((
-                        format!("RX on if {} queue {}", vf_if_index, queueid),
-                        ring.socket().clone(),
-                    ));
-                    vf_rx_rings.push(ring);
-                }
-                trace!(
-                    "Created {} RX rings on VF interface {}.",
-                    vf_rx_rings.len(),
-                    vf_if_index
-                );
-
-                (Some(vf_tx), vf_rx_rings)
-            } else {
-                (None, vec![])
-            };
-
-        let thrd_state: Arc<MonitorThreadState> = Arc::<MonitorThreadState>::new(MonitorThreadState {
-            exit_mtx: Mutex::new(false),
-            cnd_var: Condvar::new(),
-            max_poll_latency: AtomicU64::new(0),
-        });
-
-        let thread_state_clone = thrd_state.clone();
-        let api_2: XdpApi = XdpApi::new()?;
-        let thrd: JoinHandle<()> = std::thread::spawn(move || {
-            run_stats_thread(api_2, sockets, thread_state_clone);
-        });
+        let stats: CatpowderStats = CatpowderStats::new(sockets)?;
 
         Ok(Self(SharedObject::new(CatpowderRuntime {
             api,
-            tx,
-            vf_tx,
-            rx_rings,
-            vf_rx_rings,
-            reserved_socket,
-            reserved_ports,
-            last_poll: Instant::now(),
-            max_poll_latency: 0,
-            thrd_state,
-            thrd: Some(thrd),
+            interface,
+            vf_interface,
+            always_send_on_vf,
+            cohosting_mode,
+            stats,
         })))
     }
 }
@@ -316,72 +139,39 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         }
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
-        me.tx.return_buffers();
+        me.interface.return_tx_buffers();
 
-        if let Some(vf_tx) = me.vf_tx.as_mut() {
-            vf_tx.return_buffers();
+        if let Some(vf_interface) = me.vf_interface.as_mut() {
+            vf_interface.return_tx_buffers();
 
-            if flow.sriov_flow_established {
-                vf_tx.transmit_buffer(&mut me.api, pkt)?;
+            if me.always_send_on_vf || flow.sriov_flow_established {
+                vf_interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
                 return Ok(());
             }
         }
 
-        me.tx.transmit_buffer(&mut me.api, pkt)?;
+        me.interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
 
         Ok(())
     }
 
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        self.0.stats.update_poll_time();
+
         let mut ret: ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
-        let now: Instant = std::time::Instant::now();
-
-        // Safety: this is the only place this member is modified, and only one thread can be here.
-        let last_poll: Instant = std::mem::replace(&mut self.0.last_poll, now);
-
-        let poll_latency: u64 = now.duration_since(last_poll).as_micros() as u64;
-
-        // NB only one thread can be in this method, so we're only synchronizing with the monitor
-        // thread, which will occasionally reset the value.
-        if poll_latency > MIN_LATENCY_IOTA {
-            if poll_latency > self.0.max_poll_latency {
-                self.0
-                    .thrd_state
-                    .max_poll_latency
-                    .store(poll_latency, Ordering::Release);
-                self.0.max_poll_latency = poll_latency;
-            } else {
-                if let Ok(_) = self.0.thrd_state.max_poll_latency.compare_exchange(
-                    0,
-                    poll_latency,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    // This indicates that the monitor thread reset the value.
-                    self.0.max_poll_latency = poll_latency;
-                }
-            }
-        }
-
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
-        me.tx.return_buffers();
+        me.interface.tx_ring.return_buffers();
+        me.interface.provide_rx_buffers();
 
-        if let Some(vf_tx) = me.vf_tx.as_mut() {
-            vf_tx.return_buffers();
-        }
-
-        for rx in me.rx_rings.iter_mut() {
-            rx.provide_buffers();
-        }
-
-        for rx in me.vf_rx_rings.iter_mut() {
-            rx.provide_buffers();
+        if let Some(vf_interface) = me.vf_interface.as_mut() {
+            vf_interface.return_tx_buffers();
+            vf_interface.provide_rx_buffers();
         }
 
         let mut queue: usize = 0;
-        for rx in me.rx_rings.iter_mut() {
+        for rx in me.interface.rx_rings.iter_mut() {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
@@ -389,25 +179,27 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 Ok(())
             })?;
 
-            // if ret.is_full() {
-            //     return Ok(ret);
-            // }
+            if ret.is_full() {
+                return Ok(ret);
+            }
             queue += 1;
         }
 
         queue = 0;
-        for rx in me.vf_rx_rings.iter_mut() {
-            let remaining: u32 = ret.remaining_capacity() as u32;
-            rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
-                trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
-                ret.push((FlowRecord { from_vf: true }, DemiBuffer::try_from(&*dbuf).unwrap()));
-                Ok(())
-            })?;
+        if let Some(vf_interface) = me.vf_interface.as_mut() {
+            for rx in vf_interface.rx_rings.iter_mut() {
+                let remaining: u32 = ret.remaining_capacity() as u32;
+                rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                    trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
+                    ret.push((FlowRecord { from_vf: true }, DemiBuffer::try_from(&*dbuf).unwrap()));
+                    Ok(())
+                })?;
 
-            // if ret.is_full() {
-            //     return Ok(ret);
-            // }
-            queue += 1;
+                if ret.is_full() {
+                    return Ok(ret);
+                }
+                queue += 1;
+            }
         }
 
         Ok(ret)
@@ -426,172 +218,13 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     }
 
     fn ephemeral_ports(&self) -> EphemeralPorts {
-        let ports: &[u16] = self.0.reserved_ports.as_slice();
-        if ports.len() == 0 {
-            EphemeralPorts::default()
-        } else {
-            EphemeralPorts::new(ports).unwrap()
-        }
+        self.0.cohosting_mode.ephemeral_ports()
     }
 }
 
 //======================================================================================================================
 // Functions
 //======================================================================================================================
-
-fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thrd_state: Arc<MonitorThreadState>) {
-    const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
-        RxDropped: 0,
-        RxInvalidDescriptors: 0,
-        RxTruncated: 0,
-        TxInvalidDescriptors: 0,
-    };
-    let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
-
-    let mut exit_guard: MutexGuard<'_, bool> = thrd_state.exit_mtx.lock().unwrap();
-    while !*exit_guard {
-        for (i, (name, socket)) in sockets.iter_mut().enumerate() {
-            if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
-                warn!("{}: Failed to update stats: {:?}", name, e);
-            }
-        }
-
-        let max_latency: u64 = thrd_state.max_poll_latency.swap(0, std::sync::atomic::Ordering::AcqRel);
-        if max_latency > MIN_LATENCY_IOTA {
-            debug!("max latency between polls last interval is {}", max_latency);
-        }
-
-        exit_guard = thrd_state
-            .cnd_var
-            .wait_timeout(exit_guard, Duration::from_secs(1))
-            .unwrap()
-            .0;
-    }
-}
-
-fn update_stats(api: &mut XdpApi, name: &str, socket: &mut XdpSocket, stats: &mut XSK_STATISTICS) -> Result<(), Fail> {
-    let mut new_stats: XSK_STATISTICS = unsafe { std::mem::zeroed() };
-    let mut len: u32 = std::mem::size_of::<XSK_STATISTICS>() as u32;
-    socket.getsockopt(
-        api,
-        XSK_SOCKOPT_STATISTICS,
-        &mut new_stats as *mut _ as *mut c_void,
-        &mut len,
-    )?;
-
-    if stats.RxDropped < new_stats.RxDropped {
-        warn!("{}: XDP RX dropped: {}", name, new_stats.RxDropped - stats.RxDropped);
-    }
-
-    if stats.RxInvalidDescriptors < new_stats.RxInvalidDescriptors {
-        warn!(
-            "{}: XDP RX invalid descriptors: {}",
-            name,
-            new_stats.RxInvalidDescriptors - stats.RxInvalidDescriptors
-        );
-    }
-
-    if stats.RxTruncated < new_stats.RxTruncated {
-        warn!(
-            "{}: XDP RX truncated packets: {}",
-            name,
-            new_stats.RxTruncated - stats.RxTruncated
-        );
-    }
-
-    if stats.TxInvalidDescriptors < new_stats.TxInvalidDescriptors {
-        warn!(
-            "{}: XDP TX invalid descriptors: {}",
-            name,
-            new_stats.TxInvalidDescriptors - stats.TxInvalidDescriptors
-        );
-    }
-
-    *stats = new_stats;
-    Ok(())
-}
-
-fn reserve_port_blocks(port_count: u16, protocol: Protocol) -> Result<(SOCKET, Vec<u16>), Fail> {
-    const MAX_HALVINGS: usize = 5;
-    let mut ports: Vec<u16> = Vec::with_capacity(port_count as usize);
-
-    let mut reservation_len: u16 = port_count;
-    let mut halvings: usize = 0;
-
-    let (sock_type, protocol) = match protocol {
-        Protocol::Tcp => (SOCK_STREAM, IPPROTO_TCP.0),
-        Protocol::Udp => (SOCK_DGRAM, IPPROTO_UDP.0),
-    };
-
-    let s: SOCKET = unsafe { socket(AF_INET.0.into(), sock_type, protocol) };
-    if s == INVALID_SOCKET {
-        return Err(expect_last_wsa_error());
-    }
-
-    while ports.len() < port_count as usize {
-        trace!("reserve_port_blocks(): trying reservation length: {}", reservation_len);
-        match reserve_ports(reservation_len, s) {
-            Ok((start, count, _)) if count > 0 => {
-                let end: u16 = start + (count - 1);
-                trace!("reserve_port_blocks(): reserved ports: {}-{}", start, end);
-                ports.extend(start..=end);
-            },
-            Ok(_) => {
-                panic!("reserve_port_blocks(): reserved zero ports");
-            },
-            Err(e) => {
-                halvings += 1;
-                if halvings >= MAX_HALVINGS || reservation_len == 1 {
-                    error!("reserve_port_blocks(): failed to reserve ports; giving up: {:?}", e);
-                    let _ = unsafe { closesocket(s) };
-                    return Err(e);
-                } else {
-                    trace!(
-                        "reserve_port_blocks(): failed to reserve ports; halving reservation size: {:?}",
-                        e
-                    );
-                    reservation_len /= 2;
-                }
-            },
-        }
-    }
-
-    Ok((s, ports))
-}
-
-fn reserve_ports(port_count: u16, s: SOCKET) -> Result<(u16, u16, u64), Fail> {
-    let port_range: INET_PORT_RANGE = INET_PORT_RANGE {
-        StartPort: 0,
-        NumberOfPorts: port_count,
-    };
-
-    let mut reservation: INET_PORT_RESERVATION_INSTANCE = INET_PORT_RESERVATION_INSTANCE::default();
-    let mut bytes_out: u32 = 0;
-
-    let result: i32 = unsafe {
-        WSAIoctl(
-            s,
-            SIO_ACQUIRE_PORT_RESERVATION,
-            Some(&port_range as *const INET_PORT_RANGE as *mut libc::c_void),
-            std::mem::size_of::<INET_PORT_RANGE>() as u32,
-            Some(&mut reservation as *mut INET_PORT_RESERVATION_INSTANCE as *mut libc::c_void),
-            std::mem::size_of::<INET_PORT_RESERVATION_INSTANCE>() as u32,
-            &mut bytes_out,
-            None,
-            None,
-        )
-    };
-
-    if result != 0 {
-        return Err(expect_last_wsa_error());
-    }
-
-    Ok((
-        u16::from_be(reservation.Reservation.StartPort),
-        reservation.Reservation.NumberOfPorts,
-        reservation.Token.Token,
-    ))
-}
 
 fn count_processor_cores() -> Result<usize, Fail> {
     let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
@@ -698,8 +331,15 @@ impl MemoryRuntime for SharedCatpowderRuntime {
             return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
         }
 
+        // Prefer the VF interface if available, otherwise use the main interface.
+        let tx_ring: &TxRing = if let Some(vf_interface) = self.0.vf_interface.as_ref() {
+            &vf_interface.tx_ring
+        } else {
+            &self.0.interface.tx_ring
+        };
+
         // Allocate buffer from sender pool.
-        let mut buf: DemiBuffer = match self.0.tx.get_buffer() {
+        let mut buf: DemiBuffer = match tx_ring.get_buffer() {
             None => DemiBuffer::new((size + MAX_HEADER_SIZE) as u16),
             Some(buf) => buf,
         };
@@ -730,22 +370,3 @@ impl MemoryRuntime for SharedCatpowderRuntime {
 
 /// Runtime trait implementation for XDP Runtime.
 impl Runtime for SharedCatpowderRuntime {}
-
-impl Drop for CatpowderRuntime {
-    fn drop(&mut self) {
-        if let Some(thrd) = self.thrd.take() {
-            if let Ok(mut guard) = self.thrd_state.exit_mtx.lock() {
-                *guard = true;
-                std::mem::drop(guard);
-                self.thrd_state.cnd_var.notify_all();
-                let _ = thrd.join();
-            }
-        }
-
-        if self.reserved_socket != INVALID_SOCKET {
-            let _ = unsafe { closesocket(self.reserved_socket) };
-        }
-
-        let _ = unsafe { WSACleanup() };
-    }
-}
