@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use std::rc::Rc;
 
 use windows::Win32::Networking::WinSock::{
@@ -13,6 +20,10 @@ use crate::{
     inetstack::protocols::{layer4::ephemeral::EphemeralPorts, Protocol},
     runtime::fail::Fail,
 };
+
+//======================================================================================================================
+// Structures
+//======================================================================================================================
 
 /// State to track port sharing state with the kernel for cohosting.
 pub struct PortSharingState {
@@ -30,11 +41,18 @@ pub struct PortSharingState {
 
 /// The state of cohosting.
 pub enum CohostingMode {
+    /// No cohosting mode is enabled.
     None,
+    /// Port sharing mode is enabled.
     PortSharing(PortSharingState),
 }
 
+//======================================================================================================================
+// Implementations
+//======================================================================================================================
+
 impl CohostingMode {
+    /// Creates a new instance of `CohostingMode` based on the provided configuration.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         if config.xdp_cohost_mode()? == false {
             return Ok(CohostingMode::None);
@@ -43,11 +61,6 @@ impl CohostingMode {
         let local_ip: IN_ADDR = IN_ADDR::from(config.local_ipv4_addr()?);
 
         let (mut tcp_ports, mut udp_ports) = config.xdp_cohost_ports()?;
-        trace!(
-            "XDP cohost mode enabled. TCP ports: {:?}, UDP ports: {:?}",
-            tcp_ports,
-            udp_ports
-        );
 
         let reserved_protocol: Option<Protocol> = config.xdp_reserved_port_protocol()?;
         let reserved_port_count: Option<u16> = config.xdp_reserved_port_count()?;
@@ -79,6 +92,12 @@ impl CohostingMode {
                 trace!("reserved port options not set; no ports reserved");
                 (INVALID_SOCKET, vec![])
             };
+
+        trace!(
+            "XDP cohost mode enabled. TCP ports: {:?}, UDP ports: {:?}",
+            tcp_ports,
+            udp_ports
+        );
 
         Ok(CohostingMode::PortSharing(PortSharingState {
             local_ip,

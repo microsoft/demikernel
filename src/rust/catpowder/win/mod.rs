@@ -10,6 +10,7 @@ mod cohosting;
 mod interface;
 mod observability;
 mod ring;
+mod rss;
 mod socket;
 
 //======================================================================================================================

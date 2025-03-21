@@ -18,11 +18,9 @@ use std::{
 use demikernel_xdp_bindings::{XSK_SOCKOPT_STATISTICS, XSK_STATISTICS};
 
 use crate::{
-    catpowder::win::api::XdpApi,
+    catpowder::win::{api::XdpApi, interface::Interface, socket::XdpSocket},
     runtime::{fail::Fail, timer::global_get_time, tracing::METRICS},
 };
-
-use super::socket::XdpSocket;
 
 //=======================================================================================================================
 // Constants
@@ -57,7 +55,13 @@ pub struct CatpowderStats {
 
 impl CatpowderStats {
     /// Creates a new instance of `CatpowderStats`.
-    pub fn new(sockets: Vec<(String, XdpSocket)>) -> Result<Self, Fail> {
+    pub fn new(interface: &Interface, vf_interface: Option<&Interface>) -> Result<Self, Fail> {
+        let mut sockets: Vec<(String, XdpSocket)> = Vec::new();
+        sockets.extend_from_slice(interface.sockets.as_slice());
+        if let Some(vf_interface) = vf_interface {
+            sockets.extend_from_slice(vf_interface.sockets.as_slice());
+        }
+
         let thread_state: Arc<MonitorThreadState> = Arc::<MonitorThreadState>::new(MonitorThreadState {
             exit_mtx: Mutex::new(false),
             cnd_var: Condvar::new(),

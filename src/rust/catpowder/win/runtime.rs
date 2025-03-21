@@ -12,7 +12,7 @@ use crate::{
         interface::Interface,
         observability::CatpowderStats,
         ring::{RuleSet, TxRing},
-        socket::XdpSocket,
+        rss::deduce_rss_settings,
     },
     demi_sgarray_t, demi_sgaseg_t,
     demikernel::config::Config,
@@ -29,12 +29,6 @@ use crate::{
 use arrayvec::ArrayVec;
 use libc::c_void;
 use std::{borrow::BorrowMut, mem, num::NonZeroU32, rc::Rc};
-use windows::Win32::{
-    Foundation::ERROR_INSUFFICIENT_BUFFER,
-    System::SystemInformation::{
-        GetLogicalProcessorInformationEx, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
-    },
-};
 
 //======================================================================================================================
 // Structures
@@ -81,38 +75,24 @@ impl SharedCatpowderRuntime {
     /// Instantiates a new XDP runtime.
     pub fn new(config: &Config) -> Result<Self, Fail> {
         let ifindex: u32 = config.local_interface_index()?;
+        let always_send_on_vf: bool = config.xdp_always_send_on_vf()?;
 
         trace!("Creating XDP runtime.");
         let mut api: XdpApi = XdpApi::new()?;
-
-        // Open TX and RX rings
-        let always_send_on_vf: bool = config.xdp_always_send_on_vf()?;
 
         let cohosting_mode: CohostingMode = CohostingMode::new(config)?;
 
         let ruleset: Rc<RuleSet> = cohosting_mode.create_ruleset();
 
-        let queue_count: NonZeroU32 =
-            NonZeroU32::try_from(deduce_rss_settings(&mut api, ifindex)?).map_err(Fail::from)?;
-
-        let interface: Interface = Interface::new(&mut api, ifindex, queue_count, ruleset.clone(), config)?;
-
-        let mut sockets: Vec<(String, XdpSocket)> = interface.sockets.clone();
+        let interface: Interface = Self::make_interface(&mut api, ifindex, ruleset.clone(), config)?;
 
         let vf_interface: Option<Interface> = if let Ok(vf_if_index) = config.local_vf_interface_index() {
-            let vf_queue_count: NonZeroU32 =
-                NonZeroU32::try_from(deduce_rss_settings(&mut api, vf_if_index)?).map_err(Fail::from)?;
-
-            let vf_interface = Interface::new(&mut api, vf_if_index, vf_queue_count, ruleset.clone(), config)?;
-
-            sockets.extend_from_slice(vf_interface.sockets.as_slice());
-
-            Some(vf_interface)
+            Some(Self::make_interface(&mut api, vf_if_index, ruleset, config)?)
         } else {
             None
         };
 
-        let stats: CatpowderStats = CatpowderStats::new(sockets)?;
+        let stats: CatpowderStats = CatpowderStats::new(&interface, vf_interface.as_ref())?;
 
         Ok(Self(SharedObject::new(CatpowderRuntime {
             api,
@@ -123,7 +103,23 @@ impl SharedCatpowderRuntime {
             stats,
         })))
     }
+
+    /// Helper function to create a new interface.
+    fn make_interface(
+        api: &mut XdpApi,
+        ifindex: u32,
+        ruleset: Rc<RuleSet>,
+        config: &Config,
+    ) -> Result<Interface, Fail> {
+        let queue_count: NonZeroU32 = NonZeroU32::try_from(deduce_rss_settings(api, ifindex)?).map_err(Fail::from)?;
+
+        Interface::new(api, ifindex, queue_count, ruleset, config)
+    }
 }
+
+//======================================================================================================================
+// Trait Implementations
+//======================================================================================================================
 
 impl PhysicalLayer for SharedCatpowderRuntime {
     type FlowState = FlowState;
@@ -221,97 +217,6 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         self.0.cohosting_mode.ephemeral_ports()
     }
 }
-
-//======================================================================================================================
-// Functions
-//======================================================================================================================
-
-fn count_processor_cores() -> Result<usize, Fail> {
-    let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
-    let mut buffer_len: u32 = 0;
-
-    if let Err(e) =
-        unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, Some(&mut proc_info), &mut buffer_len) }
-    {
-        if e.code() != ERROR_INSUFFICIENT_BUFFER.to_hresult() {
-            let cause: String = format!("GetLogicalProcessorInformationEx failed: {:?}", e);
-            return Err(Fail::new(libc::EFAULT, &cause));
-        }
-    } else {
-        return Err(Fail::new(
-            libc::EFAULT,
-            "GetLogicalProcessorInformationEx did not return any information",
-        ));
-    }
-
-    let mut buf: Vec<u8> = vec![0; buffer_len as usize];
-    if let Err(e) = unsafe {
-        GetLogicalProcessorInformationEx(
-            RelationProcessorCore,
-            Some(buf.as_mut_ptr() as *mut SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX),
-            &mut buffer_len,
-        )
-    } {
-        let cause: String = format!("GetLogicalProcessorInformationEx failed: {:?}", e);
-        return Err(Fail::new(libc::EFAULT, &cause));
-    }
-
-    let mut core_count: usize = 0;
-    let std::ops::Range {
-        start: mut proc_core_info,
-        end: proc_core_end,
-    } = buf.as_ptr_range();
-    while proc_core_info < proc_core_end && proc_core_info >= buf.as_ptr() {
-        // Safety: the buffer is initialized to valid values by GetLogicalProcessorInformationEx, and the pointer is
-        // not aliased. Bounds are checked above.
-        let proc_info: &SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX =
-            unsafe { &*(proc_core_info as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) };
-        if proc_info.Relationship == RelationProcessorCore {
-            core_count += 1;
-        }
-        proc_core_info = proc_core_info.wrapping_add(proc_info.Size as usize);
-    }
-
-    return Ok(core_count);
-}
-
-/// Deduces the RSS settings for the given interface. Returns the number of valid RSS queues for the interface.
-fn deduce_rss_settings(api: &mut XdpApi, ifindex: u32) -> Result<u32, Fail> {
-    const DUMMY_QUEUE_LENGTH: u32 = 1;
-    const DUMMY_BUFFER_COUNT: u32 = 1;
-    const DUMMY_MTU: u16 = 500;
-    let sys_proc_count: u32 = count_processor_cores()? as u32;
-
-    // NB there will always be at least one queue available, hence starting the loop at 1. There should not be more
-    // queues than the number of processors on the system.
-    for queueid in 1..sys_proc_count {
-        match TxRing::new(
-            api,
-            DUMMY_QUEUE_LENGTH,
-            DUMMY_BUFFER_COUNT,
-            DUMMY_MTU,
-            ifindex,
-            queueid,
-            false,
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "Failed to create TX ring on queue {}: {:?}. This is only an error if {} is a valid RSS queue \
-                     ID",
-                    queueid, e, queueid
-                );
-                return Ok(queueid);
-            },
-        }
-    }
-
-    Ok(sys_proc_count)
-}
-
-//======================================================================================================================
-// Trait Implementations
-//======================================================================================================================
 
 /// Memory runtime trait implementation for XDP Runtime.
 impl MemoryRuntime for SharedCatpowderRuntime {

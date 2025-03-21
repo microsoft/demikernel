@@ -1,3 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+//======================================================================================================================
+// Imports
+//======================================================================================================================
+
 use std::{num::NonZeroU32, rc::Rc};
 
 use crate::{
@@ -10,13 +17,27 @@ use crate::{
     runtime::fail::Fail,
 };
 
+//======================================================================================================================
+// Structures
+//======================================================================================================================
+
+/// State for the XDP interface.
 pub struct Interface {
+    /// Currently only one TX is created for all sends on the interface.
     pub tx_ring: TxRing,
+    /// RX rings for the interface, one per RSS queue.
     pub rx_rings: Vec<RxRing>,
+    /// Sockets for the interface, one for each *Ring member above, with a description of the socket.
     pub sockets: Vec<(String, XdpSocket)>,
 }
 
+//======================================================================================================================
+// Implementations
+//======================================================================================================================
+
 impl Interface {
+    /// Creates a new interface for the given configuration. The interface creates [queue_count] RX
+    /// rings.
     pub fn new(
         api: &mut XdpApi,
         ifindex: u32,
@@ -84,6 +105,11 @@ impl Interface {
     }
 }
 
+//======================================================================================================================
+// Functions
+//======================================================================================================================
+
+/// Validates the ring size and buffer count for the given configuration.
 fn validate_ring_config(ring_size: u32, buf_count: u32, config: &str) -> Result<(NonZeroU32, NonZeroU32), Fail> {
     let ring_size: NonZeroU32 = NonZeroU32::try_from(ring_size)
         .map_err(Fail::from)
