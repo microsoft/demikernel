@@ -57,7 +57,7 @@ ipv4=$(ip -o -4 addr show "$target_iface" | awk '{print $4}' | awk -F '/' '{prin
 target_mac=$(cat /sys/class/net/"$target_iface"/address)
 
 # Update the config.yaml with the selected interface information
-sed -i "s|ensXnpY|$target_iface|g" "$script_dir/config.yaml"
+sed -i "s|ethX|$target_iface|g" "$script_dir/config.yaml"
 sed -i "s|XX.XX.XX.XX|$ipv4|g" "$script_dir/config.yaml"
 sed -i "s|ff:ff:ff:ff:ff:ff|$target_mac|g" "$script_dir/config.yaml"
 # Update the run-server.bash with the selected interface's IP address

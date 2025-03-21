@@ -5,7 +5,7 @@ demikernel:
   local_ipv4_addr: XX.XX.XX.XX
   local_link_addr: "ff:ff:ff:ff:ff:ff"
 raw_socket:
-  linux_interface_name: "ensXnpY"
+  linux_interface_name: "ethX"
   xdp_interface_index: 0
   xdp_cohost_mode: false
   xdp_always_poke_tx: false
