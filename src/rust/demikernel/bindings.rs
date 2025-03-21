@@ -847,6 +847,7 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut SockAddr, addrlen: *mut
     }
 }
 
+#[no_mangle]
 pub extern "C" fn demi_enumerate_metrics(metrics: *mut demi_metric_descriptor_t, num_metrics: *mut u32) -> c_int {
     if num_metrics.is_null() {
         return libc::EINVAL;
