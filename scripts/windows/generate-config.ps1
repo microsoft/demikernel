@@ -1,12 +1,9 @@
-if ($args.Count -ne 1) {
-    Write-Host "Usage: generate-config.ps1 {path to config.yaml.template}"
-    exit 1
-}
+$configFilePath = "$PSScriptRoot\..\config\default.yaml"
 
-if (Test-Path -Path $args[0]) {
-    $configFileContent = Get-Content -Path $args[0]
+if (Test-Path -Path $configFilePath) {
+    $configFileContent = Get-Content -Path $configFilePath
 } else {
-    Write-Output "File does not exist: $args[0]"
+    Write-Output "File does not exist: $configFilePath"
     exit 1
 }
 
@@ -51,8 +48,8 @@ $ipv4=(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $adapterName | Selec
 
 $adapter = Get-NetIPAddress | Where-Object { $_.IPAddress -eq $ipv4 }
 if ($adapter) {
-  $configFileContent = $configFileContent -replace "{{IPADDR}}", $ipv4
-  $configFileContent = $configFileContent -replace "{{XDPIFIDX}}", $adapter.InterfaceIndex
+  $configFileContent = $configFileContent -replace "XX.XX.XX.XX", $ipv4
+  $configFileContent = $configFileContent -replace "xdp_interface_index: 0", "xdp_interface_index: $($adapter.InterfaceIndex)"
   $serverTemplateContent = $serverTemplateContent -replace "{{IPADDR}}", $ipv4
   $netAdapter = Get-NetAdapter | Where-Object { $_.InterfaceIndex -eq $adapter.InterfaceIndex }
   $mac = $($netAdapter.MacAddress)
@@ -63,7 +60,7 @@ if ($adapter) {
 
 # Replace the macaddress placeholder
 $mac = $mac -replace "-", ":"
-$configFileContent = $configFileContent -replace "{{MACADDR}}", $mac
+$configFileContent = $configFileContent -replace "ff:ff:ff:ff:ff:ff", $mac
 $target="$PSScriptRoot\config.yaml"
 Set-Content -Path $target -Value $configFileContent
 Set-Content -Path "$PSScriptRoot\run-server.ps1" -Value $serverTemplateContent

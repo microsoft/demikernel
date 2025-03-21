@@ -5,7 +5,7 @@ demikernel:
   local_ipv4_addr: XX.XX.XX.XX
   local_link_addr: "ff:ff:ff:ff:ff:ff"
 raw_socket:
-  linux_interface_name: "abcde"
+  linux_interface_name: "ensXnpY"
   xdp_interface_index: 0
   xdp_cohost_mode: false
   xdp_always_poke_tx: false
@@ -43,9 +43,10 @@ inetstack_config:
   enable_jumbo_frames: false
   udp_checksum_offload: false
   tcp_checksum_offload: false
+  # Add other machines' MAC and IP addresses here as necessary
   arp_table:
     "ff:ff:ff:ff:ff:ff": "XX.XX.XX.XX"
-    "ff:ff:ff:ff:ff:ff": "YY.YY.YY.YY"
+  #  "ee:ee:ee:ee:ee:ee": "YY.YY.YY.YY"
   arp_request_retries: 5
   arp_request_timeout: 20
   arp_cache_ttl: 15

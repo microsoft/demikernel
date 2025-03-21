@@ -2,10 +2,10 @@
 
 ## Linux
 
-Run `build.bash` from the `tools/scripts/linux` directory:
+Run `build.bash` from the `scripts/linux` directory:
 
 ```bash
-bash ./tools/scripts/linux/build.bash
+bash ./scripts/linux/build.bash
 ```
 
 ### Arguments
@@ -14,14 +14,14 @@ bash ./tools/scripts/linux/build.bash
 - `--config <debug|release>`: Build configuration (default: `release`).
 - `--profiler`: Include profiling information in the build.
 
-See [build.bash](./build.bash) for details.
+See [build.bash](build.bash) for details.
 
 ## Generate config
 
 Run `generate-config.bash` from the repository root directory
 
 ```bash
-bash ./tools/scripts/linux/generate-config.bash ./tools/scripts/config_template/config.yaml.template
+bash ./scripts/linux/generate-config.bash
 ```
 
 ## Adjust environment variables

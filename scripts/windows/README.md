@@ -5,7 +5,7 @@
 Run `build.ps1` from the repository root directory:
 
 ```powershell
-.\build.ps1
+.\scripts\windows\build.ps1
 ```
 
 ### Arguments
@@ -21,7 +21,7 @@ See [build.ps1](build.ps1) for details.
 Run `generate-config.ps1` from the repository root directory
 
 ```powershell
-.\tools\scripts\windows\generate-config.ps1 .\tools\scripts\config_template\config.yaml.template
+.\scripts\windows\generate-config.ps1
 ```
 
 Note: (only applicable to Catpowder LibOS) if your machine has VF network adapter, please adjust `config.yaml`'s `xdp_vf_interface_index` entry to the VF interface's index

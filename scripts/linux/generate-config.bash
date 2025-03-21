@@ -1,16 +1,11 @@
 #!/bin/bash
 
-if [ $# -ne 1 ]; then
-    echo "Usage: generate-config.bash {path to config.yaml.template}"
-    exit 1
-fi
-
 script_dir="$(dirname "$(readlink -f "$0")")"
 echo "Using folder: $script_dir"
 echo ""
 # Check if config template exists and read it
-if [ -f "$1" ]; then
-    cp -f "$1" "$script_dir/config.yaml"
+if [ -f "$script_dir/../config/default.yaml" ]; then
+    cp -f "$script_dir/../config/default.yaml" "$script_dir/config.yaml"
 else
     echo "File does not exist: $1"
     exit 1
@@ -62,9 +57,9 @@ ipv4=$(ip -o -4 addr show "$target_iface" | awk '{print $4}' | awk -F '/' '{prin
 target_mac=$(cat /sys/class/net/"$target_iface"/address)
 
 # Update the config.yaml with the selected interface information
-sed -i "s|{{abcde}}|$target_iface|g" "$script_dir/config.yaml"
-sed -i "s|{{IPADDR}}|$ipv4|g" "$script_dir/config.yaml"
-sed -i "s|{{MACADDR}}|$target_mac|g" "$script_dir/config.yaml"
+sed -i "s|ensXnpY|$target_iface|g" "$script_dir/config.yaml"
+sed -i "s|XX.XX.XX.XX|$ipv4|g" "$script_dir/config.yaml"
+sed -i "s|ff:ff:ff:ff:ff:ff|$target_mac|g" "$script_dir/config.yaml"
 # Update the run-server.bash with the selected interface's IP address
 sed -i "s|{{IPADDR}}|$ipv4|g" "$script_dir/run-server.bash"
 
