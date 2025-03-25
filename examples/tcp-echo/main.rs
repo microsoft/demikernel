@@ -11,8 +11,9 @@
 
 use anyhow::Result;
 use clap::{Arg, ArgMatches, Command};
-use client::TcpEchoClient;
+use closed_loop_client::TcpEchoClosedLoopClient;
 use demikernel::{LibOS, LibOSName};
+use open_loop_client::TcpEchoOpenLoopClient;
 use server::TcpEchoServer;
 use std::{net::SocketAddr, str::FromStr, thread, thread::JoinHandle, time::Duration};
 
@@ -28,7 +29,8 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
-mod client;
+mod closed_loop_client;
+mod open_loop_client;
 mod server;
 
 //======================================================================================================================
@@ -60,6 +62,9 @@ pub struct ProgramArguments {
     log_interval: Option<u64>,
     /// Peer type.
     peer_type: String,
+    /// Total packets per seconds used by open-loop client and denotes the total packets per second
+    /// across all clients (nclients).
+    total_packets_per_second: Option<u64>,
 }
 
 /// Associate functions for Program Arguments
@@ -122,7 +127,7 @@ impl ProgramArguments {
                     .value_parser(clap::value_parser!(u64))
                     .required(false)
                     .value_name("INTERVAL")
-                    .help("Enables logging"),
+                    .help("Enables logging at the specified interval (in seconds)"),
             )
             .arg(
                 Arg::new("run-mode")
@@ -130,11 +135,18 @@ impl ProgramArguments {
                     .value_parser(clap::value_parser!(String))
                     .required(false)
                     .value_name("sequential|concurrent")
-                    .help("Sets run mode"),
+                    .help("Sets run mode for clients"),
+            )
+            .arg(
+                Arg::new("total-pps")
+                    .long("total-packets-per-second")
+                    .value_parser(clap::value_parser!(u64))
+                    .required(false)
+                    .value_name("NUMBER")
+                    .help("Sets the total packets per second across all clients"),
             )
             .get_matches();
 
-        // Socket address.
         let addr: SocketAddr = {
             let addr: &String = matches.get_one::<String>("addr").expect("missing address");
             SocketAddr::from_str(addr)?
@@ -150,56 +162,56 @@ impl ProgramArguments {
             nthreads: None,
             log_interval: None,
             peer_type: "server".to_string(),
+            total_packets_per_second: None,
         };
 
-        // Run mode.
         if let Some(run_mode) = matches.get_one::<String>("run-mode") {
             args.run_mode = Some(run_mode.to_string());
         }
 
-        // Buffer size.
         if let Some(bufsize) = matches.get_one::<usize>("bufsize") {
             if *bufsize > 0 {
                 args.bufsize = Some(*bufsize);
             }
         }
 
-        // Number of requests.
         if let Some(nrequests) = matches.get_one::<usize>("nrequests") {
             if *nrequests > 0 {
                 args.nrequests = Some(*nrequests);
             }
         }
 
-        // Number of clients.
         if let Some(nclients) = matches.get_one::<usize>("nclients") {
             if *nclients > 0 {
                 args.nclients = Some(*nclients);
             }
         }
 
-        // Number of clients.
         if let Some(nthreads) = matches.get_one::<usize>("nthreads") {
             if *nthreads > 0 {
                 args.nthreads = Some(*nthreads);
             }
         }
 
-        // Log interval.
         if let Some(log_interval) = matches.get_one::<u64>("log") {
             if *log_interval > 0 {
                 args.log_interval = Some(*log_interval);
             }
         }
 
-        // Peer type
         if let Some(peer_type) = matches.get_one::<String>("peer") {
             let ref mut this = args;
             let peer_type = peer_type.to_string();
-            if peer_type != "server" && peer_type != "client" {
+            if peer_type != "server" && peer_type == "closed-loop-client" && peer_type != "open-loop-client" {
                 anyhow::bail!("invalid peer type");
             } else {
                 this.peer_type = peer_type;
+            }
+        }
+
+        if let Some(total_pps) = matches.get_one::<u64>("total-pps") {
+            if *total_pps > 0 {
+                args.total_packets_per_second = Some(*total_pps);
             }
         }
 
@@ -222,7 +234,7 @@ fn start_server_thread(
     }))
 }
 
-fn start_client_thread(
+fn start_closed_loop_client_thread(
     libos_name: LibOSName,
     nclients: usize,
     nrequests: Option<usize>,
@@ -237,7 +249,7 @@ fn start_client_thread(
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
             };
-            let mut client: TcpEchoClient = TcpEchoClient::new(libos, bufsize, addr)?;
+            let mut client: TcpEchoClosedLoopClient = TcpEchoClosedLoopClient::new(libos, bufsize, addr)?;
             client.run_sequential(log_interval, nclients, nrequests)
         })),
         "concurrent" => Ok(thread::spawn(move || -> Result<()> {
@@ -245,13 +257,30 @@ fn start_client_thread(
                 Ok(libos) => libos,
                 Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
             };
-            let mut client: TcpEchoClient = TcpEchoClient::new(libos, bufsize, addr)?;
+            let mut client: TcpEchoClosedLoopClient = TcpEchoClosedLoopClient::new(libos, bufsize, addr)?;
             client.run_concurrent(log_interval, nclients, nrequests)
         })),
         _ => anyhow::bail!("invalid run mode"),
     }
 }
-//======================================================================================================================
+
+fn start_open_loop_client_thread(
+    libos_name: LibOSName,
+    nclients: usize,
+    bufsize: usize,
+    addr: SocketAddr,
+    log_interval: Option<u64>,
+    total_packets_per_second: Option<u64>,
+) -> Result<JoinHandle<Result<()>>> {
+    Ok(thread::spawn(move || -> Result<()> {
+        let libos: LibOS = match LibOS::new(libos_name, None) {
+            Ok(libos) => libos,
+            Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
+        };
+        let mut c = TcpEchoOpenLoopClient::new(libos, bufsize, addr, total_packets_per_second)?;
+        c.run_sequential(log_interval, nclients)
+    }))
+}
 
 fn main() -> Result<()> {
     let args: ProgramArguments = ProgramArguments::new("tcp-echo")?;
@@ -276,10 +305,10 @@ fn main() -> Result<()> {
                 }
             }
         },
-        "client" => {
+        "closed-loop-client" => {
             let run_mode: String = args.run_mode.ok_or(anyhow::anyhow!("missing run mode"))?;
             for _ in 0..args.nthreads.unwrap_or(1) {
-                if let Ok(handle) = start_client_thread(
+                if let Ok(handle) = start_closed_loop_client_thread(
                     libos_name,
                     args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
                     args.nrequests,
@@ -287,6 +316,20 @@ fn main() -> Result<()> {
                     &run_mode,
                     args.addr,
                     args.log_interval,
+                ) {
+                    threads.push(handle);
+                }
+            }
+        },
+        "open-loop-client" => {
+            for _ in 0..args.nthreads.unwrap_or(1) {
+                if let Ok(handle) = start_open_loop_client_thread(
+                    libos_name,
+                    args.nclients.ok_or(anyhow::anyhow!("missing number of clients"))?,
+                    args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
+                    args.addr,
+                    args.log_interval,
+                    args.total_packets_per_second,
                 ) {
                     threads.push(handle);
                 }

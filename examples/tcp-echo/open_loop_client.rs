@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//======================================================================================================================
-// Imports
-//======================================================================================================================
-
 use crate::TIMEOUT_SECONDS;
 use anyhow::Result;
 use demikernel::{
@@ -32,20 +28,12 @@ pub const AF_INET: i32 = libc::AF_INET;
 #[cfg(target_os = "linux")]
 pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 
-//======================================================================================================================
-// Structures
-//======================================================================================================================
+const DEFAULT_PACKETS_PER_SECOND: u64 = 10000;
 
-/// A TCP echo client.
-pub struct TcpEchoClient {
-    /// Underlying libOS.
+pub struct TcpEchoOpenLoopClient {
     libos: LibOS,
-    /// Buffer size.
-    bufsize: usize,
-    /// Number of packets echoed back since last log period.
-    nechoed: usize,
-    /// Number of bytes transferred.
-    nbytes: usize,
+    buffer_size_to_send: usize,
+    num_echoed_packets_in_last_interval: usize,
     /// Number of packets pushed to server.
     npushed: usize,
     /// Set of connected clients.
@@ -58,97 +46,102 @@ pub struct TcpEchoClient {
     start: Instant,
     /// Statistics.
     stats: Histogram,
+    packets_per_second: Option<u64>,
 }
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl TcpEchoClient {
-    pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddr) -> Result<Self> {
+impl TcpEchoOpenLoopClient {
+    pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddr, packets_per_second: Option<u64>) -> Result<Self> {
         return Ok(Self {
             libos,
-            bufsize,
+            buffer_size_to_send: bufsize,
             remote,
-            nechoed: 0,
-            nbytes: 0,
+            num_echoed_packets_in_last_interval: 0,
             npushed: 0,
             clients: HashMap::default(),
             qts: Vec::default(),
             start: Instant::now(),
             stats: Histogram::new(7, 64)?,
+            packets_per_second,
         });
     }
 
     pub fn run_main_loop(
         &mut self,
-        log_interval: Option<u64>,
+        log_interval_in_seconds: Option<u64>,
         nclients: usize,
-        nrequests: Option<usize>,
-        connect_handler: fn(&mut TcpEchoClient, &demi_qresult_t) -> Result<()>,
+        connect_handler: fn(&mut TcpEchoOpenLoopClient, &demi_qresult_t) -> Result<()>,
     ) -> Result<()> {
-        println!("HEADERS:tx,rx,rps,p50,p90,p99,p99.9,p99.99,p99.999,p99.9999,p100");
-
         let mut last_log: Instant = Instant::now();
+        let mut last_send_time: Instant = Instant::now();
+        let packet_send_interval = self.compute_packet_send_interval(nclients);
+
+        println!("packet_send_interval is every {:?}", packet_send_interval);
+
+        if log_interval_in_seconds.is_some() {
+            println!("logging every {:?} seconds", log_interval_in_seconds.unwrap());
+        }
 
         loop {
-            // Stop: enough packets were echoed.
-            if let Some(nrequests) = nrequests {
-                if self.nbytes >= nclients * self.bufsize * nrequests {
-                    println!("INFO: stopping, {} bytes transferred", self.nbytes);
-                    break;
-                }
-            }
-
-            // Stop: all clients were disconnected.
             if self.clients.len() == 0 {
-                println!(
-                    "INFO: stopping, all clients disconnected {} bytes transferred",
-                    self.nbytes
-                );
+                println!("INFO: stopping, all clients disconnected");
                 break;
             }
 
             // Dump statistics.
-            if let Some(log_interval) = log_interval {
+            if let Some(log_interval) = log_interval_in_seconds {
                 if last_log.elapsed() > Duration::from_secs(log_interval) {
                     let time_elapsed: f64 = (Instant::now() - last_log).as_secs() as f64;
-                    let rps: f64 = self.nechoed as f64 / time_elapsed;
+                    let throughput_rps: f64 = self.num_echoed_packets_in_last_interval as f64 / time_elapsed;
                     println!(
-                        "METRICS:{:?},{:?},{:2?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
-                        self.npushed,
-                        self.nechoed,
-                        rps,
-                        self.stats.percentile(50.0)?.unwrap().start(),
-                        self.stats.percentile(90.0)?.unwrap().start(),
-                        self.stats.percentile(99.0)?.unwrap().start(),
-                        self.stats.percentile(99.9)?.unwrap().start(),
-                        self.stats.percentile(99.99)?.unwrap().start(),
-                        self.stats.percentile(99.999)?.unwrap().start(),
-                        self.stats.percentile(99.9999)?.unwrap().start(),
-                        self.stats.percentile(100.0)?.unwrap().start(),
-                    );
+                        "INFO: {:?} requests, {:2?} rps, p50: {:?} ns, p90: {:?} ns, p99: {:?} ns, p99.9: {:?} ns, p99.99: {:?} ns, p99.999: {:?} ns, p99.9999: {:?} ns, p100: {:?} ns",
+                        self.num_echoed_packets_in_last_interval,
+                        throughput_rps,
+                        self.stats.percentile(50f64)?.unwrap().start(),
+                        self.stats.percentile(90f64)?.unwrap().start(),
+                        self.stats.percentile(99f64)?.unwrap().start(),
+                        self.stats.percentile(99.9f64)?.unwrap().start(),
+                        self.stats.percentile(99.99f64)?.unwrap().start(),
+                        self.stats.percentile(99.999f64)?.unwrap().start(),
+                        self.stats.percentile(99.9999f64)?.unwrap().start(),
+                        self.stats.percentile(100f64)?.unwrap().start());
+
                     last_log = Instant::now();
-                    self.nechoed = 0;
-                    self.npushed = 0;
+                    self.num_echoed_packets_in_last_interval = 0;
                 }
             }
 
-            let qr: demi_qresult_t = {
-                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(TIMEOUT_SECONDS))?;
-                self.qts.remove(index);
-                qr
-            };
+            // Send packets if enough time has elapsed.
+            if last_send_time.elapsed() > packet_send_interval {
+                let client_qds: Vec<QDesc> = self.clients.keys().copied().collect();
+                for qd in client_qds {
+                    if let Err(e) = self.issue_push(qd) {
+                        println!("ERROR: issue_push() failed (error={:?})", e);
+                    }
+                }
+                last_send_time = Instant::now();
+            }
 
-            // Parse result.
-            match qr.qr_opcode {
-                demi_opcode_t::DEMI_OPC_PUSH => self.handle_push(&qr)?,
-                demi_opcode_t::DEMI_OPC_POP => self.handle_pop(&qr)?,
-                demi_opcode_t::DEMI_OPC_FAILED => self.handle_fail(&qr)?,
-                demi_opcode_t::DEMI_OPC_INVALID => Self::handle_unexpected("invalid", &qr)?,
-                demi_opcode_t::DEMI_OPC_CLOSE => Self::handle_unexpected("close", &qr)?,
-                demi_opcode_t::DEMI_OPC_CONNECT => connect_handler(self, &qr)?,
-                demi_opcode_t::DEMI_OPC_ACCEPT => Self::handle_unexpected("accept", &qr)?,
+            if !self.qts.is_empty() {
+                let qr: demi_qresult_t = {
+                    let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(TIMEOUT_SECONDS))?;
+                    self.qts.remove(index);
+                    qr
+                };
+
+                // Parse result.
+                match qr.qr_opcode {
+                    demi_opcode_t::DEMI_OPC_PUSH => self.handle_push(&qr)?,
+                    demi_opcode_t::DEMI_OPC_POP => self.handle_pop(&qr)?,
+                    demi_opcode_t::DEMI_OPC_FAILED => self.handle_fail(&qr)?,
+                    demi_opcode_t::DEMI_OPC_INVALID => Self::handle_unexpected("invalid", &qr)?,
+                    demi_opcode_t::DEMI_OPC_CLOSE => Self::handle_unexpected("close", &qr)?,
+                    demi_opcode_t::DEMI_OPC_CONNECT => connect_handler(self, &qr)?,
+                    demi_opcode_t::DEMI_OPC_ACCEPT => Self::handle_unexpected("accept", &qr)?,
+                }
             }
         }
 
@@ -161,18 +154,21 @@ impl TcpEchoClient {
         Ok(())
     }
 
+    // packets_per_second is divided by the number of clients because each client will send its share of packets
+    fn compute_packet_send_interval(&mut self, nclients: usize) -> Duration {
+        let mut packets_per_second: u64 = self.packets_per_second.unwrap_or(DEFAULT_PACKETS_PER_SECOND);
+        packets_per_second = packets_per_second / nclients as u64;
+        let packet_send_interval: Duration = Duration::from_nanos(1_000_000_000 / packets_per_second);
+        packet_send_interval
+    }
+
     /// Runs the target TCP echo client.
-    pub fn run_sequential(
-        &mut self,
-        log_interval: Option<u64>,
-        nclients: usize,
-        nrequests: Option<usize>,
-    ) -> Result<()> {
+    pub fn run_sequential(&mut self, log_interval: Option<u64>, nclients: usize) -> Result<()> {
         // Open all connections.
         for _ in 0..nclients {
             let sockqd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
 
-            self.clients.insert(sockqd, (vec![0; self.bufsize], 0));
+            self.clients.insert(sockqd, (vec![0; self.buffer_size_to_send], 0));
             let qt: QToken = self.libos.connect(sockqd, self.remote)?;
             let qr: demi_qresult_t = self.libos.wait(qt, Some(TIMEOUT_SECONDS))?;
             if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
@@ -180,56 +176,51 @@ impl TcpEchoClient {
             }
 
             println!("INFO: {} clients connected", self.clients.len());
-
-            // Push first request.
-            self.issue_push(sockqd)?;
         }
 
         self.run_main_loop(
             log_interval,
             nclients,
-            nrequests,
-            |_: &mut TcpEchoClient, qr: &demi_qresult_t| -> Result<()> { Self::handle_unexpected("connect", qr) },
+            |_: &mut TcpEchoOpenLoopClient, qr: &demi_qresult_t| -> Result<()> {
+                Self::handle_unexpected("connect", qr)
+            },
         )
     }
 
-    /// Runs the target TCP echo client.
-    pub fn run_concurrent(
-        &mut self,
-        log_interval: Option<u64>,
-        nclients: usize,
-        nrequests: Option<usize>,
-    ) -> Result<()> {
-        // Open several connections.
-        for i in 0..nclients {
-            let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
-            // Set default linger to a short period, otherwise, this test will take a long time to complete.
-
-            let qt: QToken = self.libos.connect(qd, self.remote)?;
-            self.qts.push(qt);
-
-            // First client connects synchronously.
-            if i == 0 {
-                let qr: demi_qresult_t = {
-                    let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(TIMEOUT_SECONDS))?;
-                    self.qts.remove(index);
-                    qr
-                };
-                if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
-                    anyhow::bail!("failed to connect to server")
-                }
-
-                // Register client.
-                println!("INFO: {} clients connected", self.clients.len());
-                self.clients.insert(qd, (vec![0; self.bufsize], 0));
-
-                // Push first request.
-                self.issue_push(qd)?;
-            }
-        }
-
-        self.run_main_loop(log_interval, nclients, nrequests, Self::handle_connect)
-    }
+    ///// Runs the target TCP echo client.
+    //pub fn run_concurrent(
+    //    &mut self,
+    //    log_interval: Option<u64>,
+    //    nclients: usize,
+    //    nrequests: Option<usize>,
+    //) -> Result<()> {
+    //    // Open several connections.
+    //    for i in 0..nclients {
+    //        let qd: QDesc = self.libos.socket(AF_INET, SOCK_STREAM, 0)?;
+    //        // Set default linger to a short period, otherwise, this test will take a long time to complete.
+    //
+    //        let qt: QToken = self.libos.connect(qd, self.remote)?;
+    //        self.qts.push(qt);
+    //
+    //        // First client connects synchronously.
+    //        if i == 0 {
+    //            let qr: demi_qresult_t = {
+    //                let (index, qr): (usize, demi_qresult_t) = self.libos.wait_any(&self.qts, Some(TIMEOUT_SECONDS))?;
+    //                self.qts.remove(index);
+    //                qr
+    //            };
+    //            if qr.qr_opcode != demi_opcode_t::DEMI_OPC_CONNECT {
+    //                anyhow::bail!("failed to connect to server")
+    //            }
+    //
+    //            // Register client.
+    //            println!("INFO: {} clients connected", self.clients.len());
+    //            self.clients.insert(qd, (vec![0; self.buffer_size_to_send], 0));
+    //        }
+    //    }
+    //
+    //    self.run_main_loop(log_interval, nclients, nrequests, Self::handle_connect)
+    //}
 
     /// Creates a scatter-gather-array.
     fn mksga(&mut self, size: usize) -> Result<demi_sgarray_t> {
@@ -243,16 +234,13 @@ impl TcpEchoClient {
         Ok(sga)
     }
 
-    fn handle_connect(&mut self, qr: &demi_qresult_t) -> Result<()> {
-        // Register client.
-        let qd: QDesc = qr.qr_qd.into();
-        self.clients.insert(qd, (vec![0; self.bufsize], 0));
-        println!("INFO: {} clients connected", self.clients.len());
-
-        // Push first request.
-        self.issue_push(qd)?;
-        Ok(())
-    }
+    //fn handle_connect(&mut self, qr: &demi_qresult_t) -> Result<()> {
+    //    // Register client.
+    //    let qd: QDesc = qr.qr_qd.into();
+    //    self.clients.insert(qd, (vec![0; self.buffer_size_to_send], 0));
+    //    println!("INFO: {} clients connected", self.clients.len());
+    //    Ok(())
+    //}
 
     /// Handles the completion of a pop operation.
     fn handle_pop(&mut self, qr: &demi_qresult_t) -> Result<()> {
@@ -282,7 +270,6 @@ impl TcpEchoClient {
             if *index < recvbuf.capacity() {
                 // Free scatter-gather-array.
                 self.libos.sgafree(sga)?;
-                self.nbytes += len;
 
                 // There are, thus issue a partial pop.
                 let size: usize = recvbuf.capacity() - *index;
@@ -300,12 +287,10 @@ impl TcpEchoClient {
 
                 // Free scatter-gather-array.
                 self.libos.sgafree(sga)?;
-                self.nbytes += len;
 
                 // There aren't, so push another packet.
                 *index = 0;
-                self.nechoed += 1;
-                self.issue_push(qd)?;
+                self.num_echoed_packets_in_last_interval += 1;
             }
         }
         Ok(())
@@ -363,7 +348,7 @@ impl TcpEchoClient {
 
     /// Issues a push operation
     fn issue_push(&mut self, qd: QDesc) -> Result<()> {
-        let sga: demi_sgarray_t = self.mksga(self.bufsize)?;
+        let sga: demi_sgarray_t = self.mksga(self.buffer_size_to_send)?;
         let qt: QToken = self.libos.push(qd, &sga)?;
         self.qts.push(qt);
         // Ok to immediately free because the push clones the reference and keeps it until the push completes.
@@ -396,7 +381,7 @@ fn is_closed(ret: i64) -> bool {
 // Trait Implementations
 //======================================================================================================================
 
-impl Drop for TcpEchoClient {
+impl Drop for TcpEchoOpenLoopClient {
     fn drop(&mut self) {
         // Close all connections.
         for (qd, _) in self.clients.drain().collect::<Vec<_>>() {
