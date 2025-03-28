@@ -65,7 +65,7 @@
 #define DEMI_ARGS_ARGC_SIZE 4
 #define DEMI_ARGS_ARGV_SIZE 8
 #define DEMI_ARGS_CALLBACK_SIZE 8
-#define DEMI_ARGS_SIZE (DEMI_ARGS_ARGC_SIZE + DEMI_ARGS_ARGV_SIZE + DEMI_ARGS_CALLBACK_SIZE)
+#define DEMI_ARGS_SIZE (DEMI_ARGS_ARGC_SIZE + DEMI_ARGS_ARGV_SIZE + DEMI_ARGS_CALLBACK_SIZE + DEMI_ARGS_CALLBACK_SIZE + DEMI_ARGS_CALLBACK_SIZE)
 
 /*====================================================================================================================*
  * Private Functions                                                                                                  *

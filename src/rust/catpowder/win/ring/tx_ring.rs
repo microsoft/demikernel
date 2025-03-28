@@ -188,12 +188,13 @@ impl TxRing {
     }
 
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
-        let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
-            trace!("copying buffer to umem region");
-            self.copy_into_buf(&buf)?
-        } else {
-            buf
-        };
+        // let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
+        //     trace!("copying buffer to umem region");
+        //     self.copy_into_buf(&buf)?
+        // } else {
+        //     buf
+        // };
+        let buf = self.copy_into_buf(&buf)?;
 
         let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
         trace!(
@@ -234,6 +235,7 @@ impl TxRing {
 
             // Safety: the integers in tx_completion_ring are initialized by the XDP runtime.
             let buf_offset: u64 = unsafe { b.assume_init_read() };
+            trace!("return_buffers(): ifindex={}, offset={}", self.ifindex, buf_offset);
 
             // NB dropping the buffer returns it to the pool.
             if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {

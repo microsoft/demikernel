@@ -136,6 +136,7 @@ impl CatpowderStats {
 // Functions
 //======================================================================================================================
 
+#[allow(unused_mut, unused_variables)]
 fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thread_state: Arc<MonitorThreadState>) {
     const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
         RxDropped: 0,
@@ -143,17 +144,29 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
         RxTruncated: 0,
         TxInvalidDescriptors: 0,
     };
+    #[allow(unused_mut, unused_variables)]
     let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
     let mut total_rx_packets: u32 = 0;
     let mut total_rx_bytes: u32 = 0;
     let mut total_tx_packets: u32 = 0;
     let mut total_tx_bytes: u32 = 0;
-
+    const ONE_MS: Duration = Duration::from_millis(1);
     let mut exit_guard: MutexGuard<'_, bool> = thread_state.exit_mtx.lock().unwrap();
     while !*exit_guard {
-        for (i, (name, socket)) in sockets.iter_mut().enumerate() {
-            if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
-                warn!("{}: Failed to update stats: {:?}", name, e);
+        for j in 0..1000 {
+            for (i, (name, socket)) in sockets.iter_mut().enumerate() {
+                if let Err(e) = update_stats(&mut api, name.as_str(), socket, &mut stats[i]) {
+                    warn!("{}: Failed to update stats: {:?}", name, e);
+                }
+            }
+            exit_guard = thread_state
+                .cnd_var
+                .wait_timeout(exit_guard, ONE_MS)
+                .unwrap()
+                .0;
+
+            if *exit_guard {
+                break;
             }
         }
 
@@ -192,7 +205,8 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
     }
 }
 
-fn update_stats(api: &mut XdpApi, name: &str, socket: &mut XdpSocket, stats: &mut XSK_STATISTICS) -> Result<(), Fail> {
+#[allow(dead_code)]
+pub fn update_stats(api: &mut XdpApi, name: &str, socket: &mut XdpSocket, stats: &mut XSK_STATISTICS) -> Result<(), Fail> {
     let mut new_stats: XSK_STATISTICS = unsafe { std::mem::zeroed() };
     let mut len: u32 = std::mem::size_of::<XSK_STATISTICS>() as u32;
     socket.getsockopt(

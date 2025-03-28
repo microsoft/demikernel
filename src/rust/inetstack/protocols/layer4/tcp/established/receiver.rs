@@ -417,7 +417,7 @@ impl Receiver {
                         trace!("check_segment_in_window(): send ack on out-of-window segment");
                         Sender::send_ack(cb, layer3_endpoint);
                     }
-                    let cause: String = format!("packet outside of receive window");
+                    let cause: String = format!("packet segment outside of receive window; SEG.SEQ={:?}, RCV.NXT={:?}, RCV.NXT+WND={:?}", *seg_start, receive_next, after_receive_window);
                     error!("check_segment_in_window(): {}", cause);
                     return Err(Fail::new(libc::EBADMSG, &cause));
                 }
