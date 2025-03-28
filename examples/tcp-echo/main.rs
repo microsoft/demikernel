@@ -139,7 +139,7 @@ impl ProgramArguments {
             )
             .arg(
                 Arg::new("total-pps")
-                    .long("total-packets-per-second")
+                    .long("packets-per-second")
                     .value_parser(clap::value_parser!(u64))
                     .required(false)
                     .value_name("NUMBER")
@@ -202,7 +202,7 @@ impl ProgramArguments {
         if let Some(peer_type) = matches.get_one::<String>("peer") {
             let ref mut this = args;
             let peer_type = peer_type.to_string();
-            if peer_type != "server" && peer_type == "closed-loop-client" && peer_type != "open-loop-client" {
+            if peer_type != "server" && peer_type != "closed-loop-client" && peer_type != "open-loop-client" {
                 anyhow::bail!("invalid peer type");
             } else {
                 this.peer_type = peer_type;
