@@ -44,6 +44,7 @@ pub struct TcpEchoOpenLoopClient {
     start_timestamp: Instant,
     histogram: Histogram,
     packets_per_second: Option<u64>,
+    max_requests: Option<usize>,
 }
 
 //======================================================================================================================
@@ -51,7 +52,13 @@ pub struct TcpEchoOpenLoopClient {
 //======================================================================================================================
 
 impl TcpEchoOpenLoopClient {
-    pub fn new(libos: LibOS, bufsize: usize, remote: SocketAddr, packets_per_second: Option<u64>) -> Result<Self> {
+    pub fn new(
+        libos: LibOS,
+        bufsize: usize,
+        remote: SocketAddr,
+        packets_per_second: Option<u64>,
+        max_requests: Option<usize>,
+    ) -> Result<Self> {
         return Ok(Self {
             libos,
             bufsize,
@@ -63,6 +70,7 @@ impl TcpEchoOpenLoopClient {
             start_timestamp: Instant::now(),
             histogram: Histogram::new(7, 64)?,
             packets_per_second,
+            max_requests,
         });
     }
 
@@ -75,9 +83,10 @@ impl TcpEchoOpenLoopClient {
         let mut last_log_time: Instant = Instant::now();
         let mut last_send_time: Instant = Instant::now();
         let send_interval = self.compute_send_interval(nclients);
+        let mut total_rx = 0;
 
         println!(
-            "send_interval = {:?} ({} pps)",
+            "send_interval = {:?} ({} packets per second)",
             send_interval,
             self.packets_per_second.unwrap_or(DEFAULT_PACKETS_PER_SECOND)
         );
@@ -92,16 +101,22 @@ impl TcpEchoOpenLoopClient {
                 break;
             }
 
+            if let Some(max_requests) = self.max_requests {
+                if total_rx >= max_requests {
+                    println!("INFO: stopping, received max requests");
+                    break;
+                }
+            }
+
             // Dump statistics.
             if let Some(log_interval_seconds) = log_interval_seconds {
                 if last_log_time.elapsed() > Duration::from_secs(log_interval_seconds) {
                     let time_elapsed: f64 = (Instant::now() - last_log_time).as_secs() as f64;
-                    let rx_per_sec: f64 = self.num_rx as f64 / time_elapsed;
                     println!(
-                        "tx: {:?}, rx: {:?}, {:2?} rps, p50: {:?} ns, p90: {:?} ns, p99: {:?} ns, p99.9: {:?} ns, p99.99: {:?} ns, p99.999: {:?} ns, p99.9999: {:?} ns, p100: {:?} ns",
+                        "tx: {:?}, rx: {:?}, rps {:.0?}, p50: {:?} ns, p90: {:?} ns, p99: {:?} ns, p99.9: {:?} ns, p99.99: {:?} ns, p99.999: {:?} ns, p99.9999: {:?} ns, p100: {:?} ns",
                         self.num_tx,
                         self.num_rx,
-                        rx_per_sec,
+                        self.num_rx as f64 / time_elapsed,
                         self.histogram.percentile(50f64)?.unwrap().start(),
                         self.histogram.percentile(90f64)?.unwrap().start(),
                         self.histogram.percentile(99f64)?.unwrap().start(),
@@ -112,6 +127,7 @@ impl TcpEchoOpenLoopClient {
                         self.histogram.percentile(100f64)?.unwrap().start());
 
                     last_log_time = Instant::now();
+                    total_rx += self.num_rx;
                     self.num_rx = 0;
                     self.num_tx = 0;
                 }

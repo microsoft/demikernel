@@ -64,7 +64,7 @@ pub struct ProgramArguments {
     peer_type: String,
     /// Total packets per seconds used by open-loop client and denotes the total packets per second
     /// across all clients (nclients).
-    total_packets_per_second: Option<u64>,
+    packets_per_second: Option<u64>,
 }
 
 /// Associate functions for Program Arguments
@@ -138,7 +138,7 @@ impl ProgramArguments {
                     .help("Sets run mode for clients"),
             )
             .arg(
-                Arg::new("total-pps")
+                Arg::new("packets-per-second")
                     .long("packets-per-second")
                     .value_parser(clap::value_parser!(u64))
                     .required(false)
@@ -162,7 +162,7 @@ impl ProgramArguments {
             nthreads: None,
             log_interval: None,
             peer_type: "server".to_string(),
-            total_packets_per_second: None,
+            packets_per_second: None,
         };
 
         if let Some(run_mode) = matches.get_one::<String>("run-mode") {
@@ -209,9 +209,9 @@ impl ProgramArguments {
             }
         }
 
-        if let Some(total_pps) = matches.get_one::<u64>("total-pps") {
-            if *total_pps > 0 {
-                args.total_packets_per_second = Some(*total_pps);
+        if let Some(packets_per_second) = matches.get_one::<u64>("packets-per-second") {
+            if *packets_per_second > 0 {
+                args.packets_per_second = Some(*packets_per_second);
             }
         }
 
@@ -270,14 +270,15 @@ fn start_open_loop_client_thread(
     bufsize: usize,
     addr: SocketAddr,
     log_interval: Option<u64>,
-    total_packets_per_second: Option<u64>,
+    packets_per_second: Option<u64>,
+    max_requests: Option<usize>,
 ) -> Result<JoinHandle<Result<()>>> {
     Ok(thread::spawn(move || -> Result<()> {
         let libos: LibOS = match LibOS::new(libos_name, None) {
             Ok(libos) => libos,
             Err(e) => anyhow::bail!("failed to initialize libos: {:?}", e.cause),
         };
-        let mut c = TcpEchoOpenLoopClient::new(libos, bufsize, addr, total_packets_per_second)?;
+        let mut c = TcpEchoOpenLoopClient::new(libos, bufsize, addr, packets_per_second, max_requests)?;
         c.run_sequential(log_interval, nclients)
     }))
 }
@@ -329,7 +330,8 @@ fn main() -> Result<()> {
                     args.bufsize.ok_or(anyhow::anyhow!("missing buffer size"))?,
                     args.addr,
                     args.log_interval,
-                    args.total_packets_per_second,
+                    args.packets_per_second,
+                    args.nrequests,
                 ) {
                     threads.push(handle);
                 }
