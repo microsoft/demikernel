@@ -26,6 +26,7 @@ use crate::{
         fail::Fail,
         limits, logging,
         network::socket::option::SocketOption,
+        tracing::init_trace,
         types::{demi_callback_t, demi_metric_callback_t, demi_qresult_t, demi_sgarray_t},
         QDesc, QToken, SharedDemiRuntime,
     },
@@ -59,7 +60,7 @@ impl LibOS {
     pub fn new_ex(
         libos_name: LibOSName,
         _perf_callback: Option<demi_callback_t>,
-        _metric_callback: Option<demi_metric_callback_t>,
+        metric_callback: Option<demi_metric_callback_t>,
     ) -> Result<Self, Fail> {
         logging::initialize();
 
@@ -77,6 +78,10 @@ impl LibOS {
         if let Some(callback) = _perf_callback {
             set_callback(callback)
         };
+
+        if let Some(metric_callback) = metric_callback {
+            init_trace(metric_callback);
+        }
 
         let config: Config = Config::new(config_path)?;
         #[allow(unused_mut)]
