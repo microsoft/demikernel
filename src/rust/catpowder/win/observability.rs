@@ -159,11 +159,7 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
                     warn!("{}: Failed to update stats: {:?}", name, e);
                 }
             }
-            exit_guard = thread_state
-                .cnd_var
-                .wait_timeout(exit_guard, ONE_MS)
-                .unwrap()
-                .0;
+            exit_guard = thread_state.cnd_var.wait_timeout(exit_guard, ONE_MS).unwrap().0;
 
             if *exit_guard {
                 break;
@@ -189,8 +185,8 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
 
         METRICS.tx_packets.emit(total_tx_packets);
         METRICS.tx_bytes.emit(total_tx_bytes);
-        METRICS.rx_packet_rate.emit(tx_packets);
-        METRICS.rx_byte_rate.emit(tx_bytes);
+        METRICS.tx_packet_rate.emit(tx_packets);
+        METRICS.tx_byte_rate.emit(tx_bytes);
 
         METRICS.rx_packets.emit(total_rx_packets);
         METRICS.rx_bytes.emit(total_rx_bytes);
@@ -206,7 +202,12 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
 }
 
 #[allow(dead_code)]
-pub fn update_stats(api: &mut XdpApi, name: &str, socket: &mut XdpSocket, stats: &mut XSK_STATISTICS) -> Result<(), Fail> {
+pub fn update_stats(
+    api: &mut XdpApi,
+    name: &str,
+    socket: &mut XdpSocket,
+    stats: &mut XSK_STATISTICS,
+) -> Result<(), Fail> {
     let mut new_stats: XSK_STATISTICS = unsafe { std::mem::zeroed() };
     let mut len: u32 = std::mem::size_of::<XSK_STATISTICS>() as u32;
     socket.getsockopt(

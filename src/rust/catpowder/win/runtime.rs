@@ -158,14 +158,14 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
             if *flow == FlowState::SriovFlowEstablished {
                 vf_interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
-                me.stats.inc_tx(1, pkt_size as u32);
+                me.stats.inc_tx(pkt_size as u32, 1);
                 return Ok(());
             }
         }
 
         me.interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
 
-        me.stats.inc_tx(1, pkt_size as u32);
+        me.stats.inc_tx(pkt_size as u32, 1);
 
         Ok(())
     }
@@ -197,7 +197,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 })?;
 
                 if ret.is_full() {
-                    self.0.stats.inc_rx(rx_packets, rx_bytes);
+                    self.0.stats.inc_rx(rx_bytes, rx_packets);
                     return Ok(ret);
                 }
                 queue += 1;
@@ -218,7 +218,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             })?;
 
             if ret.is_full() {
-                self.0.stats.inc_rx(rx_packets, rx_bytes);
+                self.0.stats.inc_rx(rx_bytes, rx_packets);
                 return Ok(ret);
             }
             queue += 1;
