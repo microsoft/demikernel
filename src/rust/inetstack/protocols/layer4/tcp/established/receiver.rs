@@ -382,7 +382,7 @@ impl Receiver {
                 if *seg_end < receive_next {
                     // This is an entirely duplicate (i.e. old) segment.  ACK (if not RST) and drop.
                     if !header.rst {
-                        trace!("check_segment_in_window(): send ack on duplicate segment");
+                        trace!("check_segment_in_window(): send ack on duplicate segment seq_no: {:?}-{:?} current seq_no: {:?}", *seg_start, *seg_end, receive_next);
                         Sender::send_ack(cb, layer3_endpoint);
                     }
                     let cause: String = format!("duplicate packet");
