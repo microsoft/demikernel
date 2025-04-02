@@ -25,6 +25,7 @@ use crate::{
         memory::{DemiBuffer, MemoryRuntime},
         Runtime, SharedObject,
     },
+    timer,
 };
 use arrayvec::ArrayVec;
 use libc::c_void;
@@ -123,6 +124,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
     /// Transmits a packet.
     fn transmit(&mut self, flow: &mut FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+        timer!("catpowder::win::runtime::transmit");
         let pkt_size: usize = pkt.len();
         if pkt_size >= u16::MAX as usize {
             let cause = format!("packet is too large: {:?}", pkt_size);
@@ -149,6 +151,10 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                     // flow (when always_send_on_vf is false). This indicates the first time sending
                     // out on the VF. Since we expect the first packet to drop, we send this packet
                     // out on both interfaces.
+                    debug!(
+                        "transmit(): sending {} bytes on both interfaces, flow={:?}",
+                        pkt_size, flow as *const FlowState as usize
+                    );
                     if let Ok(_) = me.interface.tx_ring.transmit_copy(&mut me.api, &pkt) {
                         *flow = FlowState::SriovFlowEstablished;
                     }
@@ -172,6 +178,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        timer!("catpowder::win::runtime::receive");
         self.0.stats.update_poll_time();
 
         let mut ret: ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
@@ -262,6 +269,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 impl MemoryRuntime for SharedCatpowderRuntime {
     /// Allocates a scatter-gather array.
     fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+        timer!("catpowder::win::runtime::sgaalloc");
         // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
 
         // We can't allocate a zero-sized buffer.
