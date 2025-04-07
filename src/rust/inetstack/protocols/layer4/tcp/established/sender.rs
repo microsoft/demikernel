@@ -114,7 +114,13 @@ pub struct Sender {
 //======================================================================================================================
 
 impl Sender {
-    pub fn new(seq_no: SeqNumber, send_window: u32, send_window_scale_shift_bits: u8, mss: usize) -> Self {
+    pub fn new(
+        seq_no: SeqNumber,
+        receiver_seq_no: SeqNumber,
+        send_window: u32,
+        send_window_scale_shift_bits: u8,
+        mss: usize,
+    ) -> Self {
         Self {
             send_unacked: SharedAsyncValue::new(seq_no),
             unacked_queue: SharedAsyncQueue::with_capacity(MIN_UNACKED_QUEUE_SIZE_FRAMES),
@@ -125,7 +131,7 @@ impl Sender {
             fin_seq_no: None,
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
             send_window: SharedAsyncValue::new(send_window),
-            send_window_last_update_seq: seq_no,
+            send_window_last_update_seq: receiver_seq_no,
             send_window_last_update_ack: seq_no,
             send_window_scale_shift_bits,
             mss,
