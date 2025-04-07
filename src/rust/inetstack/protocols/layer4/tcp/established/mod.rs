@@ -135,6 +135,7 @@ impl SharedEstablishedSocket {
 
         let sender: Sender = Sender::new(
             sender_seq_no,
+            receiver_seq_no,
             sender_window_size_bytes,
             sender_window_scale_bits,
             sender_mss,

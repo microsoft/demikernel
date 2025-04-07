@@ -114,19 +114,25 @@ pub struct Sender {
 //======================================================================================================================
 
 impl Sender {
-    pub fn new(seq_no: SeqNumber, send_window: u32, send_window_scale_shift_bits: u8, mss: usize) -> Self {
+    pub fn new(
+        local_seq_no: SeqNumber,
+        remote_seq_no: SeqNumber,
+        send_window: u32,
+        send_window_scale_shift_bits: u8,
+        mss: usize,
+    ) -> Self {
         Self {
-            send_unacked: SharedAsyncValue::new(seq_no),
+            send_unacked: SharedAsyncValue::new(local_seq_no),
             unacked_queue: SharedAsyncQueue::with_capacity(MIN_UNACKED_QUEUE_SIZE_FRAMES),
             retransmit_deadline_time_secs: SharedAsyncValue::new(None),
             rto_calculator: RtoCalculator::new(),
-            send_next_seq_no: SharedAsyncValue::new(seq_no),
-            unsent_next_seq_no: seq_no,
+            send_next_seq_no: SharedAsyncValue::new(local_seq_no),
+            unsent_next_seq_no: local_seq_no,
             fin_seq_no: None,
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
             send_window: SharedAsyncValue::new(send_window),
-            send_window_last_update_seq: seq_no,
-            send_window_last_update_ack: seq_no,
+            send_window_last_update_seq: remote_seq_no,
+            send_window_last_update_ack: local_seq_no,
             send_window_scale_shift_bits,
             mss,
         }
