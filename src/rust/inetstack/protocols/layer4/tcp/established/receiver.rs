@@ -129,6 +129,10 @@ impl Receiver {
             (self.window_scale_shift_bits == 0 && bytes_unread <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
                 || bytes_unread <= MAX_WINDOW_SIZE_WITH_SCALING
         );
+        debug!(
+            "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
+            bytes_unread, self.buffer_size_bytes
+        );
         self.buffer_size_bytes - bytes_unread
     }
 
