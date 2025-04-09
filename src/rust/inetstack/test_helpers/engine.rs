@@ -67,8 +67,8 @@ impl SharedEngine {
         for _ in 0..MAX_LOOP_ITERATIONS {
             // Run all foreground tasks until they are done and then run the background tasks once.
             // This function should either time out or complete a task (which will be stored for later).
-            match self.get_runtime().wait_next_n(|_, _, _| false, Duration::ZERO) {
-                Ok(()) => (),
+            match self.get_runtime().wait_any(&[], Duration::ZERO) {
+                Ok(_) => unreachable!("Should not have completed a task without qtokens passed in"),
                 Err(e) => assert_eq!(e.errno, libc::ETIMEDOUT),
             };
             match self.layer1_endpoint.pop_all_frames() {
