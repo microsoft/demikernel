@@ -20,8 +20,9 @@ impl IsnGenerator {
     }
 
     #[cfg(test)]
-    pub fn generate(&mut self, _local: &SocketAddrV4, _remote: &SocketAddrV4) -> SeqNumber {
-        SeqNumber::from(0)
+    /// Use the local port as the initial sequence number
+    pub fn generate(&mut self, local: &SocketAddrV4, _remote: &SocketAddrV4) -> SeqNumber {
+        SeqNumber::from(local.port() as u32)
     }
 
     #[cfg(not(test))]

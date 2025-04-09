@@ -1,21 +1,21 @@
 // Test for blocking close.
 
 // Establish a connection.
- +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
++.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
 +.2 connect(500, ..., ...) = 0
 
-// Send SYN packet.
-+.0 TCP > S seq 0(0) win 65535 <mss 1450, wscale 0>
+// Send SYN packet. Starting sequence number is last ephemeral port.
++.0 TCP > S seq 65535(0) win 65535 <mss 1450, wscale 0>
 // Receive SYN-ACK packet.
-+.1 TCP < S. seq 0(0) ack 1 win 65535 <mss 1450, wscale 0>
++.1 TCP < S. seq 1000(0) ack 65536 win 65535 <mss 1450, wscale 0>
 
 // Succeed to establish connection.
 +.0 wait(500, ...) = 0
 
 // Send ACK on SYN-ACK packet.
-+.0 TCP > . seq 1(0) ack 1 win 65535 <nop>
++.0 TCP > . seq 65536(0) ack 1001 win 65535 <nop>
 
 // Succeed to disconnect.
 +.1 close(500) = 0
-+.0 TCP > F. seq 1(0) ack 1 win 65535 <nop>
-+.1 TCP < . seq 1(0) ack 2 win 65535 <nop>
++.0 TCP > F. seq 65536(0) ack 1001 win 65535 <nop>
++.1 TCP < . seq 1001(0) ack 65537 win 65535 <nop>
