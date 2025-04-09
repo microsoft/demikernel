@@ -380,7 +380,7 @@ impl SharedPassiveSocket {
                     return Err(Fail::new(EBADMSG, &cause));
                 },
                 // We got a duplicate SYN, so ignore it.
-                (_, tcp_hdr, _) if tcp_hdr.syn && tcp_hdr.ack_num == local_isn => {
+                (_, tcp_hdr, _) if tcp_hdr.syn && tcp_hdr.seq_num == remote_isn => {
                     debug!("Received duplicate SYN: {:?}", tcp_hdr)
                 },
                 // We didn't get any kind of expected packet.
