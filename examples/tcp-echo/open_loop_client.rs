@@ -86,14 +86,16 @@ impl TcpEchoOpenLoopClient {
         let mut total_rx = 0;
 
         println!(
-            "send_interval = {:?} ({} packets per second)",
+            "Send_interval = {:?} ({} packets per second)",
             send_interval,
             self.packets_per_second.unwrap_or(DEFAULT_PACKETS_PER_SECOND)
         );
 
         if log_interval_seconds.is_some() {
-            println!("logging every {:?} seconds", log_interval_seconds.unwrap());
+            println!("Logging interval in seconds: {:?}", log_interval_seconds.unwrap());
         }
+
+        println!("HEADERS:tx,rx,rps,p50,p90,p99,p99.9,p99.99,p99.999,p99.9999,p100");
 
         loop {
             if self.qdesc_to_buffer_map.len() == 0 {
@@ -112,19 +114,21 @@ impl TcpEchoOpenLoopClient {
             if let Some(log_interval_seconds) = log_interval_seconds {
                 if last_log_time.elapsed() > Duration::from_secs(log_interval_seconds) {
                     let time_elapsed: f64 = (Instant::now() - last_log_time).as_secs() as f64;
+
                     println!(
-                        "tx: {:?}, rx: {:?}, rps {:.0?}, p50: {:?} ns, p90: {:?} ns, p99: {:?} ns, p99.9: {:?} ns, p99.99: {:?} ns, p99.999: {:?} ns, p99.9999: {:?} ns, p100: {:?} ns",
+                        "METRICS:{:?},{:?},{:.0?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
                         self.num_tx,
                         self.num_rx,
                         self.num_rx as f64 / time_elapsed,
-                        self.histogram.percentile(50f64)?.unwrap().start(),
-                        self.histogram.percentile(90f64)?.unwrap().start(),
-                        self.histogram.percentile(99f64)?.unwrap().start(),
-                        self.histogram.percentile(99.9f64)?.unwrap().start(),
-                        self.histogram.percentile(99.99f64)?.unwrap().start(),
-                        self.histogram.percentile(99.999f64)?.unwrap().start(),
-                        self.histogram.percentile(99.9999f64)?.unwrap().start(),
-                        self.histogram.percentile(100f64)?.unwrap().start());
+                        self.histogram.percentile(50.0)?.unwrap().start(),
+                        self.histogram.percentile(90.0)?.unwrap().start(),
+                        self.histogram.percentile(99.0)?.unwrap().start(),
+                        self.histogram.percentile(99.9)?.unwrap().start(),
+                        self.histogram.percentile(99.99)?.unwrap().start(),
+                        self.histogram.percentile(99.999)?.unwrap().start(),
+                        self.histogram.percentile(99.9999)?.unwrap().start(),
+                        self.histogram.percentile(100.0)?.unwrap().start()
+                    );
 
                     last_log_time = Instant::now();
                     total_rx += self.num_rx;
@@ -281,7 +285,7 @@ impl TcpEchoOpenLoopClient {
         // Process incoming PARTIAL packet that may be left in the buffer.
         let nbytes: usize = incoming_len % self.bufsize;
         if nbytes > 0 {
-            println!("nbytes={:?}", nbytes);
+            println!("Received partial packet with {:?} bytes", nbytes);
             let b: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr.add(npkts * self.bufsize), nbytes) };
             buf[*offset..(*offset + nbytes)].copy_from_slice(b);
             *offset += nbytes;
