@@ -107,7 +107,7 @@ char *rte_pktmbuf_prepend_(struct rte_mbuf *m, uint16_t len)
 struct rte_mbuf *rte_mbuf_from_indirect_(struct rte_mbuf *mi)
 {
     return rte_mbuf_from_indirect(mi);
-} 	
+}
 
 void rte_pktmbuf_detach_(struct rte_mbuf *m)
 {

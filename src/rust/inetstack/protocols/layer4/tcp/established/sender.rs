@@ -116,7 +116,7 @@ pub struct Sender {
 impl Sender {
     pub fn new(
         local_seq_no: SeqNumber,
-        receiver_seq_no: SeqNumber,
+        remote_seq_no: SeqNumber,
         send_window: u32,
         send_window_scale_shift_bits: u8,
         mss: usize,
@@ -131,7 +131,7 @@ impl Sender {
             fin_seq_no: None,
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
             send_window: SharedAsyncValue::new(send_window),
-            send_window_last_update_seq: receiver_seq_no,
+            send_window_last_update_seq: remote_seq_no,
             send_window_last_update_ack: local_seq_no,
             send_window_scale_shift_bits,
             mss,
@@ -231,7 +231,7 @@ impl Sender {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
-        trace!("push(): unsent_queue.len() = {:?}", cb.sender.unsent_queue.len());
+        trace!("push(): total unsent segments = {:?}", cb.sender.unsent_queue.len());
 
         // Place the buffer in the unsent queue.
         cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
@@ -240,7 +240,7 @@ impl Sender {
         }
         if buf.len() > 0 {
             if cb.sender.unacked_queue.len() > 0 {
-                trace!("push(): unacked_queue.len() = {:?}", cb.sender.unacked_queue.len());
+                trace!("push(): total unacked segments {:?}", cb.sender.unacked_queue.len());
             }
             METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);
 

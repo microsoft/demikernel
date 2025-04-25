@@ -9,8 +9,9 @@ raw_socket:
   xdp_interface_index: 0
   xdp_cohost_mode: false
   xdp_always_poke_tx: false
-  # If true, will send all packets out on the VF interface; otherwise, will deduce the interface
-  # based on the most recently received packet for the flow.
+  # If true, will send all packets out on the interface identified by xdp_vf_interface_index;
+  # otherwise, or if xdp_vf_interface_index is not set, will send packets out on the interface
+  # identified by xdp_interface_index.
   xdp_always_send_on_vf: false
   # Enable the following for XDP cohosting mode, or override in environment:
   # xdp_tcp_ports: [80, 443]

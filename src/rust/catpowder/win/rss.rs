@@ -18,6 +18,8 @@ use crate::{catpowder::win::api::XdpApi, catpowder::win::ring::TxRing, runtime::
 // Functions
 //======================================================================================================================
 
+/// Returns the number of processor cores on the system. This is used to determine the number of RSS queues that can be
+/// created.
 fn count_processor_cores() -> Result<usize, Fail> {
     let mut proc_info: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX = SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX::default();
     let mut buffer_len: u32 = 0;

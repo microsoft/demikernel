@@ -349,8 +349,6 @@ impl DemiBuffer {
             None => return None,
         };
 
-        //trace!("new_in_pool: buffer = {:?}, pool = {:?}", buffer, pool.pool().as_ref);
-
         let (mut buffer, pool): (NonNull<[MaybeUninit<u8>]>, Rc<MemoryPool>) = PoolBuf::into_raw(buffer);
 
         // Safety: the buffer size and alignment requirements are enforced by BufferPool.

@@ -183,18 +183,18 @@ impl TxRing {
         Ok(copy)
     }
 
+    #[allow(dead_code)]
     pub fn transmit_copy(&mut self, api: &mut XdpApi, buf: &DemiBuffer) -> Result<(), Fail> {
         self.transmit_buffer(api, self.copy_into_buf(buf)?)
     }
 
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
-        // let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
-        //     trace!("copying buffer to umem region");
-        //     self.copy_into_buf(&buf)?
-        // } else {
-        //     buf
-        // };
-        let buf = self.copy_into_buf(&buf)?;
+        let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
+            trace!("copying buffer to umem region");
+            self.copy_into_buf(&buf)?
+        } else {
+            buf
+        };
 
         let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
         trace!(

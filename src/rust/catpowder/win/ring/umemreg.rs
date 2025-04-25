@@ -57,36 +57,37 @@ impl UmemReg {
         // XDP requires that buffers are contiguous without padding. So here we grow the buffer to
         // ensure we are not padding.
         let real_last_page_bytes: usize = real_chunk_size % page_size.get();
-        let (pool, chunk_size): (BufferPool, u16) =
-            if real_chunk_size % pool.pool().layout().align() != 0 || page_size.get() % real_last_page_bytes != 0 {
-                // Take the following example:
-                // Chunk size = 1500 (standard MTU), page size = 4096 (standard page size).
-                // DemiBuffers add 128 bytes of overhead and align to 64 byte boundaries (cache line)
-                // real_chunk_size = 1628
-                // aligned_chunk_size = 1664 (aligned to 64 bytes)
-                // Two buffers span 3328 bytes, which leaves 768 bytes left in the page. Since
-                // BufferPool tries not span pages, we have to assign these 768 bytes into the two
-                // buffers, giving us 2048 bytes per buffer.
-                // This means we have to grow our original chunk size by 2048 - 1628 = 420 bytes.
-                let headroom_bytes: usize = real_chunk_size - chunk_size.get() as usize;
-                let old_last_page_bytes: usize = chunk_size.get() as usize % page_size.get();
+        let (pool, chunk_size): (BufferPool, u16) = if real_chunk_size % pool.pool().layout().align() != 0
+            || (real_last_page_bytes > 0 && page_size.get() % real_last_page_bytes != 0)
+        {
+            // Take the following example:
+            // Chunk size = 1500 (standard MTU), page size = 4096 (standard page size).
+            // DemiBuffers add 128 bytes of overhead and align to 64 byte boundaries (cache line)
+            // real_chunk_size = 1628
+            // aligned_chunk_size = 1664 (aligned to 64 bytes)
+            // Two buffers span 3328 bytes, which leaves 768 bytes left in the page. Since
+            // BufferPool tries not span pages, we have to assign these 768 bytes into the two
+            // buffers, giving us 2048 bytes per buffer.
+            // This means we have to grow our original chunk size by 2048 - 1628 = 420 bytes.
+            let headroom_bytes: usize = real_chunk_size - chunk_size.get() as usize;
+            let old_last_page_bytes: usize = chunk_size.get() as usize % page_size.get();
 
-                let aligned_real_chunk_size: usize =
-                    real_chunk_size + (pool.pool().layout().align() - (real_chunk_size % pool.pool().layout().align()));
-                let aligned_real_last_page_bytes: usize = aligned_real_chunk_size % page_size.get();
-                let aligned_real_last_page_bytes: usize = aligned_real_last_page_bytes.next_power_of_two();
+            let aligned_real_chunk_size: usize =
+                real_chunk_size + (pool.pool().layout().align() - (real_chunk_size % pool.pool().layout().align()));
+            let aligned_real_last_page_bytes: usize = aligned_real_chunk_size % page_size.get();
+            let aligned_real_last_page_bytes: usize = aligned_real_last_page_bytes.next_power_of_two();
 
-                let chunk_diff: usize = aligned_real_last_page_bytes - headroom_bytes - old_last_page_bytes;
-                let new_chunk_size: u16 = chunk_size.get() + chunk_diff as u16;
+            let chunk_diff: usize = aligned_real_last_page_bytes - headroom_bytes - old_last_page_bytes;
+            let new_chunk_size: u16 = chunk_size.get() + chunk_diff as u16;
 
-                trace!("growing chunk size from {} to {}", chunk_size.get(), new_chunk_size);
+            trace!("growing chunk size from {} to {}", chunk_size.get(), new_chunk_size);
 
-                let pool: BufferPool =
-                    BufferPool::new(new_chunk_size).map_err(|_| Fail::new(libc::EINVAL, "bad buffer size"))?;
-                (pool, new_chunk_size)
-            } else {
-                (pool, chunk_size.get())
-            };
+            let pool: BufferPool =
+                BufferPool::new(new_chunk_size).map_err(|_| Fail::new(libc::EINVAL, "bad buffer size"))?;
+            (pool, new_chunk_size)
+        } else {
+            (pool, chunk_size.get())
+        };
 
         let reserve_pool: Option<BufferPool> = if reserve_count > 0 {
             let reserve_pool: BufferPool =

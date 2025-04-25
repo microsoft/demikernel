@@ -41,13 +41,22 @@ pub struct SharedCatpowderRuntime(SharedObject<CatpowderRuntime>);
 
 /// The inner state of the Catpowder runtime.
 struct CatpowderRuntime {
+    /// Object exposing XDP API.
     api: XdpApi,
+
+    /// Network interface.
     interface: Interface,
+
+    /// Virtual function interface (if any).
     vf_interface: Option<Interface>,
+
+    /// Whether to use the VF interface for transmission (true) or the main interface (false).
     always_send_on_vf: bool,
 
+    /// State required to manage conhosting with other applications.
     cohosting_mode: CohostingMode,
 
+    /// Statistics for the runtime.
     stats: CatpowderStats,
 }
 

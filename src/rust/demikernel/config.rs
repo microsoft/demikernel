@@ -98,7 +98,7 @@ mod raw_socket_config {
     #[cfg(target_os = "windows")]
     pub const XDP_RESERVED_PORT_COUNT: &str = "xdp_reserved_port_count";
 
-    // The number of ports to reserve in the Windows kernel for use by XDP.
+    // Indicate whether we are reserving UDP or TCP ports in the Windows kernel for use by XDP.
     #[cfg(target_os = "windows")]
     pub const XDP_RESERVED_PORT_PROTOCOL: &str = "xdp_reserved_port_protocol";
 

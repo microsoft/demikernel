@@ -26,17 +26,20 @@ use crate::{
 // Constants
 //======================================================================================================================
 /// The minimum latency between polls before we start worrying about it.
-const MIN_LATENCY_IOTA: u32 = 1000;
+const MIN_LATENCY_IOTA_MICROS: u32 = 1000;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-/// State for the monitor thread.
+/// State for the monitor thread. This object is shared between the monitor thread and the main thread.
 struct MonitorThreadState {
+    /// Flag to indicate whether the thread should exit.
     exit_mtx: Mutex<bool>,
+    /// Condition variable to signal the thread to exit.
     cnd_var: Condvar,
-    max_poll_latency: AtomicU32,
+    /// Maximum latency between calls to poll in microseconds.
+    max_poll_latency_micros: AtomicU32,
     tx_packets: AtomicU32,
     tx_bytes: AtomicU32,
     rx_packets: AtomicU32,
@@ -45,11 +48,16 @@ struct MonitorThreadState {
 
 unsafe impl Send for MonitorThreadState {}
 
+/// A struct to manage collecting, monitoring, and reporting of statistics for the Catpowder runtime.
 pub struct CatpowderStats {
+    /// The last time we polled the runtime for send/receivable packets.
     last_poll: Instant,
-    max_poll_latency: u32,
+    /// A field used by the libos thread to store the maximum poll latency in microseconds.
+    max_poll_latency_micros: u32,
 
+    /// Reference to the thread state used to communicate with the monitor thread.
     thread_state: Arc<MonitorThreadState>,
+    /// The thread that monitors and reports statistics periodically.
     monitor_thread: Option<JoinHandle<()>>,
 }
 
@@ -69,7 +77,7 @@ impl CatpowderStats {
         let thread_state: Arc<MonitorThreadState> = Arc::<MonitorThreadState>::new(MonitorThreadState {
             exit_mtx: Mutex::new(false),
             cnd_var: Condvar::new(),
-            max_poll_latency: AtomicU32::new(0),
+            max_poll_latency_micros: AtomicU32::new(0),
             tx_packets: AtomicU32::new(0),
             tx_bytes: AtomicU32::new(0),
             rx_packets: AtomicU32::new(0),
@@ -84,7 +92,7 @@ impl CatpowderStats {
 
         Ok(Self {
             last_poll: global_get_time(),
-            max_poll_latency: 0,
+            max_poll_latency_micros: 0,
             thread_state,
             monitor_thread: Some(monitor_thread),
         })
@@ -97,25 +105,25 @@ impl CatpowderStats {
         // Safety: this is the only place this member is modified, and only one thread can be here.
         let last_poll: Instant = std::mem::replace(&mut self.last_poll, now);
 
-        let poll_latency: u32 = now.duration_since(last_poll).as_micros() as u32;
+        let poll_latency_micros: u32 = now.duration_since(last_poll).as_micros() as u32;
 
         // NB only one thread can be in this method, so we're only synchronizing with the monitor
         // thread, which will occasionally reset the value.
-        if poll_latency > MIN_LATENCY_IOTA {
-            if poll_latency > self.max_poll_latency {
+        if poll_latency_micros > MIN_LATENCY_IOTA_MICROS {
+            if poll_latency_micros > self.max_poll_latency_micros {
                 self.thread_state
-                    .max_poll_latency
-                    .store(poll_latency, Ordering::Release);
-                self.max_poll_latency = poll_latency;
+                    .max_poll_latency_micros
+                    .store(poll_latency_micros, Ordering::Release);
+                self.max_poll_latency_micros = poll_latency_micros;
             } else {
-                if let Ok(_) = self.thread_state.max_poll_latency.compare_exchange(
+                if let Ok(_) = self.thread_state.max_poll_latency_micros.compare_exchange(
                     0,
-                    poll_latency,
+                    poll_latency_micros,
                     Ordering::AcqRel,
                     Ordering::Acquire,
                 ) {
                     // This indicates that the monitor thread reset the value.
-                    self.max_poll_latency = poll_latency;
+                    self.max_poll_latency_micros = poll_latency_micros;
                 }
             }
         }
@@ -136,6 +144,7 @@ impl CatpowderStats {
 // Functions
 //======================================================================================================================
 
+/// The thread that monitors and reports statistics periodically.
 #[allow(unused_mut, unused_variables)]
 fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thread_state: Arc<MonitorThreadState>) {
     const DEFAULT_STATS: XSK_STATISTICS = XSK_STATISTICS {
@@ -166,12 +175,12 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
             }
         }
 
-        let max_latency: u32 = thread_state
-            .max_poll_latency
+        let max_latency_micros: u32 = thread_state
+            .max_poll_latency_micros
             .swap(0, std::sync::atomic::Ordering::AcqRel);
-        if max_latency > MIN_LATENCY_IOTA {
-            METRICS.xdp_high_poll_latency.emit(max_latency);
-            debug!("max latency between polls last interval is {}", max_latency);
+        if max_latency_micros > MIN_LATENCY_IOTA_MICROS {
+            METRICS.xdp_high_poll_latency.emit(max_latency_micros);
+            debug!("max latency between polls last interval is {}", max_latency_micros);
         }
 
         let tx_packets: u32 = thread_state.tx_packets.swap(0, Ordering::Relaxed);
@@ -201,6 +210,7 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
     }
 }
 
+/// Updates the statistics for the given socket.
 #[allow(dead_code)]
 pub fn update_stats(
     api: &mut XdpApi,
