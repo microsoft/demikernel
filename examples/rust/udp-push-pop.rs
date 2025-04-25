@@ -91,7 +91,8 @@ impl UdpServer {
     }
 
     fn run(&mut self, local: SocketAddr, fill_char: u8, num_sends: usize) -> Result<()> {
-        let num_receives: usize = (8 * num_sends) / 128;
+        // Wait for half the packets that we sent. We chose this number randomly to account for lost packets.
+        let num_receives: usize = num_sends / 2;
 
         match self.libos.bind(self.sockqd, local) {
             Ok(()) => (),
@@ -128,8 +129,6 @@ impl UdpServer {
 
             println!("pop ({:?})", i);
         }
-
-        // TODO: close socket when we get close working properly in catnip.
         Ok(())
     }
 }
@@ -202,8 +201,6 @@ impl UdpClient {
 
             println!("push ({:?})", i);
         }
-
-        // TODO: close socket when we get close working properly in catnip.
         Ok(())
     }
 }

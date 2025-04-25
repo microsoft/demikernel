@@ -87,6 +87,8 @@ impl TcpEchoClient {
         nrequests: Option<usize>,
         connect_handler: fn(&mut TcpEchoClient, &demi_qresult_t) -> Result<()>,
     ) -> Result<()> {
+        println!("HEADERS:tx,rx,rps,p50,p90,p99,p99.9,p99.99,p99.999,p99.9999,p100");
+
         let mut last_log: Instant = Instant::now();
 
         loop {
@@ -113,14 +115,22 @@ impl TcpEchoClient {
                     let time_elapsed: f64 = (Instant::now() - last_log).as_secs() as f64;
                     let rps: f64 = self.nechoed as f64 / time_elapsed;
                     println!(
-                        "INFO: {:?} requests, {:2?} rps, p50 {:?} ns, p99 {:?} ns",
+                        "METRICS:{:?},{:?},{:2?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
+                        self.npushed,
                         self.nechoed,
                         rps,
-                        self.stats.percentile(0.50)?.unwrap().start(),
-                        self.stats.percentile(0.99)?.unwrap().start(),
+                        self.stats.percentile(50.0)?.unwrap().start(),
+                        self.stats.percentile(90.0)?.unwrap().start(),
+                        self.stats.percentile(99.0)?.unwrap().start(),
+                        self.stats.percentile(99.9)?.unwrap().start(),
+                        self.stats.percentile(99.99)?.unwrap().start(),
+                        self.stats.percentile(99.999)?.unwrap().start(),
+                        self.stats.percentile(99.9999)?.unwrap().start(),
+                        self.stats.percentile(100.0)?.unwrap().start(),
                     );
                     last_log = Instant::now();
                     self.nechoed = 0;
+                    self.npushed = 0;
                 }
             }
 

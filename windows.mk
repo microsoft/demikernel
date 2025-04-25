@@ -126,7 +126,10 @@ CARGO_FEATURES = $(CARGO_FEATURES) $(FEATURES)
 # Targets
 #=======================================================================================================================
 
-all: all-libs all-tests all-examples
+all: init all-libs all-tests all-examples
+
+init:
+	git config --local core.hooksPath .githooks
 
 doc:
 	$(CARGO) doc $(FLAGS) --no-deps

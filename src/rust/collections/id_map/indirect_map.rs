@@ -21,6 +21,7 @@ const DEFAULT_ID: u64 = 500;
 //======================================================================================================================
 
 impl<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Copy> Id64Map<E, I> {
+    #[allow(unused)]
     pub fn get(&self, external_id: &E) -> Option<I> {
         self.ids.get(external_id).copied()
     }

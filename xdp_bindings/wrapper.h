@@ -50,66 +50,49 @@ HRESULT
 _XdpLoadApi(
     _In_ UINT32 XdpApiVersion,
     _Out_ XDP_LOAD_API_CONTEXT *XdpLoadApiContext,
-    _Out_ CONST XDP_API_TABLE **XdpApiTable
-    );
+    _Out_ CONST XDP_API_TABLE **XdpApiTable);
 
-VOID
-_XdpUnloadApi(
+VOID _XdpUnloadApi(
     _In_ XDP_LOAD_API_CONTEXT XdpLoadApiContext,
-    _In_ CONST XDP_API_TABLE *XdpApiTable
-    );
+    _In_ CONST XDP_API_TABLE *XdpApiTable);
 
-VOID
-_XskRingInitialize(
+VOID _XskRingInitialize(
     _Out_ XSK_RING *Ring,
-    _In_ const XSK_RING_INFO *RingInfo
-    );
+    _In_ const XSK_RING_INFO *RingInfo);
 
 UINT32
 _XskRingConsumerReserve(
     _In_ XSK_RING *Ring,
     _In_ UINT32 MaxCount,
-    _Out_ UINT32 *Index
-    );
+    _Out_ UINT32 *Index);
 
 UINT32
 _XskRingProducerReserve(
     _In_ XSK_RING *Ring,
     _In_ UINT32 MaxCount,
-    _Out_ UINT32 *Index
-    );
+    _Out_ UINT32 *Index);
 
-
-VOID
-_XskRingConsumerRelease(
+VOID _XskRingConsumerRelease(
     _Inout_ XSK_RING *Ring,
-    _In_ UINT32 Count
-    );
+    _In_ UINT32 Count);
 
-
-VOID
-_XskRingProducerSubmit(
+VOID _XskRingProducerSubmit(
     _Inout_ XSK_RING *Ring,
-    _In_ UINT32 Count
-    );
+    _In_ UINT32 Count);
 
 VOID *
 _XskRingGetElement(
     _In_ const XSK_RING *Ring,
-    _In_ UINT32 Index
-    );
+    _In_ UINT32 Index);
 
 BOOLEAN
 _XskRingProducerNeedPoke(
-    _In_ const XSK_RING *Ring
-    );
+    _In_ const XSK_RING *Ring);
 
 BOOLEAN
 _XskRingError(
-    _In_ const XSK_RING *Ring
-    );
+    _In_ const XSK_RING *Ring);
 
 UINT32
 _XskRingGetFlags(
-    _In_ const XSK_RING *Ring
-    );
+    _In_ const XSK_RING *Ring);

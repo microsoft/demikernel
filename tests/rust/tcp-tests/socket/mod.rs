@@ -126,7 +126,7 @@ fn create_socket_using_unsupported_type(libos: &mut LibOS) -> Result<()> {
     let socket_types: Vec<libc::c_int> = vec![
         libc::SOCK_DCCP,
         // libc::SOCK_DGRAM,
-        libc::SOCK_PACKET,
+        libc::AF_PACKET,
         libc::SOCK_RAW,
         libc::SOCK_RDM,
         libc::SOCK_SEQPACKET,

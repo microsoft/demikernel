@@ -129,6 +129,10 @@ impl Receiver {
             (self.window_scale_shift_bits == 0 && bytes_unread <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
                 || bytes_unread <= MAX_WINDOW_SIZE_WITH_SCALING
         );
+        debug!(
+            "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
+            bytes_unread, self.buffer_size_bytes
+        );
         self.buffer_size_bytes - bytes_unread
     }
 
@@ -311,7 +315,6 @@ impl Receiver {
         // Send an ack on every FIN. We do this separately here because if the FIN is in order, we ack it after the
         // previous line, otherwise we do not ack the FIN.
         if header.fin {
-            trace!("Acking FIN");
             Sender::send_ack(cb, layer3_endpoint)
         }
 
@@ -324,7 +327,7 @@ impl Receiver {
         } else if has_data {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
             cb.receiver.ack_deadline_time_secs.set(None);
-            trace!("process_packet(): sending ack on second packet");
+            trace!("process_packet(): sending ack before deadline because another packet arrived");
             Sender::send_ack(cb, layer3_endpoint);
         }
 
@@ -417,7 +420,10 @@ impl Receiver {
                         trace!("check_segment_in_window(): send ack on out-of-window segment");
                         Sender::send_ack(cb, layer3_endpoint);
                     }
-                    let cause: String = format!("packet segment outside of receive window; SEG.SEQ={:?}, RCV.NXT={:?}, RCV.NXT+WND={:?}", *seg_start, receive_next, after_receive_window);
+                    let cause: String = format!(
+                        "packet segment outside of receive window; SEG.SEQ={:?}, RCV.NXT={:?}, RCV.NXT+WND={:?}",
+                        *seg_start, receive_next, after_receive_window
+                    );
                     error!("check_segment_in_window(): {}", cause);
                     return Err(Fail::new(libc::EBADMSG, &cause));
                 }
@@ -461,8 +467,10 @@ impl Receiver {
             return Ok(());
         }
         info!("Received RST: remote reset connection");
+        if cb.receiver.fin_seq_no.get().is_none() {
+            cb.receiver.push_fin();
+        }
         cb.state = State::Closed;
-        cb.receiver.push_fin();
         return Err(Fail::new(libc::ECONNRESET, "remote reset connection"));
     }
 
@@ -522,7 +530,6 @@ impl Receiver {
                 "Received out-of-order segment; out_of_order_frames.len() = {:?}",
                 cb.receiver.out_of_order_frames.len()
             );
-
             debug_assert_ne!(seg_len, 0);
             // This segment is out-of-order.  If it carries data, we should store it for later processing
             // after the "hole" in the sequence number space has been filled.

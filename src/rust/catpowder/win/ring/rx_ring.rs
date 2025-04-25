@@ -37,9 +37,12 @@ pub struct RxRing {
     /// A ring for returning receive buffers to the kernel.
     rx_fill_ring: XdpRing<u64>,
     /// Underlying XDP socket.
-    socket: XdpSocket, // NOTE: we keep this here to prevent the socket from being dropped.
+    /// NB this must be kept alive until the libOS is destroyed.
+    socket: XdpSocket,
     /// Underlying XDP program.
-    _program: Option<XdpProgram>, // NOTE: we keep this here to prevent the program from being dropped.
+    /// NB this must be kept alive until the libOS is destroyed.
+    _program: Option<XdpProgram>,
+    /// The ruleset used to create the program. Contains fields referenced by the XdpProgram.
     _rules: Option<Rc<RuleSet>>,
 }
 

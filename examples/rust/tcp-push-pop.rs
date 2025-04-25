@@ -3,7 +3,8 @@
 
 /// This test exercises the following behavior: A server and client pair where the client is only sending data and the
 /// server is only receiving. We test this behavior because we want to make sure that the server correctly acknowledges
-/// the sent data, even though there is no data flowing the other direction.
+/// the sent data, even though there is no data flowing the other direction. We also fill the buffer with a sequence
+/// number on each iteration to be sure that packets are flowing
 //======================================================================================================================
 // Imports
 //======================================================================================================================
@@ -28,34 +29,35 @@ pub const SOCK_STREAM: i32 = libc::SOCK_STREAM;
 // Constants
 //======================================================================================================================
 
-const BUFSIZE_BYTES: usize = 64;
-const FILL_CHAR: u8 = 0x65;
-const ITERATIONS: usize = 10;
+const BUF_SIZE_BYTES: usize = 64;
+const ITERATIONS: usize = u8::MAX as usize;
 const TIMEOUT_SECONDS: Duration = Duration::from_secs(256);
 
-fn mksga(libos: &mut LibOS, size: usize, value: u8) -> Result<demi_sgarray_t> {
-    let sga: demi_sgarray_t = match libos.sgaalloc(size) {
+fn mksga(libos: &mut LibOS, value: u8) -> Result<demi_sgarray_t> {
+    let sga: demi_sgarray_t = match libos.sgaalloc(BUF_SIZE_BYTES) {
         Ok(sga) => sga,
         Err(e) => anyhow::bail!("failed to allocate scatter-gather array: {:?}", e),
     };
 
+    // Create pointer for filling the array.
+    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
     // Ensure that allocated array has the requested size.
-    if sga.sga_segs[0].sgaseg_len as usize != size {
+    if sga.sga_segs[0].sgaseg_len as usize != BUF_SIZE_BYTES || ptr.is_null() {
         freesga(libos, sga);
         let seglen: usize = sga.sga_segs[0].sgaseg_len as usize;
         anyhow::bail!(
             "failed to allocate scatter-gather array: expected size={:?} allocated size={:?}",
-            size,
+            BUF_SIZE_BYTES,
             seglen
         );
     }
 
-    // Fill in the array.
-    let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
-    let len: usize = sga.sga_segs[0].sgaseg_len as usize;
-    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-    slice.fill(value);
+    let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, BUF_SIZE_BYTES) };
 
+    // Fill in the array.
+    for x in slice {
+        *x = value;
+    }
     Ok(sga)
 }
 
@@ -77,7 +79,6 @@ pub struct TcpServer {
     libos: LibOS,
     listening_sockqd: QDesc,
     accepted_sockqd: Option<QDesc>,
-    sga: Option<demi_sgarray_t>,
 }
 
 impl TcpServer {
@@ -91,13 +92,52 @@ impl TcpServer {
             libos,
             listening_sockqd: sockqd,
             accepted_sockqd: None,
-            sga: None,
         });
     }
 
-    pub fn run(&mut self, local_socket_addr: SocketAddr, fill_char: u8, bufsize_bytes: usize) -> Result<()> {
-        let num_bytes: usize = bufsize_bytes * ITERATIONS;
+    fn pop_rounds(&mut self) -> Result<()> {
+        for i in 0..ITERATIONS {
+            // Pop data.
+            let qt: QToken = match self.libos.pop(
+                self.accepted_sockqd.expect("should be a valid queue descriptor"),
+                Some(BUF_SIZE_BYTES),
+            ) {
+                Ok(qt) => qt,
+                Err(e) => anyhow::bail!("pop failed: {:?}", e.cause),
+            };
 
+            let sga: demi_sgarray_t = match self.libos.wait(qt, Some(TIMEOUT_SECONDS)) {
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { qr.qr_value.sga },
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("pop failed: {}", qr.qr_ret),
+                Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
+                Err(e) if e.errno == libc::ETIMEDOUT => {
+                    // We haven't heard from the client in a while, so we'll assume it's done.
+                    eprintln!("we haven't heard from the client in a while, aborting");
+                    break;
+                },
+                Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
+            };
+
+            // Sanity check received data.
+            let ptr: *mut u8 = sga.sga_segs[0].sgaseg_buf as *mut u8;
+            let bytes: usize = sga.sga_segs[0].sgaseg_len as usize;
+            debug_assert_eq!(bytes, BUF_SIZE_BYTES);
+            debug_assert!(ptr.is_aligned());
+            debug_assert_eq!(ptr.is_null(), false);
+
+            let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, BUF_SIZE_BYTES) };
+
+            for x in slice {
+                demikernel::ensure_eq!(*x, i as u8);
+            }
+
+            self.libos.sgafree(sga)?;
+            println!("pop {:?} bytes", i * BUF_SIZE_BYTES);
+        }
+        Ok(())
+    }
+
+    pub fn run(&mut self, local_socket_addr: SocketAddr) -> Result<()> {
         if let Err(e) = self.libos.bind(self.listening_sockqd, local_socket_addr) {
             anyhow::bail!("bind failed: {:?}", e.cause)
         };
@@ -118,50 +158,11 @@ impl TcpServer {
             Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
         };
 
-        let mut i: usize = 0;
+        // Wait for blocking pops.
+        self.pop_rounds()?;
+        // Wait for non-blocking pops.
+        self.pop_rounds()?;
 
-        // Perform multiple ping-pong rounds.
-        while i < num_bytes {
-            // Pop data.
-            let qt: QToken = match self
-                .libos
-                .pop(self.accepted_sockqd.expect("should be a valid queue descriptor"), None)
-            {
-                Ok(qt) => qt,
-                Err(e) => anyhow::bail!("pop failed: {:?}", e.cause),
-            };
-
-            self.sga = match self.libos.wait(qt, Some(TIMEOUT_SECONDS)) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_POP => unsafe { Some(qr.qr_value.sga) },
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("pop failed: {}", qr.qr_ret),
-                Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
-                Err(e) if e.errno == libc::ETIMEDOUT => {
-                    // We haven't heard from the client in a while, so we'll assume it's done.
-                    eprintln!("we haven't heard from the client in a while, aborting");
-                    break;
-                },
-                Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
-            };
-
-            // Sanity check received data.
-            let ptr: *mut u8 = self.sga.expect("should be a valid sgarray").sga_segs[0].sgaseg_buf as *mut u8;
-            let len: usize = self.sga.expect("should be a valid sgarray").sga_segs[0].sgaseg_len as usize;
-            let slice: &mut [u8] = unsafe { slice::from_raw_parts_mut(ptr, len) };
-
-            for x in slice {
-                demikernel::ensure_eq!(*x, fill_char);
-            }
-
-            i += self.sga.expect("should be a valid sgarray").sga_segs[0].sgaseg_len as usize;
-
-            match self.libos.sgafree(self.sga.expect("should be a valid sgarray")) {
-                Ok(_) => self.sga = None,
-                Err(e) => anyhow::bail!("failed to release scatter-gather array: {:?}", e),
-            }
-            println!("pop {:?}", i);
-        }
-
-        // TODO: close socket when we get close working properly in catnip.
         Ok(())
     }
 }
@@ -173,17 +174,12 @@ impl Drop for TcpServer {
         if let Some(accepted_qd) = self.accepted_sockqd {
             close(&mut self.libos, accepted_qd);
         }
-
-        if let Some(sga) = self.sga {
-            freesga(&mut self.libos, sga);
-        }
     }
 }
 
 pub struct TcpClient {
     libos: LibOS,
     sockqd: QDesc,
-    sga: Option<demi_sgarray_t>,
 }
 
 impl TcpClient {
@@ -193,16 +189,10 @@ impl TcpClient {
             Err(e) => anyhow::bail!("failed to create socket: {:?}", e.cause),
         };
 
-        return Ok(Self {
-            libos,
-            sockqd,
-            sga: None,
-        });
+        return Ok(Self { libos, sockqd });
     }
 
-    pub fn run(&mut self, remote_socket_addr: SocketAddr, fill_char: u8, bufsize_bytes: usize) -> Result<()> {
-        let num_bytes: usize = bufsize_bytes * ITERATIONS;
-
+    pub fn run(&mut self, remote_socket_addr: SocketAddr) -> Result<()> {
         let qt: QToken = match self.libos.connect(self.sockqd, remote_socket_addr) {
             Ok(qt) => qt,
             Err(e) => anyhow::bail!("connect failed: {:?}", e.cause),
@@ -215,41 +205,61 @@ impl TcpClient {
             Err(e) => anyhow::bail!("operation failed: {:?}", e),
         }
 
-        let mut i: usize = 0;
-
-        // Perform multiple ping-pong rounds.
-        while i < num_bytes {
-            self.sga = match mksga(&mut self.libos, bufsize_bytes, fill_char) {
-                Ok(sga) => Some(sga),
-                Err(e) => anyhow::bail!("failed to allocate scatter-gather array: {:?}", e),
-            };
-
-            // Push data.
-            let qt: QToken = match self
-                .libos
-                .push(self.sockqd, &self.sga.expect("should be a valid sgarray"))
-            {
+        // Perform multiple blocking push rounds.
+        for i in 0..ITERATIONS {
+            let sga: demi_sgarray_t = mksga(&mut self.libos, i as u8)?;
+            let qt: QToken = match self.libos.push(self.sockqd, &sga) {
                 Ok(qt) => qt,
-                Err(e) => anyhow::bail!("push failed: {:?}", e.cause),
+                Err(e) => {
+                    freesga(&mut self.libos, sga);
+                    anyhow::bail!("push failed: {:?}", e.cause)
+                },
             };
-
             match self.libos.wait(qt, Some(TIMEOUT_SECONDS)) {
-                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => (),
+                Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => self.libos.sgafree(sga)?,
                 Ok(qr) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => anyhow::bail!("push failed: {}", qr.qr_ret),
                 Ok(qr) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
                 Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
-            };
-            i += self.sga.expect("should be a valid sgarray").sga_segs[0].sgaseg_len as usize;
-
-            match self.libos.sgafree(self.sga.expect("should be a valid sgarray")) {
-                Ok(_) => self.sga = None,
-                Err(e) => anyhow::bail!("failed to release scatter-gather array: {:?}", e),
             }
-
-            println!("push {:?}", i);
+            println!("blocking push {:?} bytes", i * BUF_SIZE_BYTES);
         }
 
-        // TODO: close socket when we get close working properly in catnip.
+        // Perform multiple non-blocking push rounds.
+        let mut qts: Vec<QToken> = Vec::with_capacity(ITERATIONS);
+        let mut sgas: Vec<demi_sgarray_t> = Vec::with_capacity(ITERATIONS);
+        for i in 0..ITERATIONS {
+            // Create scatter-gather array.
+            let sga: demi_sgarray_t = mksga(&mut self.libos, i as u8)?;
+
+            // Push data.
+            qts.push(match self.libos.push(self.sockqd, &sga) {
+                Ok(qt) => qt,
+                Err(e) => {
+                    freesga(&mut self.libos, sga);
+                    anyhow::bail!("push failed: {:?}", e.cause)
+                },
+            });
+            sgas.push(sga);
+        }
+
+        // Wait for all pushes to complete.
+        for i in 0..ITERATIONS {
+            match self.libos.wait_any(&qts, Some(TIMEOUT_SECONDS)) {
+                Ok((i, qr)) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_PUSH => {
+                    let qt: QToken = qts.remove(i);
+                    debug_assert_eq!(qt, qr.qr_qt.into());
+                    let sga: demi_sgarray_t = sgas.remove(i);
+                    self.libos.sgafree(sga)?;
+                },
+                Ok((_, qr)) if qr.qr_opcode == demi_opcode_t::DEMI_OPC_FAILED => {
+                    anyhow::bail!("push failed: {}", qr.qr_ret)
+                },
+                Ok((_, qr)) => anyhow::bail!("unexpected opcode: {:?}", qr.qr_opcode),
+                Err(e) => anyhow::bail!("operation failed: {:?}", e.cause),
+            };
+            println!("non-blocking push {:?} bytes", i * BUF_SIZE_BYTES);
+        }
+
         Ok(())
     }
 }
@@ -257,10 +267,6 @@ impl TcpClient {
 impl Drop for TcpClient {
     fn drop(&mut self) {
         close(&mut self.libos, self.sockqd);
-
-        if let Some(sga) = self.sga {
-            freesga(&mut self.libos, sga);
-        }
     }
 }
 
@@ -287,10 +293,10 @@ pub fn main() -> Result<()> {
 
         if args[1] == "--server" {
             let mut server: TcpServer = TcpServer::new(libos)?;
-            return server.run(sockaddr, FILL_CHAR, BUFSIZE_BYTES);
+            return server.run(sockaddr);
         } else if args[1] == "--client" {
             let mut client: TcpClient = TcpClient::new(libos)?;
-            return client.run(sockaddr, FILL_CHAR, BUFSIZE_BYTES);
+            return client.run(sockaddr);
         }
     }
 

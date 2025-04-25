@@ -156,8 +156,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
             .insert(SocketId::Active(local, remote.clone()), socket.clone())
             .is_some()
         {
-            // We should panic here because the ephemeral port allocator should not allocate the same port more than
-            // once.
+            // We fail here because the ephemeral port allocator should not allocate the same port more than once.
             return Err(Fail::new(libc::EADDRINUSE, "address already in use"));
         }
         let local_isn: SeqNumber = self.isn_generator.generate(&local, &remote);

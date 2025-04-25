@@ -20,10 +20,10 @@ use ::futures::{pin_mut, select_biased, FutureExt};
 use ::socket2::{Domain, Type};
 use ::std::{
     any::Any,
+    collections::VecDeque,
     net::{SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
 };
-use std::collections::VecDeque;
 
 //======================================================================================================================
 // Structures
@@ -40,10 +40,11 @@ pub struct NetworkQueue<T: NetworkTransport> {
     socket: T::SocketDescriptor,
     /// The remote address to which the socket is connected.
     remote: Option<SocketAddr>,
+    /// Queue for outgoing packets. This ensures packets go out in order regardless of the scheduling of the push
+    /// coroutine.
+    push_queue: VecDeque<(DemiBuffer, Option<SocketAddr>)>,
     /// Underlying network transport.
     transport: T,
-    /// Queue of buffers to be pushed to the socket.
-    push_queue: VecDeque<(DemiBuffer, Option<SocketAddr>)>,
 }
 
 #[derive(Clone)]
@@ -72,8 +73,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             state_machine: SocketStateMachine::new_unbound(typ),
             socket,
             remote: None,
-            transport: transport.clone(),
             push_queue: VecDeque::with_capacity(64),
+            transport: transport.clone(),
         })))
     }
 
@@ -173,8 +174,8 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             state_machine: SocketStateMachine::new_established(),
             socket: new_socket,
             remote: Some(saddr),
-            transport: self.transport.clone(),
             push_queue: VecDeque::with_capacity(64),
+            transport: self.transport.clone(),
         })))
     }
 
@@ -285,14 +286,10 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
     pub async fn push_coroutine(&mut self) -> Result<(), Fail> {
         self.state_machine.may_push()?;
 
-        let (mut buf, addr): (DemiBuffer, Option<SocketAddr>) = match self.push_queue.pop_front() {
-            Some((buf, addr)) => (buf, addr),
-            None => {
-                let cause: String = format!("push_coroutine(): no buffers to push");
-                warn!("{}", cause);
-                return Err(Fail::new(libc::EAGAIN, &cause));
-            },
-        };
+        let (mut buf, addr): (DemiBuffer, Option<SocketAddr>) = self
+            .push_queue
+            .pop_front()
+            .expect("push_coroutine(): push queue should not be empty");
 
         let result = {
             let mut state_machine: SocketStateMachine = self.state_machine.clone();

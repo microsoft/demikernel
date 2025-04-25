@@ -15,6 +15,7 @@ const ID_OFFSET: u32 = 500;
 
 impl<E: Eq + Hash + From<u64> + Into<u64> + Copy, I: From<u64> + Into<u64> + Copy> Id64Map<E, I> {
     #[inline(always)]
+    #[allow(unused)]
     pub fn get(&self, external_id: &E) -> Option<I> {
         Some(Self::mask_id(external_id))
     }

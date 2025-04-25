@@ -100,9 +100,7 @@ impl<T: NetworkLayer> Peer<T> {
                     self.receive_batch(batch)
                 }
             },
-            Err(e) => {
-                warn!("Could not receive from network interface: {:?}", e)
-            },
+            Err(e) => warn!("Could not receive from network interface: {:?}", e),
         }
     }
 

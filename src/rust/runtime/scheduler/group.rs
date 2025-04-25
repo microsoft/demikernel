@@ -23,9 +23,11 @@ use crate::{
 use ::bit_iter::BitIter;
 use ::futures::Future;
 use ::std::{
+    iter::Flatten,
     pin::Pin,
     ptr::NonNull,
     task::{Context, Poll, Waker},
+    vec::IntoIter,
 };
 
 //======================================================================================================================
@@ -41,7 +43,7 @@ pub struct TaskGroup {
     /// Holds the waker bits for controlling task scheduling.
     waker_page_refs: Vec<WakerPageRef>,
     /// List of ready tasks.
-    ready_tasks: Vec<usize>,
+    ready_tasks: Flatten<IntoIter<Vec<usize>>>,
 }
 
 //======================================================================================================================
@@ -125,17 +127,6 @@ impl TaskGroup {
         (waker_page_index << WAKER_BIT_LENGTH_SHIFT) + waker_page_offset
     }
 
-    pub fn check_for_new_ready_tasks(&mut self) {
-        for i in 0..self.get_num_waker_pages() {
-            // Grab notified bits.
-            let notified: u64 = self.waker_page_refs[i].take_notified();
-            let mut runnable_pin_slab_offsets: Vec<usize> = BitIter::from(notified)
-                .map(|x| Self::get_pin_slab_index(i, x))
-                .collect();
-            self.ready_tasks.append(&mut runnable_pin_slab_offsets);
-        }
-    }
-
     fn get_pinned_task_ptr(&mut self, pin_slab_index: usize) -> Pin<&mut Box<dyn Task>> {
         // Get the pinned ref.
         expect_some!(
@@ -152,13 +143,60 @@ impl TaskGroup {
         Some(unsafe { Waker::from_raw(WakerRef::new(raw_waker).into()) })
     }
 
-    /// Get the next runnable
-    pub fn get_next_runnable_task(&mut self) -> Option<usize> {
-        self.ready_tasks.pop()
+    pub fn poll_group(
+        &mut self,
+        max_iterations: Option<usize>,
+        keep_checking_for_new_tasks: bool,
+    ) -> Vec<Box<dyn Task>> {
+        let mut iterations_run: usize = 0;
+        // Return value.
+        let mut completed_tasks: Vec<Box<dyn Task>> = Vec::new();
+        // Definitely check for additional tasks on the first iteration, but then set to [keep_checking_for_new_tasks].
+        let mut check_for_additonal_tasks: bool = true;
+
+        // Loop over the ready tasks.
+        while let Some(next_ready_task_offset) = self.get_next_runnable_task(check_for_additonal_tasks) {
+            if let Some(task) = self.poll_runnable_task(next_ready_task_offset) {
+                completed_tasks.push(task);
+            }
+            check_for_additonal_tasks = keep_checking_for_new_tasks;
+            match max_iterations {
+                Some(max_iterations) if iterations_run >= max_iterations => return completed_tasks,
+                _ => iterations_run += 1,
+            }
+        }
+        completed_tasks
+    }
+
+    /// Get the next runnable task. If no runnable tasks, it will check for new tasks if the [check_for_new_tasks] flag
+    /// is set, then try again.
+    fn get_next_runnable_task(&mut self, check_for_new_tasks: bool) -> Option<usize> {
+        match self.ready_tasks.next() {
+            Some(task) => Some(task),
+            None if check_for_new_tasks => {
+                self.ready_tasks = self.check_for_new_ready_tasks();
+                self.ready_tasks.next()
+            },
+            None => None,
+        }
+    }
+
+    /// Go over the waker pages looking for new runnable tasks.
+    fn check_for_new_ready_tasks(&mut self) -> Flatten<IntoIter<Vec<usize>>> {
+        let mut indices: Vec<Vec<usize>> = vec![];
+        for i in 0..self.get_num_waker_pages() {
+            let notified: u64 = self.waker_page_refs[i].take_notified();
+            indices.push(
+                BitIter::from(notified)
+                    .map(|x| Self::get_pin_slab_index(i, x))
+                    .collect(),
+            )
+        }
+        indices.into_iter().flatten()
     }
 
     // Runs a single ready task. If the task completes after running, returns.
-    pub fn poll_runnable_task(&mut self, pin_slab_index: usize) -> Option<Box<dyn Task>> {
+    fn poll_runnable_task(&mut self, pin_slab_index: usize) -> Option<Box<dyn Task>> {
         // Perform the actual work of running the task.
         let poll_result: Poll<()> = {
             let waker: Waker = self.get_waker(pin_slab_index)?;

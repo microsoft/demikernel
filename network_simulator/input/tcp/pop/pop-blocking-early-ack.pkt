@@ -1,4 +1,4 @@
-// Test for a packet received out of order.
+// Test for blocking pop where more data arrives and we send a bare ack before the timeout.
 
 // Accept a connection.
  +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
@@ -19,23 +19,20 @@
 // Read data.
 +.1 read(501, ..., 1000) = 1000
 
-// Receive out of order data packet.
-+.1 TCP < P. seq 11001(1000) ack 12346 win 65535 <nop>
-
-// Send ACK packet.
-+.0 TCP > . seq 12346(0) ack 10001 win 65535 <nop>
-
-// Receive in order data packet.
+// Receive data packet.
 +.1 TCP < P. seq 10001(1000) ack 12346 win 65535 <nop>
 
 // Data read.
 +.0 wait(501, ...) = 0
 
-// Send ACK packet
-+.6 TCP > . seq 12346(0) ack 12001 win 63535 <nop>
-
 // Read data.
 +.1 read(501, ..., 1000) = 1000
+
+// Receive data packet.
++.1 TCP < P. seq 11001(1000) ack 12346 win 65535 <nop>
+
+// Send ACK early because another packet arrived.
++.0 TCP > . seq 12346(0) ack 12001 win 64535 <nop>
 
 // Data read.
 +.0 wait(501, ...) = 0

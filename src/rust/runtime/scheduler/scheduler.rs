@@ -70,51 +70,18 @@ impl Scheduler {
         group_id: SchedulerId,
         max_iterations: Option<usize>,
     ) -> Vec<Box<dyn Task>> {
-        let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
-        // Keep running as long as there are runnable tasks.
-        let mut polled_iterations: usize = 0;
         // Expect is safe here because something has really gone wrong if we are polling a group that doesn't exist.
         let group: &mut TaskGroup = self.get_mut_group(group_id).expect("group being polled doesn't exist");
 
         // Keep polling the group and checking for runnable tasks until there are none left.
-        while let Some(next_ready_task_offset) = match group.get_next_runnable_task() {
-            Some(offset) => Some(offset),
-            None => {
-                group.check_for_new_ready_tasks();
-                group.get_next_runnable_task()
-            },
-        } {
-            // Now that we have a runnable task, actually poll it.
-            if let Some(task) = group.poll_runnable_task(next_ready_task_offset) {
-                completed_tasks.push(task);
-            }
-            match max_iterations {
-                Some(max_iterations) if polled_iterations >= max_iterations => return completed_tasks,
-                _ => polled_iterations += 1,
-            }
-        }
-        completed_tasks
+        group.poll_group(max_iterations, true)
     }
 
     /// Polls all of the ready tasks in this group. Only check for new tasks at the beginning.
     pub fn poll_group_once(&mut self, group_id: SchedulerId, max_iterations: Option<usize>) -> Vec<Box<dyn Task>> {
-        let mut completed_tasks: Vec<Box<dyn Task>> = vec![];
-        let mut polled_iterations: usize = 0;
         // Expect is safe here because something has really gone wrong if we are polling a group that doesn't exist.
         let group: &mut TaskGroup = self.get_mut_group(group_id).expect("group being polled doesn't exist");
-        // Only do this once.
-        group.check_for_new_ready_tasks();
-        // Loop over the ready tasks.
-        while let Some(next_ready_task_offset) = group.get_next_runnable_task() {
-            if let Some(task) = group.poll_runnable_task(next_ready_task_offset) {
-                completed_tasks.push(task);
-            }
-            match max_iterations {
-                Some(max_iterations) if polled_iterations >= max_iterations => return completed_tasks,
-                _ => polled_iterations += 1,
-            }
-        }
-        completed_tasks
+        group.poll_group(max_iterations, false)
     }
 }
 

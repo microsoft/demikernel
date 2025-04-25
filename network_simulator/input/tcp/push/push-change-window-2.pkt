@@ -1,0 +1,35 @@
+// Test for blocking push with a change to window size after the inital set up.
+
+// Accept a connection.
+ +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
++.0 bind(500, ..., ...) = 0
++.0 listen(500, 1) = 0
++.2 accept(500, ..., ...) = 0
+
+// Receive SYN packet.
++.2 TCP < S seq 100(0) win 65535 <mss 1450,wscale 0>
+// Send SYN-ACK packet.
++.0 TCP > S. seq 12345(0) ack 101 win 65535 <mss 1450,wscale 0>
+// Receive ACK on SYN-ACK packet.
++.2 TCP < . seq 101(0) ack 12346 win 500 <nop>
+
+// Succeed to accept connection.
++.0 wait(500, ...) = 0
+
+// Send data.
++.1 write(501, ..., 1000) = 1000
+
+// Send data packet.
++.0 TCP > . seq 12346(500) ack 101 win 65535 <nop>
+
+// Receive ACK on data packet.
++.1 TCP < . seq 101(0) ack 12846 win 500 <nop>
+
+// Send data packet.
++.0 TCP > P. seq 12846(500) ack 101 win 65535 <nop>
+
+// Receive ACK on data packet.
++.1 TCP < . seq 101(0) ack 13346 win 500 <nop>
+
+// Data sent.
++.0 wait(501, ...) = 0
