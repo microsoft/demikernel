@@ -34,7 +34,7 @@ mod test {
 
     /// A default amount of time to wait on an operation to complete. This was chosen arbitrarily to be high enough to
     /// ensure most OS operations will complete.
-    const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(100);
+    const TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(500);
     const BAD_WAIT_TIMEOUT_MILLISECONDS: Duration = Duration::from_millis(1);
 
     use std::{
@@ -113,6 +113,10 @@ mod test {
                 safe_bind(&mut libos, sockqd, local)?;
                 safe_listen(&mut libos, sockqd)?;
                 let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                // Finished setting up the listening socket. Bob can proceed to connect.
+                alice_barrier.wait();
+
                 let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
 
                 let qd: QDesc = match qr {
@@ -136,15 +140,18 @@ mod test {
         let bob: JoinHandle<Result<()>> = thread::Builder::new()
             .name(format!("tcp_establish_connection_unbound::bob"))
             .spawn(move || {
+                // Wait until Alice is listening before we start.
+                bob_barrier.wait();
                 let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                     Ok(libos) => libos,
                     Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
                 };
-
                 let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
                 // Open connection.
                 let sockqd: QDesc = safe_socket(&mut libos)?;
+
+                // Wait until Alice is set up to listen before connecting.
                 let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
                 let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                 match qr {
@@ -197,6 +204,8 @@ mod test {
                 safe_bind(&mut libos, sockqd, local)?;
                 safe_listen(&mut libos, sockqd)?;
                 let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                alice_barrier.wait();
                 let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
 
                 let qd: QDesc = match qr {
@@ -221,6 +230,9 @@ mod test {
         let bob: JoinHandle<Result<()>> = thread::Builder::new()
             .name(format!("tcp_establish_connection_bound::bob"))
             .spawn(move || {
+                // Wait for Alice to listen before we start.
+                bob_barrier.wait();
+
                 let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                     Ok(libos) => libos,
                     Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
@@ -232,6 +244,7 @@ mod test {
                 // Open connection.
                 let sockqd: QDesc = safe_socket(&mut libos)?;
                 safe_bind(&mut libos, sockqd, local)?;
+
                 let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
                 let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                 match qr {
@@ -288,6 +301,9 @@ mod test {
                     safe_bind(&mut libos, sockqd, local)?;
                     safe_listen(&mut libos, sockqd)?;
                     let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                    alice_barrier.wait();
+
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     let qd: QDesc = match qr {
                         OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
@@ -322,6 +338,8 @@ mod test {
             thread::Builder::new()
                 .name(format!("tcp_push_remote::bob"))
                 .spawn(move || {
+                    // Wait for Alice to listen before we start.
+                    bob_barrier.wait();
                     let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                         Ok(libos) => libos,
                         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
@@ -331,6 +349,7 @@ mod test {
 
                     // Open connection.
                     let sockqd: QDesc = safe_socket(&mut libos)?;
+
                     let qt: QToken = safe_connect(&mut libos, sockqd, remote)?;
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     match qr {
@@ -651,6 +670,8 @@ mod test {
                     safe_bind(&mut libos, sockqd, local)?;
                     safe_listen(&mut libos, sockqd)?;
                     let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                    alice_barrier.wait();
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     let qd: QDesc = match qr {
                         OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
@@ -673,6 +694,7 @@ mod test {
             thread::Builder::new()
                 .name(format!("tcp_bad_connect::bob"))
                 .spawn(move || {
+                    bob_barrier.wait();
                     let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                         Ok(libos) => libos,
                         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
@@ -693,6 +715,7 @@ mod test {
                     // Bad endpoint.
                     let bad_remote: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), PORT_NUMBER);
                     let sockqd: QDesc = safe_socket(&mut libos)?;
+
                     let qt: QToken = safe_connect(&mut libos, sockqd, bad_remote)?;
                     match libos.wait(qt, BAD_WAIT_TIMEOUT_MILLISECONDS) {
                         Err(e) if e.errno == libc::ETIMEDOUT => (),
@@ -762,6 +785,8 @@ mod test {
                     safe_bind(&mut libos, sockqd, local)?;
                     safe_listen(&mut libos, sockqd)?;
                     let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                    alice_barrier.wait();
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     let qd: QDesc = match qr {
                         OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
@@ -797,6 +822,7 @@ mod test {
             thread::Builder::new()
                 .name(format!("tcp_bad_close::bob"))
                 .spawn(move || {
+                    bob_barrier.wait();
                     let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                         Ok(libos) => libos,
                         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
@@ -876,6 +902,8 @@ mod test {
                     safe_bind(&mut libos, sockqd, local)?;
                     safe_listen(&mut libos, sockqd)?;
                     let qt: QToken = safe_accept(&mut libos, sockqd)?;
+
+                    alice_barrier.wait();
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     let qd: QDesc = match qr {
                         OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
@@ -912,6 +940,7 @@ mod test {
             thread::Builder::new()
                 .name(format!("tcp_bad_push::bob"))
                 .spawn(move || {
+                    bob_barrier.wait();
                     let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                         Ok(libos) => libos,
                         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
@@ -1018,6 +1047,8 @@ mod test {
                     safe_bind(&mut libos, sockqd, local)?;
                     safe_listen(&mut libos, sockqd)?;
                     let qt: QToken = safe_accept(&mut libos, sockqd)?;
+                    alice_barrier.wait();
+
                     let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
                     let qd: QDesc = match qr {
                         OperationResult::Accept((qd, addr)) if addr.ip() == &BOB_IP => qd,
@@ -1063,11 +1094,11 @@ mod test {
             thread::Builder::new()
                 .name(format!("tcp_bad_pop::bob"))
                 .spawn(move || {
+                    bob_barrier.wait();
                     let mut libos: DummyLibOS = match DummyLibOS::new(BOB_CONFIG_PATH, bob_tx, alice_rx) {
                         Ok(libos) => libos,
                         Err(e) => anyhow::bail!("Could not create inetstack: {:?}", e),
                     };
-
                     let remote: SocketAddr = SocketAddr::new(ALICE_IP, PORT_NUMBER);
 
                     // Open connection.
