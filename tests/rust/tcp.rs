@@ -13,8 +13,9 @@ mod test {
     use ::crossbeam_channel::{Receiver, Sender};
     use ::demikernel::{
         demi_sgarray_t,
+        inetstack::consts::MAX_HEADER_SIZE,
         runtime::{
-            memory::{DemiBuffer, MemoryRuntime},
+            memory::{into_sgarray, DemiBuffer},
             OperationResult, QDesc, QToken,
         },
     };
@@ -985,11 +986,11 @@ mod test {
 
                     // Push bad data to socket.
                     let zero_bytes: [u8; 0] = [];
-                    let buf: DemiBuffer = match DemiBuffer::from_slice(&zero_bytes) {
+                    let buf: DemiBuffer = match DemiBuffer::from_slice_with_headroom(&zero_bytes, MAX_HEADER_SIZE) {
                         Ok(buf) => buf,
                         Err(e) => anyhow::bail!("(zero-byte) slice should fit in a DemiBuffer: {:?}", e),
                     };
-                    let data: demi_sgarray_t = libos.get_transport().into_sgarray(buf)?;
+                    let data: demi_sgarray_t = into_sgarray(buf)?;
 
                     match libos.push(sockqd, &data) {
                         Ok(_) =>

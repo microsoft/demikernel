@@ -22,7 +22,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         Runtime, SharedObject,
     },
     timer,
@@ -197,24 +197,10 @@ impl PhysicalLayer for SharedCatpowderRuntime {
 }
 
 /// Memory runtime trait implementation for XDP Runtime.
-impl MemoryRuntime for SharedCatpowderRuntime {
+impl DemiMemoryAllocator for SharedCatpowderRuntime {
     /// Allocates a scatter-gather array.
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         timer!("catpowder::win::runtime::sgaalloc");
-        // TODO: Allocate an array of buffers if requested size is too large for a single buffer.
-
-        // We can't allocate a zero-sized buffer.
-        if size == 0 {
-            let cause: String = format!("cannot allocate a zero-sized buffer");
-            error!("sgaalloc(): {}", cause);
-            return Err(Fail::new(libc::EINVAL, &cause));
-        }
-
-        // We can't allocate more than a single buffer.
-        if size > u16::MAX as usize - MAX_HEADER_SIZE {
-            return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
-        }
-
         // Prefer the VF interface if available, otherwise use the main interface.
         let tx_ring: &TxRing = if self.0.vf_interface.is_some() && self.0.always_send_on_vf {
             &self.0.vf_interface.as_ref().unwrap().tx_ring
@@ -233,22 +219,8 @@ impl MemoryRuntime for SharedCatpowderRuntime {
         }
 
         // Reserve space for headers.
-        buf.adjust(MAX_HEADER_SIZE).expect("buffer size invariant violation");
-
-        // Create a scatter-gather segment to expose the DemiBuffer to the user.
-        let data: *const u8 = buf.as_ptr();
-        let sga_seg: demi_sgaseg_t = demi_sgaseg_t {
-            sgaseg_buf: data as *mut c_void,
-            sgaseg_len: size as u32,
-        };
-
-        // Create and return a new scatter-gather array (which inherits the DemiBuffer's reference).
-        Ok(demi_sgarray_t {
-            sga_buf: buf.into_raw().as_ptr() as *mut c_void,
-            sga_numsegs: 1,
-            sga_segs: [sga_seg],
-            sga_addr: unsafe { mem::zeroed() },
-        })
+        buf.adjust(MAX_HEADER_SIZE)?;
+        Ok(buf)
     }
 }
 

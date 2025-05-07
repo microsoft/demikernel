@@ -12,7 +12,7 @@ use crate::{
     runtime::{
         fail::Fail,
         limits,
-        memory::DemiBuffer,
+        memory::{clone_sgarray, into_sgarray, sgaalloc, sgafree, DemiBuffer},
         network::{
             socket::{option::SocketOption, SocketId},
             transport::NetworkTransport,
@@ -298,7 +298,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     /// coroutine that asynchronously runs the push and any synchronous multi-queue functionality before the push
     /// begins.
     pub fn push(&mut self, qd: QDesc, sga: &demi_sgarray_t) -> Result<QToken, Fail> {
-        let buf: DemiBuffer = self.transport.clone_sgarray(sga)?;
+        let buf: DemiBuffer = clone_sgarray(sga)?;
         if buf.len() == 0 {
             let cause: String = format!("zero-length buffer");
             warn!("push(): {}", cause);
@@ -343,7 +343,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
     pub fn pushto(&mut self, qd: QDesc, sga: &demi_sgarray_t, remote: SocketAddr) -> Result<QToken, Fail> {
         trace!("pushto() qd={:?}", qd);
 
-        let buf: DemiBuffer = self.transport.clone_sgarray(sga)?;
+        let buf: DemiBuffer = clone_sgarray(sga)?;
         if buf.len() == 0 {
             return Err(Fail::new(libc::EINVAL, "zero-length buffer"));
         }
@@ -493,7 +493,7 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
                 qr_ret: 0,
                 qr_value: unsafe { mem::zeroed() },
             },
-            OperationResult::Pop(addr, bytes) => match self.transport.into_sgarray(bytes) {
+            OperationResult::Pop(addr, bytes) => match into_sgarray(bytes) {
                 Ok(mut sga) => {
                     if let Some(addr) = addr {
                         sga.sga_addr = socketaddrv4_to_sockaddr(&addr);
@@ -540,12 +540,12 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
 
     /// Allocates a scatter-gather array.
     pub fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.transport.sgaalloc(size)
+        sgaalloc(size, &self.transport)
     }
 
     /// Releases a scatter-gather array.
     pub fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.transport.sgafree(sga)
+        sgafree(sga)
     }
 
     /// This function gets a shared queue reference out of the I/O queue table. The type if a ref counted pointer to the

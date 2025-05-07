@@ -19,7 +19,7 @@ use crate::{
     expect_ok, expect_some,
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         network::{
             socket::option::{SocketOption, TcpSocketOptions},
             transport::NetworkTransport,
@@ -618,4 +618,6 @@ impl NetworkTransport for SharedCatnapTransport {
     }
 }
 
-impl MemoryRuntime for SharedCatnapTransport {}
+// Use the default memory allocator, which is to allocate buffers from the heap with no header space or size
+// limitations.
+impl DemiMemoryAllocator for SharedCatnapTransport {}

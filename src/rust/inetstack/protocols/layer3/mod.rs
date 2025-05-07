@@ -15,7 +15,6 @@ use arrayvec::ArrayVec;
 pub use self::{arp::SharedArpPeer, icmpv4::SharedIcmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header};
 
 use crate::{
-    demi_sgarray_t,
     demikernel::config::Config,
     inetstack::{
         consts::RECEIVE_BATCH_SIZE,
@@ -23,7 +22,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         SharedDemiRuntime, SharedObject,
     },
     MacAddress,
@@ -202,20 +201,8 @@ impl DerefMut for SharedLayer3Endpoint {
 }
 
 /// Memory Runtime Trait Implementation for Layer 3.
-impl MemoryRuntime for SharedLayer3Endpoint {
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer2_endpoint.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer2_endpoint.sgaalloc(size)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer2_endpoint.sgafree(sga)
-    }
-
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer2_endpoint.clone_sgarray(sga)
+impl DemiMemoryAllocator for SharedLayer3Endpoint {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        self.layer2_endpoint.allocate_demi_buffer(size)
     }
 }

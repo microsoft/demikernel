@@ -13,7 +13,7 @@ mod test {
     use ::anyhow::Result;
     use ::crossbeam_channel::{Receiver, Sender};
     use ::demikernel::runtime::{
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{into_sgarray, DemiBuffer},
         OperationResult, QDesc, QToken,
     };
 
@@ -285,7 +285,7 @@ mod test {
             };
 
             // Push data.
-            let buf = libos.get_transport().into_sgarray(bytes)?;
+            let buf = into_sgarray(bytes)?;
             let qt: QToken = match libos.pushto(sockfd, &buf, alice_addr) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -445,7 +445,7 @@ mod test {
             };
 
             // Push data.
-            let buf = libos.get_transport().into_sgarray(bytes)?;
+            let buf = into_sgarray(bytes)?;
             let qt: QToken = libos.pushto(sockfd, &buf, alice_addr).unwrap();
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {

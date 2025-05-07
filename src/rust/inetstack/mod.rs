@@ -8,7 +8,6 @@
 #[cfg(test)]
 use crate::inetstack::types::MacAddress;
 use crate::{
-    demi_sgarray_t,
     demikernel::config::Config,
     inetstack::{
         consts::MAX_RECV_ITERS,
@@ -16,7 +15,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         network::{socket::option::SocketOption, transport::NetworkTransport},
         poll_yield, SharedDemiRuntime, SharedObject,
     },
@@ -292,21 +291,9 @@ impl NetworkTransport for SharedInetStack {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl MemoryRuntime for SharedInetStack {
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer4_endpoint.clone_sgarray(sga)
-    }
-
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer4_endpoint.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer4_endpoint.sgaalloc(size)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer4_endpoint.sgafree(sga)
+impl DemiMemoryAllocator for SharedInetStack {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        self.layer4_endpoint.allocate_demi_buffer(size)
     }
 }
 

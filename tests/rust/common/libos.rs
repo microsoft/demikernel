@@ -14,7 +14,7 @@ use ::demikernel::{
     runtime::{
         fail::Fail,
         logging,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{into_sgarray, DemiBuffer},
         QDesc, QToken, SharedDemiRuntime,
     },
     OperationResult,
@@ -52,7 +52,7 @@ impl DummyLibOS {
         for a in &mut buf[..] {
             *a = fill_char;
         }
-        let data: demi_sgarray_t = self.get_transport().into_sgarray(buf)?;
+        let data: demi_sgarray_t = into_sgarray(buf)?;
         Ok(data)
     }
 

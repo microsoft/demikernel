@@ -16,7 +16,6 @@ pub mod udp;
 #[cfg(test)]
 use crate::inetstack::types::MacAddress;
 use crate::{
-    demi_sgarray_t,
     demikernel::config::Config,
     expect_some,
     inetstack::{
@@ -32,7 +31,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         network::unwrap_socketaddr,
         SharedDemiRuntime,
     },
@@ -389,20 +388,8 @@ impl Peer {
 // Trait Implementations
 //======================================================================================================================
 
-impl MemoryRuntime for Peer {
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer3_endpoint.clone_sgarray(sga)
-    }
-
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer3_endpoint.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer3_endpoint.sgaalloc(size)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer3_endpoint.sgafree(sga)
+impl DemiMemoryAllocator for Peer {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        self.layer3_endpoint.allocate_demi_buffer(size)
     }
 }

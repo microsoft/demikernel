@@ -1,18 +1,28 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-pub mod memory;
+//======================================================================================================================
+// Exports
+//======================================================================================================================
+
+mod consts;
+mod mempool;
 
 //======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use self::memory::{consts::DEFAULT_MAX_BODY_SIZE, MemoryManager};
 use crate::{
+    catnip::runtime::{
+        consts::{DEFAULT_BODY_POOL_SIZE, DEFAULT_CACHE_SIZE, DEFAULT_MAX_BODY_SIZE},
+        mempool::MemoryPool,
+    },
     demikernel::config::Config,
     expect_some,
-    inetstack::consts::RECEIVE_BATCH_SIZE,
-    inetstack::protocols::layer1::PhysicalLayer,
+    inetstack::{
+        consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
+        protocols::layer1::PhysicalLayer,
+    },
     runtime::{
         fail::Fail,
         libdpdk::{
@@ -27,7 +37,7 @@ use crate::{
             rte_mbuf, RTE_ETHER_MAX_JUMBO_FRAME_LEN, RTE_ETHER_MAX_LEN, RTE_ETH_DEV_NO_OWNER, RTE_ETH_LINK_FULL_DUPLEX,
             RTE_ETH_LINK_UP, RTE_PKTMBUF_HEADROOM,
         },
-        memory::DemiBuffer,
+        memory::{DemiBuffer, DemiMemoryAllocator},
         SharedObject,
     },
     timer,
@@ -46,7 +56,8 @@ use ::std::{
 //======================================================================================================================
 
 pub struct DPDKRuntime {
-    mm: MemoryManager,
+    max_body_size: usize,
+    mem_pool: MemoryPool,
     port_id: u16,
 }
 
@@ -74,25 +85,43 @@ impl SharedDPDKRuntime {
                 None
             },
         };
+        let use_jumbo_frames: bool = config.enable_jumbo_frames()?;
+        let max_body_size: usize = if use_jumbo_frames {
+            (RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM) as usize
+        } else {
+            DEFAULT_MAX_BODY_SIZE
+        };
 
-        let (mm, port_id): (MemoryManager, u16) = Self::initialize_dpdk(
+        let mem_pool: MemoryPool = MemoryPool::new(
+            CString::new("body_pool").unwrap(),
+            max_body_size,
+            DEFAULT_BODY_POOL_SIZE,
+            DEFAULT_CACHE_SIZE,
+        )?;
+        let port_id: u16 = Self::initialize_dpdk(
+            &mem_pool,
             &config.eal_init_args()?,
-            config.enable_jumbo_frames()?,
+            use_jumbo_frames,
             config.mtu()?,
             tcp_offload.unwrap_or(false),
             udp_offload.unwrap_or(false),
         )?;
 
-        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime { mm, port_id })))
+        Ok(Self(SharedObject::<DPDKRuntime>::new(DPDKRuntime {
+            max_body_size,
+            mem_pool,
+            port_id,
+        })))
     }
 
     fn initialize_dpdk(
+        mem_pool: &MemoryPool,
         eal_init_args: &[CString],
         use_jumbo_frames: bool,
         mtu: u16,
         tcp_checksum_offload: bool,
         udp_checksum_offload: bool,
-    ) -> Result<(MemoryManager, u16), Fail> {
+    ) -> Result<u16, Fail> {
         std::env::set_var("MLX5_SHUT_UP_BF", "1");
         std::env::set_var("MLX5_SINGLE_THREADED", "1");
         std::env::set_var("MLX4_SINGLE_THREADED", "1");
@@ -110,26 +139,11 @@ impl SharedDPDKRuntime {
         }
         trace!("DPDK reports that {} ports (interfaces) are available.", nb_ports);
 
-        let max_body_size: usize = if use_jumbo_frames {
-            (RTE_ETHER_MAX_JUMBO_FRAME_LEN + RTE_PKTMBUF_HEADROOM) as usize
-        } else {
-            DEFAULT_MAX_BODY_SIZE
-        };
-
-        let memory_manager = match MemoryManager::new(max_body_size) {
-            Ok(manager) => manager,
-            Err(e) => {
-                let cause: String = format!("Failed to set up memory manager: {:?}", e);
-                error!("initialize_dpdk(): {}", cause);
-                return Err(Fail::new(libc::EIO, &cause));
-            },
-        };
-
         let owner: u64 = RTE_ETH_DEV_NO_OWNER as u64;
         let port_id: u16 = unsafe { rte_eth_find_next_owned_by(0, owner) as u16 };
         Self::initialize_dpdk_port(
+            mem_pool,
             port_id,
-            &memory_manager,
             use_jumbo_frames,
             mtu,
             tcp_checksum_offload,
@@ -141,12 +155,12 @@ impl SharedDPDKRuntime {
         //     eprintln!("WARNING: Too many lcores enabled. Only 1 used.");
         // }
 
-        Ok((memory_manager, port_id))
+        Ok(port_id)
     }
 
     fn initialize_dpdk_port(
+        mem_pool: &MemoryPool,
         port_id: u16,
-        memory_manager: &MemoryManager,
         use_jumbo_frames: bool,
         mtu: u16,
         tcp_checksum_offload: bool,
@@ -239,14 +253,7 @@ impl SharedDPDKRuntime {
 
         unsafe {
             for i in 0..rx_rings {
-                if rte_eth_rx_queue_setup(
-                    port_id,
-                    i,
-                    nb_rxd,
-                    socket_id,
-                    &rx_conf as *const _,
-                    memory_manager.body_pool(),
-                ) != 0
+                if rte_eth_rx_queue_setup(port_id, i, nb_rxd, socket_id, &rx_conf as *const _, mem_pool.into_raw()) != 0
                 {
                     let cause: String = format!("Failed to set up rx queue");
                     error!("initialize_dpdk_port(): {}", cause);
@@ -330,7 +337,12 @@ impl PhysicalLayer for SharedDPDKRuntime {
         let outgoing_pkt: DemiBuffer = match pkt {
             buf if buf.is_dpdk_allocated() => buf,
             buf => {
-                let mut mbuf: DemiBuffer = self.mm.alloc_body_mbuf().expect("should be able to allocate mbuf");
+                let mut mbuf: DemiBuffer = {
+                    // Allocate a DPDK-managed buffer.
+                    let mbuf_ptr: *mut rte_mbuf = self.mem_pool.alloc_mbuf(None)?;
+                    // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
+                    unsafe { DemiBuffer::from_mbuf(mbuf_ptr) }
+                };
                 debug_assert!(buf.len() < mbuf.len());
                 mbuf.trim(mbuf.len() - buf.len()).expect("Should be able to trim");
                 mbuf.copy_from_slice(&buf);
@@ -362,5 +374,20 @@ impl PhysicalLayer for SharedDPDKRuntime {
         }
 
         Ok(out)
+    }
+}
+
+impl DemiMemoryAllocator for SharedDPDKRuntime {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        // First allocate the underlying DemiBuffer.
+        if size <= self.max_body_size {
+            // Allocate a DPDK-managed buffer.
+            let mbuf_ptr: *mut rte_mbuf = self.mem_pool.alloc_mbuf(Some(size))?;
+            // Safety: `mbuf_ptr` is a valid pointer to a properly initialized `rte_mbuf` struct.
+            Ok(unsafe { DemiBuffer::from_mbuf(mbuf_ptr) })
+        } else {
+            // Allocate a heap-managed buffer.
+            Ok(DemiBuffer::new_with_headroom(size as u16, MAX_HEADER_SIZE as u16))
+        }
     }
 }

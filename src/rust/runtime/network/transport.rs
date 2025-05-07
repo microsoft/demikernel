@@ -7,7 +7,7 @@
 
 use crate::runtime::{
     fail::Fail,
-    memory::{DemiBuffer, MemoryRuntime},
+    memory::{DemiBuffer, DemiMemoryAllocator},
     network::socket::option::SocketOption,
     SharedDemiRuntime,
 };
@@ -22,8 +22,8 @@ use ::std::{
 //======================================================================================================================
 
 /// This trait represents a high-level network API that supports both connection-based and connection-less
-/// communication using sockets.
-pub trait NetworkTransport: Clone + 'static + MemoryRuntime {
+/// communication using sockets. It must also allocate buffers for network communication with a [DemiMemoryAllocator].
+pub trait NetworkTransport: Clone + 'static + DemiMemoryAllocator {
     type SocketDescriptor: Debug;
 
     /// Create a socket using the network transport layer.

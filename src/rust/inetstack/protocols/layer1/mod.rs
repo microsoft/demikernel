@@ -2,21 +2,13 @@
 // Licensed under the MIT license.
 
 //======================================================================================================================
-// Exports
-//======================================================================================================================
-
-pub use ::std::any::Any;
-use arrayvec::ArrayVec;
-
-//======================================================================================================================
 // Imports
 //======================================================================================================================
 
-use crate::inetstack::consts::RECEIVE_BATCH_SIZE;
-use crate::runtime::{
-    fail::Fail,
-    memory::{DemiBuffer, MemoryRuntime},
-};
+use crate::runtime::{fail::Fail, memory::DemiBuffer};
+use crate::{inetstack::consts::RECEIVE_BATCH_SIZE, runtime::memory::DemiMemoryAllocator};
+pub use ::std::any::Any;
+use arrayvec::ArrayVec;
 
 use super::layer4::ephemeral::EphemeralPorts;
 
@@ -25,8 +17,8 @@ use super::layer4::ephemeral::EphemeralPorts;
 //======================================================================================================================
 
 /// API for the Physical Layer for any underlying hardware that implements a raw NIC interface (e.g., DPDK, raw
-/// sockets).
-pub trait PhysicalLayer: 'static + MemoryRuntime {
+/// sockets). It must implement [DemiMemoryAllocator] to specify how to allocate DemiBuffers for the physical layer.
+pub trait PhysicalLayer: 'static + DemiMemoryAllocator {
     /// Transmits a single [PacketBuf].
     fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail>;
 
