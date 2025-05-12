@@ -49,12 +49,13 @@ use ::futures::{future::FusedFuture, select_biased, Future, FutureExt};
 
 use ::std::{
     any::Any,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     ops::{Deref, DerefMut},
-    pin::{pin, Pin},
+    pin::pin,
     rc::Rc,
     time::{Duration, Instant},
 };
+use ::std::{collections::VecDeque, pin::Pin};
 
 //======================================================================================================================
 // Constants

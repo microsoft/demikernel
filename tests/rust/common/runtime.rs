@@ -60,10 +60,7 @@ impl SharedDummyRuntime {
 
 /// Network Runtime Trait Implementation for Dummy Runtime
 impl PhysicalLayer for SharedDummyRuntime {
-    type FlowRecord = ();
-    type FlowState = ();
-
-    fn transmit(&mut self, _flow: &mut Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         trace!("transmitting pkt: size={:?}", pkt.len());
         // The packet header and body must fit into whatever physical media we're transmitting over.
         // For this test harness, we 2^16 bytes (u16::MAX) as our limit.
@@ -78,11 +75,11 @@ impl PhysicalLayer for SharedDummyRuntime {
         }
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.try_recv().ok() {
             trace!("receiving pkt: size={:?}", buf.len());
-            out.push(((), buf));
+            out.push(buf);
         }
         Ok(out)
     }

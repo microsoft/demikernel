@@ -79,10 +79,7 @@ impl SharedTestPhysicalLayer {
 //======================================================================================================================
 
 impl PhysicalLayer for SharedTestPhysicalLayer {
-    type FlowState = ();
-    type FlowRecord = ();
-
-    fn transmit(&mut self, _flow: &mut Self::FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         debug!(
             "transmit frame: {:?} total packet size: {:?}",
             self.outgoing.len(),
@@ -97,10 +94,10 @@ impl PhysicalLayer for SharedTestPhysicalLayer {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         let mut out = ArrayVec::new();
         if let Some(buf) = self.incoming.pop_front() {
-            out.push(((), buf));
+            out.push(buf);
         }
         Ok(out)
     }

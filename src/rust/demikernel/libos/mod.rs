@@ -101,24 +101,22 @@ impl LibOS {
             LibOSName::Catpowder => {
                 let layer1_endpoint: SharedCatpowderRuntime = SharedCatpowderRuntime::new(&config)?;
                 // This is our transport for Catpowder.
-                let inetstack: SharedInetStack<SharedCatpowderRuntime> =
+                let inetstack: SharedInetStack =
                     SharedInetStack::new(&config, runtime.clone(), layer1_endpoint).unwrap();
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(SharedNetworkLibOS::<
-                    SharedInetStack<SharedCatpowderRuntime>,
-                >::new(
-                    runtime, inetstack
-                )))
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catpowder(
+                    SharedNetworkLibOS::<SharedInetStack>::new(runtime, inetstack),
+                ))
             },
             #[cfg(feature = "catnip-libos")]
             LibOSName::Catnip => {
                 // TODO: Remove some of these clones once we are done merging the libOSes.
                 let layer1_endpoint: SharedDPDKRuntime = SharedDPDKRuntime::new(&config)?;
-                let inetstack: SharedInetStack<SharedDPDKRuntime> =
+                let inetstack: SharedInetStack =
                     SharedInetStack::new(&config, runtime.clone(), layer1_endpoint).unwrap();
 
-                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<
-                    SharedInetStack<SharedDPDKRuntime>,
-                >::new(runtime, inetstack)))
+                Self::NetworkLibOS(NetworkLibOSWrapper::Catnip(SharedNetworkLibOS::<SharedInetStack>::new(
+                    runtime, inetstack,
+                )))
             },
             _ => panic!("unsupported libos"),
         };

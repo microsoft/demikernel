@@ -14,7 +14,7 @@ use crate::{
     collections::{async_queue::AsyncQueue, async_value::SharedAsyncValue},
     expect_ok,
     inetstack::protocols::{
-        layer3::NetworkLayer,
+        layer3::SharedLayer3Endpoint,
         layer4::tcp::{
             established::{
                 ctrlblk::State, ControlBlock, Sender, MAX_WINDOW_SIZE_WITHOUT_SCALING, MAX_WINDOW_SIZE_WITH_SCALING,
@@ -140,9 +140,9 @@ impl Receiver {
     }
 
     // Receive a single incoming packet from layer3.
-    pub fn receive<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub fn receive(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         tcp_hdr: TcpHeader,
         buf: DemiBuffer,
         now: Instant,
@@ -156,9 +156,9 @@ impl Receiver {
     /// This is the main function for processing an incoming packet during the Established state when the connection is
     /// active. Each step in this function return Ok if there is further processing to be done and EBADMSG if the
     /// packet should be dropped after the step.
-    fn process_packet<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    fn process_packet(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         mut header: TcpHeader,
         mut data: DemiBuffer,
         now: Instant,
@@ -212,11 +212,11 @@ impl Receiver {
 
     // This function causes a EOF to be returned to the user. We also know that there will be no more incoming
     // data after this sequence number.
-    fn check_and_process_fin<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
+    fn check_and_process_fin(
+        cb: &mut ControlBlock,
         header: &TcpHeader,
         seg_end: SeqNumber,
-        layer3_endpoint: &mut T,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<(), Fail> {
         if header.fin {
             match cb.receiver.fin_seq_no.get() {
@@ -347,9 +347,9 @@ impl Receiver {
     // window, or is a non-data segment with a sequence number that falls within the window).  Unacceptable segments
     // should be ACK'd (unless they are RSTs), and then dropped.
     // Returns Ok if further processing is needed and EBADMSG if the packet is not within the receive window.
-    fn check_segment_in_window<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    fn check_segment_in_window(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         header: &mut TcpHeader,
         data: &mut DemiBuffer,
         seg_start: &mut SeqNumber,
@@ -471,7 +471,7 @@ impl Receiver {
 
     // TODO: RFC 5961 "Blind Reset Attack Using the RST Bit" prevention would have us ACK and drop if the new segment
     // doesn't start precisely on RCV.NXT.
-    fn check_and_process_rst<T: NetworkLayer>(cb: &mut ControlBlock<T>, header: &TcpHeader) -> Result<(), Fail> {
+    fn check_and_process_rst(cb: &mut ControlBlock, header: &TcpHeader) -> Result<(), Fail> {
         if !header.rst {
             return Ok(());
         }
@@ -516,11 +516,7 @@ impl Receiver {
     }
 
     // Check the ACK bit.
-    fn check_and_process_ack<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        header: &TcpHeader,
-        now: Instant,
-    ) -> Result<(), Fail> {
+    fn check_and_process_ack(cb: &mut ControlBlock, header: &TcpHeader, now: Instant) -> Result<(), Fail> {
         if !header.ack {
             // All segments on established connections should be ACKs.  Drop this segment.
             let cause: String = format!("Received non-ACK segment on established connection");
@@ -536,9 +532,9 @@ impl Receiver {
         Ok(())
     }
 
-    fn process_data<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    fn process_data(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         data: DemiBuffer,
         seg_start: SeqNumber,
         seg_end: SeqNumber,
@@ -683,9 +679,9 @@ impl Receiver {
             .emit(self.out_of_order_frames.len() as u32);
     }
 
-    pub async fn acknowledger<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub async fn acknowledger(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<Never, Fail> {
         let mut ack_deadline: SharedAsyncValue<Option<Instant>> = cb.receiver.ack_deadline_time_secs.clone();
         let mut deadline: Option<Instant> = ack_deadline.get();
