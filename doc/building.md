@@ -1,7 +1,8 @@
 
 # Building Demikernel
 
-This document contains instructions on how to build Demikernel on Linux.
+This document contains instructions on how to build Demikernel on Linux. To build on Windows, [follow the instructions
+here.](building-windows.md)
 
 > The instructions in this file assume that you have at your disposal at one
 Linux machine with Demikernel's development environment set up. For more

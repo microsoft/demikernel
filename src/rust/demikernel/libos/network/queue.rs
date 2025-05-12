@@ -26,6 +26,14 @@ use ::std::{
 };
 
 //======================================================================================================================
+// Constants
+//======================================================================================================================
+
+/// The default capacity of the push queue on construction, used to preallocate in order to remove the allocation cost
+/// from the data path.
+const DEFAULT_PUSH_QUEUE_CAPACITY: usize = 64;
+
+//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -73,7 +81,7 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             state_machine: SocketStateMachine::new_unbound(typ),
             socket,
             remote: None,
-            push_queue: VecDeque::with_capacity(64),
+            push_queue: VecDeque::with_capacity(DEFAULT_PUSH_QUEUE_CAPACITY),
             transport: transport.clone(),
         })))
     }
@@ -174,7 +182,7 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
             state_machine: SocketStateMachine::new_established(),
             socket: new_socket,
             remote: Some(saddr),
-            push_queue: VecDeque::with_capacity(64),
+            push_queue: VecDeque::with_capacity(DEFAULT_PUSH_QUEUE_CAPACITY),
             transport: self.transport.clone(),
         })))
     }

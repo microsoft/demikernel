@@ -15,7 +15,6 @@ use arrayvec::ArrayVec;
 pub use self::{arp::SharedArpPeer, icmpv4::SharedIcmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header};
 
 use crate::{
-    demi_sgarray_t,
     demikernel::config::Config,
     inetstack::{
         consts::RECEIVE_BATCH_SIZE,
@@ -23,7 +22,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         SharedDemiRuntime, SharedObject,
     },
     MacAddress,
@@ -49,7 +48,7 @@ pub struct Layer3Endpoint<T: DataLinkLayer> {
 #[derive(Clone)]
 pub struct SharedLayer3Endpoint<T: DataLinkLayer>(SharedObject<Layer3Endpoint<T>>);
 
-pub trait NetworkLayer: 'static + Clone + Sized + MemoryRuntime {
+pub trait NetworkLayer: 'static + Clone + Sized + DemiMemoryAllocator {
     type DataLinkLayer: DataLinkLayer;
     type FlowState: Default + Clone;
     type FlowRecord: Clone;
@@ -261,20 +260,8 @@ impl<T: DataLinkLayer> DerefMut for SharedLayer3Endpoint<T> {
 }
 
 /// Memory Runtime Trait Implementation for Layer 3.
-impl<T: DataLinkLayer + MemoryRuntime> MemoryRuntime for SharedLayer3Endpoint<T> {
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer2_endpoint.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer2_endpoint.sgaalloc(size)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer2_endpoint.sgafree(sga)
-    }
-
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer2_endpoint.clone_sgarray(sga)
+impl<T: DataLinkLayer> DemiMemoryAllocator for SharedLayer3Endpoint<T> {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        self.layer2_endpoint.allocate_demi_buffer(size)
     }
 }

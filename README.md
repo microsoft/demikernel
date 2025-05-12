@@ -26,7 +26,8 @@ To get details about the system, read our paper in [SOSP '21](https://doi.org/10
 ## Documentation
 
 - For instructions on development environment setup, see [doc/setup.md](./doc/setup.md).
-- For instructions on building, see [doc/building.md](./doc/building.md).
+- For instructions on building, see [doc/building.md](./doc/building.md) for Linux and [doc/building-windows.md](./doc/building-windows.md) for
+  Windows.
 - For instructions on testing and running, [doc/testing.md](./doc/testing.md).
 - For instructions for running on CloudLab, see [doc/cloudlab.md](./doc/cloudlab.md).
 - For documentation on the API, see documents in [man](./man).

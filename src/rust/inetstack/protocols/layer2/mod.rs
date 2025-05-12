@@ -16,12 +16,11 @@ pub use self::ethernet2::{
 //======================================================================================================================
 
 use crate::{
-    demi_sgarray_t,
     demikernel::config::Config,
     inetstack::{consts::RECEIVE_BATCH_SIZE, protocols::layer1::PhysicalLayer, types::MacAddress},
     runtime::{
         fail::Fail,
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{DemiBuffer, DemiMemoryAllocator},
         SharedObject,
     },
 };
@@ -40,7 +39,7 @@ pub struct Layer2Endpoint<P: PhysicalLayer> {
 #[derive(Clone)]
 pub struct SharedLayer2Endpoint<P: PhysicalLayer>(SharedObject<Layer2Endpoint<P>>);
 
-pub trait DataLinkLayer: 'static + Clone + Sized + MemoryRuntime {
+pub trait DataLinkLayer: 'static + Clone + Sized + DemiMemoryAllocator {
     type PhysicalLayer: PhysicalLayer;
     type FlowState: Default + Clone;
     type FlowRecord: Clone;
@@ -167,21 +166,8 @@ impl<P: PhysicalLayer> DerefMut for SharedLayer2Endpoint<P> {
     }
 }
 
-/// Memory Runtime Trait Implementation for the network stack.
-impl<P: PhysicalLayer> MemoryRuntime for SharedLayer2Endpoint<P> {
-    fn into_sgarray(&self, buf: DemiBuffer) -> Result<demi_sgarray_t, Fail> {
-        self.layer1_endpoint.into_sgarray(buf)
-    }
-
-    fn sgaalloc(&self, size_bytes: usize) -> Result<demi_sgarray_t, Fail> {
-        self.layer1_endpoint.sgaalloc(size_bytes)
-    }
-
-    fn sgafree(&self, sga: demi_sgarray_t) -> Result<(), Fail> {
-        self.layer1_endpoint.sgafree(sga)
-    }
-
-    fn clone_sgarray(&self, sga: &demi_sgarray_t) -> Result<DemiBuffer, Fail> {
-        self.layer1_endpoint.clone_sgarray(sga)
+impl<P: PhysicalLayer> DemiMemoryAllocator for SharedLayer2Endpoint<P> {
+    fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
+        self.layer1_endpoint.allocate_demi_buffer(size)
     }
 }

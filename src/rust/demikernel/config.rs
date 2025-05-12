@@ -507,7 +507,7 @@ impl Config {
     }
 
     pub fn mss(&self) -> Result<usize, Fail> {
-        Self::get_int_option(self.get_inetstack_config()?, inetstack_config::MSS)
+        self.get_int_env_or_option(inetstack_config::MSS, Self::get_inetstack_config)
     }
 
     pub fn tcp_checksum_offload(&self) -> Result<bool, Fail> {

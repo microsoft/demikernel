@@ -13,7 +13,7 @@ mod test {
     use ::anyhow::Result;
     use ::crossbeam_channel::{Receiver, Sender};
     use ::demikernel::runtime::{
-        memory::{DemiBuffer, MemoryRuntime},
+        memory::{into_sgarray, DemiBuffer},
         OperationResult, QDesc, QToken,
     };
 
@@ -214,7 +214,7 @@ mod test {
                     anyhow::bail!("wait on push() failed")
                 },
             }
-
+            alice_barrier.wait();
             // Pop data.
             let qt: QToken = match libos.pop(sockfd, None) {
                 Ok(qt) => qt,
@@ -285,7 +285,7 @@ mod test {
             };
 
             // Push data.
-            let buf = libos.get_transport().into_sgarray(bytes)?;
+            let buf = into_sgarray(bytes)?;
             let qt: QToken = match libos.pushto(sockfd, &buf, alice_addr) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -304,6 +304,7 @@ mod test {
                 },
             }
 
+            bob_barrier.wait();
             // Close connection.
             match libos.async_close(sockfd) {
                 Ok(qt) => {
@@ -375,6 +376,7 @@ mod test {
                 },
             }
 
+            alice_barrier.wait();
             let qt: QToken = match libos.pop(sockfd, None) {
                 Ok(qt) => qt,
                 Err(e) => {
@@ -443,7 +445,7 @@ mod test {
             };
 
             // Push data.
-            let buf = libos.get_transport().into_sgarray(bytes)?;
+            let buf = into_sgarray(bytes)?;
             let qt: QToken = libos.pushto(sockfd, &buf, alice_addr).unwrap();
             let (_, qr): (QDesc, OperationResult) = safe_wait(&mut libos, qt)?;
             match qr {
@@ -454,6 +456,7 @@ mod test {
                     anyhow::bail!("push() failed")
                 },
             }
+            bob_barrier.wait();
 
             // Close connection.
             match libos.async_close(sockfd) {

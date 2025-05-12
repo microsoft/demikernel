@@ -15,7 +15,10 @@
 
 #ifdef _WIN32
 #include <WinSock2.h>
-#pragma pack(push, p0)
+
+// NB push the structure packing onto the stack with a label to ensure we correctly restore it at the end of the
+// header.
+#pragma pack(push, demi0)
 #endif
 
 #ifdef __cplusplus
@@ -198,7 +201,8 @@ extern "C"
 #endif
 
 #ifdef _WIN32
-#pragma pack(pop, p0)
+// Restore the original packing alignment.
+#pragma pack(pop, demi0)
 #endif
 
 #endif /* DEMI_TYPES_H_IS_INCLUDED */

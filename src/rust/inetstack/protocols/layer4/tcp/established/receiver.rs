@@ -111,98 +111,6 @@ impl Receiver {
         }
     }
 
-    // This function causes a EOF to be returned to the user. We also know that there will be no more incoming
-    // data after this sequence number.
-    fn push_fin(&mut self) {
-        self.pop_queue.push(DemiBuffer::new(0));
-        debug_assert_eq!(self.receive_next_seq_no, self.fin_seq_no.get().unwrap());
-        // Reset it to wake up any close coroutines waiting for FIN to arrive.
-        self.fin_seq_no.set(Some(self.receive_next_seq_no));
-        // Move RECV_NXT over the FIN.
-        self.receive_next_seq_no = self.receive_next_seq_no + 1.into();
-    }
-
-    pub fn get_receive_window_size(&self) -> u32 {
-        let bytes_unread: u32 = (self.receive_next_seq_no - self.reader_next_seq_no).into();
-        // The window should be less than 1GB or 64KB without scaling.
-        debug_assert!(
-            (self.window_scale_shift_bits == 0 && bytes_unread <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
-                || bytes_unread <= MAX_WINDOW_SIZE_WITH_SCALING
-        );
-        debug!(
-            "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
-            bytes_unread, self.buffer_size_bytes
-        );
-        self.buffer_size_bytes - bytes_unread
-    }
-
-    pub fn hdr_window_size(&self) -> u16 {
-        let window_size: u32 = self.get_receive_window_size();
-        let hdr_window_size: u16 = expect_ok!(
-            (window_size >> self.window_scale_shift_bits).try_into(),
-            "Window size overflow"
-        );
-        debug!(
-            "Window size -> {} (hdr {}, scale {})",
-            (hdr_window_size as u32) << self.window_scale_shift_bits,
-            hdr_window_size,
-            self.window_scale_shift_bits,
-        );
-        hdr_window_size
-    }
-
-    // This routine takes an incoming in-order TCP segment and adds the data to the user's receive queue.  If the new
-    // segment fills a "hole" in the receive sequence number space allowing previously stored out-of-order data to now
-    // be received, it receives that too.
-    //
-    // This routine also updates receive_next to reflect any data now considered "received".
-    fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) {
-        // This routine should only be called with in-order segment data.
-        debug_assert_eq!(seg_start, self.receive_next_seq_no);
-
-        // Push the new segment data onto the end of the receive queue.
-        self.receive_next_seq_no = self.receive_next_seq_no + SeqNumber::from(buf.len() as u32);
-        // This inserts the segment and wakes a waiting pop coroutine.
-        self.pop_queue.push(buf);
-
-        // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
-        // the out-of-order queue is now in-order.  If so, we can move it to the receive queue.
-        while !self.out_of_order_frames.is_empty() {
-            if let Some(stored_entry) = self.out_of_order_frames.front() {
-                if stored_entry.0 == self.receive_next_seq_no {
-                    // Move this entry's buffer from the out-of-order store to the receive queue.
-                    // This data is now considered to be "received" by TCP, and included in our RCV.NXT calculation.
-                    debug!("Recovering out-of-order packet at {}", self.receive_next_seq_no);
-                    if let Some(temp) = self.out_of_order_frames.pop_front() {
-                        self.receive_next_seq_no = self.receive_next_seq_no + SeqNumber::from(temp.1.len() as u32);
-                        // This inserts the segment and wakes a waiting pop coroutine.
-                        self.pop_queue.push(temp.1);
-                    }
-                } else {
-                    // Since our out-of-order list is sorted, we can stop when the next segment is not in sequence.
-                    break;
-                }
-            }
-        }
-
-        METRICS
-            .tcp_out_of_order_frames
-            .emit(self.out_of_order_frames.len() as u32);
-    }
-
-    // Block until the remote sends a FIN (plus all previous data has arrived).
-    pub async fn wait_for_fin(&mut self) -> Result<(), Fail> {
-        let mut fin_seq_no: Option<SeqNumber> = self.fin_seq_no.get();
-        loop {
-            match fin_seq_no {
-                Some(fin_seq_no) if self.receive_next_seq_no >= fin_seq_no => return Ok(()),
-                _ => {
-                    fin_seq_no = self.fin_seq_no.wait_for_change(None).await?;
-                },
-            }
-        }
-    }
-
     // Block until some data is received, up to an optional size.
     pub async fn pop(&mut self, size: Option<usize>) -> Result<DemiBuffer, Fail> {
         debug!("waiting on pop {:?}", size);
@@ -278,45 +186,13 @@ impl Receiver {
             warn!("Got packet with URG bit set!");
         }
 
-        let has_data: bool = if data.len() > 0 {
+        // Store whether the packet has data here because processing it will consume the DemiBuffer.
+        let has_data: bool = data.len() > 0;
+        if has_data {
             Self::process_data(cb, layer3_endpoint, data, seg_start, seg_end, seg_len)?;
-            true
-        } else {
-            false
-        };
-
+        }
         // Deal with FIN flag, saving the FIN for later if it is out of order.
-        if header.fin {
-            match cb.receiver.fin_seq_no.get() {
-                // We've already received this FIN, so ignore.
-                Some(seq_no) if seq_no != seg_end => warn!(
-                    "Received a FIN with a different sequence number, ignoring. previous={:?} new={:?}",
-                    seq_no, seg_end,
-                ),
-                Some(_) => trace!("Received duplicate FIN"),
-                None => {
-                    trace!("Received FIN");
-                    cb.receiver.fin_seq_no.set(seg_end.into());
-                },
-            }
-        };
-
-        // Check whether we've received the last packet in this TCP stream.
-        if cb
-            .receiver
-            .fin_seq_no
-            .get()
-            .is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no)
-        {
-            // Once we know there is no more data coming, begin closing down the connection.
-            Self::process_fin(cb);
-        }
-
-        // Send an ack on every FIN. We do this separately here because if the FIN is in order, we ack it after the
-        // previous line, otherwise we do not ack the FIN.
-        if header.fin {
-            Sender::send_ack(cb, layer3_endpoint)
-        }
+        Self::check_and_process_fin(cb, &header, seg_end, layer3_endpoint)?;
 
         // We should ACK this segment, preferably via piggybacking on a response.
         if cb.receiver.ack_deadline_time_secs.get().is_none() {
@@ -332,6 +208,139 @@ impl Receiver {
         }
 
         Ok(())
+    }
+
+    // This function causes a EOF to be returned to the user. We also know that there will be no more incoming
+    // data after this sequence number.
+    fn check_and_process_fin<T: NetworkLayer>(
+        cb: &mut ControlBlock<T>,
+        header: &TcpHeader,
+        seg_end: SeqNumber,
+        layer3_endpoint: &mut T,
+    ) -> Result<(), Fail> {
+        if header.fin {
+            match cb.receiver.fin_seq_no.get() {
+                // We've already received this FIN.
+                Some(seq_no) if seg_end != seq_no => {
+                    warn!(
+                        "Received a FIN with a different sequence number, ignoring. previous={:?} new={:?}",
+                        seq_no, seg_end,
+                    )
+                },
+                Some(_) => (),
+                None => {
+                    trace!("Received FIN");
+                    cb.receiver.fin_seq_no.set(seg_end.into());
+                },
+            }
+        };
+
+        // Have we received all data before the FIN?
+        if cb
+            .receiver
+            .fin_seq_no
+            .get()
+            .is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no)
+        {
+            let state = match cb.state {
+                State::Established => State::CloseWait,
+                State::FinWait1 => State::Closing,
+                State::FinWait2 => State::TimeWait,
+                state => unreachable!("Cannot be in any other state at this point: {:?}", state),
+            };
+            cb.state = state;
+            cb.receiver.pop_queue.push(DemiBuffer::new(0));
+            debug_assert_eq!(cb.receiver.receive_next_seq_no, cb.receiver.fin_seq_no.get().unwrap());
+            // Reset it to wake up any close coroutines waiting for FIN to arrive.
+            cb.receiver.fin_seq_no.set(Some(cb.receiver.receive_next_seq_no));
+            // Move RECV_NXT over the FIN.
+            cb.receiver.receive_next_seq_no = cb.receiver.receive_next_seq_no + 1.into();
+        }
+
+        // Have we processed all of the data and the FIN?
+        if header.fin {
+            Sender::send_ack(cb, layer3_endpoint);
+        }
+
+        Ok(())
+    }
+
+    pub fn get_receive_window_size(&self) -> u32 {
+        let bytes_unread: u32 = (self.receive_next_seq_no - self.reader_next_seq_no).into();
+        // The window should be less than 1GB or 64KB without scaling.
+        debug_assert!(
+            (self.window_scale_shift_bits == 0 && bytes_unread <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
+                || bytes_unread <= MAX_WINDOW_SIZE_WITH_SCALING
+        );
+        debug!(
+            "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
+            bytes_unread, self.buffer_size_bytes
+        );
+        self.buffer_size_bytes - bytes_unread
+    }
+
+    pub fn hdr_window_size(&self) -> u16 {
+        let window_size: u32 = self.get_receive_window_size();
+        let hdr_window_size: u16 = expect_ok!(
+            (window_size >> self.window_scale_shift_bits).try_into(),
+            "Window size overflow"
+        );
+        debug!(
+            "Window size -> {} (hdr {}, scale {})",
+            (hdr_window_size as u32) << self.window_scale_shift_bits,
+            hdr_window_size,
+            self.window_scale_shift_bits,
+        );
+        hdr_window_size
+    }
+
+    // This routine takes an incoming in-order TCP segment and adds the data to the user's receive queue.  If the new
+    // segment fills a "hole" in the receive sequence number space allowing previously stored out-of-order data to now
+    // be received, it receives that too.
+    //
+    // This routine also updates receive_next to reflect any data now considered "received".
+    fn receive_data(&mut self, seg_start: SeqNumber, buf: DemiBuffer) {
+        // This routine should only be called with in-order segment data.
+        debug_assert_eq!(seg_start, self.receive_next_seq_no);
+
+        // Push the new segment data onto the end of the receive queue.
+        self.receive_next_seq_no = self.receive_next_seq_no + SeqNumber::from(buf.len() as u32);
+        // This inserts the segment and wakes a waiting pop coroutine.
+        self.pop_queue.push(buf);
+
+        // Okay, we've successfully received some new data.  Check if any of the formerly out-of-order data waiting in
+        // the out-of-order queue is now in-order.  The out-of-order queue is ordered, so we can stop once the next
+        // segment is not in sequence.
+        while self
+            .out_of_order_frames
+            .front()
+            .is_some_and(|(next_seq_no, _)| *next_seq_no == self.receive_next_seq_no)
+        {
+            // Move this entry's buffer from the out-of-order store to the receive queue.
+            // This data is now considered to be "received" by TCP, and included in our RCV.NXT calculation.
+            debug!("Recovering out-of-order packet at {}", self.receive_next_seq_no);
+            let (_, buf) = self.out_of_order_frames.pop_front().unwrap();
+            self.receive_next_seq_no = self.receive_next_seq_no + SeqNumber::from(buf.len() as u32);
+            // This inserts the segment and wakes a waiting pop coroutine.
+            self.pop_queue.push(buf);
+        }
+
+        METRICS
+            .tcp_out_of_order_frames
+            .emit(self.out_of_order_frames.len() as u32);
+    }
+
+    // Block until the remote sends a FIN (plus all previous data has arrived).
+    pub async fn wait_for_fin(&mut self) -> Result<(), Fail> {
+        let mut fin_seq_no: Option<SeqNumber> = self.fin_seq_no.get();
+        loop {
+            match fin_seq_no {
+                Some(fin_seq_no) if self.receive_next_seq_no >= fin_seq_no => return Ok(()),
+                _ => {
+                    fin_seq_no = self.fin_seq_no.wait_for_change(None).await?;
+                },
+            }
+        }
     }
 
     // Check to see if the segment is acceptable sequence-wise (i.e. contains some data that fits within the receive
@@ -467,8 +476,19 @@ impl Receiver {
             return Ok(());
         }
         info!("Received RST: remote reset connection");
-        if cb.receiver.fin_seq_no.get().is_none() {
-            cb.receiver.push_fin();
+        match cb.receiver.fin_seq_no.get() {
+            // We've already received a FIN.
+            Some(seq_no) if seq_no > header.seq_num => {
+                warn!(
+                    "Received a RST with a lower sequence number, updating. previous={:?} new={:?}",
+                    seq_no, header.seq_num,
+                )
+            },
+            Some(_) => (),
+            None => {
+                trace!("Received FIN");
+                cb.receiver.fin_seq_no.set(Some(header.seq_num));
+            },
         }
         cb.state = State::Closed;
         return Err(Fail::new(libc::ECONNRESET, "remote reset connection"));
@@ -524,32 +544,35 @@ impl Receiver {
         seg_end: SeqNumber,
         seg_len: u32,
     ) -> Result<(), Fail> {
-        // We can only process in-order data.  Check for out-of-order segment.
-        if seg_start != cb.receiver.receive_next_seq_no {
-            debug!(
-                "Received out-of-order segment; out_of_order_frames.len() = {:?}",
-                cb.receiver.out_of_order_frames.len()
-            );
-            debug_assert_ne!(seg_len, 0);
-            // This segment is out-of-order.  If it carries data, we should store it for later processing
-            // after the "hole" in the sequence number space has been filled.
-            match cb.state {
-                State::Established | State::FinWait1 | State::FinWait2 => {
-                    debug_assert_eq!(seg_len, data.len() as u32);
-                    cb.receiver.store_out_of_order_segment(seg_start, seg_end, data);
-                    // Sending an ACK here is only a "MAY" according to the RFCs, but helpful for fast retransmit.
-                    trace!("process_data(): send ack on out-of-order segment");
-                    Sender::send_ack(cb, layer3_endpoint);
-                },
-                state => warn!("Ignoring data received after FIN (in state {:?}).", state),
-            }
+        // TCP dictates that we only receive data in these states.
+        match cb.state {
+            State::Established | State::FinWait1 | State::FinWait2 => (),
+            state => {
+                warn!("Ignoring data received after FIN (in state {:?}).", state);
+                return Ok(());
+            },
+        };
 
-            // We're done with this out-of-order segment.
+        // Data is in order, so directly receive.
+        if seg_start == cb.receiver.receive_next_seq_no {
+            cb.receiver.receive_data(seg_start, data);
             return Ok(());
         }
 
-        // We can only legitimately receive data in ESTABLISHED, FIN-WAIT-1, and FIN-WAIT-2.
-        cb.receiver.receive_data(seg_start, data);
+        // This segment is out-of-order.  If it carries data, we should store it for later processing
+        // after the "hole" in the sequence number space has been filled.
+        debug!(
+            "Received out-of-order segment; out_of_order_frames.len() = {:?}",
+            cb.receiver.out_of_order_frames.len()
+        );
+        debug_assert_ne!(seg_len, 0);
+        debug_assert_eq!(seg_len, data.len() as u32);
+        cb.receiver.store_out_of_order_segment(seg_start, seg_end, data);
+        // Sending an ACK here is only a "MAY" according to the RFCs, but helpful for fast retransmit.
+        trace!("process_data(): send ack on out-of-order segment");
+        Sender::send_ack(cb, layer3_endpoint);
+
+        // We're done with this out-of-order segment.
         Ok(())
     }
 
@@ -660,23 +683,13 @@ impl Receiver {
             .emit(self.out_of_order_frames.len() as u32);
     }
 
-    fn process_fin<T: NetworkLayer>(cb: &mut ControlBlock<T>) {
-        let state = match cb.state {
-            State::Established => State::CloseWait,
-            State::FinWait1 => State::Closing,
-            State::FinWait2 => State::TimeWait,
-            state => unreachable!("Cannot be in any other state at this point: {:?}", state),
-        };
-        cb.state = state;
-        cb.receiver.push_fin();
-    }
-
     pub async fn acknowledger<T: NetworkLayer>(
         cb: &mut ControlBlock<T>,
         layer3_endpoint: &mut T,
     ) -> Result<Never, Fail> {
         let mut ack_deadline: SharedAsyncValue<Option<Instant>> = cb.receiver.ack_deadline_time_secs.clone();
         let mut deadline: Option<Instant> = ack_deadline.get();
+
         loop {
             // TODO: Implement TCP delayed ACKs, subject to restrictions from RFC 1122
             // - TCP should implement a delayed ACK

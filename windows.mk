@@ -248,10 +248,6 @@ CONFIG_PATH = $(USERPROFILE)/config.yaml
 MTU = 1500
 !endif
 
-!ifndef MSS
-MSS = 1500
-!endif
-
 !ifndef PEER
 PEER = server
 !endif

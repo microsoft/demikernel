@@ -156,22 +156,23 @@ extern "C"
     /**
      * @brief Gets socket options.
      *
-     * @param qd     Target I/O queue descriptor.
-     * @param level  Protocol level at which the option resides.
+     * @param qd      Target I/O queue descriptor.
+     * @param level   Protocol level at which the option resides.
      * @param optname Socket option for which the value is to be retrieved.
-     * @param optval Pointer to the buffer containing the option value.
-     * @param optlen Size of the buffer containing the option value.
+     * @param optval  Pointer to the buffer containing the option value.
+     * @param optlen  On input, specified the size of the buffer containing the option value. Upon successful
+     *                completion, updated to indicate the number of bytes written to optval.
      *
      * @return On successful completion, zero is returned. On failure, a positive error code is returned instead.
      */
     ATTR_NONNULL(4, 5)
     extern int demi_getsockopt(_In_ int qd, _In_ int level, _In_ int optname, _Out_writes_to_(*optlen, *optlen) void *optval, _Inout_ socklen_t *optlen);
-
     /**
      * @brief Returns the address of the peer connected to qd.
      *
      * @param addr    Peer address is returned in this parameter.
-     * @param addrlen Indicates the amount of space pointed to by addr
+     * @param addrlen Indicates the amount of space pointed to by addr; updated on success to indicate the number of
+     *                bytes written to addr.
      *
      * @return On success, zero is returned. On failure, a possitive error code is returned.
      */

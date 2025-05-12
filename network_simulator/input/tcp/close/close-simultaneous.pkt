@@ -1,4 +1,4 @@
-// Tests for simultaneous close.
+// Tests for simultaneous close. This is Figure 14 of RFC 793.
 
 // Establish a connection.
 +.0 socket(..., SOCK_STREAM, IPPROTO_TCP) = 500
@@ -18,14 +18,17 @@
 // Close connection.
 +.2 close(500) = 0
 
-// Send FIN segment.
+// Send FIN segment. Should move to FINWAIT-1
 +.0 TCP > F. seq 65536(0) ack 101 win 65535 <nop>
-// Receive ACK on FIN segment.
-+.1 TCP < F. seq 101(0) ack 65537 win 65535 <nop>
+
+// Receive FIN but no ack on FIN. Should move to Closing.
++.1 TCP < F. seq 101(0) ack 65536 win 65535 <nop>
+
+// Send ack.
++.0 TCP > . seq 65537(0) ack 102 win 65534 <nop>
+
+// Receive ACK on FIN segment. Should move to TIME WAIT
++.1 TCP < . seq 102(0) ack 65537 win 65534 <nop>
 
 // Succeed to close connection immediately because we have linger set to 0.
 +0 wait(500, ...) = 0
-
-// Send ACK on FIN segment.
-+.0 TCP > . seq 65537(0) ack 102 win 65534 <nop>
-

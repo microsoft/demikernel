@@ -12,7 +12,7 @@ use crate::{
         protocols::{
             layer3::NetworkLayer,
             layer4::tcp::{
-                established::{rto::RtoCalculator, ControlBlock},
+                established::{ctrlblk::State, rto::RtoCalculator, ControlBlock},
                 header::TcpHeader,
                 SeqNumber,
             },
@@ -94,7 +94,7 @@ pub struct Sender {
 
     // This is the send buffer (user data we do not yet have window to send). If the option is None, then it indicates
     // a FIN. This keeps us from having to allocate an empty Demibuffer to indicate FIN.
-    unsent_queue: SharedAsyncQueue<Option<DemiBuffer>>,
+    unsent_queue: SharedAsyncQueue<DemiBuffer>,
 
     // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
     send_window: SharedAsyncValue<u32>,
@@ -138,7 +138,11 @@ impl Sender {
         }
     }
 
-    fn process_acked_fin(&mut self, bytes_remaining: usize, ack_num: SeqNumber) -> usize {
+    fn process_acked_fin<T: NetworkLayer>(
+        cb: &mut ControlBlock<T>,
+        bytes_remaining: usize,
+        ack_num: SeqNumber,
+    ) -> usize {
         // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged
         // sequence space remaining (corresponding to our FIN).
         debug_assert_eq!(bytes_remaining, 1);
@@ -146,10 +150,22 @@ impl Sender {
         // Double check that the ack is for the FIN sequence number.
         debug_assert_eq!(
             ack_num,
-            self.fin_seq_no
+            cb.sender
+                .fin_seq_no
                 .map(|s| { s + 1.into() })
                 .expect("should have a FIN set")
         );
+
+        cb.state = match cb.state {
+            State::FinWait1 => State::FinWait2,
+            State::Closing => State::TimeWait,
+            State::LastAck => State::Closed,
+            state => unreachable!(
+                "cannot receive a response to a FIN if one was not sent in state {:?}",
+                state
+            ),
+        };
+
         0
     }
 
@@ -216,12 +232,12 @@ impl Sender {
         }
     }
 
-    // This function sends a packet and waits for it to be acked.
+    // This function sends a packet (or FIN) indicated by [buf] and waits for it to be acked.
     pub async fn push<T: NetworkLayer>(
         cb: &mut ControlBlock<T>,
         layer3_endpoint: &mut T,
         runtime: &mut SharedDemiRuntime,
-        mut buf: DemiBuffer,
+        mut buf: Option<DemiBuffer>,
     ) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
         debug_assert!(cb.sender.fin_seq_no.is_none());
@@ -231,20 +247,31 @@ impl Sender {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
-        trace!("push(): total unsent segments = {:?}", cb.sender.unsent_queue.len());
+        trace!("push(): total unsent segments={:?}", cb.sender.unsent_queue.len());
+
+        // Check if closing the socket and sending FIN.
+        if let Some(buf) = buf.as_mut() {
+            cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
+            if cb.sender.send_window.get() > 0 {
+                Self::send_segment(cb, layer3_endpoint, runtime.get_now(), buf);
+            }
+        } else {
+            // We can always send the FIN immediately.
+            cb.sender.fin_seq_no = Some(cb.sender.unsent_next_seq_no);
+            cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + 1.into();
+            Self::send_fin(cb, layer3_endpoint, runtime.get_now())?;
+        }
 
         // Place the buffer in the unsent queue.
-        cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
-        if cb.sender.send_window.get() > 0 {
-            Self::send_segment(cb, layer3_endpoint, runtime.get_now(), &mut buf);
-        }
-        if buf.len() > 0 {
+        if let Some(buf) = buf.take() {
             if cb.sender.unacked_queue.len() > 0 {
-                trace!("push(): total unacked segments {:?}", cb.sender.unacked_queue.len());
+                trace!("push(): total unacked segments={:?}", cb.sender.unacked_queue.len());
             }
-            METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);
+            if !buf.is_empty() {
+                cb.sender.unsent_queue.push(buf);
+            }
 
-            cb.sender.unsent_queue.push(Some(buf));
+            METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);
         }
 
         // Wait until the sequnce number of the pushed buffer is acknowledged.
@@ -257,26 +284,6 @@ impl Sender {
         Ok(())
     }
 
-    // Places a FIN marker in the outgoing data stream. No data can be pushed after this.
-    pub async fn push_fin_and_wait_for_ack<T: NetworkLayer>(cb: &mut ControlBlock<T>) -> Result<(), Fail> {
-        debug_assert!(cb.sender.fin_seq_no.is_none());
-        // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF {
-            return Err(Fail::new(libc::EBUSY, "too many packets to send"));
-        }
-
-        cb.sender.fin_seq_no = Some(cb.sender.unsent_next_seq_no);
-        cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + 1.into();
-        cb.sender.unsent_queue.push(None);
-
-        let mut send_unacked_watched: SharedAsyncValue<SeqNumber> = cb.sender.send_unacked.clone();
-        let fin_ack_num: SeqNumber = cb.sender.unsent_next_seq_no;
-        while cb.sender.send_unacked.get() < fin_ack_num {
-            send_unacked_watched.wait_for_change(None).await?;
-        }
-        Ok(())
-    }
-
     pub async fn background_sender<T: NetworkLayer>(
         cb: &mut ControlBlock<T>,
         layer3_endpoint: &mut T,
@@ -284,19 +291,15 @@ impl Sender {
     ) -> Result<Never, Fail> {
         loop {
             // Get next bit of unsent data.
-            if let Some(buf) = cb.sender.unsent_queue.pop(None).await? {
-                Self::send_buffer(cb, layer3_endpoint, runtime.get_now(), buf).await?;
-            } else {
-                Self::send_fin(cb, layer3_endpoint, runtime.get_now())?;
-                // Exit the loop because we no longer have anything to process
-                return Err(Fail::new(libc::ECONNRESET, "Processed and sent FIN"));
-            }
+            let buf: DemiBuffer = cb.sender.unsent_queue.pop(None).await?;
+            Self::send_buffer(cb, layer3_endpoint, runtime.get_now(), buf).await?;
         }
     }
 
     fn send_fin<T: NetworkLayer>(cb: &mut ControlBlock<T>, layer3_endpoint: &mut T, now: Instant) -> Result<(), Fail> {
-        let mut header: TcpHeader = Self::tcp_header(cb, None);
-        debug_assert!(cb.sender.fin_seq_no.is_some_and(|s| { s == header.seq_num }));
+        debug_assert!(cb.sender.fin_seq_no.is_some());
+
+        let mut header: TcpHeader = Self::tcp_header(cb, cb.sender.fin_seq_no);
         header.fin = true;
         Self::emit(cb, layer3_endpoint, header, None);
         // Update SND.NXT.
@@ -649,7 +652,7 @@ impl Sender {
             while bytes_remaining != 0 {
                 bytes_remaining = match cb.sender.unacked_queue.try_pop() {
                     Some(segment) if segment.bytes.is_none() => {
-                        cb.sender.process_acked_fin(bytes_remaining, header.ack_num)
+                        Self::process_acked_fin(cb, bytes_remaining, header.ack_num)
                     },
                     Some(segment) => cb.sender.process_acked_segment(bytes_remaining, segment, now),
                     None => {
@@ -702,11 +705,16 @@ impl Sender {
         // Only perform this debug print in debug builds.  debug_assertions is compiler set in non-optimized builds.
         let mut pkt = match body {
             Some(body) => {
-                debug!("L4 OUTGOING {} bytes + {:?}", body.len(), header);
+                debug!(
+                    "L4 OUTGOING {:?} Connection sending {} bytes + {:?}",
+                    cb.state,
+                    body.len(),
+                    header
+                );
                 body
             },
             _ => {
-                debug!("L4 OUTGOING 0 bytes + {:?}", header);
+                debug!("L4 OUTGOING {:?} Connection sending 0 bytes + {:?}", cb.state, header);
                 DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
             },
         };

@@ -13,7 +13,7 @@ use crate::{
     },
     runtime::{
         fail::Fail,
-        logging,
+        logging::{self, CallbackLogWriter},
         tracing::METRICS,
         types::{
             demi_args_t, demi_callback_t, demi_log_callback_t, demi_metric_callback_t, demi_metric_descriptor_t,
@@ -23,7 +23,8 @@ use crate::{
     },
     SocketOption,
 };
-use ::libc::{c_int, c_void};
+use ::flexi_logger::Logger;
+use ::libc::{c_int, c_void, sockaddr};
 use ::socket2::SockAddr;
 use ::std::{
     cell::RefCell,
@@ -32,58 +33,31 @@ use ::std::{
     ptr, slice,
     time::Duration,
 };
-use flexi_logger::{writers::LogWriter, Logger};
-use libc::sockaddr;
 
 thread_local! {
     static THREAD_LOCAL_LIBOS: RefCell<Option<LibOS>> = RefCell::new(None);
 }
 
-struct CallbackLogWriter {
-    callback: demi_log_callback_t,
-}
-
-impl LogWriter for CallbackLogWriter {
-    fn write(&self, _now: &mut flexi_logger::DeferredNow, record: &log::Record) -> std::io::Result<()> {
-        let module: &str = record.module_path().unwrap_or("{unnamed}");
-        let file: &str = record.file().unwrap_or("{unknown file}");
-        let message: String = record.args().to_string();
-        ((self.callback)(
-            record.level() as i32,
-            module.as_ptr() as *const std::ffi::c_char,
-            module.len() as u32,
-            file.as_ptr() as *const std::ffi::c_char,
-            file.len() as u32,
-            record.line().unwrap_or(0),
-            message.as_ptr() as *const std::ffi::c_char,
-            message.len() as u32,
-        ));
-
-        Ok(())
-    }
-
-    fn flush(&self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[allow(unused)]
 #[no_mangle]
 pub extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
-    if args.is_null() {
-        logging::initialize();
+    // Initialize logging before anything else.
+    let log_callback: Option<demi_log_callback_t> = if args.is_null() {
+        None
     } else {
         let args: &demi_args_t = unsafe { &*args };
-        if let Some(callback) = args.log_callback {
-            logging::custom_initialize(move || {
-                Logger::try_with_env()
-                    .unwrap()
-                    .log_to_writer(Box::new(CallbackLogWriter { callback }))
-            });
-        } else {
-            logging::initialize();
-        }
+        args.log_callback
     };
+
+    if log_callback.is_none() {
+        logging::initialize();
+    } else {
+        logging::custom_initialize(move || {
+            Logger::try_with_env()
+                .unwrap()
+                .log_to_writer(Box::new(CallbackLogWriter::new(log_callback.unwrap())))
+        });
+    }
 
     trace!("demi_init()");
 
@@ -449,7 +423,10 @@ pub extern "C" fn demi_wait(qr_out: *mut demi_qresult_t, qt: demi_qtoken_t, time
             0
         },
         Err(e) => {
-            trace!("demi_wait() failed: {:?}", e);
+            // EDTIMEDOUT is not a "failure" per se; don't trace.
+            if e.errno != libc::ETIMEDOUT {
+                trace!("demi_wait() failed: {:?}", e);
+            }
             e.errno
         },
     });
@@ -509,7 +486,10 @@ pub extern "C" fn demi_wait_any(
             0
         },
         Err(e) => {
-            trace!("demi_wait_any() failed: {:?}", e);
+            // EDTIMEDOUT is not a "failure" per se; don't trace.
+            if e.errno != libc::ETIMEDOUT {
+                trace!("demi_wait_any() failed: {:?}", e);
+            }
             e.errno
         },
     });
@@ -565,6 +545,7 @@ pub extern "C" fn demi_wait_next_n(
         Ok(()) => 0,
         Err(e) if e.errno == libc::ETIMEDOUT => libc::ETIMEDOUT,
         Err(e) => {
+            // EDTIMEDOUT is not a "failure" per se; don't trace.
             if e.errno != libc::ETIMEDOUT {
                 trace!("demi_wait_any() failed: {:?}", e)
             };
@@ -808,7 +789,7 @@ pub extern "C" fn demi_getpeername(qd: c_int, addr: *mut SockAddr, addrlen: *mut
 
     let expected_len = mem::size_of::<SockAddrIn>() as Socklen;
 
-    if unsafe { *addrlen != expected_len } {
+    if unsafe { *addrlen < expected_len } {
         warn!("demi_getpeername(): addrlen does not match size of SockAddrIn");
         return libc::EINVAL;
     }
