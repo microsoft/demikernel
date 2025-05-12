@@ -119,11 +119,8 @@ impl Profiler {
     pub fn get_or_create_scope(&mut self, name: &'static str) -> SharedScope {
         match self.current_scope.as_ref() {
             Some(current_scope) => {
-                let existing_scope: Option<SharedScope> = current_scope
-                    .children_scopes
-                    .iter()
-                    .find(|s| std::ptr::eq(s.name, name))
-                    .cloned();
+                let existing_scope: Option<SharedScope> =
+                    current_scope.children_scopes.iter().find(|s| s.name == name).cloned();
 
                 existing_scope.unwrap_or_else(|| {
                     let new_scope: SharedScope =

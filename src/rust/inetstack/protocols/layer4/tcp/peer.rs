@@ -10,7 +10,7 @@ use crate::{
     inetstack::{
         config::TcpConfig,
         protocols::{
-            layer3::NetworkLayer,
+            layer3::SharedLayer3Endpoint,
             layer4::tcp::{header::TcpHeader, isn_generator::IsnGenerator, socket::SharedTcpSocket, SeqNumber},
         },
     },
@@ -36,34 +36,34 @@ use ::std::{
 // Structures
 //======================================================================================================================
 
-pub struct TcpPeer<T: NetworkLayer> {
+pub struct TcpPeer {
     runtime: SharedDemiRuntime,
     isn_generator: IsnGenerator,
-    layer3_endpoint: T,
+    layer3_endpoint: SharedLayer3Endpoint,
     local_ipv4_addr: Ipv4Addr,
     tcp_config: TcpConfig,
     default_socket_options: TcpSocketOptions,
     rng: SmallRng,
-    addresses: HashMap<SocketId, SharedTcpSocket<T>>,
+    addresses: HashMap<SocketId, SharedTcpSocket>,
 }
 
 #[derive(Clone)]
-pub struct SharedTcpPeer<T: NetworkLayer>(SharedObject<TcpPeer<T>>);
+pub struct SharedTcpPeer(SharedObject<TcpPeer>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<T: NetworkLayer> SharedTcpPeer<T> {
+impl SharedTcpPeer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        layer3_endpoint: T,
+        layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
     ) -> Result<Self, Fail> {
         let mut rng: SmallRng = SmallRng::from_seed(rng_seed);
         let nonce: u32 = rng.gen();
-        Ok(Self(SharedObject::<TcpPeer<T>>::new(TcpPeer {
+        Ok(Self(SharedObject::<TcpPeer>::new(TcpPeer {
             isn_generator: IsnGenerator::new(nonce),
             runtime,
             layer3_endpoint,
@@ -71,12 +71,12 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
             tcp_config: TcpConfig::new(config)?,
             default_socket_options: TcpSocketOptions::new(config)?,
             rng,
-            addresses: HashMap::<SocketId, SharedTcpSocket<T>>::new(),
+            addresses: HashMap::<SocketId, SharedTcpSocket>::new(),
         })))
     }
 
     /// Creates a TCP socket.
-    pub fn socket(&mut self) -> Result<SharedTcpSocket<T>, Fail> {
+    pub fn socket(&mut self) -> Result<SharedTcpSocket, Fail> {
         Ok(SharedTcpSocket::new(
             self.runtime.clone(),
             self.layer3_endpoint.clone(),
@@ -86,26 +86,26 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     /// Sets an option on a TCP socket.
-    pub fn set_socket_option(&mut self, socket: &mut SharedTcpSocket<T>, option: SocketOption) -> Result<(), Fail> {
+    pub fn set_socket_option(&mut self, socket: &mut SharedTcpSocket, option: SocketOption) -> Result<(), Fail> {
         socket.set_socket_option(option)
     }
 
     /// Sets an option on a TCP socket.
     pub fn get_socket_option(
         &mut self,
-        socket: &mut SharedTcpSocket<T>,
+        socket: &mut SharedTcpSocket,
         option: SocketOption,
     ) -> Result<SocketOption, Fail> {
         socket.get_socket_option(option)
     }
 
     /// Gets a peer address on a TCP socket.
-    pub fn getpeername(&mut self, socket: &mut SharedTcpSocket<T>) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, socket: &mut SharedTcpSocket) -> Result<SocketAddrV4, Fail> {
         socket.getpeername()
     }
 
     /// Binds a socket to a local address supplied by [local].
-    pub fn bind(&mut self, socket: &mut SharedTcpSocket<T>, local: SocketAddrV4) -> Result<(), Fail> {
+    pub fn bind(&mut self, socket: &mut SharedTcpSocket, local: SocketAddrV4) -> Result<(), Fail> {
         // All other checks should have been done already.
         debug_assert!(!Ipv4Addr::is_unspecified(local.ip()));
         debug_assert!(local.port() != 0);
@@ -118,7 +118,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     // Marks the target socket as passive.
-    pub fn listen(&mut self, socket: &mut SharedTcpSocket<T>, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, socket: &mut SharedTcpSocket, backlog: usize) -> Result<(), Fail> {
         // Most checks should have been performed already
         debug_assert!(socket.local().is_some());
         let nonce: u32 = self.rng.gen();
@@ -126,7 +126,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     /// Runs until a new connection is accepted.
-    pub async fn accept(&mut self, socket: &mut SharedTcpSocket<T>) -> Result<SharedTcpSocket<T>, Fail> {
+    pub async fn accept(&mut self, socket: &mut SharedTcpSocket) -> Result<SharedTcpSocket, Fail> {
         // Wait for accept to complete.
         match socket.accept().await {
             Ok(socket) => {
@@ -143,7 +143,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     /// Runs until the connect to remote is made or times out.
     pub async fn connect(
         &mut self,
-        socket: &mut SharedTcpSocket<T>,
+        socket: &mut SharedTcpSocket,
         local: SocketAddrV4,
         remote: SocketAddrV4,
     ) -> Result<(), Fail> {
@@ -170,7 +170,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     /// Pushes immediately to the socket and returns the result asynchronously.
-    pub async fn push(&self, socket: &mut SharedTcpSocket<T>, buf: &mut DemiBuffer) -> Result<(), Fail> {
+    pub async fn push(&self, socket: &mut SharedTcpSocket, buf: &mut DemiBuffer) -> Result<(), Fail> {
         // TODO: Remove this copy after merging with the transport trait.
         // Wait for push to complete.
         socket.push(buf.clone()).await?;
@@ -180,7 +180,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     /// Sets up a coroutine for popping data from the socket.
     pub async fn pop(
         &self,
-        socket: &mut SharedTcpSocket<T>,
+        socket: &mut SharedTcpSocket,
         size: usize,
     ) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         // Grab the queue, make sure it hasn't been closed in the meantime.
@@ -191,7 +191,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     /// Closes a TCP socket.
-    pub async fn close(&mut self, socket: &mut SharedTcpSocket<T>) -> Result<(), Fail> {
+    pub async fn close(&mut self, socket: &mut SharedTcpSocket) -> Result<(), Fail> {
         // Wait for close to complete.
         // Handle result: If unsuccessful, free the new queue descriptor.
         if let Some(socket_id) = socket.close().await? {
@@ -200,7 +200,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
         Ok(())
     }
 
-    pub fn hard_close(&mut self, socket: &mut SharedTcpSocket<T>) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, socket: &mut SharedTcpSocket) -> Result<(), Fail> {
         if let Some(socket_id) = socket.hard_close()? {
             self.addresses.remove(&socket_id);
         }
@@ -208,7 +208,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
     }
 
     /// Processes an incoming TCP segment.
-    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, flow_record: T::FlowRecord, mut buf: DemiBuffer) {
+    pub fn receive(&mut self, src_ipv4_addr: Ipv4Addr, mut buf: DemiBuffer) {
         // We can assume that the destination is our local IPv4 address; otherwise, the IP layer would have discarded
         // the packet already.
         let tcp_hdr: TcpHeader = match TcpHeader::parse_and_strip(
@@ -229,7 +229,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
         let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, tcp_hdr.src_port);
 
         // Retrieve the queue descriptor based on the incoming segment.
-        let socket: &mut SharedTcpSocket<T> = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
+        let socket: &mut SharedTcpSocket = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
             Some(socket) => socket,
             None => match self.addresses.get_mut(&SocketId::Passive(local)) {
                 Some(socket) => socket,
@@ -248,7 +248,7 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
         };
 
         // Dispatch to further processing depending on the socket state.
-        socket.receive(src_ipv4_addr, tcp_hdr, flow_record, buf)
+        socket.receive(src_ipv4_addr, tcp_hdr, buf)
     }
 }
 
@@ -256,15 +256,15 @@ impl<T: NetworkLayer> SharedTcpPeer<T> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<T: NetworkLayer> Deref for SharedTcpPeer<T> {
-    type Target = TcpPeer<T>;
+impl Deref for SharedTcpPeer {
+    type Target = TcpPeer;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<T: NetworkLayer> DerefMut for SharedTcpPeer<T> {
+impl DerefMut for SharedTcpPeer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

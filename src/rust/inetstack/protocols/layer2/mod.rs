@@ -31,74 +31,29 @@ use ::std::ops::{Deref, DerefMut};
 // Structures
 //======================================================================================================================
 
-pub struct Layer2Endpoint<P: PhysicalLayer> {
-    layer1_endpoint: P,
+pub struct Layer2Endpoint {
+    layer1_endpoint: Box<dyn PhysicalLayer>,
     local_link_addr: MacAddress,
 }
 
 #[derive(Clone)]
-pub struct SharedLayer2Endpoint<P: PhysicalLayer>(SharedObject<Layer2Endpoint<P>>);
-
-pub trait DataLinkLayer: 'static + Clone + Sized + DemiMemoryAllocator {
-    type PhysicalLayer: PhysicalLayer;
-    type FlowState: Default + Clone;
-    type FlowRecord: Clone;
-
-    fn receive(&mut self) -> Result<ArrayVec<(EtherType2, Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail>;
-
-    fn transmit_arp_packet(
-        &mut self,
-        remote_link_addr: MacAddress,
-        flow: &mut Self::FlowState,
-        pkt: DemiBuffer,
-    ) -> Result<(), Fail>;
-
-    fn transmit_ipv4_packet(
-        &mut self,
-        remote_link_addr: MacAddress,
-        flow: &mut Self::FlowState,
-        pkt: DemiBuffer,
-    ) -> Result<(), Fail>;
-
-    fn get_local_link_addr(&self) -> MacAddress;
-
-    fn update_flow_state(&mut self, flow: &mut Self::FlowState, record: Self::FlowRecord);
-}
+pub struct SharedLayer2Endpoint(SharedObject<Layer2Endpoint>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<P: PhysicalLayer> SharedLayer2Endpoint<P> {
-    pub fn new(config: &Config, layer1_endpoint: P) -> Result<Self, Fail> {
+impl SharedLayer2Endpoint {
+    pub fn new<P: PhysicalLayer>(config: &Config, layer1_endpoint: P) -> Result<Self, Fail> {
         Ok(Self(SharedObject::new(Layer2Endpoint {
-            layer1_endpoint,
+            layer1_endpoint: Box::new(layer1_endpoint),
             local_link_addr: config.local_link_addr()?,
         })))
     }
 
-    fn transmit(
-        &mut self,
-        remote_link_addr: MacAddress,
-        eth2_type: EtherType2,
-        flow: &mut P::FlowState,
-        mut pkt: DemiBuffer,
-    ) -> Result<(), Fail> {
-        let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
-        debug!("L2 OUTGOING {:?}", eth2_header);
-        eth2_header.serialize_and_attach(&mut pkt);
-        self.layer1_endpoint.transmit(flow, pkt)
-    }
-}
-
-impl<P: PhysicalLayer> DataLinkLayer for SharedLayer2Endpoint<P> {
-    type PhysicalLayer = P;
-    type FlowState = P::FlowState;
-    type FlowRecord = P::FlowRecord;
-
-    fn receive(&mut self) -> Result<ArrayVec<(EtherType2, P::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(EtherType2, P::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
-        for (flow_record, mut pkt) in self.layer1_endpoint.receive()? {
+    pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+        let mut batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+        for mut pkt in self.layer1_endpoint.receive()? {
             let header: Ethernet2Header = match Ethernet2Header::parse_and_strip(&mut pkt) {
                 Ok(result) => result,
                 Err(e) => {
@@ -116,35 +71,33 @@ impl<P: PhysicalLayer> DataLinkLayer for SharedLayer2Endpoint<P> {
                 let cause: &str = "invalid link address";
                 warn!("dropping packet: {}", cause);
             }
-            batch.push((header.ether_type(), flow_record, pkt))
+            batch.push((header.ether_type(), pkt))
         }
         Ok(batch)
     }
 
-    fn transmit_arp_packet(
-        &mut self,
-        remote_link_addr: MacAddress,
-        flow: &mut Self::FlowState,
-        pkt: DemiBuffer,
-    ) -> Result<(), Fail> {
-        self.transmit(remote_link_addr, EtherType2::Arp, flow, pkt)
+    pub fn transmit_arp_packet(&mut self, remote_link_addr: MacAddress, pkt: DemiBuffer) -> Result<(), Fail> {
+        self.transmit(remote_link_addr, EtherType2::Arp, pkt)
     }
 
-    fn transmit_ipv4_packet(
-        &mut self,
-        remote_link_addr: MacAddress,
-        flow: &mut Self::FlowState,
-        pkt: DemiBuffer,
-    ) -> Result<(), Fail> {
-        self.transmit(remote_link_addr, EtherType2::Ipv4, flow, pkt)
+    pub fn transmit_ipv4_packet(&mut self, remote_link_addr: MacAddress, pkt: DemiBuffer) -> Result<(), Fail> {
+        self.transmit(remote_link_addr, EtherType2::Ipv4, pkt)
     }
 
-    fn get_local_link_addr(&self) -> MacAddress {
+    fn transmit(
+        &mut self,
+        remote_link_addr: MacAddress,
+        eth2_type: EtherType2,
+        mut pkt: DemiBuffer,
+    ) -> Result<(), Fail> {
+        let eth2_header: Ethernet2Header = Ethernet2Header::new(remote_link_addr, self.local_link_addr, eth2_type);
+        debug!("L2 OUTGOING {:?}", eth2_header);
+        eth2_header.serialize_and_attach(&mut pkt);
+        self.layer1_endpoint.transmit(pkt)
+    }
+
+    pub fn get_local_link_addr(&self) -> MacAddress {
         self.local_link_addr
-    }
-
-    fn update_flow_state(&mut self, flow: &mut P::FlowState, record: P::FlowRecord) {
-        self.layer1_endpoint.update_flow_state(flow, record)
     }
 }
 
@@ -152,21 +105,21 @@ impl<P: PhysicalLayer> DataLinkLayer for SharedLayer2Endpoint<P> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<P: PhysicalLayer> Deref for SharedLayer2Endpoint<P> {
-    type Target = Layer2Endpoint<P>;
+impl Deref for SharedLayer2Endpoint {
+    type Target = Layer2Endpoint;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<P: PhysicalLayer> DerefMut for SharedLayer2Endpoint<P> {
+impl DerefMut for SharedLayer2Endpoint {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<P: PhysicalLayer> DemiMemoryAllocator for SharedLayer2Endpoint<P> {
+impl DemiMemoryAllocator for SharedLayer2Endpoint {
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer1_endpoint.allocate_demi_buffer(size)
     }

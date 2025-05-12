@@ -10,7 +10,7 @@ use crate::{
     inetstack::{
         consts::MAX_HEADER_SIZE,
         protocols::{
-            layer3::NetworkLayer,
+            layer3::SharedLayer3Endpoint,
             layer4::tcp::{
                 established::{ctrlblk::State, rto::RtoCalculator, ControlBlock},
                 header::TcpHeader,
@@ -138,11 +138,7 @@ impl Sender {
         }
     }
 
-    fn process_acked_fin<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        bytes_remaining: usize,
-        ack_num: SeqNumber,
-    ) -> usize {
+    fn process_acked_fin(cb: &mut ControlBlock, bytes_remaining: usize, ack_num: SeqNumber) -> usize {
         // This buffer is the end-of-send marker.  So we should only have one byte of acknowledged
         // sequence space remaining (corresponding to our FIN).
         debug_assert_eq!(bytes_remaining, 1);
@@ -233,9 +229,9 @@ impl Sender {
     }
 
     // This function sends a packet (or FIN) indicated by [buf] and waits for it to be acked.
-    pub async fn push<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub async fn push(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         runtime: &mut SharedDemiRuntime,
         mut buf: Option<DemiBuffer>,
     ) -> Result<(), Fail> {
@@ -284,9 +280,9 @@ impl Sender {
         Ok(())
     }
 
-    pub async fn background_sender<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub async fn background_sender(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         runtime: &mut SharedDemiRuntime,
     ) -> Result<Never, Fail> {
         loop {
@@ -296,7 +292,7 @@ impl Sender {
         }
     }
 
-    fn send_fin<T: NetworkLayer>(cb: &mut ControlBlock<T>, layer3_endpoint: &mut T, now: Instant) -> Result<(), Fail> {
+    fn send_fin(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint, now: Instant) -> Result<(), Fail> {
         debug_assert!(cb.sender.fin_seq_no.is_some());
 
         let mut header: TcpHeader = Self::tcp_header(cb, cb.sender.fin_seq_no);
@@ -320,9 +316,9 @@ impl Sender {
         Ok(())
     }
 
-    async fn send_buffer<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    async fn send_buffer(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         now: Instant,
         mut buffer: DemiBuffer,
     ) -> Result<(), Fail> {
@@ -364,9 +360,9 @@ impl Sender {
         }
     }
 
-    async fn send_window_probe<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    async fn send_window_probe(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         now: Instant,
         probe: DemiBuffer,
     ) -> Result<(), Fail> {
@@ -403,9 +399,9 @@ impl Sender {
 
     // Takes a segment and attempts to send it. The buffer must be non-zero length and the function returns the number
     // of bytes sent.
-    fn send_segment<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    fn send_segment(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         now: Instant,
         segment: &mut DemiBuffer,
     ) -> usize {
@@ -479,7 +475,7 @@ impl Sender {
     /// Fetch a TCP header filling out various values based on our current state.
     /// If a sequence number is provided, use it otherwise, use the current unsent sequence number.
     /// The only time that the unsent sequence number is not used is when we are retransmitting.
-    pub fn tcp_header<T: NetworkLayer>(cb: &mut ControlBlock<T>, seq_num: Option<SeqNumber>) -> TcpHeader {
+    pub fn tcp_header(cb: &mut ControlBlock, seq_num: Option<SeqNumber>) -> TcpHeader {
         let mut header: TcpHeader = TcpHeader::new(cb.local.port(), cb.remote.port());
         header.window_size = cb.receiver.hdr_window_size();
 
@@ -492,7 +488,7 @@ impl Sender {
         header
     }
 
-    fn get_open_window_size_bytes<T: NetworkLayer>(cb: &mut ControlBlock<T>) -> usize {
+    fn get_open_window_size_bytes(cb: &mut ControlBlock) -> usize {
         // Calculate amount of data in flight (SND.NXT - SND.UNA).
         let send_unacknowledged: SeqNumber = cb.sender.send_unacked.get();
         let send_next: SeqNumber = cb.sender.send_next_seq_no.get();
@@ -528,9 +524,9 @@ impl Sender {
         )
     }
 
-    pub async fn background_retransmitter<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub async fn background_retransmitter(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         runtime: &mut SharedDemiRuntime,
     ) -> Result<Never, Fail> {
         // Watch the retransmission deadline.
@@ -604,7 +600,7 @@ impl Sender {
     }
 
     /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
-    pub fn retransmit<T: NetworkLayer>(cb: &mut ControlBlock<T>, layer3_endpoint: &mut T) {
+    pub fn retransmit(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint) {
         match cb.sender.unacked_queue.get_front_mut() {
             Some(segment) => {
                 METRICS.tcp_retransmits.emit(1);
@@ -634,7 +630,7 @@ impl Sender {
     }
 
     // Process an ack.
-    pub fn process_ack<T: NetworkLayer>(cb: &mut ControlBlock<T>, header: &TcpHeader, now: Instant) {
+    pub fn process_ack(cb: &mut ControlBlock, header: &TcpHeader, now: Instant) {
         // Start by checking that the ACK acknowledges something new.
         let send_unacknowledged: SeqNumber = cb.sender.send_unacked.get();
         // Check and update send window if necessary.
@@ -690,15 +686,15 @@ impl Sender {
     }
 
     /// Send an ACK to our peer, reflecting our current state.
-    pub fn send_ack<T: NetworkLayer>(cb: &mut ControlBlock<T>, layer3_endpoint: &mut T) {
+    pub fn send_ack(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint) {
         let header: TcpHeader = Self::tcp_header(cb, None);
         Self::emit(cb, layer3_endpoint, header, None);
     }
 
     /// Transmit this message to our connected peer.
-    pub fn emit<T: NetworkLayer>(
-        cb: &mut ControlBlock<T>,
-        layer3_endpoint: &mut T,
+    pub fn emit(
+        cb: &mut ControlBlock,
+        layer3_endpoint: &mut SharedLayer3Endpoint,
         header: TcpHeader,
         body: Option<DemiBuffer>,
     ) {
@@ -731,7 +727,7 @@ impl Sender {
         );
 
         // Call lower L3 layer to send the segment.
-        if let Err(e) = layer3_endpoint.transmit_tcp_packet_nonblocking(remote_ipv4_addr, &mut cb.flow_state, pkt) {
+        if let Err(e) = layer3_endpoint.transmit_tcp_packet_nonblocking(remote_ipv4_addr, pkt) {
             warn!("could not emit packet: {:?}", e);
             return;
         }

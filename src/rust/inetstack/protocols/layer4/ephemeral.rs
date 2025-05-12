@@ -117,7 +117,6 @@ impl Default for EphemeralPorts {
             let mut rng: SmallRng = SmallRng::seed_from_u64(EPHEMERAL_PORT_SEED);
             port_numbers.shuffle(&mut rng);
         }
-
         Self {
             port_numbers: VecDeque::from(port_numbers),
             range_min: FIRST_PRIVATE_PORT_NUMBER,

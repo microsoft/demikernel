@@ -15,7 +15,7 @@ use crate::{
         config::TcpConfig,
         consts::{FALLBACK_MSS, MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
         protocols::{
-            layer3::NetworkLayer,
+            layer3::SharedLayer3Endpoint,
             layer4::tcp::{
                 established::{
                     congestion_control::{self, CongestionControl},
@@ -54,43 +54,42 @@ enum State {
     Closed,
 }
 
-pub struct PassiveSocket<T: NetworkLayer> {
+pub struct PassiveSocket {
     // TCP Connection State.
     state: SharedAsyncValue<State>,
-    connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>>,
-    ready: AsyncQueue<(SocketAddrV4, Result<SharedEstablishedSocket<T>, Fail>)>,
+    connections: HashMap<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>>,
+    ready: AsyncQueue<(SocketAddrV4, Result<SharedEstablishedSocket, Fail>)>,
     max_backlog: usize,
     isn_generator: IsnGenerator,
     local: SocketAddrV4,
     runtime: SharedDemiRuntime,
-    layer3_endpoint: T,
+    layer3_endpoint: SharedLayer3Endpoint,
     tcp_config: TcpConfig,
     // We do not use these right now, but will in the future.
     socket_options: TcpSocketOptions,
 }
 
 #[derive(Clone)]
-pub struct SharedPassiveSocket<T: NetworkLayer>(SharedObject<PassiveSocket<T>>);
+pub struct SharedPassiveSocket(SharedObject<PassiveSocket>);
 
 //======================================================================================================================
 // Associated Function
 //======================================================================================================================
 
-impl<T: NetworkLayer> SharedPassiveSocket<T> {
+impl SharedPassiveSocket {
     pub fn new(
         local: SocketAddrV4,
         max_backlog: usize,
         runtime: SharedDemiRuntime,
-        layer3_endpoint: T,
+        layer3_endpoint: SharedLayer3Endpoint,
         tcp_config: TcpConfig,
         default_socket_options: TcpSocketOptions,
         nonce: u32,
     ) -> Result<Self, Fail> {
-        Ok(Self(SharedObject::<PassiveSocket<T>>::new(PassiveSocket::<T> {
+        Ok(Self(SharedObject::<PassiveSocket>::new(PassiveSocket {
             state: SharedAsyncValue::new(State::Listening),
-            connections:
-                HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>>::new(),
-            ready: AsyncQueue::<(SocketAddrV4, Result<SharedEstablishedSocket<T>, Fail>)>::default(),
+            connections: HashMap::<SocketAddrV4, SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>>::new(),
+            ready: AsyncQueue::<(SocketAddrV4, Result<SharedEstablishedSocket, Fail>)>::default(),
             max_backlog,
             isn_generator: IsnGenerator::new(nonce),
             local,
@@ -107,7 +106,7 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
     }
 
     /// Accept a new connection by fetching one from the queue of requests, blocking if there are no new requests.
-    pub async fn do_accept(&mut self) -> Result<SharedEstablishedSocket<T>, Fail> {
+    pub async fn do_accept(&mut self) -> Result<SharedEstablishedSocket, Fail> {
         let (_, new_socket) = self.ready.pop(None).await?;
         new_socket
     }
@@ -118,20 +117,20 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         Ok(())
     }
 
-    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, flow_record: T::FlowRecord, buf: DemiBuffer) {
+    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_addr, tcp_hdr.src_port);
 
         // See if this packet is for an ongoing connection set up.
         if let Some(recv_queue) = self.connections.get_mut(&remote) {
             // Packet is either for an inflight request or established connection.
-            recv_queue.push((ipv4_addr, tcp_hdr, flow_record, buf));
+            recv_queue.push((ipv4_addr, tcp_hdr, buf));
             return;
         }
 
         // See if this packet is for an already established but not accepted socket.
         if let Some((_, socket)) = self.ready.get_values().find(|(addr, _)| *addr == remote) {
             if let Ok(socket) = socket {
-                socket.clone().receive(tcp_hdr, flow_record, buf);
+                socket.clone().receive(tcp_hdr, buf);
             }
             return;
         }
@@ -158,10 +157,10 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         }
 
         // Start a new connection.
-        self.handle_new_syn(remote, tcp_hdr, flow_record);
+        self.handle_new_syn(remote, tcp_hdr);
     }
 
-    fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader, flow_record: T::FlowRecord) {
+    fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) {
         debug!("Received SYN: {:?}", tcp_hdr);
         let inflight_len: usize = self.connections.len();
         // Check backlog. Since we might receive data even on connections that have completed their handshake, all
@@ -184,11 +183,11 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         let remote_isn = tcp_hdr.seq_num;
 
         // Allocate a new coroutine to send the SYN+ACK and retry if necessary.
-        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)> =
-            SharedAsyncQueue::<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>::default();
+        let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> =
+            SharedAsyncQueue::<(Ipv4Addr, TcpHeader, DemiBuffer)>::default();
         let future = self
             .clone()
-            .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, flow_record, recv_queue.clone())
+            .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, recv_queue.clone())
             .fuse();
         match self
             .runtime
@@ -245,11 +244,7 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         );
 
         // Pass on to send through the L2 layer.
-        let mut flow_state: T::FlowState = T::FlowState::default();
-        if let Err(e) = self
-            .layer3_endpoint
-            .transmit_tcp_packet_nonblocking(dst_ipv4_addr, &mut flow_state, pkt)
-        {
+        if let Err(e) = self.layer3_endpoint.transmit_tcp_packet_nonblocking(dst_ipv4_addr, pkt) {
             warn!("Could not send RST: {:?}", e);
         }
     }
@@ -260,8 +255,7 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         remote_isn: SeqNumber,
         local_isn: SeqNumber,
         tcp_hdr: TcpHeader,
-        flow_record: T::FlowRecord,
-        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>,
+        recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
     ) {
         // Set up new inflight accept connection.
         let mut remote_window_scale = None;
@@ -283,12 +277,9 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         let mut handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout: Duration = self.tcp_config.get_handshake_timeout();
 
-        let mut flow_state: T::FlowState = T::FlowState::default();
-        self.layer3_endpoint.update_flow_state(&mut flow_state, flow_record);
-
         loop {
             // Send the SYN + ACK.
-            if let Err(e) = self.send_syn_ack(local_isn, remote_isn, remote, &mut flow_state).await {
+            if let Err(e) = self.send_syn_ack(local_isn, remote_isn, remote).await {
                 self.complete_handshake(remote, Err(e));
                 return;
             }
@@ -303,7 +294,6 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
                 remote_isn,
                 remote_window_scale,
                 mss,
-                &mut flow_state,
             );
 
             // Either we get an ack or a timeout.
@@ -336,7 +326,6 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         local_isn: SeqNumber,
         remote_isn: SeqNumber,
         remote: SocketAddrV4,
-        flow_state: &mut T::FlowState,
     ) -> Result<(), Fail> {
         let mut tcp_hdr = TcpHeader::new(self.local.port(), remote.port());
         tcp_hdr.syn = true;
@@ -362,35 +351,34 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
             self.tcp_config.get_rx_checksum_offload(),
         );
         self.layer3_endpoint
-            .transmit_tcp_packet_blocking(dst_ipv4_addr, flow_state, pkt)
+            .transmit_tcp_packet_blocking(dst_ipv4_addr, pkt)
             .await
     }
 
     async fn wait_for_ack(
         self,
-        mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, T::FlowRecord, DemiBuffer)>,
+        mut recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)>,
         remote: SocketAddrV4,
         local_isn: SeqNumber,
         remote_isn: SeqNumber,
         remote_window_scale_bits: Option<u8>,
         mss: usize,
-        flow_state: &mut T::FlowState,
-    ) -> Result<SharedEstablishedSocket<T>, Fail> {
-        let (tcp_hdr, flow_record, buf): (TcpHeader, T::FlowRecord, DemiBuffer) = loop {
+    ) -> Result<SharedEstablishedSocket, Fail> {
+        let (tcp_hdr, buf): (TcpHeader, DemiBuffer) = loop {
             match recv_queue.pop(None).await? {
                 // We expect to get a SYN+ACK with the initial seq number plus 1.
-                (_, tcp_hdr, flow_record, buf) if tcp_hdr.ack && tcp_hdr.ack_num == local_isn + SeqNumber::from(1) => {
+                (_, tcp_hdr, buf) if tcp_hdr.ack && tcp_hdr.ack_num == local_isn + SeqNumber::from(1) => {
                     debug!("Received ACK: {:?}", tcp_hdr);
-                    break (tcp_hdr, flow_record, buf);
+                    break (tcp_hdr, buf);
                 },
                 // We got an ACK but not for the right sequence number.
-                (_, tcp_hdr, _, _) if tcp_hdr.ack => {
+                (_, tcp_hdr, _) if tcp_hdr.ack => {
                     let cause = "invalid SYN+ACK seq num";
                     warn!("{}: {:?}", cause, tcp_hdr);
                     return Err(Fail::new(EBADMSG, &cause));
                 },
                 // We got a duplicate SYN, so ignore it.
-                (_, tcp_hdr, _, _) if tcp_hdr.syn && tcp_hdr.ack_num == local_isn => {
+                (_, tcp_hdr, _) if tcp_hdr.syn && tcp_hdr.seq_num == remote_isn => {
                     debug!("Received duplicate SYN: {:?}", tcp_hdr)
                 },
                 // We didn't get any kind of expected packet.
@@ -437,19 +425,12 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         );
 
         // Check if there is data and if so, pass it along to the established header.
-        let data_with_ack: Option<(TcpHeader, T::FlowRecord, DemiBuffer)> = if buf.is_empty() {
-            None
-        } else {
-            Some((tcp_hdr, flow_record.clone(), buf))
-        };
-        let mut layer3_endpoint: T = self.layer3_endpoint.clone();
-        layer3_endpoint.update_flow_state(flow_state, flow_record);
-        let new_socket: SharedEstablishedSocket<T> = SharedEstablishedSocket::<T>::new(
+        let data_with_ack: Option<(TcpHeader, DemiBuffer)> = if buf.is_empty() { None } else { Some((tcp_hdr, buf)) };
+        let new_socket: SharedEstablishedSocket = SharedEstablishedSocket::new(
             self.local,
             remote,
             self.runtime.clone(),
-            layer3_endpoint,
-            flow_state.clone(),
+            self.layer3_endpoint.clone(),
             data_with_ack,
             self.tcp_config.clone(),
             self.socket_options,
@@ -468,7 +449,7 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
         Ok(new_socket)
     }
 
-    fn complete_handshake(&mut self, remote: SocketAddrV4, result: Result<SharedEstablishedSocket<T>, Fail>) {
+    fn complete_handshake(&mut self, remote: SocketAddrV4, result: Result<SharedEstablishedSocket, Fail>) {
         warn!("completing handshake");
         self.connections.remove(&remote);
         self.ready.push((remote, result));
@@ -479,15 +460,15 @@ impl<T: NetworkLayer> SharedPassiveSocket<T> {
 // Trait Implementations
 //======================================================================================================================
 
-impl<T: NetworkLayer> Deref for SharedPassiveSocket<T> {
-    type Target = PassiveSocket<T>;
+impl Deref for SharedPassiveSocket {
+    type Target = PassiveSocket;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<T: NetworkLayer> DerefMut for SharedPassiveSocket<T> {
+impl DerefMut for SharedPassiveSocket {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }

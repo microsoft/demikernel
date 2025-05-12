@@ -30,6 +30,7 @@ use protocols::{
 
 use ::futures::FutureExt;
 use ::std::{
+    fmt::Debug,
     net::{SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
 };
@@ -52,27 +53,31 @@ pub mod types;
 //======================================================================================================================
 
 /// Representation of a network stack designed for a network interface that expects raw ethernet frames.
-pub struct InetStack<P: PhysicalLayer> {
+pub struct InetStack {
     runtime: SharedDemiRuntime,
-    layer4_endpoint: Peer<SharedLayer3Endpoint<SharedLayer2Endpoint<P>>>,
+    layer4_endpoint: Peer,
 }
 
 #[derive(Clone)]
-pub struct SharedInetStack<P: PhysicalLayer>(SharedObject<InetStack<P>>);
+pub struct SharedInetStack(SharedObject<InetStack>);
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<P: PhysicalLayer> SharedInetStack<P> {
-    pub fn new(config: &Config, mut runtime: SharedDemiRuntime, layer1_endpoint: P) -> Result<Self, Fail> {
+impl SharedInetStack {
+    pub fn new<P: PhysicalLayer>(
+        config: &Config,
+        mut runtime: SharedDemiRuntime,
+        layer1_endpoint: P,
+    ) -> Result<Self, Fail> {
         let rng_seed: [u8; 32] = [0; 32];
         let ports: EphemeralPorts = layer1_endpoint.ephemeral_ports();
-        let layer2_endpoint: SharedLayer2Endpoint<P> = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
-        let layer3_endpoint: SharedLayer3Endpoint<_> =
+        let layer2_endpoint: SharedLayer2Endpoint = SharedLayer2Endpoint::new(config, layer1_endpoint)?;
+        let layer3_endpoint: SharedLayer3Endpoint =
             SharedLayer3Endpoint::new(config, runtime.clone(), layer2_endpoint, rng_seed)?;
-        let layer4_endpoint: Peer<_> = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed, ports)?;
-        let me: Self = Self(SharedObject::<InetStack<P>>::new(InetStack {
+        let layer4_endpoint: Peer = Peer::new(config, runtime.clone(), layer3_endpoint, rng_seed, ports)?;
+        let me: Self = Self(SharedObject::<InetStack>::new(InetStack {
             runtime: runtime.clone(),
             layer4_endpoint,
         }));
@@ -113,23 +118,23 @@ impl<P: PhysicalLayer> SharedInetStack<P> {
 // Trait Implementation
 //======================================================================================================================
 
-impl<P: PhysicalLayer> Deref for SharedInetStack<P> {
-    type Target = InetStack<P>;
+impl Deref for SharedInetStack {
+    type Target = InetStack;
 
     fn deref(&self) -> &Self::Target {
         self.0.deref()
     }
 }
 
-impl<P: PhysicalLayer> DerefMut for SharedInetStack<P> {
+impl DerefMut for SharedInetStack {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<P: PhysicalLayer> NetworkTransport for SharedInetStack<P> {
+impl NetworkTransport for SharedInetStack {
     // Socket data structure used by upper level libOS to identify this socket.
-    type SocketDescriptor = Socket<SharedLayer3Endpoint<SharedLayer2Endpoint<P>>>;
+    type SocketDescriptor = Socket;
 
     ///
     /// **Brief**
@@ -286,8 +291,17 @@ impl<P: PhysicalLayer> NetworkTransport for SharedInetStack<P> {
 
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
-impl<P: PhysicalLayer> DemiMemoryAllocator for SharedInetStack<P> {
+impl DemiMemoryAllocator for SharedInetStack {
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer4_endpoint.allocate_demi_buffer(size)
+    }
+}
+
+impl Debug for Socket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Socket::Tcp(socket) => socket.fmt(f),
+            Socket::Udp(socket) => socket.fmt(f),
+        }
     }
 }

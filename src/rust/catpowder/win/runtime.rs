@@ -58,19 +58,6 @@ struct CatpowderRuntime {
     stats: CatpowderStats,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
-pub enum FlowState {
-    #[default]
-    New = 0,
-    SeenBefore = 1,
-    SriovFlowEstablished = 2,
-}
-
-#[derive(Clone, Copy)]
-pub struct FlowRecord {
-    from_vf: bool,
-}
-
 //======================================================================================================================
 // Implementations
 //======================================================================================================================
@@ -126,11 +113,8 @@ impl SharedCatpowderRuntime {
 //======================================================================================================================
 
 impl PhysicalLayer for SharedCatpowderRuntime {
-    type FlowState = FlowState;
-    type FlowRecord = FlowRecord;
-
     /// Transmits a packet.
-    fn transmit(&mut self, flow: &mut FlowState, pkt: DemiBuffer) -> Result<(), Fail> {
+    fn transmit(&mut self, pkt: DemiBuffer) -> Result<(), Fail> {
         timer!("catpowder::win::runtime::transmit");
         let pkt_size: usize = pkt.len();
         if pkt_size >= u16::MAX as usize {
@@ -145,31 +129,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         if let Some(vf_interface) = me.vf_interface.as_mut() {
             vf_interface.return_tx_buffers();
 
-            match *flow {
-                FlowState::New if me.always_send_on_vf => {
-                    // Even when always_send_on_vf is true, we will always send the first packet in a
-                    // flow on the non-VF interface. This prevents parts of the stack which don't
-                    // track flow from being sent on VF, which could result in packet drops.
-                    *flow = FlowState::SeenBefore;
-                },
-                FlowState::SeenBefore => {
-                    // We have either transmitted at least one packet on this flow (when
-                    // always_send_on_vf is true), or we have received a packet on the VF for this
-                    // flow (when always_send_on_vf is false). This indicates the first time sending
-                    // out on the VF. Since we expect the first packet to drop, we send this packet
-                    // out on both interfaces.
-                    debug!(
-                        "transmit(): sending {} bytes on both interfaces, flow={:?}",
-                        pkt_size, flow as *const FlowState as usize
-                    );
-                    if let Ok(_) = me.interface.tx_ring.transmit_copy(&mut me.api, &pkt) {
-                        *flow = FlowState::SriovFlowEstablished;
-                    }
-                },
-                _ => (),
-            }
-
-            if *flow == FlowState::SriovFlowEstablished {
+            if me.always_send_on_vf {
                 vf_interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
                 me.stats.inc_tx(pkt_size as u32, 1);
                 return Ok(());
@@ -184,11 +144,11 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     }
 
     /// Polls for received packets.
-    fn receive(&mut self) -> Result<ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         timer!("catpowder::win::runtime::receive");
         self.0.stats.update_poll_time();
 
-        let mut ret: ArrayVec<(Self::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+        let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.interface.provide_rx_buffers();
@@ -206,7 +166,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                     rx_packets += 1;
                     rx_bytes += dbuf.len() as u32;
 
-                    ret.push((FlowRecord { from_vf: true }, DemiBuffer::try_from(&*dbuf).unwrap()));
+                    ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                     Ok(())
                 })?;
 
@@ -227,7 +187,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 rx_packets += 1;
                 rx_bytes += dbuf.len() as u32;
 
-                ret.push((FlowRecord { from_vf: false }, DemiBuffer::try_from(&*dbuf).unwrap()));
+                ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                 Ok(())
             })?;
 
@@ -241,32 +201,6 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         Ok(ret)
     }
 
-    /// Update the VF usage based on the last received packet.
-    fn update_flow_state(&mut self, flow: &mut FlowState, record: FlowRecord) {
-        if self.0.always_send_on_vf {
-            return;
-        }
-
-        let new_flow: FlowState = match *flow {
-            // NB once entering SeenBefore, we will only move to SriovFlowEstablished after sending
-            // a packet out on both interfaces.
-            FlowState::New if record.from_vf => FlowState::SeenBefore,
-
-            // We are now receiving packets on non-VF after receiving on the VF. Return to the New
-            // state.
-            // NB this is possibly too aggressive. It might make more sense to track the number of
-            // packets received on the non-VF interface and only return to New if we have received
-            // a minimum number of packets.
-            FlowState::SriovFlowEstablished if !record.from_vf => FlowState::New,
-            f => f,
-        };
-
-        if new_flow != *flow {
-            trace!("update_flow_state(): {:?} -> {:?}", *flow, new_flow);
-            *flow = new_flow;
-        }
-    }
-
     fn ephemeral_ports(&self) -> EphemeralPorts {
         self.0.cohosting_mode.ephemeral_ports()
     }
@@ -278,8 +212,8 @@ impl DemiMemoryAllocator for SharedCatpowderRuntime {
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         timer!("catpowder::win::runtime::sgaalloc");
         // Prefer the VF interface if available, otherwise use the main interface.
-        let tx_ring: &TxRing = if let Some(vf_interface) = self.0.vf_interface.as_ref() {
-            &vf_interface.tx_ring
+        let tx_ring: &TxRing = if self.0.vf_interface.is_some() && self.0.always_send_on_vf {
+            &self.0.vf_interface.as_ref().unwrap().tx_ring
         } else {
             &self.0.interface.tx_ring
         };

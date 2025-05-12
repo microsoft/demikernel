@@ -8,10 +8,7 @@
 use crate::{
     inetstack::{
         config::TcpConfig,
-        protocols::{
-            layer3::NetworkLayer,
-            layer4::tcp::established::{congestion_control, Receiver, Sender},
-        },
+        protocols::layer4::tcp::{established::congestion_control, established::Receiver, established::Sender},
     },
     runtime::network::socket::option::TcpSocketOptions,
 };
@@ -39,7 +36,7 @@ pub enum State {
 /// Transmission control block for representing our TCP connection.
 /// This struct has only public members because includes state for both the send and receive path and is accessed by
 /// both.
-pub struct ControlBlock<T: NetworkLayer> {
+pub struct ControlBlock {
     pub local: SocketAddrV4,
     pub remote: SocketAddrV4,
     pub tcp_config: TcpConfig,
@@ -47,7 +44,6 @@ pub struct ControlBlock<T: NetworkLayer> {
     pub state: State,
     pub sender: Sender,
     pub receiver: Receiver,
-    pub flow_state: T::FlowState,
 
     // Congestion control trait implementation we're currently using.
     // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
@@ -58,7 +54,7 @@ pub struct ControlBlock<T: NetworkLayer> {
 // Associated Functions
 //======================================================================================================================
 
-impl<T: NetworkLayer> ControlBlock<T> {
+impl ControlBlock {
     pub fn new(
         local: SocketAddrV4,
         remote: SocketAddrV4,
@@ -66,7 +62,6 @@ impl<T: NetworkLayer> ControlBlock<T> {
         socket_options: TcpSocketOptions,
         sender: Sender,
         receiver: Receiver,
-        flow_state: T::FlowState,
         congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
     ) -> Self {
         Self {
@@ -77,7 +72,6 @@ impl<T: NetworkLayer> ControlBlock<T> {
             state: State::Established,
             sender,
             receiver,
-            flow_state,
             congestion_control_algorithm,
         }
     }

@@ -21,7 +21,7 @@ use crate::{
     inetstack::{
         consts::RECEIVE_BATCH_SIZE,
         protocols::{
-            layer3::ip::IpProtocol,
+            layer3::{ip::IpProtocol, SharedLayer3Endpoint},
             layer4::{
                 ephemeral::EphemeralPorts,
                 tcp::{SharedTcpPeer, SharedTcpSocket},
@@ -38,50 +38,45 @@ use crate::{
     timer, SocketOption,
 };
 use ::socket2::{Domain, Type};
+
+use ::std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[cfg(test)]
 use ::std::{collections::HashMap, hash::RandomState, time::Duration};
-use ::std::{
-    fmt::Debug,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-};
 
 use arrayvec::ArrayVec;
-
-use super::layer3::NetworkLayer;
 
 //======================================================================================================================
 // Structures
 //======================================================================================================================
 
-pub struct Peer<T: NetworkLayer> {
-    tcp: SharedTcpPeer<T>,
-    udp: SharedUdpPeer<T>,
-    layer3_endpoint: T,
+pub struct Peer {
+    tcp: SharedTcpPeer,
+    udp: SharedUdpPeer,
+    layer3_endpoint: SharedLayer3Endpoint,
     ephemeral_ports: EphemeralPorts,
 }
 
 /// Socket Representation.
 #[derive(Clone)]
-pub enum Socket<T: NetworkLayer> {
-    Tcp(SharedTcpSocket<T>),
-    Udp(SharedUdpSocket<T>),
+pub enum Socket {
+    Tcp(SharedTcpSocket),
+    Udp(SharedUdpSocket),
 }
 
 //======================================================================================================================
 // Associated Functions
 //======================================================================================================================
 
-impl<T: NetworkLayer> Peer<T> {
+impl Peer {
     pub fn new(
         config: &Config,
         runtime: SharedDemiRuntime,
-        layer3_endpoint: T,
+        layer3_endpoint: SharedLayer3Endpoint,
         rng_seed: [u8; 32],
         ephemeral_ports: EphemeralPorts,
     ) -> Result<Self, Fail> {
-        let udp: SharedUdpPeer<T> = SharedUdpPeer::<T>::new(config, runtime.clone(), layer3_endpoint.clone())?;
-        let tcp: SharedTcpPeer<T> =
-            SharedTcpPeer::<T>::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
+        let udp: SharedUdpPeer = SharedUdpPeer::new(config, runtime.clone(), layer3_endpoint.clone())?;
+        let tcp: SharedTcpPeer = SharedTcpPeer::new(config, runtime.clone(), layer3_endpoint.clone(), rng_seed)?;
 
         Ok(Peer {
             tcp,
@@ -103,35 +98,32 @@ impl<T: NetworkLayer> Peer<T> {
         }
     }
 
-    fn receive_batch(
-        &mut self,
-        batch: ArrayVec<(Ipv4Addr, IpProtocol, T::FlowRecord, DemiBuffer), RECEIVE_BATCH_SIZE>,
-    ) {
+    fn receive_batch(&mut self, batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>) {
         timer!("inetstack::layer4::receive_batch");
         trace!("found packets: {:?}", batch.len());
-        for (src_ipv4_addr, ip_type, flow_record, payload) in batch {
+        for (src_ipv4_addr, ip_type, payload) in batch {
             match ip_type {
-                IpProtocol::TCP => self.tcp.receive(src_ipv4_addr, flow_record, payload),
-                IpProtocol::UDP => self.udp.receive(src_ipv4_addr, flow_record, payload),
+                IpProtocol::TCP => self.tcp.receive(src_ipv4_addr, payload),
+                IpProtocol::UDP => self.udp.receive(src_ipv4_addr, payload),
                 _ => unreachable!("Should have been handled at a lower layer"),
             }
         }
     }
 
-    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket<T>, Fail> {
+    pub fn socket(&mut self, domain: Domain, typ: Type) -> Result<Socket, Fail> {
         // TODO: Remove this once we support Ipv6.
         if domain != Domain::IPV4 {
             return Err(Fail::new(libc::ENOTSUP, "address family not supported"));
         }
         match typ {
-            Type::STREAM => Ok(Socket::<T>::Tcp(self.tcp.socket()?)),
-            Type::DGRAM => Ok(Socket::<T>::Udp(self.udp.socket()?)),
+            Type::STREAM => Ok(Socket::Tcp(self.tcp.socket()?)),
+            Type::DGRAM => Ok(Socket::Udp(self.udp.socket()?)),
             _ => Err(Fail::new(libc::ENOTSUP, "socket type not supported")),
         }
     }
 
     /// Set an SO_* option on the socket.
-    pub fn set_socket_option(&mut self, sd: &mut Socket<T>, option: SocketOption) -> Result<(), Fail> {
+    pub fn set_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.set_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -144,7 +136,7 @@ impl<T: NetworkLayer> Peer<T> {
 
     /// Gets an SO_* option on the socket. The option should be passed in as [option] and the value is returned in
     /// [option].
-    pub fn get_socket_option(&mut self, sd: &mut Socket<T>, option: SocketOption) -> Result<SocketOption, Fail> {
+    pub fn get_socket_option(&mut self, sd: &mut Socket, option: SocketOption) -> Result<SocketOption, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.get_socket_option(socket, option),
             Socket::Udp(_) => {
@@ -155,7 +147,7 @@ impl<T: NetworkLayer> Peer<T> {
         }
     }
 
-    pub fn getpeername(&mut self, sd: &mut Socket<T>) -> Result<SocketAddrV4, Fail> {
+    pub fn getpeername(&mut self, sd: &mut Socket) -> Result<SocketAddrV4, Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.getpeername(socket),
             Socket::Udp(_) => {
@@ -177,7 +169,7 @@ impl<T: NetworkLayer> Peer<T> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn bind(&mut self, sd: &mut Socket<T>, socket_addr: SocketAddr) -> Result<(), Fail> {
+    pub fn bind(&mut self, sd: &mut Socket, socket_addr: SocketAddr) -> Result<(), Fail> {
         // FIXME: add IPv6 support; https://github.com/microsoft/demikernel/issues/935
         let socket_addr_v4: SocketAddrV4 = unwrap_socketaddr(socket_addr)?;
         // Check if we are allowed to bind to this address.
@@ -217,7 +209,7 @@ impl<T: NetworkLayer> Peer<T> {
     /// Upon successful completion, `Ok(())` is returned. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub fn listen(&mut self, sd: &mut Socket<T>, backlog: usize) -> Result<(), Fail> {
+    pub fn listen(&mut self, sd: &mut Socket, backlog: usize) -> Result<(), Fail> {
         trace!("listen() backlog={:?}", backlog);
 
         // FIXME: https://github.com/demikernel/demikernel/issues/584
@@ -247,7 +239,7 @@ impl<T: NetworkLayer> Peer<T> {
     /// used to wait for a connection request to arrive. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn accept(&mut self, sd: &mut Socket<T>) -> Result<(Socket<T>, SocketAddr), Fail> {
+    pub async fn accept(&mut self, sd: &mut Socket) -> Result<(Socket, SocketAddr), Fail> {
         trace!("accept()");
 
         // Search for target queue descriptor.
@@ -278,7 +270,7 @@ impl<T: NetworkLayer> Peer<T> {
     /// remote endpoints. Upon failure, `Fail` is
     /// returned instead.
     ///
-    pub async fn connect(&mut self, sd: &mut Socket<T>, remote: SocketAddr) -> Result<(), Fail> {
+    pub async fn connect(&mut self, sd: &mut Socket, remote: SocketAddr) -> Result<(), Fail> {
         trace!("connect(): remote={:?}", remote);
 
         match sd {
@@ -307,7 +299,7 @@ impl<T: NetworkLayer> Peer<T> {
     /// Upon successful completion, `Ok(())` is returned. This qtoken can be used to wait until the close
     /// completes shutting down the connection. Upon failure, `Fail` is returned instead.
     ///
-    pub async fn close(&mut self, sd: &mut Socket<T>) -> Result<(), Fail> {
+    pub async fn close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         let local_port: Option<u16> = match sd {
             Socket::Tcp(socket) => {
                 let local_port: Option<u16> = match socket.local() {
@@ -334,7 +326,7 @@ impl<T: NetworkLayer> Peer<T> {
     }
 
     /// Forcibly close a socket. This should only be used on clean up.
-    pub fn hard_close(&mut self, sd: &mut Socket<T>) -> Result<(), Fail> {
+    pub fn hard_close(&mut self, sd: &mut Socket) -> Result<(), Fail> {
         let local_port: Option<u16> = match sd {
             Socket::Tcp(socket) => {
                 let local_port: Option<u16> = match socket.local() {
@@ -361,12 +353,7 @@ impl<T: NetworkLayer> Peer<T> {
     }
 
     /// Pushes a buffer to a TCP socket.
-    pub async fn push(
-        &mut self,
-        sd: &mut Socket<T>,
-        buf: &mut DemiBuffer,
-        addr: Option<SocketAddr>,
-    ) -> Result<(), Fail> {
+    pub async fn push(&mut self, sd: &mut Socket, buf: &mut DemiBuffer, addr: Option<SocketAddr>) -> Result<(), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.push(socket, buf).await,
             Socket::Udp(socket) => self.udp.push(socket, buf, addr).await,
@@ -375,7 +362,7 @@ impl<T: NetworkLayer> Peer<T> {
 
     /// Create a pop request to write data from IO connection represented by `qd` into a buffer
     /// allocated by the application.
-    pub async fn pop(&mut self, sd: &mut Socket<T>, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
+    pub async fn pop(&mut self, sd: &mut Socket, size: usize) -> Result<(Option<SocketAddr>, DemiBuffer), Fail> {
         match sd {
             Socket::Tcp(socket) => self.tcp.pop(socket, size).await,
             Socket::Udp(socket) => self.udp.pop(socket, size).await,
@@ -384,7 +371,7 @@ impl<T: NetworkLayer> Peer<T> {
 }
 
 #[cfg(test)]
-impl<T: super::layer2::DataLinkLayer> Peer<super::layer3::SharedLayer3Endpoint<T>> {
+impl Peer {
     pub async fn ping(&mut self, addr: Ipv4Addr, timeout: Option<Duration>) -> Result<Duration, Fail> {
         self.layer3_endpoint.ping(addr, timeout).await
     }
@@ -402,17 +389,8 @@ impl<T: super::layer2::DataLinkLayer> Peer<super::layer3::SharedLayer3Endpoint<T
 // Trait Implementations
 //======================================================================================================================
 
-impl<T: NetworkLayer> DemiMemoryAllocator for Peer<T> {
+impl DemiMemoryAllocator for Peer {
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer3_endpoint.allocate_demi_buffer(size)
-    }
-}
-
-impl<N: NetworkLayer> Debug for Socket<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Socket::Tcp(socket) => socket.fmt(f),
-            Socket::Udp(socket) => socket.fmt(f),
-        }
     }
 }
