@@ -18,15 +18,12 @@ use crate::inetstack::types::MacAddress;
 use crate::{
     demikernel::config::Config,
     expect_some,
-    inetstack::{
-        consts::RECEIVE_BATCH_SIZE,
-        protocols::{
-            layer3::{ip::IpProtocol, SharedLayer3Endpoint},
-            layer4::{
-                ephemeral::EphemeralPorts,
-                tcp::{SharedTcpPeer, SharedTcpSocket},
-                udp::{SharedUdpPeer, SharedUdpSocket},
-            },
+    inetstack::protocols::{
+        layer3::{ip::IpProtocol, SharedLayer3Endpoint},
+        layer4::{
+            ephemeral::EphemeralPorts,
+            tcp::{SharedTcpPeer, SharedTcpSocket},
+            udp::{SharedUdpPeer, SharedUdpSocket},
         },
     },
     runtime::{
@@ -41,8 +38,6 @@ use ::socket2::{Domain, Type};
 use ::std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[cfg(test)]
 use ::std::{collections::HashMap, hash::RandomState, time::Duration};
-
-use arrayvec::ArrayVec;
 
 //======================================================================================================================
 // Structures
@@ -97,7 +92,7 @@ impl Peer {
         }
     }
 
-    fn receive_batch(&mut self, batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>) {
+    fn receive_batch(&mut self, batch: Vec<(Ipv4Addr, IpProtocol, DemiBuffer)>) {
         timer!("inetstack::layer4::receive_batch");
         trace!("found packets: {:?}", batch.len());
         for (src_ipv4_addr, ip_type, payload) in batch {

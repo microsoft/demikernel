@@ -42,7 +42,6 @@ use crate::{
     },
     timer,
 };
-use ::arrayvec::ArrayVec;
 use ::std::{
     ffi::CString,
     mem,
@@ -350,13 +349,13 @@ impl PhysicalLayer for SharedDPDKRuntime {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<Vec<DemiBuffer>, Fail> {
         timer!("catnip::runtime::receive");
 
-        let mut out = ArrayVec::new();
+        let mut out = Vec::new();
         let mut packets: [*mut rte_mbuf; RECEIVE_BATCH_SIZE] = unsafe { mem::zeroed() };
         let nb_rx = unsafe { rte_eth_rx_burst(self.port_id, 0, packets.as_mut_ptr(), RECEIVE_BATCH_SIZE as u16) };
-        assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
+        // assert!(nb_rx as usize <= RECEIVE_BATCH_SIZE);
 
         {
             for &packet in &packets[..nb_rx as usize] {

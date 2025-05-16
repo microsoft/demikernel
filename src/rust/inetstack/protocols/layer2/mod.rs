@@ -17,14 +17,13 @@ pub use self::ethernet2::{
 
 use crate::{
     demikernel::config::Config,
-    inetstack::{consts::RECEIVE_BATCH_SIZE, protocols::layer1::PhysicalLayer, types::MacAddress},
+    inetstack::{protocols::layer1::PhysicalLayer, types::MacAddress},
     runtime::{
         fail::Fail,
         memory::{DemiBuffer, DemiMemoryAllocator},
         SharedObject,
     },
 };
-use ::arrayvec::ArrayVec;
 use ::std::ops::{Deref, DerefMut};
 
 //======================================================================================================================
@@ -51,8 +50,8 @@ impl SharedLayer2Endpoint {
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(EtherType2, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    pub fn receive(&mut self) -> Result<Vec<(EtherType2, DemiBuffer)>, Fail> {
+        let mut batch: Vec<(EtherType2, DemiBuffer)> = Vec::new();
         for mut pkt in self.layer1_endpoint.receive()? {
             let header: Ethernet2Header = match Ethernet2Header::parse_and_strip(&mut pkt) {
                 Ok(result) => result,

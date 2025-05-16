@@ -10,16 +10,11 @@ pub mod icmpv4;
 pub mod ip;
 pub mod ipv4;
 
-use arrayvec::ArrayVec;
-
 pub use self::{arp::SharedArpPeer, icmpv4::SharedIcmpv4Peer, ip::IpProtocol, ipv4::Ipv4Header};
 
 use crate::{
     demikernel::config::Config,
-    inetstack::{
-        consts::RECEIVE_BATCH_SIZE,
-        protocols::layer2::{EtherType2, SharedLayer2Endpoint},
-    },
+    inetstack::protocols::layer2::{EtherType2, SharedLayer2Endpoint},
     runtime::{
         fail::Fail,
         memory::{DemiBuffer, DemiMemoryAllocator},
@@ -69,8 +64,8 @@ impl SharedLayer3Endpoint {
         })))
     }
 
-    pub fn receive(&mut self) -> Result<ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE>, Fail> {
-        let mut batch: ArrayVec<(Ipv4Addr, IpProtocol, DemiBuffer), RECEIVE_BATCH_SIZE> = ArrayVec::new();
+    pub fn receive(&mut self) -> Result<Vec<(Ipv4Addr, IpProtocol, DemiBuffer)>, Fail> {
+        let mut batch: Vec<(Ipv4Addr, IpProtocol, DemiBuffer)> = Vec::new();
         for (eth2_type, mut packet) in self.layer2_endpoint.receive()? {
             match eth2_type {
                 EtherType2::Arp => {
