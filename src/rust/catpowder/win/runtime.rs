@@ -26,7 +26,6 @@ use crate::{
     },
     timer,
 };
-use arrayvec::ArrayVec;
 use std::{borrow::BorrowMut, num::NonZeroU32, rc::Rc};
 
 //======================================================================================================================
@@ -141,11 +140,11 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     }
 
     /// Polls for received packets.
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
+    fn receive(&mut self) -> Result<Vec<DemiBuffer>, Fail> {
         timer!("catpowder::win::runtime::receive");
         self.0.stats.update_poll_time();
 
-        let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
+        let mut ret: Vec<DemiBuffer> = Vec::new();
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.interface.provide_rx_buffers();
@@ -155,14 +154,14 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         if let Some(vf_interface) = me.vf_interface.as_mut() {
             vf_interface.provide_rx_buffers();
             for rx in vf_interface.rx_rings.iter_mut() {
-                let remaining: u32 = ret.remaining_capacity() as u32;
+                let remaining: u32 = (RECEIVE_BATCH_SIZE - ret.len()) as u32;
                 rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                     trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                     ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                     Ok(())
                 })?;
 
-                if ret.is_full() {
+                if ret.len() == RECEIVE_BATCH_SIZE {
                     return Ok(ret);
                 }
                 queue += 1;
@@ -172,7 +171,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         }
 
         for rx in me.interface.rx_rings.iter_mut() {
-            let remaining: u32 = ret.remaining_capacity() as u32;
+            let remaining: u32 = (RECEIVE_BATCH_SIZE - ret.len()) as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
                 trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
 
@@ -180,7 +179,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 Ok(())
             })?;
 
-            if ret.is_full() {
+            if ret.len() == RECEIVE_BATCH_SIZE {
                 return Ok(ret);
             }
             queue += 1;

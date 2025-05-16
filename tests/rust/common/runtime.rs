@@ -5,12 +5,8 @@
 // Imports
 //======================================================================================================================
 
-use ::arrayvec::ArrayVec;
 use ::demikernel::{
-    inetstack::{
-        consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
-        protocols::layer1::PhysicalLayer,
-    },
+    inetstack::{consts::MAX_HEADER_SIZE, protocols::layer1::PhysicalLayer},
     runtime::{
         fail::Fail,
         memory::{DemiBuffer, DemiMemoryAllocator},
@@ -75,8 +71,8 @@ impl PhysicalLayer for SharedDummyRuntime {
         }
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
-        let mut out = ArrayVec::new();
+    fn receive(&mut self) -> Result<Vec<DemiBuffer>, Fail> {
+        let mut out = Vec::new();
         if let Some(buf) = self.incoming.try_recv().ok() {
             trace!("receiving pkt: size={:?}", buf.len());
             out.push(buf);

@@ -6,7 +6,7 @@
 //======================================================================================================================
 
 use crate::{
-    inetstack::consts::{MAX_HEADER_SIZE, RECEIVE_BATCH_SIZE},
+    inetstack::consts::MAX_HEADER_SIZE,
     inetstack::protocols::layer1::PhysicalLayer,
     runtime::{
         fail::Fail,
@@ -15,7 +15,6 @@ use crate::{
         SharedDemiRuntime, SharedObject,
     },
 };
-use ::arrayvec::ArrayVec;
 use ::std::{
     collections::VecDeque,
     ops::{Deref, DerefMut},
@@ -94,8 +93,8 @@ impl PhysicalLayer for SharedTestPhysicalLayer {
         Ok(())
     }
 
-    fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
-        let mut out = ArrayVec::new();
+    fn receive(&mut self) -> Result<Vec<DemiBuffer>, Fail> {
+        let mut out = Vec::new();
         if let Some(buf) = self.incoming.pop_front() {
             out.push(buf);
         }
