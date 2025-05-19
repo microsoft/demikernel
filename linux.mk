@@ -105,7 +105,7 @@ install:
 	mkdir -p $(INSTALL_PREFIX)/include $(INSTALL_PREFIX)/lib
 	cp -rf $(INCDIR)/* $(INSTALL_PREFIX)/include/
 	cp -rf  $(LIBDIR)/* $(INSTALL_PREFIX)/lib/
-	cp -f $(CURDIR)/scripts/config/default.yaml $(INSTALL_PREFIX)/config.yaml
+	cp -f $(CURDIR)/scripts/config-templates/baremetal-config-template.yaml $(INSTALL_PREFIX)/config.yaml
 
 #=======================================================================================================================
 # Libs

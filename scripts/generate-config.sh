@@ -18,7 +18,7 @@ export PCI_ADDR=`lspci | grep Ethernet | cut -d ' ' -f 1 | tail -n 1`
 export IPV4_ADDR=`ifconfig $IFACE_NAME | grep "inet " | awk '{gsub(/^[ \t]+/,""); print$0, ""}' | cut -d " " -f 2`
 export MAC_ADDR=`ifconfig $IFACE_NAME | grep "ether " | awk '{gsub(/^[ \t]+/,""); print$0, ""}' | cut -d " " -f 2`
 
-cp -i ./scripts/config/azure.yaml $CONFIG_PATH
+cp -i ./scripts/config-templates/azure-config-template.yaml $CONFIG_PATH
 
 sed -i "s/abcde/$IFACE_NAME/g" $CONFIG_PATH
 

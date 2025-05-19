@@ -53,8 +53,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 ## 5. Setup Configuration File (Only Once)
 
-- Copy the template from `scripts/config/default.yaml` to
-  `$HOME/config.yaml`. If running on Azure, use `scripts/config/azure.yaml`.
+- Copy the template from `scripts/config-templates/baremetal-config-template.yaml` to
+  `$HOME/config.yaml`. If running on Azure, use `scripts/config-templates/azure-config-template.yaml`.
 - Open the file in `$HOME/config.yaml` for editing and do the following:
   - Change `XX.XX.XX.XX` to match the IPv4 address that in the local host.
   - Change `ff:ff:ff:ff:ff:ff` to match the MAC address in the local host.

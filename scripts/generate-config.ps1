@@ -18,8 +18,8 @@ $IPV4_ADDR = (Get-NetIPAddress -InterfaceAlias $IFACE_NAME -AddressFamily IPv4).
 # Get MAC_ADDR.
 $MAC_ADDR = (Get-NetAdapter -Name $IFACE_NAME).MacAddress
 
-# Copy the azure.yaml file.
-Copy-Item -Path .\scripts\config\azure.yaml -Destination $CONFIG_PATH -Confirm:$false
+# Copy the config template.
+Copy-Item -Path .\scripts\config-templates\azure-config-template.yaml -Destination $CONFIG_PATH -Confirm:$false
 
 # Replace 'abcde' with IFACE_NAME in the configuration file.
 (Get-Content -Path $CONFIG_PATH) | ForEach-Object {

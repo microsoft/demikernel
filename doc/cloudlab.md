@@ -52,7 +52,7 @@ Run `make all` to make sure everything compiles.
 
 ## Configuration files
 
-Edit the config files in `scripts/config/default.yaml` using the following steps.  
+Edit the config files in `scripts/config-templates/baremetal-config-template.yaml` using the following steps.
 
 **Node 0 → Server**
 
