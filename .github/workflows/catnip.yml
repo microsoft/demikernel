@@ -52,8 +52,8 @@ jobs:
         echo "Running azure-init-mlx.sh on SERVER"
         ssh $SERVER "sudo bash ~/demikernel/scripts/azure-init-mlx.sh"
 
-        echo "Running hugepages.sh on SERVER"
-        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+        echo "Running setup-hugepages.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup-hugepages.sh"
 
         echo "Running ip addr flush on SERVER"
         ssh $SERVER "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
@@ -62,8 +62,8 @@ jobs:
         echo "Running azure-init-mlx.sh on CLIENT"
         ssh $CLIENT "sudo bash ~/demikernel/scripts/azure-init-mlx.sh"
 
-        echo "Running hugepages.sh on CLIENT"
-        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+        echo "Running setup-hugepages.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup-hugepages.sh"
 
         echo "Running ip addr flush on CLIENT"
         ssh $CLIENT "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
@@ -120,8 +120,8 @@ jobs:
         echo "Running azure-init-mlx.sh on SERVER"
         ssh $SERVER "sudo bash ~/demikernel/scripts/azure-init-mlx.sh"
 
-        echo "Running hugepages.sh on SERVER"
-        ssh $SERVER "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+        echo "Running setup-hugepages.sh on SERVER"
+        ssh $SERVER "sudo bash ~/demikernel/scripts/setup-hugepages.sh"
 
         echo "Running ip addr flush on SERVER"
         ssh $SERVER "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \
@@ -130,8 +130,8 @@ jobs:
         echo "Running azure-init-mlx.sh on CLIENT"
         ssh $CLIENT "sudo bash ~/demikernel/scripts/azure-init-mlx.sh"
 
-        echo "Running hugepages.sh on CLIENT"
-        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup/hugepages.sh"
+        echo "Running setup-hugepages.sh on CLIENT"
+        ssh $CLIENT "sudo bash ~/demikernel/scripts/setup-hugepages.sh"
 
         echo "Running ip addr flush on CLIENT"
         ssh $CLIENT "sudo ip -br addr show dev eth1 | grep -q ' UP ' && \

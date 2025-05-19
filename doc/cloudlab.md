@@ -42,7 +42,7 @@ Execute these scripts within the demikernel repository to setup pre-requisite fo
 
     ./scripts/install-dev-packages.sh
     ./scripts/build-install-dpdk.sh
-    ./scripts/setup/hugepages.sh
+    ./scripts/setup-hugepages.sh
 
 
 # Running Demikernel

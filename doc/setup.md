@@ -66,5 +66,5 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## 6. Enable Huge Pages (Only for Catnip on Every System Reboot)
 
 ```bash
-sudo -E ./scripts/setup/hugepages.sh
+sudo -E ./scripts/setup-hugepages.sh
 ```
