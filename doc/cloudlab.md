@@ -40,7 +40,7 @@ Fetch the code from the original repository and use `dev` branch for latest upda
 Execute these scripts within the demikernel repository to setup pre-requisite for Ubuntu, Rust DPDK, and Hugepages
 
 
-    ./scripts/setup/debian.sh
+    ./scripts/install-dev-packages.sh
     ./scripts/setup/dpdk.sh
     ./scripts/setup/hugepages.sh
 

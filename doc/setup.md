@@ -11,7 +11,7 @@ specification, check out the `README.md` file.
 
 - [Table of Contents](#table-of-contents)
 - [1. Clone This Repository](#1-clone-this-repository)
-- [2. Install Third-Party Requirements](#2-install-third-party-requirements)
+- [2. Install Third-Party Requirements (Debian-based)](#2-install-third-party-requirements)
 - [3. Install Rust Toolchain](#3-install-rust-toolchain)
 - [4. Build DPDK Library (For Catnip and Only Once)](#4-build-dpdk-library-for-catnip-and-only-once)
 - [5. Setup Configuration File (Only Once)](#5-setup-configuration-file-only-once)
@@ -28,14 +28,14 @@ git clone --recursive https://github.com/microsoft/demikernel.git    # Recursive
 cd $WORKDIR/demikernel                                                # Switch to repository's source tree.
 ```
 
-## 2. Install Third-Party Requirements
+## 2. Install Third-Party Requirements (Debian-based)
 
 ```bash
 # Check what is going to be installed.
-cat scripts/setup/debian.sh
+cat scripts/install-dev-packages.sh
 
 # Install third party libraries.
-sudo -H scripts/setup/debian.sh
+sudo -H scripts/install-dev-packages.sh
 ```
 
 ## 3. Install Rust Toolchain
