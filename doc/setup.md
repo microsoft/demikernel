@@ -48,7 +48,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## 4. Build DPDK Library (For Catnip and Only Once)
 
 ```bash
-./scripts/setup/dpdk.sh
+./scripts/build-install-dpdk.sh
 ```
 
 ## 5. Setup Configuration File (Only Once)

@@ -41,7 +41,7 @@ Execute these scripts within the demikernel repository to setup pre-requisite fo
 
 
     ./scripts/install-dev-packages.sh
-    ./scripts/setup/dpdk.sh
+    ./scripts/build-install-dpdk.sh
     ./scripts/setup/hugepages.sh
 
 
