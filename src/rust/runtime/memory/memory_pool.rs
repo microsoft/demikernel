@@ -26,6 +26,7 @@ use crate::runtime::fail::Fail;
 #[derive(Debug)]
 pub struct MemoryPool {
     buffers: UnsafeCell<Vec<NonNull<[MaybeUninit<u8>]>>>,
+    max_buffers: UnsafeCell<usize>,
 
     buf_layout: Layout,
 }
@@ -67,6 +68,7 @@ impl MemoryPool {
     pub fn new(size: NonZeroUsize, align: NonZeroUsize) -> Result<Rc<Self>, LayoutError> {
         let me = Rc::new(Self {
             buffers: UnsafeCell::new(Vec::new()),
+            max_buffers: UnsafeCell::new(0),
             buf_layout: Layout::from_size_align(size.get(), align.get())?,
         });
 
@@ -122,8 +124,12 @@ impl MemoryPool {
 
         // Safety: buffers is only granted a &mut alias during the methods of this class. As long as these methods are
         // neither called asynchronously nor nested, aliasing is obeyed.
-        let buffers: &mut Vec<NonNull<[MaybeUninit<u8>]>> = unsafe { &mut *self.buffers.get() };
+        let (buffers, max_buffers): (&mut Vec<NonNull<[MaybeUninit<u8>]>>, &mut usize) =
+            unsafe { (&mut *self.buffers.get(), &mut *self.max_buffers.get()) };
+        let start_len: usize = buffers.len();
         buffers.extend(std::iter::from_fn(|| iter.next()).map(NonNull::from));
+        let end_len: usize = buffers.len();
+        *max_buffers += end_len - start_len;
 
         Ok(NonNull::from(iter.into_slice()))
     }
@@ -134,6 +140,14 @@ impl MemoryPool {
         // neither called asynchronously nor nested, aliasing is obeyed.
         let buffers: &Vec<NonNull<[MaybeUninit<u8>]>> = unsafe { &*self.buffers.get() };
         buffers.len()
+    }
+
+    /// Returns the number of buffers currently in use.
+    pub fn in_use_len(self: &Rc<Self>) -> usize {
+        // Safety: max_buffers is only granted a &mut alias during the methods of this class. As long as these methods are
+        // neither called asynchronously nor nested, aliasing is obeyed.
+        let max_buffers: usize = unsafe { *self.max_buffers.get() };
+        max_buffers.saturating_sub(self.len())
     }
 
     /// Returns a flag indicating whether the pool is out of buffers.

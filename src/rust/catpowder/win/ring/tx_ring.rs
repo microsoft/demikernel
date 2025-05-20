@@ -22,6 +22,11 @@ use std::{
 };
 
 //======================================================================================================================
+// Constants
+//======================================================================================================================
+const RETURN_THRESHHOLD: f32 = 0.75;
+
+//======================================================================================================================
 // Structures
 //======================================================================================================================
 
@@ -39,6 +44,8 @@ pub struct TxRing {
     always_poke: bool,
     /// Interface index for the socket.
     ifindex: u32,
+    /// The number of buffers which must be in use before the ring is completion ring is cleared.
+    return_threshhold: usize,
 }
 
 impl TxRing {
@@ -114,6 +121,11 @@ impl TxRing {
         let tx_ring: XdpRing<libxdp::XSK_BUFFER_DESCRIPTOR> = XdpRing::new(&ring_info.Tx);
         let tx_completion_ring: XdpRing<u64> = XdpRing::new(&ring_info.Completion);
 
+        let return_threshhold: usize = std::cmp::min(
+            length.saturating_sub(1) as usize,
+            (length as f32 * RETURN_THRESHHOLD).floor() as usize,
+        );
+
         Ok(Self {
             mem,
             tx_ring,
@@ -121,6 +133,7 @@ impl TxRing {
             socket,
             always_poke,
             ifindex,
+            return_threshhold,
         })
     }
 
@@ -227,6 +240,11 @@ impl TxRing {
     }
 
     pub fn return_buffers(&mut self) {
+        let outstanding: usize = self.mem.borrow().in_use_len();
+        if outstanding < self.return_threshhold {
+            return;
+        }
+
         let mut idx: u32 = 0;
         let available: u32 = self.tx_completion_ring.consumer_reserve(u32::MAX, &mut idx);
         let mut returned: u32 = 0;

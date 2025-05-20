@@ -44,6 +44,8 @@ pub struct RxRing {
     _program: Option<XdpProgram>,
     /// The ruleset used to create the program. Contains fields referenced by the XdpProgram.
     _rules: Option<Rc<RuleSet>>,
+    /// Number of packets given to XDP but not yet returned from the kernel.
+    outstanding_packets: isize,
 }
 
 //======================================================================================================================
@@ -122,6 +124,7 @@ impl RxRing {
             socket: socket,
             _program: None,
             _rules: None,
+            outstanding_packets: 0,
         };
         ring.reprogram(api, rules)?;
 
@@ -162,6 +165,11 @@ impl RxRing {
     }
 
     pub fn provide_buffers(&mut self) {
+        if self.outstanding_packets >= self.rx_fill_ring.len() as isize {
+            // If we haven't received any packets, don't bother with the call to producer_reserve.
+            return;
+        }
+
         let mut idx: u32 = 0;
         let available: u32 = self.rx_fill_ring.producer_reserve(u32::MAX, &mut idx);
         let mut published: u32 = 0;
@@ -187,6 +195,7 @@ impl RxRing {
                 self.queueid
             );
             self.rx_fill_ring.producer_submit(published);
+            self.outstanding_packets += published as isize;
         }
     }
 
@@ -226,6 +235,7 @@ impl RxRing {
 
         if consumed > 0 {
             self.rx_ring.consumer_release(consumed);
+            self.outstanding_packets -= consumed as isize;
         }
 
         self.check_error(api)?;
