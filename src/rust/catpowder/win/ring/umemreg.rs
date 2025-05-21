@@ -172,7 +172,7 @@ impl UmemReg {
 
     /// Get the number of buffers in use.
     pub fn in_use_len(&self) -> usize {
-        self.pool.pool().in_use_len()
+        self.pool.pool().in_use_len() + self.reserve_pool.as_ref().map_or(0, |pool| pool.pool().in_use_len())
     }
 
     /// Get a buffer from the umem pool.
