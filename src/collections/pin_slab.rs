@@ -41,10 +41,12 @@ use ::std::{mem, pin::Pin, ptr, ptr::NonNull};
 // Constants
 //======================================================================================================================
 
-// Size of the first slot.
+/// Size of the first slot.
 const FIRST_SLOT_SIZE: usize = 16;
-// The initial number of bits to ignore for the first slot.
+/// The initial number of bits to ignore for the first slot.
 const FIRST_SLOT_MASK: usize = std::mem::size_of::<usize>() * 8 - FIRST_SLOT_SIZE.leading_zeros() as usize - 1;
+/// Initial number of slots to allocate.
+const INITIAL_SLAB_CAPACITY_SLOTS: usize = 1024;
 
 //======================================================================================================================
 // Structures
@@ -85,7 +87,7 @@ impl<T> PinSlab<T> {
     /// Construct a new, empty [PinSlab] with the default slot size.
     pub fn new() -> Self {
         Self {
-            slots: Vec::new(),
+            slots: Vec::with_capacity(INITIAL_SLAB_CAPACITY_SLOTS),
             next: 0,
             len: 0,
         }
