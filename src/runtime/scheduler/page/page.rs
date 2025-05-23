@@ -89,7 +89,7 @@ impl WakerPage {
     }
 
     /// Gets the reference count of the target [WakerPage].
-    #[cfg(test)]
+    #[cfg(any(test, kani))]
     pub fn refcount_get(&self) -> u64 {
         self.refcount.load()
     }
@@ -114,18 +114,9 @@ impl Default for WakerPage {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::scheduler::page::page::{WakerPage, WAKER_BIT_LENGTH, WAKER_PAGE_SIZE};
-    use ::anyhow::Result;
+    use crate::runtime::scheduler::page::page::{WakerPage, WAKER_BIT_LENGTH};
     use ::rand::Rng;
-    use ::std::mem;
     use ::test::{black_box, Bencher};
-
-    #[test]
-    fn test_sizes() -> Result<()> {
-        crate::ensure_eq!(WAKER_PAGE_SIZE, WAKER_BIT_LENGTH);
-        crate::ensure_eq!(mem::size_of::<WakerPage>(), WAKER_PAGE_SIZE);
-        Ok(())
-    }
 
     #[bench]
     fn notify_bench(b: &mut Bencher) {
@@ -152,5 +143,25 @@ mod tests {
             let x: u64 = pg.take_notified();
             black_box(x);
         });
+    }
+}
+
+#[cfg(kani)]
+mod proof {
+    use crate::runtime::scheduler::page::page::{WakerPage, WAKER_BIT_LENGTH, WAKER_PAGE_SIZE};
+    use ::std::mem;
+
+    #[kani::proof]
+    fn test_sizes() {
+        assert_eq!(WAKER_PAGE_SIZE, WAKER_BIT_LENGTH);
+        assert_eq!(mem::size_of::<WakerPage>(), WAKER_PAGE_SIZE);
+    }
+
+    #[kani::proof]
+    fn check_refcount_inc() {
+        let pg: WakerPage = WakerPage::default();
+        let old_refcount = pg.refcount_inc();
+        assert_eq!(old_refcount, 1);
+        assert_eq!(pg.refcount_get(), 2);
     }
 }

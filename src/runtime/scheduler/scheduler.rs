@@ -36,7 +36,7 @@ pub struct Scheduler {
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct SchedulerId(pub usize);
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SharedScheduler(SharedObject<Scheduler>);
 
 //======================================================================================================================
@@ -89,6 +89,13 @@ impl Scheduler {
 // Trait Implementations
 //======================================================================================================================
 
+impl Default for SharedScheduler {
+    fn default() -> Self {
+        Self(SharedObject::new(Scheduler {
+            groups: Slab::with_capacity(2),
+        }))
+    }
+}
 impl Deref for SharedScheduler {
     type Target = Scheduler;
 
@@ -346,3 +353,64 @@ mod tests {
         });
     }
 }
+
+// #[cfg(kani)]
+// mod kani {
+//     use crate::runtime::scheduler::{
+//         scheduler::{Scheduler, SchedulerId},
+//         task::TaskWithResult,
+//     };
+//     use ::futures::FutureExt;
+//     use ::std::{
+//         future::Future,
+//         pin::Pin,
+//         task::{Context, Poll, Waker},
+//     };
+
+//     #[derive(Default)]
+//     struct DummyCoroutine {
+//         pub val: usize,
+//     }
+
+//     impl DummyCoroutine {
+//         pub fn new(val: usize) -> Self {
+//             let f: Self = Self { val };
+//             f
+//         }
+//     }
+//     impl Future for DummyCoroutine {
+//         type Output = ();
+
+//         fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
+//             match self.as_ref().val & 1 {
+//                 0 => Poll::Ready(()),
+//                 _ => {
+//                     self.get_mut().val += 1;
+//                     let waker: &Waker = ctx.waker();
+//                     waker.wake_by_ref();
+//                     Poll::Pending
+//                 },
+//             }
+//         }
+//     }
+
+//     type DummyTask = TaskWithResult<()>;
+
+//     #[kani::proof]
+//     fn poll_group_with_n_task_completes_it() {
+//         let mut scheduler: Scheduler = Scheduler::default();
+//         let group_id: SchedulerId = scheduler.create_group();
+//         let val: u32 = kani::any();
+
+//         // Insert a single future in the scheduler. This future shall complete with a single poll operation.
+//         let task: DummyTask = DummyTask::new("testing", Box::pin(DummyCoroutine::new(val as usize).fuse()));
+//         kani::assume(scheduler.insert_task(group_id, task).is_some());
+
+//         for _ in 0..val - 1 {
+//             assert!(scheduler.poll_group_once(group_id, None).is_empty());
+//         }
+//         // All futures are inserted in the scheduler with notification flag set.
+//         // By polling once, our future should complete.
+//         assert!(scheduler.poll_group_once(group_id, None).pop().is_some());
+//     }
+// }

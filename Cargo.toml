@@ -34,6 +34,7 @@ slab = "0.4.9"
 socket2 = "0.5.7"
 x86 = "0.52.0"
 yaml-rust = "0.4.5"
+kani-verifier = "0.62.0"
 
 # Demikernel crates (published on crates.io).
 demikernel-dpdk-bindings = { version = "1.1.8", optional = true }
@@ -136,6 +137,8 @@ mlx5 = ["demikernel-dpdk-bindings/mlx5"]
 profiler = []
 direct-mapping = []
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [profile.release]
 opt-level = 3            # Enable all compiler optimizations.
