@@ -54,6 +54,11 @@ pub struct CatpowderStats {
     last_poll: Instant,
     /// A field used by the libos thread to store the maximum poll latency in microseconds.
     max_poll_latency_micros: u32,
+    tx_packets: u32,
+    tx_bytes: u32,
+    rx_packets: u32,
+    rx_bytes: u32,
+    next_update: Instant,
 
     /// Reference to the thread state used to communicate with the monitor thread.
     thread_state: Arc<MonitorThreadState>,
@@ -93,13 +98,19 @@ impl CatpowderStats {
         Ok(Self {
             last_poll: global_get_time(),
             max_poll_latency_micros: 0,
+            tx_packets: 0,
+            tx_bytes: 0,
+            rx_packets: 0,
+            rx_bytes: 0,
+            next_update: global_get_time(),
+
             thread_state,
             monitor_thread: Some(monitor_thread),
         })
     }
 
     /// Called each time we poll to update the state of self to reflect the current max poll latency.
-    pub fn update_poll_time(&mut self) {
+    pub fn update_stats(&mut self) {
         let now: Instant = global_get_time();
 
         // Safety: this is the only place this member is modified, and only one thread can be here.
@@ -109,34 +120,37 @@ impl CatpowderStats {
 
         // NB only one thread can be in this method, so we're only synchronizing with the monitor
         // thread, which will occasionally reset the value.
-        if poll_latency_micros > MIN_LATENCY_IOTA_MICROS {
-            if poll_latency_micros > self.max_poll_latency_micros {
+        if poll_latency_micros > self.max_poll_latency_micros {
+            self.max_poll_latency_micros = poll_latency_micros;
+        }
+
+        if now > self.next_update {
+            // Reset the next update time to one second from now.
+            self.next_update = now + Duration::from_secs(1);
+
+            if self.max_poll_latency_micros > MIN_LATENCY_IOTA_MICROS {
                 self.thread_state
                     .max_poll_latency_micros
-                    .store(poll_latency_micros, Ordering::Release);
-                self.max_poll_latency_micros = poll_latency_micros;
-            } else {
-                if let Ok(_) = self.thread_state.max_poll_latency_micros.compare_exchange(
-                    0,
-                    poll_latency_micros,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    // This indicates that the monitor thread reset the value.
-                    self.max_poll_latency_micros = poll_latency_micros;
-                }
+                    .store(self.max_poll_latency_micros, Ordering::Relaxed);
             }
+
+            self.thread_state.tx_packets.store(self.tx_packets, Ordering::Relaxed);
+            self.thread_state.tx_bytes.store(self.tx_bytes, Ordering::Relaxed);
+            self.thread_state.rx_packets.store(self.rx_packets, Ordering::Relaxed);
+            self.thread_state.rx_bytes.store(self.rx_bytes, Ordering::Relaxed);
+
+            self.max_poll_latency_micros = 0;
         }
     }
 
-    pub fn inc_rx(&self, bytes: u32, packets: u32) {
-        self.thread_state.rx_bytes.fetch_add(bytes, Ordering::Relaxed);
-        self.thread_state.rx_packets.fetch_add(packets, Ordering::Relaxed);
+    pub fn inc_rx(&mut self, bytes: u32, packets: u32) {
+        self.rx_bytes = self.rx_bytes.wrapping_add(bytes);
+        self.rx_packets = self.rx_packets.wrapping_add(packets);
     }
 
-    pub fn inc_tx(&self, bytes: u32, packets: u32) {
-        self.thread_state.tx_bytes.fetch_add(bytes, Ordering::Relaxed);
-        self.thread_state.tx_packets.fetch_add(packets, Ordering::Relaxed);
+    pub fn inc_tx(&mut self, bytes: u32, packets: u32) {
+        self.tx_bytes = self.tx_bytes.wrapping_add(bytes);
+        self.tx_packets = self.tx_packets.wrapping_add(packets);
     }
 }
 
@@ -155,10 +169,10 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
     };
     #[allow(unused_mut, unused_variables)]
     let mut stats: Vec<XSK_STATISTICS> = vec![DEFAULT_STATS; sockets.len()];
-    let mut total_rx_packets: u32 = 0;
-    let mut total_rx_bytes: u32 = 0;
-    let mut total_tx_packets: u32 = 0;
-    let mut total_tx_bytes: u32 = 0;
+    let mut last_rx_packets: u32 = 0;
+    let mut last_rx_bytes: u32 = 0;
+    let mut last_tx_packets: u32 = 0;
+    let mut last_tx_bytes: u32 = 0;
     const ONE_MS: Duration = Duration::from_millis(1);
     let mut exit_guard: MutexGuard<'_, bool> = thread_state.exit_mtx.lock().unwrap();
     while !*exit_guard {
@@ -177,20 +191,24 @@ fn run_stats_thread(mut api: XdpApi, mut sockets: Vec<(String, XdpSocket)>, thre
 
         let max_latency_micros: u32 = thread_state
             .max_poll_latency_micros
-            .swap(0, std::sync::atomic::Ordering::AcqRel);
+            .load(std::sync::atomic::Ordering::Relaxed);
         if max_latency_micros > MIN_LATENCY_IOTA_MICROS {
             METRICS.xdp_high_poll_latency.emit(max_latency_micros);
             debug!("max latency between polls last interval is {}", max_latency_micros);
         }
 
-        let tx_packets: u32 = thread_state.tx_packets.swap(0, Ordering::Relaxed);
-        total_tx_packets = total_tx_packets.wrapping_add(tx_packets);
-        let tx_bytes: u32 = thread_state.tx_bytes.swap(0, Ordering::Relaxed);
-        total_tx_bytes = total_tx_bytes.wrapping_add(tx_bytes);
-        let rx_packets: u32 = thread_state.rx_packets.swap(0, Ordering::Relaxed);
-        total_rx_packets = total_rx_packets.wrapping_add(rx_packets);
-        let rx_bytes: u32 = thread_state.rx_bytes.swap(0, Ordering::Relaxed);
-        total_rx_bytes = total_rx_bytes.wrapping_add(rx_bytes);
+        let total_tx_packets: u32 = thread_state.tx_packets.load(Ordering::Relaxed);
+        let tx_packets: u32 = total_tx_packets.wrapping_sub(last_tx_packets);
+        last_tx_packets = total_tx_packets;
+        let total_tx_bytes: u32 = thread_state.tx_bytes.load(Ordering::Relaxed);
+        let tx_bytes: u32 = total_tx_bytes.wrapping_sub(last_tx_bytes);
+        last_tx_bytes = total_tx_bytes;
+        let total_rx_packets: u32 = thread_state.rx_packets.load(Ordering::Relaxed);
+        let rx_packets: u32 = total_rx_packets.wrapping_sub(last_rx_packets);
+        last_rx_packets = total_rx_packets;
+        let total_rx_bytes: u32 = thread_state.rx_bytes.load(Ordering::Relaxed);
+        let rx_bytes: u32 = total_rx_bytes.wrapping_sub(last_rx_bytes);
+        last_rx_bytes = total_rx_bytes;
 
         METRICS.tx_packets.emit(total_tx_packets);
         METRICS.tx_bytes.emit(total_tx_bytes);

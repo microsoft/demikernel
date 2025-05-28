@@ -46,6 +46,7 @@ pub struct RxRing {
     _rules: Option<Rc<RuleSet>>,
     /// Number of packets given to XDP but not yet returned from the kernel.
     outstanding_packets: isize,
+    wait_check_error: usize,
 }
 
 //======================================================================================================================
@@ -125,6 +126,7 @@ impl RxRing {
             _program: None,
             _rules: None,
             outstanding_packets: 0,
+            wait_check_error: 0,
         };
         ring.reprogram(api, rules)?;
 
@@ -188,12 +190,6 @@ impl RxRing {
         }
 
         if published > 0 {
-            trace!(
-                "provided {} rx buffers to RxRing interface {} queue {}",
-                published,
-                self.ifindex,
-                self.queueid
-            );
             self.rx_fill_ring.producer_submit(published);
             self.outstanding_packets += published as isize;
         }
@@ -209,15 +205,6 @@ impl RxRing {
         let mut err: Option<Fail> = None;
 
         let to_consume: u32 = std::cmp::min(count, available);
-        if available > 0 {
-            trace!(
-                "processing {} buffers from RxRing out of {} total interface {} queue {}",
-                to_consume,
-                available,
-                self.ifindex,
-                self.queueid
-            );
-        }
 
         for i in 0..to_consume {
             // Safety: Ring entries are intialized by the XDP runtime.
@@ -236,9 +223,14 @@ impl RxRing {
         if consumed > 0 {
             self.rx_ring.consumer_release(consumed);
             self.outstanding_packets -= consumed as isize;
+            self.check_error(api)?;
+        } else {
+            self.wait_check_error = (self.wait_check_error + 1) % 10;
+            if self.wait_check_error == 0 {
+                self.check_error(api)?;
+            }
         }
 
-        self.check_error(api)?;
         err.map_or(Ok(()), |e| Err(e))
     }
 }

@@ -43,6 +43,7 @@ pub struct TxRing {
     /// Whether to always poke the socket, or only when the ring flag indicates to do so.
     always_poke: bool,
     /// Interface index for the socket.
+    #[allow(dead_code)]
     ifindex: u32,
     /// The number of buffers which must be in use before the ring is completion ring is cleared.
     return_threshhold: usize,
@@ -210,13 +211,6 @@ impl TxRing {
         };
 
         let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
-        trace!(
-            "transmit_buffer(): address={}, offset={}, length={}, ifindex={}",
-            unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
-            unsafe { buf_desc.Address.__bindgen_anon_1.Offset() },
-            buf_desc.Length,
-            self.ifindex,
-        );
 
         let mut idx: u32 = 0;
         if self.tx_ring.producer_reserve(1, &mut idx) != 1 {
@@ -253,7 +247,6 @@ impl TxRing {
 
             // Safety: the integers in tx_completion_ring are initialized by the XDP runtime.
             let buf_offset: u64 = unsafe { b.assume_init_read() };
-            trace!("return_buffers(): ifindex={}, offset={}", self.ifindex, buf_offset);
 
             // NB dropping the buffer returns it to the pool.
             if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {
@@ -264,7 +257,6 @@ impl TxRing {
         }
 
         if returned > 0 {
-            trace!("returned {} buffers to TxRing interface {}", returned, self.ifindex);
             self.tx_completion_ring.consumer_release(returned);
         }
     }

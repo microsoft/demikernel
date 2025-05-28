@@ -76,7 +76,7 @@ define_metrics! {
     metric(tcp_retransmits, demi_metric_kind_t::DEMI_MK_EVENT, "An event triggered each time a TCP retransmit occurs", "events"),
     metric(tcp_out_of_order_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP out-of-order frames", "packets"),
     metric(tcp_unacked_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP which have not been ACK'd", "packets"),
-    metric(tcp_unset_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP frames waiting to be sent", "packets"),
+    metric(tcp_unsent_frames, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of TCP frames waiting to be sent", "packets"),
     metric(tcp_rto, demi_metric_kind_t::DEMI_MK_SAMPLE, "The TCP retransmission timeout", "milliseconds"),
     metric(tcp_rtt, demi_metric_kind_t::DEMI_MK_SAMPLE, "The TCP round-trip time", "microseconds"),
     metric(tx_packets, demi_metric_kind_t::DEMI_MK_SAMPLE, "The number of packets sent", "packets"),

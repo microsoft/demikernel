@@ -146,14 +146,13 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE>, Fail> {
         timer!("catpowder::win::runtime::receive");
-        self.0.stats.update_poll_time();
+        self.0.stats.update_stats();
 
         let mut ret: ArrayVec<DemiBuffer, RECEIVE_BATCH_SIZE> = ArrayVec::new();
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.interface.provide_rx_buffers();
 
-        let mut queue: usize = 0;
         let mut rx_packets: u32 = 0;
         let mut rx_bytes: u32 = 0;
 
@@ -162,7 +161,6 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             for rx in vf_interface.rx_rings.iter_mut() {
                 let remaining: u32 = ret.remaining_capacity() as u32;
                 rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
-                    trace!("receive(): VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                     rx_packets += 1;
                     rx_bytes += dbuf.len() as u32;
 
@@ -171,19 +169,15 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 })?;
 
                 if ret.is_full() {
-                    self.0.stats.inc_rx(rx_bytes, rx_packets);
+                    me.stats.inc_rx(rx_bytes, rx_packets);
                     return Ok(ret);
                 }
-                queue += 1;
             }
-
-            queue = 0;
         }
 
         for rx in me.interface.rx_rings.iter_mut() {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
-                trace!("receive(): non-VF, queue={}, pkt_size={:?}", queue, dbuf.len());
                 rx_packets += 1;
                 rx_bytes += dbuf.len() as u32;
 
@@ -192,12 +186,12 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             })?;
 
             if ret.is_full() {
-                self.0.stats.inc_rx(rx_bytes, rx_packets);
+                me.stats.inc_rx(rx_bytes, rx_packets);
                 return Ok(ret);
             }
-            queue += 1;
         }
 
+        me.stats.inc_rx(rx_bytes, rx_packets);
         Ok(ret)
     }
 

@@ -240,7 +240,8 @@ impl Sender {
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
         if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
-            return Err(Fail::new(libc::EBUSY, "too many packets to send"));
+            let msg: String = format!("too many unsent segments: {}", cb.sender.unsent_queue.len());
+            return Err(Fail::new(libc::EBUSY, msg.as_str()));
         }
 
         trace!("push(): total unsent segments={:?}", cb.sender.unsent_queue.len());
@@ -265,6 +266,7 @@ impl Sender {
             }
             if !buf.is_empty() {
                 cb.sender.unsent_queue.push(buf);
+                METRICS.tcp_unsent_frames.emit(cb.sender.unsent_queue.len() as u32 + 1);
             }
 
             METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);

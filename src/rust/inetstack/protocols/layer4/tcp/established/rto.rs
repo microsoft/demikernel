@@ -72,9 +72,9 @@ impl RtoCalculator {
     /// Updates the stored RTO value while keeping it within the prescribed bounds (RFC 6298 Section 2.4)
     fn update_rto(&mut self, new_rto: f64) {
         // RFC 6298's suggested value for the lower bound is 1 second.  Note this currently uses 1/10 of a second.
-        const LOWER_BOUND_SEC: f64 = 0.100f64;
+        const LOWER_BOUND_SEC: f64 = 0.050f64;
         // RFC 6298's suggested value for the upper bound is >= 60 seconds.
-        const UPPER_BOUND_SEC: f64 = 60.0f64;
+        const UPPER_BOUND_SEC: f64 = 3.0f64;
 
         // Note: We use clamp() below as it is clearer in intent than a min/max combination.  However, if we were
         // concerned that new_rto could be NaN here (we're not) we wouldn't want to use clamp() as it would pass NaN
