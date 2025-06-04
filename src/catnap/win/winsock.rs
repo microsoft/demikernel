@@ -223,12 +223,8 @@ impl WinsockRuntime {
 
     /// Implementation of setsockopt.
     pub(super) unsafe fn do_setsockopt<'a, T>(s: SOCKET, level: i32, opt: i32, val: Option<&'a T>) -> Result<(), Fail> {
-        let val: Option<&'a [u8]> = match val {
-            Some(val) => {
-                Some(unsafe { std::slice::from_raw_parts((val as *const T).cast(), std::mem::size_of::<T>()) })
-            },
-            None => None,
-        };
+        let val: Option<&'a [u8]> =
+            val.map(|val| unsafe { std::slice::from_raw_parts((val as *const T).cast(), std::mem::size_of::<T>()) });
 
         if unsafe { setsockopt(s, level, opt, val) } == 0 {
             Ok(())
@@ -330,9 +326,9 @@ impl WinsockRuntime {
 
         self.get_or_init_extensions(s)
             .and_then(|extensions: Rc<SocketExtensions>| Socket::new(s, protocol, options, extensions, iocp))
-            .or_else(|err: Fail| {
+            .map_err(|err: Fail| {
                 unsafe { closesocket(s) };
-                Err(err)
+                err
             })
     }
 }

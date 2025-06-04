@@ -312,10 +312,10 @@ impl Socket {
         }
         .as_bool();
 
-        get_overlapped_api_result(success).and_then(|_| {
+        get_overlapped_api_result(success).map(|_| {
             // Safety: the socket does not require structural pinning.
             accept_result.new_socket = Some(new_socket);
-            Ok(())
+            ()
         })
     }
 
