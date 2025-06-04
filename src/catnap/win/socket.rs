@@ -172,7 +172,7 @@ impl Socket {
         if keepalive_params.onoff != 0 {
             // Safety: SIO_KEEPALIVE_VALS uses tcp_keepalive structure as ABI.
             unsafe {
-                WinsockRuntime::do_ioctl::<tcp_keepalive, ()>(self.s, SIO_KEEPALIVE_VALS, Some(&keepalive_params), None)
+                WinsockRuntime::do_ioctl::<tcp_keepalive, ()>(self.s, SIO_KEEPALIVE_VALS, Some(keepalive_params), None)
             }?;
         }
 
