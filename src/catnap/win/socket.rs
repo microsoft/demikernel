@@ -243,7 +243,7 @@ impl Socket {
         if unsafe { shutdown(self.s, SD_BOTH) } == 0 {
             Ok(())
         } else {
-            Err(expect_last_wsa_error().into())
+            Err(expect_last_wsa_error())
         }
     }
 
@@ -255,7 +255,7 @@ impl Socket {
         if result == 0 {
             Ok(())
         } else {
-            Err(expect_last_wsa_error().into())
+            Err(expect_last_wsa_error())
         }
     }
 
@@ -265,7 +265,7 @@ impl Socket {
         if unsafe { listen(self.s, backlog) } == 0 {
             Ok(())
         } else {
-            Err(expect_last_wsa_error().into())
+            Err(expect_last_wsa_error())
         }
     }
 
