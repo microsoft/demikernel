@@ -328,9 +328,7 @@ impl Socket {
         iocp: &IoCompletionPort<SocketOpState>,
         result: OverlappedResult,
     ) -> Result<(Socket, SocketAddr, SocketAddr), Fail> {
-        if let Err(err) = result.ok() {
-            return Err(err);
-        }
+        result.ok()?;
 
         let accept_result: &mut AcceptState = match state.get_mut() {
             SocketOpState::Accept(ref mut accept_result) => accept_result,
@@ -432,9 +430,7 @@ impl Socket {
 
     /// Finish a connect operation started by start_connect.
     pub fn finish_connect(&self, result: OverlappedResult) -> Result<(), Fail> {
-        if let Err(err) = result.ok() {
-            return Err(err);
-        }
+        result.ok()?;
 
         // Required to update user mode attributes of the socket after ConnectEx completes.
         unsafe { WinsockRuntime::do_setsockopt::<()>(self.s, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, None) }
@@ -488,9 +484,7 @@ impl Socket {
         // flags seem (determined experimentally) to be derived from the NTSTATUS of the resulting overlapped. The
         // WSA/GetOverlappedResult API should be avoided, as it seems to incur some synchronization overhead which is
         // not useful for this implementation.
-        if let Err(err) = result.ok() {
-            return Err(err);
-        }
+        result.ok()?;
 
         let pop_state: &mut PopState = match state.get_mut() {
             SocketOpState::Pop(ref mut pop_state) => pop_state,
