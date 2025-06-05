@@ -236,11 +236,10 @@ impl WinsockRuntime {
     /// Set a socket option (via setsockopt) from a structured value `val`.
     /// Safety: the requested socket option must agree with the ABI of T.
     #[allow(unused)]
-    pub unsafe fn setsockopt<'a, T>(&self, s: SOCKET, level: i32, opt: i32, val: Option<&'a T>) -> Result<(), Fail> {
+    pub unsafe fn setsockopt<T>(&self, s: SOCKET, level: i32, opt: i32, val: Option<&T>) -> Result<(), Fail> {
         Self::do_setsockopt(s, level, opt, val)
     }
 
-    /// Implementation of getsockopt.
     pub(super) unsafe fn do_getsockopt<T>(s: SOCKET, level: i32, optname: i32) -> Result<T, Fail> {
         let mut out: MaybeUninit<T> = MaybeUninit::zeroed();
         let optval: PSTR = PSTR::from_raw(out.as_mut_ptr().cast());
