@@ -116,7 +116,8 @@ jobs:
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
-      if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
+      if: always()
+      continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
         name: catnapw-release-pipeline-logs
@@ -215,7 +216,8 @@ jobs:
           --server-addr $SERVER_ADDR \
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
-      if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
+      if: always()
+      continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
         name: catpowder-release-pipeline-logs
