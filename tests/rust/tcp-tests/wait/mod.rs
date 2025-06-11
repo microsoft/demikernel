@@ -198,17 +198,23 @@ fn wait_after_async_close_connecting_socket(libos: &mut LibOS, remote: &SocketAd
 // Attempt to wait on an invalid queue token.
 fn wait_on_invalid_queue_token_returns_einval(libos: &mut LibOS) -> Result<()> {
     // Wait on an invalid queue token made from u64 MAX value.
-    match libos.wait(QToken::from(u64::MAX), Some(Duration::ZERO)) {
+    match libos.wait(QToken::from(u64::MAX), None) {
         Ok(_) => anyhow::bail!("wait() should not succeed on invalid token"),
         Err(e) if e.errno == libc::EINVAL => {},
-        Err(_) => anyhow::bail!("wait() should not fail with any other reason than invalid token"),
+        Err(e) => anyhow::bail!(
+            "wait() should not fail with any other reason than invalid token: {:?}",
+            e
+        ),
     }
 
     // Wait on an invalid queue token made from 0 value.
     match libos.wait(QToken::from(0), Some(Duration::ZERO)) {
         Ok(_) => anyhow::bail!("wait() should not succeed on invalid token"),
         Err(e) if e.errno == libc::EINVAL => {},
-        Err(_) => anyhow::bail!("wait() should not fail with any other reason than invalid token"),
+        Err(e) => anyhow::bail!(
+            "wait() should not fail with any other reason than invalid token: {:?}",
+            e
+        ),
     }
 
     Ok(())
