@@ -202,7 +202,7 @@ fn wait_on_invalid_queue_token_returns_einval(libos: &mut LibOS) -> Result<()> {
         Ok(_) => anyhow::bail!("wait() should not succeed on invalid token"),
         Err(e) if e.errno == libc::EINVAL => {},
         Err(e) => anyhow::bail!(
-            "wait() should not fail with any other reason than invalid token: {:?}",
+            "wait() on max queue token should not fail with any other reason than invalid token: {:?}",
             e
         ),
     }
