@@ -171,6 +171,7 @@ impl SharedDemiRuntime {
         match self.scheduler.insert_task(group_id, task) {
             Some(task_id) => {
                 let qt: QToken = self.qtoken_to_scheduler_id.insert_with_new_id(task_id).unwrap();
+                assert_neq!(qt, QToken::from(u64::MAX));
                 self.scheduler
                     .get_mut_task(group_id, task_id)
                     .unwrap()
@@ -212,6 +213,9 @@ impl SharedDemiRuntime {
     ) -> Result<(usize, QToken, QDesc, OperationResult), Fail> {
         // If any are already complete, grab from the completion table, otherwise, make sure it is valid.
         for (i, qt) in qts.iter().enumerate() {
+            if *qt == QToken::from(u64::MAX) {
+                panic!("cannot have a max sized qtoken");
+            }
             if let Some((qd, result)) = self.completed_results.remove(qt) {
                 return Ok((i, *qt, qd, result));
             }
