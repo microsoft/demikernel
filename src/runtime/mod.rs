@@ -171,7 +171,7 @@ impl SharedDemiRuntime {
         match self.scheduler.insert_task(group_id, task) {
             Some(task_id) => {
                 let qt: QToken = self.qtoken_to_scheduler_id.insert_with_new_id(task_id).unwrap();
-                assert_neq!(qt, QToken::from(u64::MAX));
+                assert!(qt != QToken::from(u64::MAX));
                 self.scheduler
                     .get_mut_task(group_id, task_id)
                     .unwrap()
