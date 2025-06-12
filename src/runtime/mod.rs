@@ -214,7 +214,9 @@ impl SharedDemiRuntime {
         // If any are already complete, grab from the completion table, otherwise, make sure it is valid.
         for (i, qt) in qts.iter().enumerate() {
             if *qt == QToken::from(u64::MAX) {
-                panic!("cannot have a max sized qtoken");
+                if let Some(id) = self.qtoken_to_scheduler_id.get(qt) {
+                    panic!("cannot have a max sized qtoken: id {:?}", id);
+                }
             }
             if let Some((qd, result)) = self.completed_results.remove(qt) {
                 return Ok((i, *qt, qd, result));
