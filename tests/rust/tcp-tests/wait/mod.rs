@@ -208,7 +208,7 @@ fn wait_on_invalid_queue_token_returns_einval(libos: &mut LibOS) -> Result<()> {
     }
 
     // Wait on an invalid queue token made from 0 value.
-    match libos.wait(QToken::from(0), Some(Duration::ZERO)) {
+    match libos.wait(QToken::from(0), None) {
         Ok(_) => anyhow::bail!("wait() should not succeed on invalid token"),
         Err(e) if e.errno == libc::EINVAL => {},
         Err(e) => anyhow::bail!(
