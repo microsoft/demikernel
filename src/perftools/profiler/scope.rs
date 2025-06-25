@@ -42,13 +42,13 @@ pub struct Scope {
 pub struct SharedScope(SharedObject<Scope>);
 
 /// A guard that is created when entering a scope and dropped when leaving it.
-pub struct Guard {
+pub struct SyncScopeGuard {
     enter_time: u64,
 }
 
 /// A scope over an async block that may yield and re-enter several times.
 pub struct AsyncScope<'a, F: Future> {
-    scope: SharedScope,
+    name: &'static str,
     future: Pin<&'a mut F>,
 }
 
@@ -62,40 +62,25 @@ impl SharedScope {
         parent_scope: Option<SharedScope>,
         perf_callback: Option<demi_callback_t>,
     ) -> SharedScope {
-        Self(SharedObject::new(Scope::new(name, parent_scope, perf_callback)))
-    }
-}
-
-impl Scope {
-    pub fn new(name: &'static str, parent_scope: Option<SharedScope>, perf_callback: Option<demi_callback_t>) -> Scope {
-        Self {
+        Self(SharedObject::new(Scope {
             name,
             parent_scope,
             children_scopes: Vec::new(),
             num_calls: 0,
             duration_sum: 0,
             perf_callback,
-        }
-    }
-
-    pub fn add_child_scope(&mut self, child_scope: SharedScope) {
-        self.children_scopes.push(child_scope.clone())
-    }
-
-    #[cfg(test)]
-    pub fn get_num_calls(&self) -> usize {
-        self.num_calls
+        }))
     }
 
     /// Enter this scope. Returns a `Guard` instance that should be dropped when leaving the scope.
     #[inline]
-    pub fn enter(&self) -> Guard {
-        Guard::enter()
+    pub fn enter_sync_scope(&self) -> SyncScopeGuard {
+        SyncScopeGuard::enter()
     }
 
     /// Leave this scope. Called automatically by the `Guard` instance.
     #[inline]
-    pub fn leave(&mut self, duration: u64) {
+    pub fn add_duration(&mut self, duration: u64) {
         if let Some(callback_fn) = self.perf_callback {
             callback_fn(self.name.as_ptr() as *const i8, self.name.len() as u32, duration);
         } else {
@@ -150,12 +135,12 @@ impl Scope {
 }
 
 impl<'a, F: Future> AsyncScope<'a, F> {
-    pub fn new(scope: SharedScope, future: Pin<&'a mut F>) -> Self {
-        Self { scope, future }
+    pub fn new(name: &'static str, future: Pin<&'a mut F>) -> Self {
+        Self { name, future }
     }
 }
 
-impl Guard {
+impl SyncScopeGuard {
     #[inline]
     pub fn enter() -> Self {
         let now: u64 = unsafe { x86::time::rdtscp().0 };
@@ -193,17 +178,22 @@ impl<'a, F: Future> Future for AsyncScope<'a, F> {
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let self_: &mut Self = self.get_mut();
 
-        let _guard = PROFILER.with(|p| p.clone().enter_scope(&self_.scope));
-        Future::poll(self_.future.as_mut(), ctx)
+        PROFILER.with(|p| p.clone().create_and_enter_async_scope(&self_.name));
+        let start: u64 = unsafe { x86::time::rdtscp().0 };
+        let result = Future::poll(self_.future.as_mut(), ctx);
+        let end: u64 = unsafe { x86::time::rdtscp().0 };
+        let duration: u64 = end - start;
+        PROFILER.with(|p| p.clone().leave_async_scope(duration));
+        result
     }
 }
 
-impl Drop for Guard {
+impl Drop for SyncScopeGuard {
     #[inline]
     fn drop(&mut self) {
         let now: u64 = unsafe { x86::time::rdtscp().0 };
         let duration: u64 = now - self.enter_time;
 
-        PROFILER.with(|p| p.clone().leave_scope(duration));
+        PROFILER.with(|p| p.clone().leave_sync_scope(duration));
     }
 }

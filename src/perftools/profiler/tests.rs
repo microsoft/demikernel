@@ -85,7 +85,7 @@ fn test_reset_during_frame() -> Result<()> {
                 profiler::reset();
             }
 
-            crate::ensure_eq!(profiler::PROFILER.with(|p| p.current_scope.is_some()), true);
+            crate::ensure_eq!(profiler::PROFILER.with(|p| p.current_sync_scope.is_some()), true);
 
             timer!("d");
         }
@@ -93,7 +93,7 @@ fn test_reset_during_frame() -> Result<()> {
 
     profiler::PROFILER.with(|p| -> Result<()> {
         crate::ensure_eq!(p.root_scopes.is_empty(), true);
-        crate::ensure_eq!(p.current_scope.is_none(), true);
+        crate::ensure_eq!(p.current_sync_scope.is_none(), true);
         Ok(())
     })
 }

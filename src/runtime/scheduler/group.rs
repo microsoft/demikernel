@@ -74,7 +74,7 @@ impl TaskGroup {
     }
 
     /// Insert a new task into our scheduler returning a handle corresponding to it.
-    pub fn insert(&mut self, task: Box<dyn Task>) -> Option<InsertResult> {
+    pub fn insert_and_poll_task(&mut self, task: Box<dyn Task>) -> Option<InsertResult> {
         let task_name: &'static str = task.get_name();
         // The pin slab index can be reverse-computed in a page index and an offset within the page.
         let pin_slab_index: usize = self.tasks.insert(task)?;
