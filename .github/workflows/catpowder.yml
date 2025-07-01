@@ -152,7 +152,7 @@ jobs:
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
       if: always()
-      continue-on-error: true
+      if-no-files-found: ignore
       uses: actions/upload-artifact@v4
       with:
         name: catpowder-release-pipeline-logs
