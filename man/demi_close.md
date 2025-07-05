@@ -14,7 +14,7 @@ int demi_close(int qd);
 
 ## Description
 
-`demi_close()` closes an I/O queue descriptor, so that it no longers refers to an I/O queue.
+`demi_close()` closes an I/O queue descriptor, so that it no longer refers to an I/O queue.
 
 The `qd` parameter is the I/O queue descriptor that is associated with the target I/O queue.
 
