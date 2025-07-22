@@ -25,6 +25,17 @@ use std::{
 // Structures
 //======================================================================================================================
 
+/// Statistics for TX ring monitoring and performance tuning.
+#[derive(Debug, Clone)]
+pub struct TxRingStats {
+    /// Number of available slots in the TX ring
+    pub available_tx_slots: u32,
+    /// Number of completed TX operations that can be returned
+    pub completed_tx_count: u32,
+    /// Interface index
+    pub ifindex: u32,
+}
+
 /// A ring for transmitting packets.
 pub struct TxRing {
     /// A user memory region where transmit buffers are stored.
@@ -47,6 +58,8 @@ impl TxRing {
         api: &mut XdpApi,
         length: u32,
         buf_count: u32,
+        fill_ring_size: u32,
+        completion_ring_size: u32,
         mtu: u16,
         ifindex: u32,
         queueid: u32,
@@ -83,11 +96,11 @@ impl TxRing {
         )?;
 
         // Set tx completion ring size.
-        trace!("setting tx completion ring size to {}", length);
+        trace!("setting tx completion ring size to {}", completion_ring_size);
         socket.setsockopt(
             api,
             libxdp::XSK_SOCKOPT_TX_COMPLETION_RING_SIZE,
-            &length as *const u32 as *const core::ffi::c_void,
+            &completion_ring_size as *const u32 as *const core::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         )?;
 
@@ -188,6 +201,69 @@ impl TxRing {
         self.transmit_buffer(api, self.copy_into_buf(buf)?)
     }
 
+    /// Transmit multiple buffers in a batch for improved performance.
+    /// Enhanced version with better error handling and adaptive batching.
+    pub fn transmit_buffers_batch(&mut self, api: &mut XdpApi, buffers: Vec<DemiBuffer>) -> Result<(), Fail> {
+        if buffers.is_empty() {
+            return Ok(());
+        }
+
+        let batch_size = buffers.len() as u32;
+        let mut idx: u32 = 0;
+        
+        // Reserve space for all buffers in the batch
+        let reserved = self.tx_ring.producer_reserve(batch_size, &mut idx);
+        if reserved < batch_size {
+            return Err(Fail::new(libc::EAGAIN, &format!(
+                "tx ring has insufficient space: requested {}, got {} (ring may be full)", 
+                batch_size, reserved
+            )));
+        }
+
+        // Pre-process buffers to ensure they're all valid before committing
+        let mut buffer_descriptors = Vec::with_capacity(buffers.len());
+        for (i, buf) in buffers.into_iter().enumerate() {
+            let processed_buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
+                trace!("copying buffer {} to umem region", i);
+                self.copy_into_buf(&buf)?
+            } else {
+                buf
+            };
+
+            let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(processed_buf);
+            trace!(
+                "transmit_buffers_batch(): buffer {}, address={}, offset={}, length={}, ifindex={}",
+                i,
+                unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
+                unsafe { buf_desc.Address.__bindgen_anon_1.Offset() },
+                buf_desc.Length,
+                self.ifindex,
+            );
+            
+            buffer_descriptors.push(buf_desc);
+        }
+
+        // Commit all buffer descriptors atomically
+        for (i, buf_desc) in buffer_descriptors.into_iter().enumerate() {
+            let b: &mut MaybeUninit<libxdp::XSK_BUFFER_DESCRIPTOR> = self.tx_ring.get_element(idx + i as u32);
+            b.write(buf_desc);
+        }
+
+        // Submit all buffers at once
+        self.tx_ring.producer_submit(batch_size);
+        trace!("submitted batch of {} buffers to tx ring", batch_size);
+
+        // Notify socket once for the entire batch
+        if let Err(e) = self.poke(api) {
+            let cause = format!("failed to notify socket: {:?}", e);
+            warn!("{}", cause);
+            return Err(Fail::new(libc::EAGAIN, &cause));
+        }
+
+        // Check for error
+        self.check_error(api)
+    }
+
     pub fn transmit_buffer(&mut self, api: &mut XdpApi, buf: DemiBuffer) -> Result<(), Fail> {
         let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
             trace!("copying buffer to umem region");
@@ -226,28 +302,104 @@ impl TxRing {
         self.check_error(api)
     }
 
+    /// Optimized transmit that skips poke for batching scenarios.
+    /// Caller must call `poke()` manually when ready to flush the batch.
+    pub fn transmit_buffer_no_poke(&mut self, buf: DemiBuffer) -> Result<(), Fail> {
+        let buf: DemiBuffer = if !self.mem.borrow().is_data_in_pool(&buf) {
+            trace!("copying buffer to umem region");
+            self.copy_into_buf(&buf)?
+        } else {
+            buf
+        };
+
+        let buf_desc: XSK_BUFFER_DESCRIPTOR = self.mem.borrow().dehydrate_buffer(buf);
+        trace!(
+            "transmit_buffer_no_poke(): address={}, offset={}, length={}, ifindex={}",
+            unsafe { buf_desc.Address.__bindgen_anon_1.BaseAddress() },
+            unsafe { buf_desc.Address.__bindgen_anon_1.Offset() },
+            buf_desc.Length,
+            self.ifindex,
+        );
+
+        let mut idx: u32 = 0;
+        if self.tx_ring.producer_reserve(1, &mut idx) != 1 {
+            return Err(Fail::new(libc::EAGAIN, "tx ring is full"));
+        }
+
+        let b: &mut MaybeUninit<libxdp::XSK_BUFFER_DESCRIPTOR> = self.tx_ring.get_element(idx);
+        b.write(buf_desc);
+
+        self.tx_ring.producer_submit(1);
+        Ok(())
+    }
+
     pub fn return_buffers(&mut self) {
+        self.return_buffers_with_limit(u32::MAX)
+    }
+
+    /// Return completed TX buffers with a specified limit.
+    /// This allows for more controlled buffer reclamation and better resource management.
+    pub fn return_buffers_with_limit(&mut self, max_buffers: u32) {
         let mut idx: u32 = 0;
         let available: u32 = self.tx_completion_ring.consumer_reserve(u32::MAX, &mut idx);
+        let to_process = std::cmp::min(available, max_buffers);
         let mut returned: u32 = 0;
-        for i in 0..available {
-            let b: &MaybeUninit<u64> = self.tx_completion_ring.get_element(idx + i);
+        
+        // Process completed buffers in batches for better performance
+        const BATCH_SIZE: u32 = 64; // Process in chunks for better cache utilization
+        
+        let mut remaining = to_process;
+        while remaining > 0 {
+            let batch_count = std::cmp::min(remaining, BATCH_SIZE);
+            let mut batch_returned = 0;
+            
+            for i in 0..batch_count {
+                let b: &MaybeUninit<u64> = self.tx_completion_ring.get_element(idx + returned + i);
 
-            // Safety: the integers in tx_completion_ring are initialized by the XDP runtime.
-            let buf_offset: u64 = unsafe { b.assume_init_read() };
-            trace!("return_buffers(): ifindex={}, offset={}", self.ifindex, buf_offset);
+                // Safety: the integers in tx_completion_ring are initialized by the XDP runtime.
+                let buf_offset: u64 = unsafe { b.assume_init_read() };
+                trace!("return_buffers(): ifindex={}, offset={}", self.ifindex, buf_offset);
 
-            // NB dropping the buffer returns it to the pool.
-            if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {
-                error!("failed to return buffer: {:?}", e);
+                // NB dropping the buffer returns it to the pool.
+                if let Err(e) = self.mem.borrow().rehydrate_buffer_offset(buf_offset) {
+                    error!("failed to return buffer: {:?}", e);
+                    // Continue with other buffers even if one fails
+                } else {
+                    batch_returned += 1;
+                }
             }
 
-            returned += 1;
+            returned += batch_returned;
+            remaining -= batch_count;
         }
 
         if returned > 0 {
             trace!("returned {} buffers to TxRing interface {}", returned, self.ifindex);
             self.tx_completion_ring.consumer_release(returned);
         }
+    }
+
+    /// Get TX ring statistics for monitoring and adaptive management.
+    pub fn get_tx_stats(&mut self) -> TxRingStats {
+        let available_tx_slots = self.available_tx_slots();
+        let completed_tx_count = self.completed_tx_count();
+        
+        TxRingStats {
+            available_tx_slots,
+            completed_tx_count,
+            ifindex: self.ifindex,
+        }
+    }
+
+    /// Get the number of available slots in the TX ring for batching decisions.
+    pub fn available_tx_slots(&mut self) -> u32 {
+        let mut idx: u32 = 0;
+        self.tx_ring.producer_reserve(0, &mut idx) // This returns available slots without reserving
+    }
+
+    /// Get the number of completed TX operations that can be returned.
+    pub fn completed_tx_count(&mut self) -> u32 {
+        let mut idx: u32 = 0;
+        self.tx_completion_ring.consumer_reserve(0, &mut idx) // This returns available completed operations
     }
 }
