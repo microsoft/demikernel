@@ -5,6 +5,7 @@
 // Modules
 //======================================================================================================================
 
+mod batch;
 mod generic;
 mod rule;
 mod ruleset;
@@ -16,6 +17,7 @@ mod umemreg;
 // Exports
 //======================================================================================================================
 
+pub use batch::{BatchConfig, TxBatchProcessor};
 pub use ruleset::RuleSet;
-pub use rx_ring::RxRing;
-pub use tx_ring::TxRing;
+pub use rx_ring::{RxRing, RxProvisionStats};
+pub use tx_ring::{TxRing, TxRingStats};

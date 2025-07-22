@@ -30,6 +30,24 @@ raw_socket:
   tx_ring_size: 128
   # The number of entries in each RX producer/consumer ring for each RSS queue; must be a power of 2.
   rx_ring_size: 128
+  # The number of entries in the TX fill ring; defaults to 2x tx_ring_size; must be a power of 2.
+  # tx_fill_ring_size: 256
+  # The number of entries in the TX completion ring; defaults to 2x tx_ring_size; must be a power of 2.
+  # tx_completion_ring_size: 256
+  # The number of entries in the RX fill ring; defaults to 2x rx_ring_size; must be a power of 2.
+  # rx_fill_ring_size: 256
+  
+  # Enhanced concurrency configuration for improved throughput
+  # Batch size for RX packet processing (default: 32)
+  # xdp_rx_batch_size: 32
+  # Batch size for TX packet processing (default: 32) 
+  # xdp_tx_batch_size: 32
+  # Batch size for buffer provisioning (default: 64)
+  # xdp_buffer_provision_batch_size: 64
+  # Enable adaptive batching based on ring utilization (default: true)
+  # xdp_adaptive_batching: true
+  # Buffer over-allocation factor for improved concurrency (default: 1.5 = 50% over-allocation)
+  # xdp_buffer_overallocation_factor: 1.5
 dpdk:
   eal_init: ["", "-c", "0xff", "-n", "4", "-a", "WW:WW.W","--proc-type=auto"]
 tcp_socket_options:
