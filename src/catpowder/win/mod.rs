@@ -18,3 +18,6 @@ mod socket;
 //======================================================================================================================
 
 pub mod runtime;
+
+// Export interface statistics for monitoring and performance analysis
+pub use interface::InterfaceStats;

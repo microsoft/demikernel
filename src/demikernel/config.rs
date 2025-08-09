@@ -109,6 +109,24 @@ mod raw_socket_config {
     pub const RX_RING_SIZE: &str = "rx_ring_size";
     #[cfg(target_os = "windows")]
     pub const TX_RING_SIZE: &str = "tx_ring_size";
+    #[cfg(target_os = "windows")]
+    pub const TX_FILL_RING_SIZE: &str = "tx_fill_ring_size";
+    #[cfg(target_os = "windows")]
+    pub const TX_COMPLETION_RING_SIZE: &str = "tx_completion_ring_size";
+    #[cfg(target_os = "windows")]
+    pub const RX_FILL_RING_SIZE: &str = "rx_fill_ring_size";
+    
+    // Enhanced concurrency configuration options
+    #[cfg(target_os = "windows")]
+    pub const XDP_RX_BATCH_SIZE: &str = "xdp_rx_batch_size";
+    #[cfg(target_os = "windows")]
+    pub const XDP_TX_BATCH_SIZE: &str = "xdp_tx_batch_size";
+    #[cfg(target_os = "windows")]
+    pub const XDP_BUFFER_PROVISION_BATCH_SIZE: &str = "xdp_buffer_provision_batch_size";
+    #[cfg(target_os = "windows")]
+    pub const XDP_ADAPTIVE_BATCHING: &str = "xdp_adaptive_batching";
+    #[cfg(target_os = "windows")]
+    pub const XDP_BUFFER_OVERALLOCATION_FACTOR: &str = "xdp_buffer_overallocation_factor";
 }
 
 //======================================================================================================================
@@ -309,21 +327,38 @@ impl Config {
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
-    /// Global config: Reads the "rx_buffer_count" and "rx_ring_size" parameters from the environment variable and
-    /// then the underlying configuration file. Returns the tuple (buffer count, ring size).
-    pub fn rx_buffer_config(&self) -> Result<(u32, u32), Fail> {
+    /// Global config: Reads the "rx_buffer_count", "rx_ring_size", and "rx_fill_ring_size" parameters 
+    /// from the environment variable and then the underlying configuration file. 
+    /// Returns the tuple (buffer count, ring size, fill ring size).
+    pub fn rx_buffer_config(&self) -> Result<(u32, u32, u32), Fail> {
         let rx_buffer_count = self.int_env_or_option(raw_socket_config::RX_BUFFER_COUNT, Self::raw_socket_config)?;
         let rx_ring_size = self.int_env_or_option(raw_socket_config::RX_RING_SIZE, Self::raw_socket_config)?;
-        Ok((rx_buffer_count, rx_ring_size))
+        let rx_fill_ring_size = self.int_env_or_option_with_default(
+            raw_socket_config::RX_FILL_RING_SIZE, 
+            Self::raw_socket_config, 
+            rx_ring_size * 2
+        )?;
+        Ok((rx_buffer_count, rx_ring_size, rx_fill_ring_size))
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
-    /// Global config: Reads the "rx_buffer_count" and "rx_ring_size" parameters from the environment variable and
-    /// then the underlying configuration file. Returns the tuple (buffer count, ring size).
-    pub fn tx_buffer_config(&self) -> Result<(u32, u32), Fail> {
+    /// Global config: Reads the "tx_buffer_count", "tx_ring_size", "tx_fill_ring_size", and 
+    /// "tx_completion_ring_size" parameters from the environment variable and then the underlying 
+    /// configuration file. Returns the tuple (buffer count, ring size, fill ring size, completion ring size).
+    pub fn tx_buffer_config(&self) -> Result<(u32, u32, u32, u32), Fail> {
         let tx_buffer_count = self.int_env_or_option(raw_socket_config::TX_BUFFER_COUNT, Self::raw_socket_config)?;
         let tx_ring_size = self.int_env_or_option(raw_socket_config::TX_RING_SIZE, Self::raw_socket_config)?;
-        Ok((tx_buffer_count, tx_ring_size))
+        let tx_fill_ring_size = self.int_env_or_option_with_default(
+            raw_socket_config::TX_FILL_RING_SIZE, 
+            Self::raw_socket_config, 
+            tx_ring_size * 2
+        )?;
+        let tx_completion_ring_size = self.int_env_or_option_with_default(
+            raw_socket_config::TX_COMPLETION_RING_SIZE, 
+            Self::raw_socket_config, 
+            tx_ring_size * 2
+        )?;
+        Ok((tx_buffer_count, tx_ring_size, tx_fill_ring_size, tx_completion_ring_size))
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
@@ -333,6 +368,47 @@ impl Config {
         } else {
             Self::get_bool_option(self.raw_socket_config()?, raw_socket_config::XDP_ALWAYS_POKE_TX)
         }
+    }
+
+    #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
+    /// Get enhanced concurrency configuration for XDP operations.
+    /// Returns (rx_batch_size, tx_batch_size, provision_batch_size, adaptive_batching, buffer_overallocation_factor)
+    pub fn xdp_concurrency_config(&self) -> Result<(u32, u32, u32, bool, f32), Fail> {
+        let rx_batch_size = self.int_env_or_option_with_default(
+            raw_socket_config::XDP_RX_BATCH_SIZE,
+            Self::raw_socket_config,
+            32  // Default batch size for RX processing
+        )?;
+        
+        let tx_batch_size = self.int_env_or_option_with_default(
+            raw_socket_config::XDP_TX_BATCH_SIZE,
+            Self::raw_socket_config,
+            32  // Default batch size for TX processing
+        )?;
+        
+        let provision_batch_size = self.int_env_or_option_with_default(
+            raw_socket_config::XDP_BUFFER_PROVISION_BATCH_SIZE,
+            Self::raw_socket_config,
+            64  // Default batch size for buffer provisioning
+        )?;
+        
+        let adaptive_batching = if let Some(adaptive) = Self::get_typed_env_option(raw_socket_config::XDP_ADAPTIVE_BATCHING)? {
+            adaptive
+        } else {
+            Self::get_bool_option_with_default(
+                self.raw_socket_config()?, 
+                raw_socket_config::XDP_ADAPTIVE_BATCHING, 
+                true  // Enable adaptive batching by default
+            )?
+        };
+        
+        let overallocation_factor = self.float_env_or_option_with_default(
+            raw_socket_config::XDP_BUFFER_OVERALLOCATION_FACTOR,
+            Self::raw_socket_config,
+            1.5  // Default 50% over-allocation for better concurrency
+        )?;
+        
+        Ok((rx_batch_size, tx_batch_size, provision_batch_size, adaptive_batching, overallocation_factor))
     }
 
     #[cfg(all(feature = "catpowder-libos", target_os = "windows"))]
@@ -594,9 +670,57 @@ impl Config {
         }
     }
 
+    /// Same as `int_env_or_option` but provides a default value if neither env var nor config option is set.
+    #[allow(dead_code)]
+    fn int_env_or_option_with_default<T, Fn>(&self, index: &str, resolve_yaml: Fn, default: T) -> Result<T, Fail>
+    where
+        T: TryFrom<i64> + FromStr,
+        for<'a> Fn: FnOnce(&'a Self) -> Result<&'a Yaml, Fail>,
+    {
+        match Self::get_typed_env_option(index)? {
+            Some(val) => Ok(val),
+            None => match Self::get_int_option(resolve_yaml(self)?, index) {
+                Ok(val) => Ok(val),
+                Err(_) => Ok(default),
+            },
+        }
+    }
+
     /// Same as `Self::require_typed_option` using `Yaml::as_bool` as the receiver.
     fn get_bool_option(yaml: &Yaml, index: &str) -> Result<bool, Fail> {
         Self::get_typed_option(yaml, index, Yaml::as_bool)
+    }
+
+    /// Same as `get_bool_option` but provides a default value if the option is not set.
+    #[allow(dead_code)]
+    fn get_bool_option_with_default(yaml: &Yaml, index: &str, default: bool) -> Result<bool, Fail> {
+        match yaml[index].as_bool() {
+            Some(value) => Ok(value),
+            None => Ok(default),
+        }
+    }
+
+    /// Same as `int_env_or_option_with_default` but for float values.
+    #[allow(dead_code)]
+    fn float_env_or_option_with_default<T, Fn>(&self, index: &str, resolve_yaml: Fn, default: T) -> Result<T, Fail>
+    where
+        T: TryFrom<i64> + FromStr,
+        for<'a> Fn: FnOnce(&'a Self) -> Result<&'a Yaml, Fail>,
+    {
+        match Self::get_typed_env_option::<T>(index)? {
+            Some(value) => Ok(value),
+            None => {
+                let yaml = resolve_yaml(self)?;
+                match yaml[index].as_f64() {
+                    Some(value) => {
+                        // Convert f64 to the target type through string parsing
+                        value.to_string().parse::<T>()
+                            .map_err(|_| Fail::new(libc::EINVAL, &format!("failed to parse float value for {}", index)))
+                    },
+                    None => Ok(default),
+                }
+            },
+        }
     }
 
     /// Parse a comma-separated array of elements into a Vec.
