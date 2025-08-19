@@ -221,7 +221,31 @@ bench:
 # Code formatting
 #=======================================================================================================================
 
-check-fmt: check-fmt-rust
+check-fmt: check-fmt-c check-fmt-rust
+
+check-fmt-c:
+	@powershell -NoProfile -Command ^
+		"if (-not (Get-Command clang-format -ErrorAction SilentlyContinue)) { ^
+			Write-Host 'ERROR: clang-format not found in PATH' -ForegroundColor Red; ^
+			Write-Host 'Please install clang-format using one of these methods:' -ForegroundColor Yellow; ^
+			Write-Host '  1. Install LLVM: https://releases.llvm.org/download.html' -ForegroundColor Cyan; ^
+			Write-Host '  2. Use Chocolatey: choco install llvm' -ForegroundColor Cyan; ^
+			Write-Host '  3. Use Scoop: scoop install llvm' -ForegroundColor Cyan; ^
+			Write-Host 'Ensure clang-format is in your system PATH after installation.' -ForegroundColor Yellow; ^
+			exit 1 ^
+		}; ^
+		$patterns = '*.c','*.cpp','*.h','*.hpp','*.hxx'; ^
+		$files = Get-ChildItem -Path 'include' -Recurse -Include $patterns | Select-Object -ExpandProperty FullName; ^
+		if (-not $files) { Write-Host 'No C/C++ files found for formatting check.' -ForegroundColor Green; exit 0 }; ^
+		$fail = $false; ^
+		foreach ($file in $files) { ^
+			& clang-format --dry-run --Werror --fallback-style=Microsoft $file 2>$null; ^
+			if ($LASTEXITCODE -ne 0) { Write-Host "Format check failed: $file" -ForegroundColor Red; $fail = $true } ^
+		}; ^
+		if ($fail) { ^
+			Write-Host 'C/C++ format check failed. Fix with: clang-format -i --fallback-style=Microsoft <file>' -ForegroundColor Red; ^
+			exit 1 ^
+		} else { Write-Host 'C/C++ format check passed.' -ForegroundColor Green }"
 
 check-fmt-rust:
 	set RUSTFLAGS=$(RUSTFLAGS)
