@@ -91,6 +91,20 @@ impl<T: NetworkTransport> SharedNetworkQueue<T> {
         self.transport.clone().getpeername(&mut self.socket)
     }
 
+    /// Gets the local address bound to the socket.
+    pub fn getsockname(&mut self) -> Result<SocketAddrV4, Fail> {
+        match self.local() {
+            Some(addr) => {
+                // We only support IPv4 addresses in demikernel
+                match addr {
+                    SocketAddr::V4(addr_v4) => Ok(addr_v4),
+                    SocketAddr::V6(_) => Err(Fail::new(libc::ENOTSUP, "IPv6 not supported")),
+                }
+            },
+            None => Err(Fail::new(libc::ENOTCONN, "socket is not bound to any address")),
+        }
+    }
+
     /// Binds the target queue to `local` address.
     pub fn bind(&mut self, local: SocketAddr) -> Result<(), Fail> {
         self.state_machine.may_bind()?;

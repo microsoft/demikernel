@@ -98,6 +98,11 @@ impl<T: NetworkTransport> SharedNetworkLibOS<T> {
         self.get_shared_queue(&qd)?.getpeername()
     }
 
+    pub fn getsockname(&mut self, qd: QDesc) -> Result<SocketAddrV4, Fail> {
+        trace!("getsockname() qd={:?}", qd);
+        self.get_shared_queue(&qd)?.getsockname()
+    }
+
     /// This function contains the LibOS-level functionality needed to bind a SharedNetworkQueue to a local address.
     pub fn bind(&mut self, qd: QDesc, socket_addr: SocketAddr) -> Result<(), Fail> {
         trace!("bind() qd={:?}, local={:?}", qd, socket_addr);

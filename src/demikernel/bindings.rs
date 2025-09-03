@@ -646,11 +646,63 @@ pub unsafe extern "C" fn demi_sgafree(sga: *mut demi_sgarray_t) -> c_int {
     }
 }
 
-#[allow(unused)]
+/// # Safety
+///
+/// The `addr` argument must be a valid pointer to a `sockaddr` structure, and `addrlen` must be a valid pointer to a
+/// `Socklen` value that specifies the size of the `sockaddr` structure.
 #[no_mangle]
-pub extern "C" fn demi_getsockname(qd: c_int, saddr: *mut sockaddr, size: *mut Socklen) -> c_int {
-    // TODO: Implement this system call.
-    libc::ENOSYS
+pub unsafe extern "C" fn demi_getsockname(qd: c_int, addr: *mut SockAddr, addrlen: *mut Socklen) -> c_int {
+    trace!("demi_getsockname()");
+
+    if addr.is_null() {
+        warn!("demi_getsockname() addr value is a null pointer");
+        return libc::EINVAL;
+    }
+
+    if addrlen.is_null() {
+        warn!("demi_getsockname(): addrlen value is a null pointer");
+        return libc::EINVAL;
+    }
+
+    let expected_len = mem::size_of::<SockAddrIn>() as Socklen;
+
+    if unsafe { *addrlen < expected_len } {
+        warn!("demi_getsockname(): addrlen does not match size of SockAddrIn");
+        return libc::EINVAL;
+    }
+
+    let ret = match do_syscall(|libos| libos.getsockname(qd.into())) {
+        Ok(result) => result,
+        Err(e) => {
+            trace!("demi_getsockname() failed: {:?}", e);
+            return e.errno;
+        },
+    };
+
+    match ret {
+        Ok(sockaddr) => {
+            let result = socketaddrv4_to_sockaddr(&sockaddr);
+            let result_length = mem::size_of::<SockAddr>();
+            unsafe {
+                if (result_length as Socklen) < *addrlen {
+                    *addrlen = result_length as Socklen;
+                }
+
+                // Need to pass dst as c_void pointer or else we get a stack-smashing error
+                ptr::copy_nonoverlapping(
+                    &result as *const sockaddr as *const c_void,
+                    addr as *mut c_void,
+                    *addrlen as usize,
+                );
+            }
+
+            0
+        },
+        Err(e) => {
+            trace!("demi_getsockname() failed: {:?}", e);
+            e.errno
+        },
+    }
 }
 
 /// # Safety

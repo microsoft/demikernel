@@ -145,6 +145,12 @@ impl LibOS {
         }
     }
 
+    pub fn getsockname(&mut self, sockqd: QDesc) -> Result<SocketAddrV4, Fail> {
+        match self {
+            LibOS::NetworkLibOS(libos) => libos.getsockname(sockqd),
+        }
+    }
+
     #[allow(unused_variables)]
     pub fn bind(&mut self, sockqd: QDesc, local: SocketAddr) -> Result<(), Fail> {
         match self {
