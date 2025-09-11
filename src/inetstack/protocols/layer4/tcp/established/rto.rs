@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use crate::runtime::tracing::METRICS;
+
 // TCP Retransmission Timeout (RTO) Calculator.
 // See RFC 6298 for details.
 
@@ -45,7 +47,9 @@ impl RtoCalculator {
         // Clock granularity in seconds.
         const GRANULARITY: f64 = 0.001f64;
 
-        let rtt = rtt.as_secs_f64();
+        METRICS.tcp_rtt.emit(rtt.as_micros() as u32);
+
+        let rtt: f64 = rtt.as_secs_f64();
 
         if !self.received_sample {
             // Initial sample formula from RFC 6298 Section 2.2:
@@ -68,9 +72,9 @@ impl RtoCalculator {
     /// Updates the stored RTO value while keeping it within the prescribed bounds (RFC 6298 Section 2.4)
     fn update_rto(&mut self, new_rto: f64) {
         // RFC 6298's suggested value for the lower bound is 1 second.  Note this currently uses 1/10 of a second.
-        const LOWER_BOUND_SEC: f64 = 0.100f64;
+        const LOWER_BOUND_SEC: f64 = 0.050f64;
         // RFC 6298's suggested value for the upper bound is >= 60 seconds.
-        const UPPER_BOUND_SEC: f64 = 60.0f64;
+        const UPPER_BOUND_SEC: f64 = 3.0f64;
 
         // Note: We use clamp() below as it is clearer in intent than a min/max combination.  However, if we were
         // concerned that new_rto could be NaN here (we're not) we wouldn't want to use clamp() as it would pass NaN
@@ -79,6 +83,7 @@ impl RtoCalculator {
 
         if new_rto != self.rto {
             trace!("RTO updated: old RTO = {}, new RTO = {}", self.rto, new_rto);
+            METRICS.tcp_rto.emit((new_rto * 1000.0) as u32);
         }
         self.rto = new_rto;
     }

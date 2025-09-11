@@ -26,7 +26,8 @@ use crate::{
         fail::Fail,
         limits, logging,
         network::socket::option::SocketOption,
-        types::{demi_callback_t, demi_qresult_t, demi_sgarray_t},
+        tracing::init_trace,
+        types::{demi_callback_t, demi_metric_callback_t, demi_qresult_t, demi_sgarray_t},
         QDesc, QToken, SharedDemiRuntime,
     },
     timer,
@@ -56,7 +57,11 @@ pub enum LibOS {
 //======================================================================================================================
 
 impl LibOS {
-    pub fn new(libos_name: LibOSName, _perf_callback: Option<demi_callback_t>) -> Result<Self, Fail> {
+    pub fn new_ex(
+        libos_name: LibOSName,
+        _perf_callback: Option<demi_callback_t>,
+        metric_callback: Option<demi_metric_callback_t>,
+    ) -> Result<Self, Fail> {
         logging::initialize();
 
         let config_path = match env::var("CONFIG_PATH") {
@@ -74,7 +79,12 @@ impl LibOS {
             set_callback(callback)
         };
 
-        let config = Config::new(config_path)?;
+        if let Some(metric_callback) = metric_callback {
+            init_trace(metric_callback);
+        }
+
+        let config: Config = Config::new(config_path)?;
+
         #[allow(unused_mut)]
         let mut runtime = SharedDemiRuntime::default();
         // Instantiate LibOS.
@@ -111,6 +121,10 @@ impl LibOS {
         };
 
         Ok(libos)
+    }
+
+    pub fn new(libos_name: LibOSName, _perf_callback: Option<demi_callback_t>) -> Result<Self, Fail> {
+        Self::new_ex(libos_name, _perf_callback, None)
     }
 
     #[allow(unused_variables)]

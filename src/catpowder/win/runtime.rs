@@ -122,6 +122,17 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     /// Transmits a packet.
     fn transmit(&mut self, pkts: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>) -> Result<(), Fail> {
         timer!("catpowder::win::runtime::transmit");
+
+        let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
+        me.interface.return_tx_buffers();
+
+        if let Some(vf_interface) = me.vf_interface.as_mut() {
+            vf_interface.return_tx_buffers();
+        }
+
+        let mut total_packet_size: u32 = 0;
+        let mut total_packets_sent: u32 = 0;
+
         for pkt in pkts {
             let pkt_size: usize = pkt.len();
             if pkt_size >= u16::MAX as usize {
@@ -130,12 +141,7 @@ impl PhysicalLayer for SharedCatpowderRuntime {
                 return Err(Fail::new(libc::ENOTSUP, &cause));
             }
 
-            let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
-            me.interface.return_tx_buffers();
-
             if let Some(vf_interface) = me.vf_interface.as_mut() {
-                vf_interface.return_tx_buffers();
-
                 if me.always_send_on_vf {
                     vf_interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
                     return Ok(());
@@ -143,7 +149,11 @@ impl PhysicalLayer for SharedCatpowderRuntime {
             }
 
             me.interface.tx_ring.transmit_buffer(&mut me.api, pkt)?;
+            total_packet_size += pkt_size as u32;
+            total_packets_sent += 1;
         }
+
+        me.stats.inc_tx(total_packet_size, total_packets_sent);
 
         Ok(())
     }
@@ -151,23 +161,30 @@ impl PhysicalLayer for SharedCatpowderRuntime {
     /// Polls for received packets.
     fn receive(&mut self) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
         timer!("catpowder::win::runtime::receive");
-        self.0.stats.update_poll_time();
+        self.0.stats.update_stats();
 
         let mut ret: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS> = ArrayVec::new();
 
         let me: &mut CatpowderRuntime = &mut self.0.borrow_mut();
         me.interface.provide_rx_buffers();
 
+        let mut rx_packets: u32 = 0;
+        let mut rx_bytes: u32 = 0;
+
         if let Some(vf_interface) = me.vf_interface.as_mut() {
             vf_interface.provide_rx_buffers();
             for rx in vf_interface.rx_rings.iter_mut() {
                 let remaining: u32 = ret.remaining_capacity() as u32;
                 rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                    rx_packets += 1;
+                    rx_bytes += dbuf.len() as u32;
+
                     ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                     Ok(())
                 })?;
 
                 if ret.is_full() {
+                    me.stats.inc_rx(rx_bytes, rx_packets);
                     return Ok(ret);
                 }
             }
@@ -176,15 +193,20 @@ impl PhysicalLayer for SharedCatpowderRuntime {
         for rx in me.interface.rx_rings.iter_mut() {
             let remaining: u32 = ret.remaining_capacity() as u32;
             rx.process_rx(&mut me.api, remaining, |dbuf: DemiBuffer| {
+                rx_packets += 1;
+                rx_bytes += dbuf.len() as u32;
+
                 ret.push(DemiBuffer::try_from(&*dbuf).unwrap());
                 Ok(())
             })?;
 
             if ret.is_full() {
+                me.stats.inc_rx(rx_bytes, rx_packets);
                 return Ok(ret);
             }
         }
 
+        me.stats.inc_rx(rx_bytes, rx_packets);
         Ok(ret)
     }
 

@@ -186,7 +186,7 @@ impl Peer {
         }?;
 
         if self.ephemeral_ports.is_private(socket_addr_v4.port()) {
-            self.ephemeral_ports.reserve(socket_addr_v4.port())?;
+            let _ = self.ephemeral_ports.reserve(socket_addr_v4.port());
         }
 
         Ok(())

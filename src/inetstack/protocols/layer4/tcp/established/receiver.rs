@@ -26,7 +26,7 @@ use crate::{
             },
         },
     },
-    runtime::{fail::Fail, memory::DemiBuffer},
+    runtime::{fail::Fail, memory::DemiBuffer, tracing::METRICS},
 };
 
 use ::arrayvec::ArrayVec;
@@ -340,6 +340,10 @@ impl Receiver {
             // This inserts the segment and wakes a waiting pop coroutine.
             self.pop_queue.push(buf);
         }
+
+        METRICS
+            .tcp_out_of_order_frames
+            .emit(self.out_of_order_frames.len() as u32);
     }
 
     // Block until the remote sends a FIN (plus all previous data has arrived).
@@ -441,9 +445,12 @@ impl Receiver {
                         trace!("check_segment_in_window(): send ack on out-of-window segment");
                         Sender::send_ack(cb, layer3_endpoint);
                     }
-                    let cause = "packet outside of receive window";
+                    let cause: String = format!(
+                        "packet segment outside of receive window; SEG.SEQ={:?}, RCV.NXT={:?}, RCV.NXT+WND={:?}",
+                        *seg_start, receive_next, after_receive_window
+                    );
                     error!("check_segment_in_window(): {}", cause);
-                    return Err(Fail::new(libc::EBADMSG, cause));
+                    return Err(Fail::new(libc::EBADMSG, cause.as_str()));
                 }
 
                 // At least the beginning of this segment is in the window.  We'll check the end below.
@@ -682,6 +689,10 @@ impl Receiver {
         while self.out_of_order_frames.len() > MAX_OUT_OF_ORDER_SIZE_FRAMES {
             self.out_of_order_frames.pop_back();
         }
+
+        METRICS
+            .tcp_out_of_order_frames
+            .emit(self.out_of_order_frames.len() as u32);
     }
 
     pub async fn acknowledger(

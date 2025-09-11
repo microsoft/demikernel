@@ -36,12 +36,36 @@ pub type demi_log_callback_t = extern "C" fn(
     u32,
 );
 
+pub type demi_metric_callback_t = extern "C" fn(u32, u32);
+
+/// Demikernel Arguments
 #[repr(C, packed)]
 pub struct demi_args_t {
     pub argc: core::ffi::c_int,
     pub argv: *const *const core::ffi::c_char,
     pub callback: Option<demi_callback_t>,
     pub log_callback: Option<demi_log_callback_t>,
+    pub metric_callback: Option<demi_metric_callback_t>,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum demi_metric_kind_t {
+    DEMI_MK_EVENT = 1,
+    DEMI_MK_SAMPLE = 2,
+    DEMI_MK_RATE = 3,
+}
+
+#[repr(C)]
+pub struct demi_metric_descriptor_t {
+    pub id: u32,
+    pub name: *const core::ffi::c_char,
+    pub name_len: u32,
+    pub description: *const core::ffi::c_char,
+    pub description_len: u32,
+    pub unit: *const core::ffi::c_char,
+    pub unit_len: u32,
+    pub kind: demi_metric_kind_t,
 }
 
 impl Default for demi_args_t {
@@ -51,6 +75,7 @@ impl Default for demi_args_t {
             argv: std::ptr::null(),
             callback: None,
             log_callback: None,
+            metric_callback: None,
         }
     }
 }

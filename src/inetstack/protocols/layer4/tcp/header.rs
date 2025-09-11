@@ -201,9 +201,11 @@ impl TcpHeader {
         let window_size: u16 = u16::from_be_bytes([hdr_buf[14], hdr_buf[15]]);
 
         if !rx_checksum_offload {
-            let checksum: u16 = u16::from_be_bytes([hdr_buf[16], hdr_buf[17]]);
-            if checksum != tcp_checksum(local_ipv4_addr, remote_ipv4_addr, hdr_buf, data_buf) {
-                return Err(Fail::new(EBADMSG, "TCP checksum mismatch"));
+            let expected: u16 = u16::from_be_bytes([hdr_buf[16], hdr_buf[17]]);
+            let computed: u16 = tcp_checksum(local_ipv4_addr, remote_ipv4_addr, hdr_buf, data_buf);
+            if expected != computed {
+                let msg: String = format!("TCP checksum mismatch: got {:x}, expected {:x}", computed, expected);
+                return Err(Fail::new(EBADMSG, msg.as_str()));
             }
         }
 

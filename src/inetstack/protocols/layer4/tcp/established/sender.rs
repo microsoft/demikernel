@@ -18,7 +18,7 @@ use crate::{
             },
         },
     },
-    runtime::{conditional_yield_until, fail::Fail, memory::DemiBuffer, SharedDemiRuntime},
+    runtime::{conditional_yield_until, fail::Fail, memory::DemiBuffer, tracing::METRICS, SharedDemiRuntime},
 };
 use ::arrayvec::ArrayVec;
 use ::futures::{never::Never, pin_mut, select_biased, FutureExt};
@@ -44,7 +44,7 @@ pub struct UnackedSegment {
 // Hard limit for unsent queue.
 // TODO: Remove this.  We should limit the unsent queue by either having a (configurable) send buffer size (in bytes,
 // not segments) and rejecting send requests that exceed that, or by limiting the user's send buffer allocations.
-const UNSENT_QUEUE_CUTOFF: usize = 1024;
+const UNSENT_QUEUE_CUTOFF: usize = 10240;
 
 // Minimum size for unacknowledged queue. This number doesn't really matter very much, it just sets the initial size
 // of the unacked queue, below which memory allocation is not required.
@@ -240,7 +240,8 @@ impl Sender {
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
         if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
-            return Err(Fail::new(libc::EBUSY, "too many packets to send"));
+            let msg: String = format!("too many unsent segments: {}", cb.sender.unsent_queue.len());
+            return Err(Fail::new(libc::EBUSY, msg.as_str()));
         }
 
         trace!("push(): total unsent segments={:?}", cb.sender.unsent_queue.len());
@@ -259,6 +260,7 @@ impl Sender {
 
                     if !buf.is_empty() {
                         cb.sender.unsent_queue.push(buf);
+                        METRICS.tcp_unsent_frames.emit(cb.sender.unsent_queue.len() as u32);
                     }
                 }
             }
@@ -266,6 +268,7 @@ impl Sender {
 
         if !cb.sender.unacked_queue.is_empty() {
             trace!("push(): total unacked segments={:?}", cb.sender.unacked_queue.len());
+            METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);
         }
 
         // Wait until the sequnce number of the pushed buffer is acknowledged.
@@ -307,7 +310,8 @@ impl Sender {
         cb.sender.unacked_queue.push(unacked_segment);
         // Set the retransmit timer.
         if cb.sender.retransmit_deadline_time_secs.get().is_none() {
-            let rto = cb.sender.rto_calculator.rto();
+            let rto: Duration = cb.sender.rto_calculator.rto();
+            trace!("send_fin(): setting retransmit deadline = {:?}", Some(now + rto));
             cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         Ok(())
@@ -454,13 +458,14 @@ impl Sender {
                 "send_segment(): unacked_queue.len() = {:?}",
                 cb.sender.unacked_queue.len()
             );
+            METRICS.tcp_unacked_frames.emit(cb.sender.unacked_queue.len() as u32);
         }
-
         cb.sender.unacked_queue.push(unacked_segment);
 
         // Set the retransmit timer.
         if cb.sender.retransmit_deadline_time_secs.get().is_none() {
-            let rto = cb.sender.rto_calculator.rto();
+            let rto: Duration = cb.sender.rto_calculator.rto();
+            trace!("send_segment(): setting retransmit deadline = {:?}", Some(now + rto));
             cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         segment_data_len as usize
@@ -530,6 +535,7 @@ impl Sender {
             let rtx_deadline = rtx_deadline_watched.get();
             let rtx_fast_retransmit = rtx_fast_retransmit_watched.get();
             if rtx_fast_retransmit {
+                trace!("background_retransmitter(): fast retransmit triggered");
                 // Notify congestion control about fast retransmit.
                 cb.congestion_control_algorithm.on_fast_retransmit();
 
@@ -551,9 +557,17 @@ impl Sender {
                     Some(fin_seq_no) if cb.sender.send_unacked.get() > fin_seq_no => {
                         return Err(Fail::new(libc::ECONNRESET, "connection closed"));
                     },
-                    _ => continue,
+                    _ => {
+                        trace!("background_retransmitter(): skipping retransmit because deadline changed; deadline = {:?}, rtx_fast_retransmit = {:?}, now = {:?}", rtx_deadline, rtx_fast_retransmit, crate::runtime::timer::global_get_time());
+                        continue;
+                    },
                 },
                 Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                    trace!(
+                        "background_retransmitter(): retransmit timeout; deadline = {:?}, now = {:?}",
+                        rtx_deadline,
+                        crate::runtime::timer::global_get_time(),
+                    );
                     // Retransmit timeout.
                     // Notify congestion control about RTO.
                     cb.congestion_control_algorithm.on_rto(cb.sender.send_unacked.get());
@@ -565,7 +579,11 @@ impl Sender {
                     cb.sender.rto_calculator.back_off();
 
                     // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
-                    let deadline = runtime.now() + cb.sender.rto_calculator.rto();
+                    let deadline: Instant = runtime.now() + cb.sender.rto_calculator.rto();
+                    trace!(
+                        "background_retransmitter(): setting retransmit deadline = {:?}",
+                        deadline
+                    );
                     cb.sender.retransmit_deadline_time_secs.set(Some(deadline));
                 },
                 Err(_) => {
@@ -583,6 +601,7 @@ impl Sender {
             // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
             // if the ACK is for the original or the retransmission).  Remove the transmission timestamp from the entry.
             segment.initial_tx.take();
+            METRICS.tcp_retransmits.emit(1);
 
             // Clone the segment data here for retransmission.
             let data = segment.bytes.clone();
@@ -640,6 +659,10 @@ impl Sender {
             if retransmit_deadline_time_secs.is_none() {
                 debug_assert_eq!(cb.sender.send_next_seq_no.get(), header.ack_num);
             }
+            trace!(
+                "process_ack(): setting retransmit_deadline_time_secs = {:?}",
+                retransmit_deadline_time_secs
+            );
             cb.sender
                 .retransmit_deadline_time_secs
                 .set(retransmit_deadline_time_secs);

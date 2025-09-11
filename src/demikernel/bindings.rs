@@ -14,7 +14,11 @@ use crate::{
     runtime::{
         fail::Fail,
         logging::{self, CallbackLogWriter},
-        types::{demi_args_t, demi_qresult_t, demi_qtoken_t, demi_sgarray_t},
+        tracing::METRICS,
+        types::{
+            demi_args_t, demi_callback_t, demi_log_callback_t, demi_metric_callback_t, demi_metric_descriptor_t,
+            demi_qresult_t, demi_qtoken_t, demi_sgarray_t,
+        },
         QToken,
     },
     SocketOption,
@@ -40,10 +44,10 @@ thread_local! {
 #[allow(unused)]
 #[no_mangle]
 pub unsafe extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
-    let log_callback = if args.is_null() {
+    let log_callback: Option<demi_log_callback_t> = if args.is_null() {
         None
     } else {
-        let args = unsafe { &*args };
+        let args: &demi_args_t = unsafe { &*args };
         args.log_callback
     };
 
@@ -75,14 +79,21 @@ pub unsafe extern "C" fn demi_init(args: *const demi_args_t) -> c_int {
         return ret;
     }
 
-    let perf_callback = if args.is_null() {
+    let perf_callback: Option<demi_callback_t> = if args.is_null() {
         None
     } else {
         let args = unsafe { &*args };
         args.callback
     };
 
-    match LibOS::new(libos_name, perf_callback) {
+    let metric_callback: Option<demi_metric_callback_t> = if args.is_null() {
+        None
+    } else {
+        let args: &demi_args_t = unsafe { &*args };
+        args.metric_callback
+    };
+
+    match LibOS::new_ex(libos_name, perf_callback, metric_callback) {
         Ok(libos) => {
             THREAD_LOCAL_LIBOS.with(move |demikernel_libos| {
                 *demikernel_libos.borrow_mut() = Some(libos);
@@ -572,6 +583,7 @@ pub unsafe extern "C" fn demi_wait_next_n(
 
     let ret = do_syscall(|libos| match libos.wait_next_n(wait_callback, duration) {
         Ok(()) => 0,
+        Err(e) if e.errno == libc::ETIMEDOUT => libc::ETIMEDOUT,
         Err(e) => {
             // EDTIMEDOUT is not a "failure" per se; don't trace.
             if e.errno != libc::ETIMEDOUT {
@@ -858,6 +870,39 @@ pub unsafe extern "C" fn demi_getpeername(qd: c_int, addr: *mut SockAddr, addrle
             e.errno
         },
     }
+}
+
+#[no_mangle]
+pub extern "C" fn demi_enumerate_metrics(metrics: *mut demi_metric_descriptor_t, num_metrics: *mut u32) -> c_int {
+    if num_metrics.is_null() {
+        return libc::EINVAL;
+    }
+
+    let array_size: u32 = unsafe { std::ptr::replace(num_metrics, METRICS.len() as u32) };
+
+    if array_size < METRICS.len() as u32 || metrics.is_null() {
+        // NB this is not necessarily a failure, as the caller may be passing in a null pointer to get the size of the
+        // array. Don't log.
+        return libc::ERANGE;
+    }
+
+    let metrics: &mut [MaybeUninit<demi_metric_descriptor_t>] =
+        unsafe { slice::from_raw_parts_mut(metrics.cast(), METRICS.len()) };
+
+    for (i, metric) in METRICS.iter().enumerate() {
+        metrics[i].write(demi_metric_descriptor_t {
+            id: metric.id(),
+            name: metric.name().as_ptr() as *const i8,
+            name_len: metric.name().len() as u32,
+            description: metric.description().as_ptr() as *const i8,
+            description_len: metric.description().len() as u32,
+            unit: metric.unit().as_ptr() as *const i8,
+            unit_len: metric.unit().len() as u32,
+            kind: metric.kind(),
+        });
+    }
+
+    0
 }
 
 //======================================================================================================================

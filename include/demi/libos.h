@@ -179,6 +179,20 @@ extern "C"
     ATTR_NONNULL(2, 3)
     extern int demi_getpeername(_In_ int qd, _Out_writes_to_(*addrlen, *addrlen) struct sockaddr *addr, _Inout_ socklen_t *addrlen);
 
+    /**
+     * @brief Returns the set of metrics available in the system.
+     *
+     * @param metrics     An optional pointer which receives the list of metrics. If NULL, the number of metrics
+     *                    available in the system is returned in num_metrics.
+     * @param num_metrics A pointer indicating the size of [metrics] on input and the number of metrics available in
+     *                    the system on output. If [metrics] is NULL or the input value is too small, the function will
+     *                    fail while still updating this pointer to the number of metrics available in the system.
+     *
+     * @return On success, zero is returned. On failure, a positive error code is returned.
+     */
+    ATTR_NONNULL(2)
+    extern int demi_enumerate_metrics(_Out_writes_to_opt_(*num_metrics, *num_metrics) demi_metric_descriptor_t *metrics, _Inout_ uint32_t* num_metrics);
+
 #ifdef __cplusplus
 }
 #endif

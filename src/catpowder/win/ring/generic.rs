@@ -68,4 +68,8 @@ impl<T> XdpRing<T> {
     pub(super) fn has_error(&self) -> bool {
         unsafe { libxdp::_XskRingError(&self.0) != 0 }
     }
+
+    pub(super) fn len(&self) -> u32 {
+        self.0.Size
+    }
 }
