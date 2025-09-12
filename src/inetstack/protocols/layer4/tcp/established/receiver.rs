@@ -88,6 +88,11 @@ pub struct Receiver {
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
     // and what we've already presented to the user.
     out_of_order_frames: VecDeque<(SeqNumber, DemiBuffer)>,
+
+    out_of_order_bytes: u32,
+
+    // Largest right edge (RCV.NXT + RCV.WND) ever advertised; used to validate pure ACK seq during zero window.
+    pub max_advertised_right_edge: SeqNumber,
 }
 
 //======================================================================================================================
@@ -112,6 +117,8 @@ impl Receiver {
             buffer_size_bytes: window_size_bytes,
             window_scale_shift_bits,
             out_of_order_frames: VecDeque::with_capacity(64),
+            out_of_order_bytes: 0,
+            max_advertised_right_edge: receive_next_seq_no + SeqNumber::from(window_size_bytes),
         }
     }
 
@@ -122,7 +129,7 @@ impl Receiver {
     ) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
         let mut bufs = ArrayVec::new();
         let mut buf = self.pop_queue.pop(None).await?;
-        loop {
+        while !bufs.is_full() {
             if let Some(size) = size.as_mut() {
                 if buf.len() > *size {
                     let remaining_buf = buf.split_front(*size)?;
@@ -281,21 +288,34 @@ impl Receiver {
         Ok(())
     }
 
-    pub fn receive_window_size(&self) -> u32 {
-        let bytes_unread: u32 = (self.receive_next_seq_no - self.reader_next_seq_no).into();
+    pub fn receive_window_size(&mut self) -> u32 {
+        let in_order_unread: u32 = (self.receive_next_seq_no - self.reader_next_seq_no).into();
         // The window should be less than 1GB or 64KB without scaling.
+        let used = in_order_unread + self.out_of_order_bytes;
+        let window_size = if used >= self.buffer_size_bytes {
+            0
+        } else {
+            self.buffer_size_bytes - used
+        };
+
         debug_assert!(
-            (self.window_scale_shift_bits == 0 && bytes_unread <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
-                || bytes_unread <= MAX_WINDOW_SIZE_WITH_SCALING
+            (self.window_scale_shift_bits == 0 && window_size <= MAX_WINDOW_SIZE_WITHOUT_SCALING)
+                || window_size <= MAX_WINDOW_SIZE_WITH_SCALING
         );
         debug!(
-            "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
-            bytes_unread, self.buffer_size_bytes
+            "Receive window size: window_size={:?} buffer_size_bytes={:?} ",
+            window_size, self.buffer_size_bytes
         );
-        self.buffer_size_bytes - bytes_unread
+
+        let right_edge = self.receive_next_seq_no + SeqNumber::from(window_size as u32);
+        if right_edge > self.max_advertised_right_edge {
+            self.max_advertised_right_edge = right_edge;
+        }
+
+        window_size
     }
 
-    pub fn hdr_window_size(&self) -> u16 {
+    pub fn hdr_window_size(&mut self) -> u16 {
         let window_size = self.receive_window_size();
         let hdr_window_size = expect_ok!(
             (window_size >> self.window_scale_shift_bits).try_into(),
@@ -337,6 +357,7 @@ impl Receiver {
             debug!("Recovering out-of-order packet at {}", self.receive_next_seq_no);
             let (_, buf) = self.out_of_order_frames.pop_front().unwrap();
             self.receive_next_seq_no = self.receive_next_seq_no + SeqNumber::from(buf.len() as u32);
+            self.out_of_order_bytes -= buf.len() as u32;
             // This inserts the segment and wakes a waiting pop coroutine.
             self.pop_queue.push(buf);
         }
@@ -439,7 +460,34 @@ impl Receiver {
             } else {
                 // This segment contains entirely new data, but is later in the sequence than what we're expecting.
                 // See if any part of the data fits within our receive window.
-                if *seg_start >= after_receive_window {
+                // Interoperability: allow a pure ACK exactly at the right edge.
+                //
+                // Extension: Also allow a pure ACK (no SYN/FIN, no data) during a zero window if its sequence number
+                // lies within a previously advertised (but now shrunken) window right edge. This handles the case where
+                // the peer advanced SND.NXT based on earlier (larger) RCV.WND and is now sending pure control ACKs
+                // while our application has not yet drained data (window collapsed to 0). We do NOT accept data in this
+                // range—only zero-length ACK segments.
+                if *seg_len == 0 && !header.syn && !header.fin {
+                    if *seg_start == after_receive_window {
+                        // Treat as acceptable no-op segment (pure right-edge ACK).
+                        trace!(
+                            "check_segment_in_window(): accepted right-edge zero-length ACK (SEG.SEQ == RCV.NXT + RCV.WND)"
+                        );
+                        return Ok(());
+                    }
+                    // Zero-window pure ACK tolerance: after_receive_window == receive_next means window size is 0.
+                    if after_receive_window == receive_next
+                        && *seg_start > receive_next
+                        && *seg_start <= cb.receiver.max_advertised_right_edge
+                    {
+                        trace!(
+                            "check_segment_in_window(): accepted zero-window pure ACK seq={:?} (<= max_advertised_right_edge={:?})",
+                            *seg_start,
+                            cb.receiver.max_advertised_right_edge
+                        );
+                        return Ok(());
+                    }
+                } else if *seg_start >= after_receive_window {
                     // This segment is completely outside of our window.  ACK (if not RST) and drop.
                     if !header.rst {
                         trace!("check_segment_in_window(): send ack on out-of-window segment");
@@ -664,7 +712,7 @@ impl Receiver {
                     }
                     // We have some data overlap between the new segment and the end of the out-of-order segment.
                     // Adjust the beginning of the new segment and continue on to check the next out-of-order segment.
-                    let duplicate = u32::from(stored_end - new_start);
+                    let duplicate = u32::from(stored_end - new_start) + 1;
                     new_start = new_start + SeqNumber::from(duplicate);
                     expect_ok!(
                         buf.adjust(duplicate as usize),
@@ -675,19 +723,28 @@ impl Receiver {
             }
 
             if another_pass_neeeded {
-                // The new segment completely encompassed an existing segment, which we will now remove.
-                self.out_of_order_frames.remove(action_index);
+                // Remove encompassed segment and adjust byte accounting.
+                let removed = self.out_of_order_frames.remove(action_index).unwrap();
+                let removed_len = removed.1.len() as u32;
+                debug_assert!(self.out_of_order_bytes >= removed_len);
+                self.out_of_order_bytes -= removed_len;
             }
         }
 
-        // Insert the new segment into the correct position.
+        // Insert trimmed (or original) new segment; account its final length.
+        let inserted_len = buf.len() as u32;
         self.out_of_order_frames.insert(action_index, (new_start, buf));
+        self.out_of_order_bytes += inserted_len;
 
         // If the out-of-order store now contains too many entries, delete the later entries.
         // TODO: The out-of-order store is already limited (in size) by our receive window, while the below check
         // imposes a limit on the number of entries.  Do we need this?  Presumably for attack mitigation?
         while self.out_of_order_frames.len() > MAX_OUT_OF_ORDER_SIZE_FRAMES {
-            self.out_of_order_frames.pop_back();
+            if let Some((_, dropped_buf)) = self.out_of_order_frames.pop_back() {
+                let dropped_len = dropped_buf.len() as u32;
+                debug_assert!(self.out_of_order_bytes >= dropped_len);
+                self.out_of_order_bytes -= dropped_len;
+            }
         }
 
         METRICS

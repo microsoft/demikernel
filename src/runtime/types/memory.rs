@@ -8,7 +8,7 @@
 use ::std::{mem, ptr};
 
 /// Maximum Length for Scatter-Gather Arrays. Cannot be larger than u16::MAX
-pub const DEMI_SGARRAY_MAXLEN: usize = 20;
+pub const DEMI_SGARRAY_MAXLEN: usize = 19;
 
 //======================================================================================================================
 // Structures

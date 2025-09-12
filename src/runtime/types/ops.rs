@@ -96,6 +96,9 @@ mod test {
             remainder => mem::align_of::<demi_qresult_t>() - remainder,
         };
 
+        // C headers are packed to 1 byte, so there should be no padding.
+        crate::ensure_eq!(PADDING, 0);
+
         // Size of a demi_qresult_t structure.
         crate::ensure_eq!(mem::size_of::<demi_qresult_t>(), QR_RESULT_SIZE + PADDING);
         Ok(())

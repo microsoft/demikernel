@@ -573,17 +573,17 @@ pub unsafe extern "C" fn demi_wait_next_n(
         Some(unsafe { Duration::new((*timeout).tv_sec as u64, (*timeout).tv_nsec as u32) })
     };
 
-    let out_slice = unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
+    let out_slice: &mut [MaybeUninit<demi_qresult_t>] =
+        unsafe { slice::from_raw_parts_mut(qr_out.cast(), qr_out_size as usize) };
     let mut result_idx = 0;
     let wait_callback = |result: demi_qresult_t| -> bool {
-        out_slice[result_idx as usize] = MaybeUninit::new(result);
+        out_slice[result_idx as usize].write(result);
         result_idx += 1;
         result_idx < qr_out_size
     };
 
     let ret = do_syscall(|libos| match libos.wait_next_n(wait_callback, duration) {
         Ok(()) => 0,
-        Err(e) if e.errno == libc::ETIMEDOUT => libc::ETIMEDOUT,
         Err(e) => {
             // EDTIMEDOUT is not a "failure" per se; don't trace.
             if e.errno != libc::ETIMEDOUT {

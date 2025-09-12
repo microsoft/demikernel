@@ -29,7 +29,7 @@ extern "C"
 /**
  * @brief Maximum number of segments in a scatter-gather array.
  */
-#define DEMI_SGARRAY_MAXSIZE 20
+#define DEMI_SGARRAY_MAXSIZE 19
 
     /**
      * @brief An I/O queue token.

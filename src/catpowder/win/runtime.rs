@@ -239,6 +239,11 @@ impl DemiMemoryAllocator for SharedCatpowderRuntime {
 
         // We didn't get a big enough buffer.
         if buf.len() < size + MAX_HEADER_SIZE {
+            error!(
+                "sgaalloc(): size too large for buffer: {}, max: {}",
+                size + MAX_HEADER_SIZE,
+                buf.len()
+            );
             return Err(Fail::new(libc::EINVAL, "size too large for buffer"));
         }
 

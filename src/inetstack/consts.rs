@@ -39,7 +39,7 @@ pub const DEFAULT_MSS: usize = 1450;
 
 /// Max batch size of packets for both transmit and receive up and down the stack. This is based on the
 /// DEMI_SGARRAY_MAXLEN and should always be bigger than that to receiving an entire sga worth of packets at once.
-pub const MAX_BATCH_SIZE_NUM_PACKETS: usize = 20;
+pub const MAX_BATCH_SIZE_NUM_PACKETS: usize = 19;
 const _: () = debug_assert!(DEMI_SGARRAY_MAXLEN <= MAX_BATCH_SIZE_NUM_PACKETS);
 
 /// Maximum local and remote window scaling factor.

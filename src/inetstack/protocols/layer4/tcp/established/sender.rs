@@ -239,7 +239,7 @@ impl Sender {
         debug_assert!(cb.sender.fin_seq_no.is_none());
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
+        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - bufs.len() {
             let msg: String = format!("too many unsent segments: {}", cb.sender.unsent_queue.len());
             return Err(Fail::new(libc::EBUSY, msg.as_str()));
         }
@@ -257,11 +257,11 @@ impl Sender {
                 cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
                 if cb.sender.send_window.get() > 0 {
                     Self::send_segment(cb, layer3_endpoint, runtime.now(), &mut buf);
+                }
 
-                    if !buf.is_empty() {
-                        cb.sender.unsent_queue.push(buf);
-                        METRICS.tcp_unsent_frames.emit(cb.sender.unsent_queue.len() as u32);
-                    }
+                if !buf.is_empty() {
+                    cb.sender.unsent_queue.push(buf);
+                    METRICS.tcp_unsent_frames.emit(cb.sender.unsent_queue.len() as u32);
                 }
             }
         }

@@ -74,6 +74,11 @@ pub fn sgaalloc<M: DemiMemoryAllocator>(size: usize, mem_alloc: &M) -> Result<de
 
     // First allocate the underlying DemiBuffer.
     if size > mem_alloc.max_buffer_size_bytes() * DEMI_SGARRAY_MAXLEN {
+        error!(
+            "sgaalloc(): size too large for a single demi_sgaseg_t: {}, max: {}",
+            size,
+            mem_alloc.max_buffer_size_bytes() * DEMI_SGARRAY_MAXLEN
+        );
         return Err(Fail::new(libc::EINVAL, "size too large for a single demi_sgaseg_t"));
     }
 
@@ -82,6 +87,12 @@ pub fn sgaalloc<M: DemiMemoryAllocator>(size: usize, mem_alloc: &M) -> Result<de
     let remainder: usize = size % max_buffer_size_bytes;
     let len: usize = (size - remainder) / max_buffer_size_bytes;
     let mut bufs: ArrayVec<DemiBuffer, DEMI_SGARRAY_MAXLEN> = ArrayVec::new();
+    trace!(
+        "sgaalloc(): max_buffer_size_bytes {}, len {}, remainder {}",
+        max_buffer_size_bytes,
+        len,
+        remainder
+    );
 
     for _ in 0..len {
         bufs.push(mem_alloc.allocate_demi_buffer(max_buffer_size_bytes)?);
