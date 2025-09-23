@@ -22,7 +22,7 @@ use crate::{
             option::{SocketOption, TcpSocketOptions},
             SocketId,
         },
-        SharedDemiRuntime, SharedObject,
+        DemiRuntime, SharedDemiRuntime, SharedObject,
     },
 };
 use ::arrayvec::ArrayVec;
@@ -33,6 +33,7 @@ use ::std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     ops::{Deref, DerefMut},
 };
+use std::collections::hash_map::{Entry, OccupiedEntry};
 
 //======================================================================================================================
 // Structures
@@ -233,26 +234,38 @@ impl SharedTcpPeer {
         let remote: SocketAddrV4 = SocketAddrV4::new(src_ipv4_addr, tcp_hdr.src_port);
 
         // Retrieve the queue descriptor based on the incoming segment.
-        let socket: &mut SharedTcpSocket = match self.addresses.get_mut(&SocketId::Active(local, remote)) {
-            Some(socket) => socket,
-            None => match self.addresses.get_mut(&SocketId::Passive(local)) {
-                Some(socket) => socket,
-                None => {
-                    let cause: String = format!(
-                        "no queue descriptor for remote address (remote={}:{}, local={}:{})",
-                        remote.ip(),
-                        remote.port(),
-                        local.ip(),
-                        local.port()
-                    );
-                    error!("receive(): {}", &cause);
-                    return;
+        let mut socket_entry: OccupiedEntry<SocketId, SharedTcpSocket> =
+            match self.addresses.entry(SocketId::Active(local, remote)) {
+                Entry::Occupied(entry) => entry,
+                Entry::Vacant(_) => match self.addresses.entry(SocketId::Passive(local)) {
+                    Entry::Occupied(entry) => entry,
+                    Entry::Vacant(_) => {
+                        let cause: String = format!(
+                            "no queue descriptor for remote address (remote={}:{}, local={}:{})",
+                            remote.ip(),
+                            remote.port(),
+                            local.ip(),
+                            local.port()
+                        );
+                        error!("receive(): {}", &cause);
+                        return;
+                    },
                 },
-            },
-        };
+            };
 
         // Dispatch to further processing depending on the socket state.
-        socket.receive(src_ipv4_addr, tcp_hdr, buf)
+        if let Err(e) = socket_entry.get_mut().receive(src_ipv4_addr, tcp_hdr, buf) {
+            let cause: String = format!("error processing incoming segment: {:?}", e);
+            error!("receive(): {}", &cause);
+
+            // ENOTCONN might be a transient state for the socket. Retryable errors should not result in socket
+            // removal.
+            if !DemiRuntime::should_retry(e.errno) && e.errno != libc::ENOTCONN {
+                // These errors are fatal to the socket.
+                socket_entry.remove_entry();
+            }
+            return;
+        }
     }
 }
 

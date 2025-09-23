@@ -250,7 +250,7 @@ impl SharedTcpSocket {
         match self.state {
             // Closing an active socket.
             SocketState::Established(ref mut socket) => {
-                // TODO: Send a RST or something?
+                socket.hard_close()?;
                 Ok(Some(SocketId::Active(socket.endpoints().0, socket.endpoints().1)))
             },
             // Closing a listening socket.
@@ -282,13 +282,15 @@ impl SharedTcpSocket {
         }
     }
 
-    pub fn receive(&mut self, ip_hdr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, ip_hdr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) -> Result<(), Fail> {
         match self.state {
             SocketState::Unbound => {
-                warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.")
+                warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.");
+                Err(Fail::new(libc::ENOTCONN, "connection not established"))
             },
             SocketState::Bound(_) => {
-                warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.")
+                warn!("Cannot receive packets on a non-listening or connected socket. Dropping packet.");
+                Err(Fail::new(libc::ENOTCONN, "connection not established"))
             },
             SocketState::Listening(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, buf),
             SocketState::Connecting(ref mut socket) => socket.receive(ip_hdr, tcp_hdr, buf),

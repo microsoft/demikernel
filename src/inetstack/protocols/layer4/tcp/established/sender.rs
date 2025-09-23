@@ -54,6 +54,20 @@ const MIN_UNACKED_QUEUE_SIZE_FRAMES: usize = 64;
 // of the unacked queue, below which memory allocation is not required.
 const MIN_UNSENT_QUEUE_SIZE_FRAMES: usize = 64;
 
+// An enum to track the progress of connection close.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum CloseProgress {
+    Open,
+    // FIN requested but we have not yet allocated a sequence number for FIN.
+    FinPending,
+    // FIN sequence number allocated and FIN segment sent (fin_seq is the FIN's sequence number).
+    FinSent { fin_seq: SeqNumber },
+    // FIN acknowledged by the peer.
+    FinAcked { fin_seq: SeqNumber },
+    // Connection reset (RST or internal reset).
+    Reset,
+}
+
 pub struct Sender {
     //
     // Send Sequence Space:
@@ -89,8 +103,8 @@ pub struct Sender {
     // send_next_seq_no.
     unsent_next_seq_no: SeqNumber,
 
-    // Sequence number of the FIN, after we should never allocate more sequence numbers.
-    fin_seq_no: Option<SeqNumber>,
+    // The state of socket closure.
+    close_state: SharedAsyncValue<CloseProgress>,
 
     // This is the send buffer (user data we do not yet have window to send). If the option is None, then it indicates
     // a FIN. This keeps us from having to allocate an empty Demibuffer to indicate FIN.
@@ -128,7 +142,7 @@ impl Sender {
             rto_calculator: RtoCalculator::new(),
             send_next_seq_no: SharedAsyncValue::new(local_seq_no),
             unsent_next_seq_no: local_seq_no,
-            fin_seq_no: None,
+            close_state: SharedAsyncValue::new(CloseProgress::Open),
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
             send_window: SharedAsyncValue::new(send_window),
             send_window_last_update_seq: remote_seq_no,
@@ -143,14 +157,14 @@ impl Sender {
         // sequence space remaining (corresponding to our FIN).
         debug_assert_eq!(bytes_remaining, 1);
 
+        let fin_seq = match cb.sender.close_state.get() {
+            CloseProgress::FinSent { fin_seq } => fin_seq,
+            CloseProgress::FinAcked { fin_seq } => fin_seq,
+            _ => unreachable!("FIN acked but FIN not in FinSent/FinAcked state"),
+        };
+
         // Double check that the ack is for the FIN sequence number.
-        debug_assert_eq!(
-            ack_num,
-            cb.sender
-                .fin_seq_no
-                .map(|s| { s + 1.into() })
-                .expect("should have a FIN set")
-        );
+        debug_assert_eq!(ack_num, fin_seq + 1.into());
 
         cb.state = match cb.state {
             State::FinWait1 => State::FinWait2,
@@ -161,6 +175,9 @@ impl Sender {
                 state
             ),
         };
+
+        // Transition to FinAcked if not already.
+        cb.sender.close_state.set(CloseProgress::FinAcked { fin_seq });
 
         0
     }
@@ -235,11 +252,17 @@ impl Sender {
         runtime: &mut SharedDemiRuntime,
         bufs: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>,
     ) -> Result<(), Fail> {
-        // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
-        debug_assert!(cb.sender.fin_seq_no.is_none());
+        // Reject new data if close already progressed beyond Open.
+        match cb.sender.close_state.get() {
+            CloseProgress::Open => (),
+            CloseProgress::FinPending | CloseProgress::FinSent { .. } | CloseProgress::FinAcked { .. } => {
+                return Err(Fail::new(libc::EPIPE, "send side closing or closed"));
+            },
+            CloseProgress::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+        }
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
+        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - bufs.len() {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
@@ -247,19 +270,22 @@ impl Sender {
 
         // Check if closing the socket and sending FIN.
         if bufs.is_empty() {
-            // We can always send the FIN immediately.
-            cb.sender.fin_seq_no = Some(cb.sender.unsent_next_seq_no);
-            cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + 1.into();
-            Self::send_fin(cb, layer3_endpoint, runtime.now())?;
+            if cb.sender.unsent_queue.is_empty() && cb.sender.unacked_queue.is_empty() {
+                // Can send FIN immediately.
+                Self::send_fin(cb, layer3_endpoint, runtime.now())?;
+            } else {
+                cb.sender.close_state.set(CloseProgress::FinPending);
+            }
+            return Ok(());
         } else {
             for mut buf in bufs.into_iter() {
                 cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
                 if cb.sender.send_window.get() > 0 {
                     Self::send_segment(cb, layer3_endpoint, runtime.now(), &mut buf);
+                }
 
-                    if !buf.is_empty() {
-                        cb.sender.unsent_queue.push(buf);
-                    }
+                if !buf.is_empty() {
+                    cb.sender.unsent_queue.push(buf);
                 }
             }
         }
@@ -270,12 +296,63 @@ impl Sender {
 
         // Wait until the sequnce number of the pushed buffer is acknowledged.
         let mut send_unacked_watched = cb.sender.send_unacked.clone();
+        let mut close_state_watched = cb.sender.close_state.clone();
         let ack_seq_no = cb.sender.unsent_next_seq_no;
         debug_assert!(send_unacked_watched.get() < ack_seq_no);
-        while send_unacked_watched.get() < ack_seq_no {
-            send_unacked_watched.wait_for_change(None).await?;
+
+        while send_unacked_watched.get() < ack_seq_no && close_state_watched.get() != CloseProgress::Reset {
+            futures::select_biased! {
+                _ = send_unacked_watched.wait_for_change(None).fuse() => (),
+                _ = close_state_watched.wait_for_change(None).fuse() => (),
+            }
         }
-        Ok(())
+
+        match close_state_watched.get() {
+            CloseProgress::Reset => Err(Fail::new(libc::ECONNRESET, "connection reset")),
+            _ => Ok(()),
+        }
+    }
+
+    pub fn send_rst_and_reset(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint, reason: &str) {
+        match cb.sender.close_state.get() {
+            // Can't resend a reset.
+            CloseProgress::Reset | CloseProgress::FinAcked { .. } => return (),
+            _ => (),
+        }
+
+        // If we are in a synchronized state, send a wire RST so peer learns immediately.
+        let mut header = Sender::tcp_header(cb, Some(cb.sender.send_next_seq_no.get()));
+        header.rst = true;
+        header.ack = true; // ensure ACK flag set; tcp_header already did this but we reassert intent
+        header.fin = false;
+        header.psh = false;
+
+        Self::emit(cb, layer3_endpoint, header, None);
+
+        Sender::reset(cb, reason);
+    }
+
+    pub fn reset(cb: &mut ControlBlock, reason: &str) {
+        match cb.sender.close_state.get() {
+            CloseProgress::Reset => return, // Already reset.
+            CloseProgress::FinAcked { .. } => return,
+            _ => (),
+        }
+
+        cb.sender.close_state.set(CloseProgress::Reset);
+
+        // Clear send buffers so waiters can unblock (they may still see errors via state checks).
+        while cb.sender.unsent_queue.try_pop().is_some() {}
+        while cb.sender.unacked_queue.try_pop().is_some() {}
+
+        // Cancel retransmit timer.
+        cb.sender.retransmit_deadline_time_secs.set(None);
+
+        // Collapse SND.UNA to SND.NXT.
+        let snd_nxt = cb.sender.send_next_seq_no.get();
+        cb.sender.send_unacked.set(snd_nxt);
+
+        debug!("Sender reset: {}", reason);
     }
 
     pub async fn background_sender(
@@ -283,21 +360,56 @@ impl Sender {
         layer3_endpoint: &mut SharedLayer3Endpoint,
         runtime: &mut SharedDemiRuntime,
     ) -> Result<Never, Fail> {
+        let mut close_state_watched = cb.sender.close_state.clone();
+        let mut send_window_watched = cb.sender.send_window.clone();
+
         loop {
-            // Get next bit of unsent data.
-            let buffer = cb.sender.unsent_queue.pop(None).await?;
-            Self::send_buffer(cb, layer3_endpoint, runtime.now(), buffer).await?;
+            match cb.sender.close_state.get() {
+                CloseProgress::FinPending if cb.sender.unsent_queue.is_empty() => {
+                    Self::send_fin(cb, layer3_endpoint, runtime.now())?;
+                },
+                CloseProgress::FinAcked { .. } => {
+                    return Err(Fail::new(libc::EPIPE, "connection closed"));
+                },
+                CloseProgress::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+                _ => (),
+            };
+
+            select_biased! {
+                res = cb.sender.unsent_queue.pop(None).fuse()
+                     => Self::send_buffer(cb, layer3_endpoint, runtime.now(), res?).await?,
+
+                // loop head handles state transition actions
+                _ = close_state_watched.wait_for_change(None).fuse() => (),
+
+                // Window opened—loop will attempt to send more queued data
+                _ = send_window_watched.wait_for_change(None).fuse() => (),
+            }
         }
     }
 
     fn send_fin(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint, now: Instant) -> Result<(), Fail> {
-        debug_assert!(cb.sender.fin_seq_no.is_some());
+        // Only valid states: Open or FinPending (no FIN yet), NOT already FinSent/Acked.
+        match cb.sender.close_state.get() {
+            CloseProgress::Open | CloseProgress::FinPending => (),
+            CloseProgress::FinSent { .. } | CloseProgress::FinAcked { .. } => {
+                return Ok(()); // Idempotent guard; FIN already sent.
+            },
+            CloseProgress::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+        };
 
-        let mut header = Self::tcp_header(cb, cb.sender.fin_seq_no);
+        let fin_seq = cb.sender.unsent_next_seq_no;
+        cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + 1.into();
+
+        let mut header = Self::tcp_header(cb, Some(fin_seq));
         header.fin = true;
         Self::emit(cb, layer3_endpoint, header, None);
+
         // Update SND.NXT.
         cb.sender.send_next_seq_no.modify(|s| s + 1.into());
+
+        // Record state.
+        cb.sender.close_state.set(CloseProgress::FinSent { fin_seq });
 
         // Add the FIN to our unacknowledged queue.
         let unacked_segment = UnackedSegment {
@@ -383,7 +495,9 @@ impl Sender {
 
             match win_sz_watched.wait_for_change(Some(timeout)).await {
                 Ok(_) => return Ok(()),
-                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => timeout *= 2,
+                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                    timeout = std::cmp::max(timeout * 2, Duration::from_secs(60))
+                },
                 Err(_) => {
                     unreachable!(
                         "either the ack deadline changed or the deadline passed, no other errors are possible!"
@@ -517,6 +631,14 @@ impl Sender {
         )
     }
 
+    fn check_closed(&self) -> Result<(), Fail> {
+        match self.close_state.get() {
+            CloseProgress::FinAcked { .. } => return Err(Fail::new(libc::EPIPE, "connection closed")),
+            CloseProgress::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+            _ => Ok(()),
+        }
+    }
+
     pub async fn background_retransmitter(
         cb: &mut ControlBlock,
         layer3_endpoint: &mut SharedLayer3Endpoint,
@@ -526,7 +648,12 @@ impl Sender {
         let mut rtx_deadline_watched = cb.sender.retransmit_deadline_time_secs.clone();
         // Watch the fast retransmit flag.
         let mut rtx_fast_retransmit_watched = cb.congestion_control_algorithm.get_retransmit_now_flag();
+        // Watch the close state to exit if the connection is closed.
+        let mut close_state_watched = cb.sender.close_state.clone();
+
         loop {
+            cb.sender.check_closed()?;
+
             let rtx_deadline = rtx_deadline_watched.get();
             let rtx_fast_retransmit = rtx_fast_retransmit_watched.get();
             if rtx_fast_retransmit {
@@ -543,17 +670,16 @@ impl Sender {
                 select_biased!(
                     _ = rtx_deadline_watched.wait_for_change(None).fuse() => (),
                     _ = rtx_fast_retransmit_watched.wait_for_change(None).fuse() => (),
+                    _ = close_state_watched.wait_for_change(None).fuse() => (),
                 )
             };
             pin_mut!(something_changed);
+
             match conditional_yield_until(something_changed, rtx_deadline).await {
-                Ok(()) => match cb.sender.fin_seq_no {
-                    Some(fin_seq_no) if cb.sender.send_unacked.get() > fin_seq_no => {
-                        return Err(Fail::new(libc::ECONNRESET, "connection closed"));
-                    },
-                    _ => continue,
-                },
+                Ok(()) => continue,
                 Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
+                    cb.sender.check_closed()?;
+
                     // Retransmit timeout.
                     // Notify congestion control about RTO.
                     cb.congestion_control_algorithm.on_rto(cb.sender.send_unacked.get());
@@ -606,6 +732,14 @@ impl Sender {
     pub fn process_ack(cb: &mut ControlBlock, header: &TcpHeader, now: Instant) {
         // Start by checking that the ACK acknowledges something new.
         let send_unacknowledged = cb.sender.send_unacked.get();
+
+        // Validate ACK range per RFC 793
+        let send_next = cb.sender.send_next_seq_no.get();
+        if header.ack_num > send_next {
+            trace!("Ignoring ACK beyond SND.NXT: {} > {}", header.ack_num, send_next);
+            return;
+        }
+
         // Check and update send window if necessary.
         cb.sender.update_send_window(header);
 
@@ -624,6 +758,12 @@ impl Sender {
                         Self::process_acked_fin(cb, bytes_remaining, header.ack_num)
                     },
                     Some(segment) => cb.sender.process_acked_segment(bytes_remaining, segment, now),
+                    None if cb.sender.close_state.get() == CloseProgress::Reset => {
+                        // If the connection is reset, we cleared the unacked queue.
+                        cb.sender.send_unacked.set(header.ack_num);
+                        cb.sender.retransmit_deadline_time_secs.set(None);
+                        return;
+                    },
                     None => {
                         unreachable!("There should be enough data in the unacked_queue for the number of bytes acked")
                     }, // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
@@ -720,6 +860,7 @@ impl fmt::Debug for Sender {
             .field("send_window", &self.send_window)
             .field("window_scale", &self.send_window_scale_shift_bits)
             .field("mss", &self.mss)
+            .field("close_state", &self.close_state)
             .finish()
     }
 }

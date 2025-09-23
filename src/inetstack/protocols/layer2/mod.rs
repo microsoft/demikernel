@@ -129,6 +129,10 @@ impl DerefMut for SharedLayer2Endpoint {
 }
 
 impl DemiMemoryAllocator for SharedLayer2Endpoint {
+    fn max_buffer_size_bytes(&self) -> usize {
+        self.layer1_endpoint.max_buffer_size_bytes()
+    }
+
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer1_endpoint.allocate_demi_buffer(size)
     }

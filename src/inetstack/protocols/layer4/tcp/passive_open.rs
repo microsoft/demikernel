@@ -117,14 +117,14 @@ impl SharedPassiveSocket {
         Ok(())
     }
 
-    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) -> Result<(), Fail> {
         let remote: SocketAddrV4 = SocketAddrV4::new(ipv4_addr, tcp_hdr.src_port);
 
         // See if this packet is for an ongoing connection set up.
         if let Some(recv_queue) = self.connections.get_mut(&remote) {
             // Packet is either for an inflight request or established connection.
             recv_queue.push((ipv4_addr, tcp_hdr, buf));
-            return;
+            return Ok(());
         }
 
         // See if this packet is for an already established but not accepted socket.
@@ -132,7 +132,9 @@ impl SharedPassiveSocket {
             if let Ok(socket) = socket {
                 socket.clone().receive(tcp_hdr, buf);
             }
-            return;
+            // NB errors returned from receive cause this (listening) socket to reset. Entries in the ready list
+            // should not cause errors for receive, as they don't indicate that the listening socket is broken.
+            return Ok(());
         }
 
         // Otherwise if not a SYN, then this packet is not for a new connection and we throw it away.
@@ -143,7 +145,10 @@ impl SharedPassiveSocket {
             );
             warn!("poll(): {}", cause);
             self.send_rst(&remote, tcp_hdr);
-            return;
+
+            // Although we're sending RST to the remote, this listening socket is still in a valid state and capable
+            // of receiving.
+            return Ok(());
         }
 
         // Check if this SYN segment carries any data.
@@ -157,10 +162,10 @@ impl SharedPassiveSocket {
         }
 
         // Start a new connection.
-        self.handle_new_syn(remote, tcp_hdr);
+        self.handle_new_syn(remote, tcp_hdr)
     }
 
-    fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) {
+    fn handle_new_syn(&mut self, remote: SocketAddrV4, tcp_hdr: TcpHeader) -> Result<(), Fail> {
         debug!("Received SYN: {:?}", tcp_hdr);
         let inflight_len: usize = self.connections.len();
         // Check backlog. Since we might receive data even on connections that have completed their handshake, all
@@ -174,7 +179,9 @@ impl SharedPassiveSocket {
             );
             warn!("handle_new_syn(): {}", cause);
             self.send_rst(&remote, tcp_hdr);
-            return;
+
+            // Return a retryable error since this is a resolvable condition.
+            return Err(Fail::new(libc::EAGAIN, cause.as_str()));
         }
 
         // Send SYN+ACK.
@@ -185,23 +192,29 @@ impl SharedPassiveSocket {
         // Allocate a new coroutine to send the SYN+ACK and retry if necessary.
         let recv_queue: SharedAsyncQueue<(Ipv4Addr, TcpHeader, DemiBuffer)> =
             SharedAsyncQueue::<(Ipv4Addr, TcpHeader, DemiBuffer)>::default();
+
+        // TODO: Clean up the connections table once we have merged all of the routing tables into one.
+        self.connections.insert(remote, recv_queue.clone());
+
         let future = self
             .clone()
-            .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, recv_queue.clone())
+            .send_syn_ack_and_wait_for_ack(remote, remote_isn, local_isn, tcp_hdr, recv_queue)
             .fuse();
+
         match self
             .runtime
             .schedule_coroutine("bgc::inetstack::tcp::passiveopen::background", Box::pin(future))
         {
-            Ok(qt) => qt,
+            Ok(_) => (),
             Err(e) => {
-                let cause = "Could not allocate coroutine for passive open";
-                error!("{}: {:?}", cause, e);
-                return;
+                error!("Could not allocate coroutine for passive open: {:?}", e);
+                self.complete_handshake(remote, Err(e.clone()));
+                // No need to surface error, since the listening socket is still valid. The error will be raised by
+                // accept.
             },
         };
-        // TODO: Clean up the connections table once we have merged all of the routing tables into one.
-        self.connections.insert(remote, recv_queue);
+
+        Ok(())
     }
 
     /// Sends a RST segment to `remote`.
@@ -303,15 +316,13 @@ impl SharedPassiveSocket {
                     self.complete_handshake(remote, result);
                     return;
                 },
-                Err(Fail { errno, cause: _ }) if errno == ETIMEDOUT => {
-                    if handshake_retries > 0 {
-                        handshake_retries -= 1;
-                        continue;
-                    } else {
-                        self.ready
-                            .push((remote, Err(Fail::new(ETIMEDOUT, "handshake timeout"))));
-                        return;
-                    }
+                Err(Fail { errno, cause: _ }) if errno == ETIMEDOUT && handshake_retries > 0 => {
+                    handshake_retries -= 1;
+                    continue;
+                },
+                Err(Fail { errno, cause: _ }) if errno == ETIMEDOUT && handshake_retries == 0 => {
+                    self.complete_handshake(remote, Err(Fail::new(ETIMEDOUT, "handshake timeout")));
+                    return;
                 },
                 Err(e) => {
                     self.complete_handshake(remote, Err(e));

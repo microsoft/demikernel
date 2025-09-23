@@ -294,8 +294,9 @@ impl SharedActiveOpenSocket {
         (self.local, self.remote)
     }
 
-    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) {
-        self.recv_queue.push((ipv4_addr, tcp_hdr, buf))
+    pub fn receive(&mut self, ipv4_addr: Ipv4Addr, tcp_hdr: TcpHeader, buf: DemiBuffer) -> Result<(), Fail> {
+        self.recv_queue.push((ipv4_addr, tcp_hdr, buf));
+        Ok(())
     }
 }
 

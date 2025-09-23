@@ -193,6 +193,10 @@ impl DerefMut for SharedLayer3Endpoint {
 
 /// Memory Runtime Trait Implementation for Layer 3.
 impl DemiMemoryAllocator for SharedLayer3Endpoint {
+    fn max_buffer_size_bytes(&self) -> usize {
+        self.layer2_endpoint.max_buffer_size_bytes()
+    }
+
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer2_endpoint.allocate_demi_buffer(size)
     }

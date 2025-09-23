@@ -31,6 +31,7 @@ use crate::{
 
 use ::arrayvec::ArrayVec;
 use ::futures::never::Never;
+use futures::{pin_mut, select_biased, FutureExt};
 
 //======================================================================================================================
 // Constants
@@ -44,6 +45,23 @@ const MAX_OUT_OF_ORDER_SIZE_FRAMES: usize = 1024;
 //======================================================================================================================
 // Structures
 //======================================================================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FinState {
+    // Either a FIN has not been received, or it has been received but not yet processed because there is still
+    // unread data before it.
+    NotReceived,
+
+    // An out-of-order FIN has been received.
+    OutOfOrderFin { seq_no: SeqNumber },
+
+    // An in-order FIN has been received, and all previous data has been read by the user. No further data will be
+    // received.
+    InOrderFin { seq_no: SeqNumber },
+
+    // A RST has been received, so the connection is being aborted.
+    Reset,
+}
 
 pub struct Receiver {
     //
@@ -67,7 +85,7 @@ pub struct Receiver {
     pub receive_next_seq_no: SeqNumber,
 
     // Sequnce number of the last byte of data (FIN).
-    fin_seq_no: SharedAsyncValue<Option<SeqNumber>>,
+    fin_state: SharedAsyncValue<FinState>,
 
     // Pop queue.  Contains in-order received (and acknowledged) data ready for the application to read.
     pop_queue: AsyncQueue<DemiBuffer>,
@@ -88,6 +106,9 @@ pub struct Receiver {
     // receive window) but can't yet present to the user because we're missing some other data that comes between this
     // and what we've already presented to the user.
     out_of_order_frames: VecDeque<(SeqNumber, DemiBuffer)>,
+
+    // The highest sequence number we've ever advertised to our peer as being within our receive window.
+    max_advertised_right_edge: SeqNumber,
 }
 
 //======================================================================================================================
@@ -105,47 +126,77 @@ impl Receiver {
         Self {
             reader_next_seq_no,
             receive_next_seq_no,
-            fin_seq_no: SharedAsyncValue::new(None),
+            fin_state: SharedAsyncValue::new(FinState::NotReceived),
             pop_queue: AsyncQueue::with_capacity(1024),
             ack_delay_timeout_secs,
             ack_deadline_time_secs: SharedAsyncValue::new(None),
             buffer_size_bytes: window_size_bytes,
             window_scale_shift_bits,
             out_of_order_frames: VecDeque::with_capacity(64),
+            max_advertised_right_edge: receive_next_seq_no + SeqNumber::from(window_size_bytes),
         }
     }
 
     // Block until some data is received, up to an optional size.
     pub async fn pop(
-        &mut self,
+        cb: &mut ControlBlock,
         mut size: Option<usize>,
     ) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
+        // Fast reset check before blocking.
+        if matches!(cb.receiver.fin_state.get(), FinState::Reset) {
+            return Err(Fail::new(libc::ECONNRESET, "connection reset"));
+        }
+
         let mut bufs = ArrayVec::new();
-        let mut buf = self.pop_queue.pop(None).await?;
-        loop {
+
+        let mut buf: Option<DemiBuffer> = None;
+        {
+            let pop_await = cb.receiver.pop_queue.pop(None).fuse();
+            pin_mut!(pop_await);
+            while buf.is_none() {
+                buf = select_biased! {
+                    buf = pop_await => Some(buf?),
+                    fin_state = cb.receiver.fin_state.wait_for_change(None).fuse() => {
+
+                        // FIX ME: correct popping after FIN, take into account unread data
+
+                        if matches!(cb.receiver.fin_state.get(), FinState::Reset) {
+                            return Err(Fail::new(libc::ECONNRESET, "connection reset"));
+                        }
+                        None
+                    },
+                };
+            }
+        }
+        let mut buf: DemiBuffer = buf.unwrap();
+
+        while !bufs.is_full() {
+            if matches!(cb.receiver.fin_state.get(), FinState::Reset) {
+                return Err(Fail::new(libc::ECONNRESET, "connection reset"));
+            }
+
             if let Some(size) = size.as_mut() {
                 if buf.len() > *size {
                     let remaining_buf = buf.split_front(*size)?;
-                    self.pop_queue.push_front(remaining_buf);
+                    cb.receiver.pop_queue.push_front(remaining_buf);
                 }
                 *size -= buf.len();
             }
             match buf.len() {
                 len if len > 0 => {
-                    self.reader_next_seq_no = self.reader_next_seq_no + SeqNumber::from(buf.len() as u32);
+                    cb.receiver.reader_next_seq_no = cb.receiver.reader_next_seq_no + SeqNumber::from(buf.len() as u32);
                 },
                 _ => {
                     debug!("found FIN");
-                    self.reader_next_seq_no = self.reader_next_seq_no + 1.into();
+                    cb.receiver.reader_next_seq_no = cb.receiver.reader_next_seq_no + 1.into();
                     bufs.push(buf);
-
                     break;
                 },
             }
             bufs.push(buf);
             match size {
                 Some(0) => break,
-                _ => match self.pop_queue.try_pop() {
+                _ => match cb.receiver.pop_queue.try_pop() {
                     Some(next_buf) => buf = next_buf,
                     None => break,
                 },
@@ -162,10 +213,13 @@ impl Receiver {
         tcp_hdr: TcpHeader,
         buf: DemiBuffer,
         now: Instant,
-    ) {
+    ) -> Result<(), Fail> {
         match Self::process_packet(control_block, layer3_endpoint, tcp_hdr, buf, now) {
-            Ok(()) => (),
-            Err(e) => debug!("Dropped packet: {:?}", e),
+            Ok(()) => Ok(()),
+            Err(e) => {
+                debug!("Dropped packet: {:?}", e);
+                Err(e)
+            },
         }
     }
 
@@ -234,41 +288,54 @@ impl Receiver {
         seg_end: SeqNumber,
         layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<(), Fail> {
+        if matches!(cb.receiver.fin_state.get(), FinState::Reset) {
+            // Ignore FIN after RST
+            return Ok(());
+        }
+
         if header.fin {
-            match cb.receiver.fin_seq_no.get() {
+            match cb.receiver.fin_state.get() {
                 // We've already received this FIN.
-                Some(seq_no) if seg_end != seq_no => {
-                    warn!(
-                        "Received a FIN with a different sequence number, ignoring. previous={:?} new={:?}",
-                        seq_no, seg_end,
-                    )
+                FinState::OutOfOrderFin { seq_no } | FinState::InOrderFin { seq_no } => {
+                    if header.fin && seg_end != seq_no {
+                        warn!(
+                            "Received a FIN with a different sequence number, ignoring. previous={:?} new={:?}",
+                            seq_no, seg_end,
+                        );
+                    }
                 },
-                Some(_) => (),
-                None => {
+                FinState::NotReceived => {
                     trace!("Received FIN");
-                    cb.receiver.fin_seq_no.set(seg_end.into());
+                    cb.receiver.fin_state.set(FinState::OutOfOrderFin { seq_no: seg_end });
                 },
-            }
+                _ => (),
+            };
+        }
+
+        let fin_seq_no: Option<SeqNumber> = match cb.receiver.fin_state.get() {
+            // We've already received this FIN.
+            FinState::OutOfOrderFin { seq_no } => Some(seq_no),
+            FinState::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+
+            // If we've already processed an in-order fin, we don't need to repeat it.
+            _ => None,
         };
 
         // Have we received all data before the FIN?
-        if cb
-            .receiver
-            .fin_seq_no
-            .get()
-            .is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no)
-        {
+        if fin_seq_no.is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no) {
             let state = match cb.state {
                 State::Established => State::CloseWait,
                 State::FinWait1 => State::Closing,
                 State::FinWait2 => State::TimeWait,
+                State::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
                 state => unreachable!("Cannot be in any other state at this point: {:?}", state),
             };
             cb.state = state;
-            cb.receiver.pop_queue.push(DemiBuffer::new(0));
-            debug_assert_eq!(cb.receiver.receive_next_seq_no, cb.receiver.fin_seq_no.get().unwrap());
+            debug_assert_eq!(cb.receiver.receive_next_seq_no, fin_seq_no.unwrap());
             // Reset it to wake up any close coroutines waiting for FIN to arrive.
-            cb.receiver.fin_seq_no.set(Some(cb.receiver.receive_next_seq_no));
+            cb.receiver.fin_state.set(FinState::InOrderFin {
+                seq_no: cb.receiver.receive_next_seq_no,
+            });
             // Move RECV_NXT over the FIN.
             cb.receiver.receive_next_seq_no = cb.receiver.receive_next_seq_no + 1.into();
         }
@@ -281,7 +348,7 @@ impl Receiver {
         Ok(())
     }
 
-    pub fn receive_window_size(&self) -> u32 {
+    pub fn receive_window_size(&mut self) -> u32 {
         let bytes_unread: u32 = (self.receive_next_seq_no - self.reader_next_seq_no).into();
         // The window should be less than 1GB or 64KB without scaling.
         debug_assert!(
@@ -292,10 +359,18 @@ impl Receiver {
             "Receive window size: bytes_unread={:?} buffer_size_bytes={:?} ",
             bytes_unread, self.buffer_size_bytes
         );
-        self.buffer_size_bytes - bytes_unread
+
+        let window_size: u32 = self.buffer_size_bytes - bytes_unread;
+
+        let right_edge: SeqNumber = self.receive_next_seq_no + SeqNumber::from(window_size);
+        if right_edge > self.max_advertised_right_edge {
+            self.max_advertised_right_edge = right_edge;
+        }
+
+        window_size
     }
 
-    pub fn hdr_window_size(&self) -> u16 {
+    pub fn hdr_window_size(&mut self) -> u16 {
         let window_size = self.receive_window_size();
         let hdr_window_size = expect_ok!(
             (window_size >> self.window_scale_shift_bits).try_into(),
@@ -344,12 +419,13 @@ impl Receiver {
 
     // Block until the remote sends a FIN (plus all previous data has arrived).
     pub async fn wait_for_fin(&mut self) -> Result<(), Fail> {
-        let mut fin_seq_no = self.fin_seq_no.get();
+        let mut fin_state = self.fin_state.get();
         loop {
-            match fin_seq_no {
-                Some(fin_seq_no) if self.receive_next_seq_no >= fin_seq_no => return Ok(()),
+            match fin_state {
+                FinState::Reset => return Err(Fail::new(libc::ECONNRESET, "connection reset")),
+                FinState::InOrderFin { .. } => return Ok(()),
                 _ => {
-                    fin_seq_no = self.fin_seq_no.wait_for_change(None).await?;
+                    fin_state = self.fin_state.wait_for_change(None).await?;
                 },
             }
         }
@@ -401,8 +477,30 @@ impl Receiver {
 
         let after_receive_window = receive_next + SeqNumber::from(cb.receiver.receive_window_size());
 
-        // Check if this segment fits in our receive window.
-        // In the optimal case it starts at RCV.NXT, so we check for that first.
+        // Allow a pure ACKs (no SYN/FIN, no data) in a few special circumstances. This creates more graceful behavior
+        // when the window is closed and the ACK is within a previously-advertised max right edge.
+        if *seg_len == 0 && !header.syn && !header.fin {
+            // ACKs at the right edge are treated as acceptable no-ops.
+            if *seg_start == after_receive_window {
+                trace!("check_segment_in_window(): accepted right-edge zero-length ACK (SEG.SEQ == RCV.NXT + RCV.WND)");
+                return Ok(());
+
+            // Tolerate pure ACKs when the window is closed and the ACK is within a previously-advertised max right
+            // edge.
+            } else if after_receive_window == receive_next
+                && *seg_start > receive_next
+                && *seg_start <= cb.receiver.max_advertised_right_edge
+            {
+                trace!(
+                    "check_segment_in_window(): accepted zero-window pure ACK seq={:?} (<= max_advertised_right_edge={:?})",
+                    *seg_start,
+                    cb.receiver.max_advertised_right_edge
+                );
+                return Ok(());
+            }
+        }
+
+        // Check if this segment fits in our receive window. In the optimal case it starts at RCV.NXT.
         if *seg_start != receive_next {
             // The start of this segment is not what we expected.  See if it comes before or after.
             if *seg_start < receive_next {
@@ -484,23 +582,31 @@ impl Receiver {
         if !header.rst {
             return Ok(());
         }
-        info!("Received RST: remote reset connection");
-        match cb.receiver.fin_seq_no.get() {
+        info!("Received RST (seq={:?}); remote reset connection", header.seq_num);
+
+        match cb.receiver.fin_state.get() {
             // We've already received a FIN.
-            Some(seq_no) if seq_no > header.seq_num => {
+            FinState::OutOfOrderFin { seq_no } | FinState::InOrderFin { seq_no } if seq_no > header.seq_num => {
                 warn!(
                     "Received a RST with a lower sequence number, updating. previous={:?} new={:?}",
                     seq_no, header.seq_num,
                 )
             },
-            Some(_) => (),
-            None => {
-                trace!("Received FIN");
-                cb.receiver.fin_seq_no.set(Some(header.seq_num));
-            },
+            _ => (),
         }
-        cb.state = State::Closed;
-        Err(Fail::new(libc::ECONNRESET, "remote reset connection"))
+        cb.state = State::Reset;
+        let cause: &str = "connection reset by peer";
+        Sender::reset(cb, cause);
+        Receiver::reset(cb, cause);
+        Err(Fail::new(libc::ECONNRESET, cause))
+    }
+
+    pub fn reset(cb: &mut ControlBlock, reason: &str) {
+        if cb.receiver.fin_state.get() != FinState::Reset {
+            cb.receiver.fin_state.set(FinState::Reset);
+            cb.receiver.ack_deadline_time_secs.set(None);
+            debug!("Receiver reset: {}", reason);
+        }
     }
 
     // Check the SYN bit.
@@ -657,7 +763,7 @@ impl Receiver {
                     }
                     // We have some data overlap between the new segment and the end of the out-of-order segment.
                     // Adjust the beginning of the new segment and continue on to check the next out-of-order segment.
-                    let duplicate = u32::from(stored_end - new_start);
+                    let duplicate = u32::from(stored_end - new_start) + 1;
                     new_start = new_start + SeqNumber::from(duplicate);
                     expect_ok!(
                         buf.adjust(duplicate as usize),
@@ -689,6 +795,7 @@ impl Receiver {
         layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<Never, Fail> {
         let mut ack_deadline = cb.receiver.ack_deadline_time_secs.clone();
+        let mut fin_state = cb.receiver.fin_state.clone();
         let mut deadline = ack_deadline.get();
 
         loop {
@@ -697,20 +804,27 @@ impl Receiver {
             // - The delay must be less than 500ms
             // - For a stream of full-sized segments, there should be an ack for every other segment.
             // TODO: Implement SACKs
-            match ack_deadline.wait_for_change_until(deadline).await {
-                Ok(value) => {
-                    deadline = value;
-                    continue;
-                },
-                Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
-                    Sender::send_ack(cb, layer3_endpoint);
-                    deadline = ack_deadline.get();
-                },
-                Err(_) => {
-                    unreachable!(
-                        "either the ack deadline changed or the deadline passed, no other errors are possible!"
-                    )
-                },
+
+            if matches!(fin_state.get(), FinState::Reset) {
+                // Connection reset; exit the acknowledger coroutine.
+                return Err(Fail::new(libc::ECONNRESET, "connection reset"));
+            }
+
+            select_biased! {
+                _ = fin_state.wait_for_change(None).fuse() => (),
+                ack_deadline_wait = ack_deadline.wait_for_change_until(deadline).fuse() => {
+                    match ack_deadline_wait {
+                        Ok(value) => {
+                            deadline = value;
+                            continue;
+                        },
+                        Err(Fail { errno, cause: _ }) => {
+                            assert!(errno == libc::ETIMEDOUT, "only ETIMEDOUT errors are possible here");
+                            Sender::send_ack(cb, layer3_endpoint);
+                            deadline = ack_deadline.get();
+                        },
+                    }
+                }
             }
         }
     }

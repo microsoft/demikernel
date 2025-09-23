@@ -394,6 +394,10 @@ impl Peer {
 //======================================================================================================================
 
 impl DemiMemoryAllocator for Peer {
+    fn max_buffer_size_bytes(&self) -> usize {
+        self.layer3_endpoint.max_buffer_size_bytes()
+    }
+
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer3_endpoint.allocate_demi_buffer(size)
     }

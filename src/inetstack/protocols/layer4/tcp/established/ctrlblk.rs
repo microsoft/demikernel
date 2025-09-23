@@ -31,6 +31,7 @@ pub enum State {
     CloseWait,
     LastAck,
     Closed,
+    Reset,
 }
 
 /// Transmission control block for representing our TCP connection.

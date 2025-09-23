@@ -294,6 +294,10 @@ impl NetworkTransport for SharedInetStack {
 /// This implements the memory runtime trait for the inetstack. Other libOSes without a network runtime can directly
 /// use OS memory but the inetstack requires specialized memory allocated by the lower-level runtime.
 impl DemiMemoryAllocator for SharedInetStack {
+    fn max_buffer_size_bytes(&self) -> usize {
+        self.layer4_endpoint.max_buffer_size_bytes()
+    }
+
     fn allocate_demi_buffer(&self, size: usize) -> Result<DemiBuffer, Fail> {
         self.layer4_endpoint.allocate_demi_buffer(size)
     }

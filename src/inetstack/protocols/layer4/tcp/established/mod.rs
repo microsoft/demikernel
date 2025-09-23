@@ -180,7 +180,7 @@ impl SharedEstablishedSocket {
         Ok(me)
     }
 
-    pub fn receive(&mut self, tcp_hdr: TcpHeader, buf: DemiBuffer) {
+    pub fn receive(&mut self, tcp_hdr: TcpHeader, buf: DemiBuffer) -> Result<(), Fail> {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
             self.control_block.state,
@@ -190,25 +190,49 @@ impl SharedEstablishedSocket {
 
         let now = self.runtime.now();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
-        Receiver::receive(&mut self.control_block, &mut layer3_endpoint, tcp_hdr, buf, now);
+        Receiver::receive(&mut self.control_block, &mut layer3_endpoint, tcp_hdr, buf, now)
+    }
+
+    pub fn hard_close(&mut self) -> Result<(), Fail> {
+        if self.control_block.state == State::Reset || self.control_block.state == State::Closed {
+            return Ok(());
+        }
+
+        let mut layer3_endpoint = self.layer3_endpoint.clone();
+        self.control_block.state = State::Reset;
+        let cause = "connection reset by local host";
+        Sender::send_rst_and_reset(&mut self.control_block, &mut layer3_endpoint, cause);
+
+        // NB don't reset receiver before sending RST to avoid breaking dependencies between Sender and Receiver.
+        Receiver::reset(&mut self.control_block, cause);
+        Ok(())
     }
 
     // This coroutine runs the close protocol.
     pub async fn close(&mut self) -> Result<(), Fail> {
-        // Assert we are in a valid state and move to new state.
         match self.control_block.state {
             State::Established => self.local_close().await,
             State::CloseWait => self.remote_already_closed().await,
-            _ => {
+            State::FinWait1 | State::FinWait2 | State::Closing | State::LastAck | State::TimeWait => {
                 let cause = "socket is already closing";
                 error!("close(): {}", cause);
                 Err(Fail::new(libc::EBADF, cause))
+            },
+            State::Closed => {
+                let cause = "connection already closed";
+                error!("close(): {}", cause);
+                Err(Fail::new(libc::EBADF, cause))
+            },
+            State::Reset => {
+                let cause = "connection reset by peer";
+                Err(Fail::new(libc::ECONNRESET, cause))
             },
         }
     }
 
     async fn local_close(&mut self) -> Result<(), Fail> {
         // 1. Start close protocol by setting state and sending FIN.
+        debug_assert!(self.control_block.state == State::Established);
         self.control_block.state = State::FinWait1;
 
         // 2. Wait for FIN and FIN ack.
@@ -229,17 +253,36 @@ impl SharedEstablishedSocket {
         result2?;
 
         // 3. TIMED_WAIT
-        debug_assert_eq!(self.control_block.state, State::TimeWait);
-        trace!("socket options: {:?}", self.control_block.socket_options.get_linger());
-        let timeout = self.control_block.socket_options.get_linger().unwrap_or(MSL * 2);
-        yield_with_timeout(timeout).await;
-        self.control_block.state = State::Closed;
-        Ok(())
+        match self.control_block.state {
+            State::TimeWait => {
+                trace!("socket options: {:?}", self.control_block.socket_options.get_linger());
+                let timeout = self.control_block.socket_options.get_linger().unwrap_or(MSL * 2);
+                yield_with_timeout(timeout).await;
+                self.control_block.state = State::Closed;
+                Ok(())
+            },
+            State::Reset => {
+                let cause = "connection reset during close handshake";
+                Err(Fail::new(libc::ECONNRESET, cause))
+            },
+            other => {
+                let cause = "unexpected state after close handshake";
+                Sender::reset(&mut self.control_block, cause);
+                warn!("local_close(): ended in state {:?} (treating as I/O error)", other);
+                Err(Fail::new(libc::EIO, cause))
+            },
+        }
     }
 
     async fn remote_already_closed(&mut self) -> Result<(), Fail> {
+        if self.control_block.state == State::Reset {
+            let cause = "connection reset by peer";
+            return Err(Fail::new(libc::ECONNRESET, cause));
+        }
+
         // 0. Move state forward
         self.control_block.state = State::LastAck;
+
         // 1. Send FIN and wait for ack before closing.
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
@@ -252,7 +295,19 @@ impl SharedEstablishedSocket {
         .await?;
         debug_assert_eq!(self.control_block.state, State::Closed);
 
-        Ok(())
+        match self.control_block.state {
+            State::Closed => Ok(()),
+            State::Reset => {
+                let cause = "connection reset during remote_already_closed";
+                Err(Fail::new(libc::ECONNRESET, cause))
+            },
+            other => {
+                let cause = "unexpected state after remote_already_closed";
+                Sender::reset(&mut self.control_block, cause);
+                warn!("remote_already_closed(): ended in state {:?}", other);
+                Err(Fail::new(libc::EIO, cause))
+            },
+        }
     }
 
     pub async fn push(&mut self, bufs: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>) -> Result<(), Fail> {
@@ -262,7 +317,7 @@ impl SharedEstablishedSocket {
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
-        self.control_block.receiver.pop(size).await
+        Receiver::pop(&mut self.control_block, size).await
     }
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
