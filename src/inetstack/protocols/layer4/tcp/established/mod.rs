@@ -186,7 +186,7 @@ impl SharedEstablishedSocket {
     pub fn receive(&mut self, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
-            self.control_block.state,
+            self.control_block.connection_management.state,
             buf.len(),
             tcp_hdr,
         );
@@ -199,7 +199,7 @@ impl SharedEstablishedSocket {
     // This coroutine runs the close protocol.
     pub async fn close(&mut self) -> Result<(), Fail> {
         // Assert we are in a valid state and move to new state.
-        match self.control_block.state {
+        match self.control_block.connection_management.state {
             State::Established => self.local_close().await,
             State::CloseWait => self.remote_already_closed().await,
             _ => {
@@ -212,7 +212,7 @@ impl SharedEstablishedSocket {
 
     async fn local_close(&mut self) -> Result<(), Fail> {
         // 1. Start close protocol by setting state and sending FIN.
-        self.control_block.state = State::FinWait1;
+        self.control_block.connection_management.state = State::FinWait1;
 
         // 2. Wait for FIN and FIN ack.
         let mut me2 = self.clone();
@@ -232,17 +232,25 @@ impl SharedEstablishedSocket {
         result2?;
 
         // 3. TIMED_WAIT
-        debug_assert_eq!(self.control_block.state, State::TimeWait);
-        trace!("socket options: {:?}", self.control_block.socket_options.get_linger());
-        let timeout = self.control_block.socket_options.get_linger().unwrap_or(MSL * 2);
+        debug_assert_eq!(self.control_block.connection_management.state, State::TimeWait);
+        trace!(
+            "socket options: {:?}",
+            self.control_block.connection_management.socket_options.get_linger()
+        );
+        let timeout = self
+            .control_block
+            .connection_management
+            .socket_options
+            .get_linger()
+            .unwrap_or(MSL * 2);
         yield_with_timeout(timeout).await;
-        self.control_block.state = State::Closed;
+        self.control_block.connection_management.state = State::Closed;
         Ok(())
     }
 
     async fn remote_already_closed(&mut self) -> Result<(), Fail> {
         // 0. Move state forward
-        self.control_block.state = State::LastAck;
+        self.control_block.connection_management.state = State::LastAck;
         // 1. Send FIN and wait for ack before closing.
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
@@ -253,7 +261,7 @@ impl SharedEstablishedSocket {
             ArrayVec::new(),
         )
         .await?;
-        debug_assert_eq!(self.control_block.state, State::Closed);
+        debug_assert_eq!(self.control_block.connection_management.state, State::Closed);
 
         Ok(())
     }
@@ -269,7 +277,10 @@ impl SharedEstablishedSocket {
     }
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
-        (self.control_block.local, self.control_block.remote)
+        (
+            self.control_block.connection_management.local,
+            self.control_block.connection_management.remote,
+        )
     }
 
     async fn background(self) {

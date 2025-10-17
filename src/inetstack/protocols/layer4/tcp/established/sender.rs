@@ -152,7 +152,7 @@ impl Sender {
                 .expect("should have a FIN set")
         );
 
-        cb.state = match cb.state {
+        cb.connection_management.state = match cb.connection_management.state {
             State::FinWait1 => State::FinWait2,
             State::Closing => State::TimeWait,
             State::LastAck => State::Closed,
@@ -470,7 +470,10 @@ impl Sender {
     /// If a sequence number is provided, use it otherwise, use the current unsent sequence number.
     /// The only time that the unsent sequence number is not used is when we are retransmitting.
     pub fn tcp_header(cb: &mut ControlBlock, seq_num: Option<SeqNumber>) -> TcpHeader {
-        let mut header = TcpHeader::new(cb.local.port(), cb.remote.port());
+        let mut header = TcpHeader::new(
+            cb.connection_management.local.port(),
+            cb.connection_management.remote.port(),
+        );
         header.window_size = cb.receiver.hdr_window_size();
 
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
@@ -672,14 +675,17 @@ impl Sender {
             Some(body) => {
                 debug!(
                     "L4 OUTGOING {:?} Connection sending {} bytes + {:?}",
-                    cb.state,
+                    cb.connection_management.state,
                     body.len(),
                     header
                 );
                 body
             },
             _ => {
-                debug!("L4 OUTGOING {:?} Connection sending 0 bytes + {:?}", cb.state, header);
+                debug!(
+                    "L4 OUTGOING {:?} Connection sending 0 bytes + {:?}",
+                    cb.connection_management.state, header
+                );
                 DemiBuffer::new_with_headroom(0, MAX_HEADER_SIZE as u16)
             },
         };
@@ -687,12 +693,12 @@ impl Sender {
         // This routine should only ever be called to send TCP segments that contain a valid ACK value.
         debug_assert!(header.ack);
 
-        let remote_ipv4_addr = *cb.remote.ip();
+        let remote_ipv4_addr = *cb.connection_management.remote.ip();
         header.serialize_and_attach(
             &mut pkt,
-            cb.local.ip(),
-            cb.remote.ip(),
-            cb.tcp_config.get_tx_checksum_offload(),
+            cb.connection_management.local.ip(),
+            cb.connection_management.remote.ip(),
+            cb.connection_management.tcp_config.get_tx_checksum_offload(),
         );
 
         // Call lower L3 layer to send the segment.

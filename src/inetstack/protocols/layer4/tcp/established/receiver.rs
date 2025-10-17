@@ -258,13 +258,13 @@ impl Receiver {
             .get()
             .is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no)
         {
-            let state = match cb.state {
+            let state = match cb.connection_management.state {
                 State::Established => State::CloseWait,
                 State::FinWait1 => State::Closing,
                 State::FinWait2 => State::TimeWait,
                 state => unreachable!("Cannot be in any other state at this point: {:?}", state),
             };
-            cb.state = state;
+            cb.connection_management.state = state;
             cb.receiver.pop_queue.push(DemiBuffer::new(0));
             debug_assert_eq!(cb.receiver.receive_next_seq_no, cb.receiver.fin_seq_no.get().unwrap());
             // Reset it to wake up any close coroutines waiting for FIN to arrive.
@@ -499,7 +499,7 @@ impl Receiver {
                 cb.receiver.fin_seq_no.set(Some(header.seq_num));
             },
         }
-        cb.state = State::Closed;
+        cb.connection_management.state = State::Closed;
         Err(Fail::new(libc::ECONNRESET, "remote reset connection"))
     }
 
@@ -550,7 +550,7 @@ impl Receiver {
         seg_len: u32,
     ) -> Result<(), Fail> {
         // TCP dictates that we only receive data in these states.
-        match cb.state {
+        match cb.connection_management.state {
             State::Established | State::FinWait1 | State::FinWait2 => (),
             state => {
                 warn!("Ignoring data received after FIN (in state {:?}).", state);

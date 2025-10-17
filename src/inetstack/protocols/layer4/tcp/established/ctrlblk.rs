@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
-#![allow(dead_code)]
 
 //======================================================================================================================
 // Imports
@@ -34,6 +33,9 @@ pub enum State {
     Closed,
 }
 
+/// State block representing connection management parameters in a TCP connection.
+/// This struct has only public members since these parameters must be read by all TCP
+/// modules.
 pub struct ConnectionManagementState {
     pub local: SocketAddrV4,
     pub remote: SocketAddrV4,
@@ -42,15 +44,28 @@ pub struct ConnectionManagementState {
     pub state: State,
 }
 
+impl ConnectionManagementState {
+    pub fn new(
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        tcp_config: TcpConfig,
+        socket_options: TcpSocketOptions,
+    ) -> Self {
+        Self {
+            local,
+            remote,
+            tcp_config,
+            socket_options,
+            state: State::Established,
+        }
+    }
+}
+
 /// Transmission control block for representing our TCP connection.
 /// This struct has only public members because includes state for both the send and receive path and is accessed by
 /// both.
 pub struct ControlBlock {
-    pub local: SocketAddrV4,
-    pub remote: SocketAddrV4,
-    pub tcp_config: TcpConfig,
-    pub socket_options: TcpSocketOptions,
-    pub state: State,
+    pub connection_management: ConnectionManagementState,
     pub sender: Sender,
     pub receiver: Receiver,
 
@@ -74,31 +89,10 @@ impl ControlBlock {
         congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
     ) -> Self {
         Self {
-            local,
-            remote,
-            tcp_config,
-            socket_options,
-            state: State::Established,
+            connection_management: ConnectionManagementState::new(local, remote, tcp_config, socket_options),
             sender,
             receiver,
             congestion_control_algorithm,
-        }
-    }
-}
-
-impl ConnectionManagementState {
-    pub fn new(
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
-        tcp_config: TcpConfig,
-        socket_options: TcpSocketOptions,
-    ) -> Self {
-        Self {
-            local,
-            remote,
-            tcp_config,
-            socket_options,
-            state: State::Established,
         }
     }
 }
