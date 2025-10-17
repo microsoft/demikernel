@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
+#![allow(dead_code)]
 
 //======================================================================================================================
 // Imports
@@ -31,6 +32,14 @@ pub enum State {
     CloseWait,
     LastAck,
     Closed,
+}
+
+pub struct ConnectionManagementState {
+    pub local: SocketAddrV4,
+    pub remote: SocketAddrV4,
+    pub tcp_config: TcpConfig,
+    pub socket_options: TcpSocketOptions,
+    pub state: State,
 }
 
 /// Transmission control block for representing our TCP connection.
@@ -73,6 +82,23 @@ impl ControlBlock {
             sender,
             receiver,
             congestion_control_algorithm,
+        }
+    }
+}
+
+impl ConnectionManagementState {
+    pub fn new(
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        tcp_config: TcpConfig,
+        socket_options: TcpSocketOptions,
+    ) -> Self {
+        Self {
+            local,
+            remote,
+            tcp_config,
+            socket_options,
+            state: State::Established,
         }
     }
 }
