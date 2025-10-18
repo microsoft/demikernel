@@ -211,14 +211,18 @@ impl Receiver {
         Self::check_and_process_fin(control_block, &header, seg_end, layer3_endpoint)?;
 
         // We should ACK this segment, preferably via piggybacking on a response.
-        if control_block.receiver.ack_deadline_time_secs.get().is_none() {
+        if control_block.delivery.receiver.ack_deadline_time_secs.get().is_none() {
             // Start the delayed ACK timer to ensure an ACK gets sent soon even if no piggyback opportunity occurs.
-            let timeout = control_block.receiver.ack_delay_timeout_secs;
+            let timeout = control_block.delivery.receiver.ack_delay_timeout_secs;
             // Getting the current time is extremely cheap as it is just a variable lookup.
-            control_block.receiver.ack_deadline_time_secs.set(Some(now + timeout));
+            control_block
+                .delivery
+                .receiver
+                .ack_deadline_time_secs
+                .set(Some(now + timeout));
         } else if has_data {
             // We already owe our peer an ACK (the timer was already running), so cancel the timer and ACK now.
-            control_block.receiver.ack_deadline_time_secs.set(None);
+            control_block.delivery.receiver.ack_deadline_time_secs.set(None);
             trace!("process_packet(): sending ack before deadline because another packet arrived");
             Sender::send_ack(control_block, layer3_endpoint);
         }
@@ -235,7 +239,7 @@ impl Receiver {
         layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<(), Fail> {
         if header.fin {
-            match cb.receiver.fin_seq_no.get() {
+            match cb.delivery.receiver.fin_seq_no.get() {
                 // We've already received this FIN.
                 Some(seq_no) if seg_end != seq_no => {
                     warn!(
@@ -246,17 +250,18 @@ impl Receiver {
                 Some(_) => (),
                 None => {
                     trace!("Received FIN");
-                    cb.receiver.fin_seq_no.set(seg_end.into());
+                    cb.delivery.receiver.fin_seq_no.set(seg_end.into());
                 },
             }
         };
 
         // Have we received all data before the FIN?
         if cb
+            .delivery
             .receiver
             .fin_seq_no
             .get()
-            .is_some_and(|seq_no| seq_no == cb.receiver.receive_next_seq_no)
+            .is_some_and(|seq_no| seq_no == cb.delivery.receiver.receive_next_seq_no)
         {
             let state = match cb.connection_management.state {
                 State::Established => State::CloseWait,
@@ -265,12 +270,18 @@ impl Receiver {
                 state => unreachable!("Cannot be in any other state at this point: {:?}", state),
             };
             cb.connection_management.state = state;
-            cb.receiver.pop_queue.push(DemiBuffer::new(0));
-            debug_assert_eq!(cb.receiver.receive_next_seq_no, cb.receiver.fin_seq_no.get().unwrap());
+            cb.delivery.receiver.pop_queue.push(DemiBuffer::new(0));
+            debug_assert_eq!(
+                cb.delivery.receiver.receive_next_seq_no,
+                cb.delivery.receiver.fin_seq_no.get().unwrap()
+            );
             // Reset it to wake up any close coroutines waiting for FIN to arrive.
-            cb.receiver.fin_seq_no.set(Some(cb.receiver.receive_next_seq_no));
+            cb.delivery
+                .receiver
+                .fin_seq_no
+                .set(Some(cb.delivery.receiver.receive_next_seq_no));
             // Move RECV_NXT over the FIN.
-            cb.receiver.receive_next_seq_no = cb.receiver.receive_next_seq_no + 1.into();
+            cb.delivery.receiver.receive_next_seq_no = cb.delivery.receiver.receive_next_seq_no + 1.into();
         }
 
         // Have we processed all of the data and the FIN?
@@ -397,9 +408,9 @@ impl Receiver {
             *seg_end = *seg_start + SeqNumber::from(*seg_len - 1);
         }
 
-        let receive_next = cb.receiver.receive_next_seq_no;
+        let receive_next = cb.delivery.receiver.receive_next_seq_no;
 
-        let after_receive_window = receive_next + SeqNumber::from(cb.receiver.receive_window_size());
+        let after_receive_window = receive_next + SeqNumber::from(cb.delivery.receiver.receive_window_size());
 
         // Check if this segment fits in our receive window.
         // In the optimal case it starts at RCV.NXT, so we check for that first.
@@ -485,7 +496,7 @@ impl Receiver {
             return Ok(());
         }
         info!("Received RST: remote reset connection");
-        match cb.receiver.fin_seq_no.get() {
+        match cb.delivery.receiver.fin_seq_no.get() {
             // We've already received a FIN.
             Some(seq_no) if seq_no > header.seq_num => {
                 warn!(
@@ -496,7 +507,7 @@ impl Receiver {
             Some(_) => (),
             None => {
                 trace!("Received FIN");
-                cb.receiver.fin_seq_no.set(Some(header.seq_num));
+                cb.delivery.receiver.fin_seq_no.set(Some(header.seq_num));
             },
         }
         cb.connection_management.state = State::Closed;
@@ -559,8 +570,8 @@ impl Receiver {
         };
 
         // Data is in order, so directly receive.
-        if seg_start == cb.receiver.receive_next_seq_no {
-            cb.receiver.receive_data(seg_start, data);
+        if seg_start == cb.delivery.receiver.receive_next_seq_no {
+            cb.delivery.receiver.receive_data(seg_start, data);
             return Ok(());
         }
 
@@ -568,11 +579,13 @@ impl Receiver {
         // after the "hole" in the sequence number space has been filled.
         debug!(
             "Received out-of-order segment; out_of_order_frames.len() = {:?}",
-            cb.receiver.out_of_order_frames.len()
+            cb.delivery.receiver.out_of_order_frames.len()
         );
         debug_assert_ne!(seg_len, 0);
         debug_assert_eq!(seg_len, data.len() as u32);
-        cb.receiver.store_out_of_order_segment(seg_start, seg_end, data);
+        cb.delivery
+            .receiver
+            .store_out_of_order_segment(seg_start, seg_end, data);
         // Sending an ACK here is only a "MAY" according to the RFCs, but helpful for fast retransmit.
         trace!("process_data(): send ack on out-of-order segment");
         Sender::send_ack(cb, layer3_endpoint);
@@ -688,7 +701,7 @@ impl Receiver {
         cb: &mut ControlBlock,
         layer3_endpoint: &mut SharedLayer3Endpoint,
     ) -> Result<Never, Fail> {
-        let mut ack_deadline = cb.receiver.ack_deadline_time_secs.clone();
+        let mut ack_deadline = cb.delivery.receiver.ack_deadline_time_secs.clone();
         let mut deadline = ack_deadline.get();
 
         loop {

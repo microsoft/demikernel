@@ -28,7 +28,7 @@ use crate::{
             layer4::tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::{
-                    ctrlblk::{ControlBlock, State},
+                    ctrlblk::{ConnectionManagementState, ControlBlock, State},
                     flow_control_state::FlowControlState,
                     receiver::Receiver,
                     sender::Sender,
@@ -157,12 +157,11 @@ impl SharedEstablishedSocket {
             sender_mss,
         );
 
+        let connection_management = ConnectionManagementState::new(local, remote, tcp_config, default_socket_options);
+
         let congestion_control_algorithm = cc_constructor(sender_mss, sender_seq_no, congestion_control_options);
         let cb = ControlBlock::new(
-            local,
-            remote,
-            tcp_config,
-            default_socket_options,
+            connection_management,
             sender,
             receiver,
             flow_control,
@@ -220,7 +219,7 @@ impl SharedEstablishedSocket {
         // 2. Wait for FIN and FIN ack.
         let mut me2 = self.clone();
         let mut me3 = self.clone();
-        let wait_for_fin = pin!(me3.control_block.receiver.wait_for_fin().fuse());
+        let wait_for_fin = pin!(me3.control_block.delivery.receiver.wait_for_fin().fuse());
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
         let push_fin_and_wait_for_ack = pin!(Sender::push(
@@ -276,7 +275,7 @@ impl SharedEstablishedSocket {
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
-        self.control_block.receiver.pop(size).await
+        self.control_block.delivery.receiver.pop(size).await
     }
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {

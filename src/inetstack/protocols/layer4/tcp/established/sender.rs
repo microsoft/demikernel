@@ -119,7 +119,8 @@ impl Sender {
         // Double check that the ack is for the FIN sequence number.
         debug_assert_eq!(
             ack_num,
-            cb.sender
+            cb.delivery
+                .sender
                 .fin_seq_no
                 .map(|s| { s + 1.into() })
                 .expect("should have a FIN set")
@@ -182,41 +183,48 @@ impl Sender {
         bufs: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>,
     ) -> Result<(), Fail> {
         // If the user is done sending (i.e. has called close on this connection), then they shouldn't be sending.
-        debug_assert!(cb.sender.fin_seq_no.is_none());
+        debug_assert!(cb.delivery.sender.fin_seq_no.is_none());
 
         // TODO: We need to fix this the correct way: limit our send buffer size to the amount we're willing to buffer.
-        if cb.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
+        if cb.delivery.sender.unsent_queue.len() > UNSENT_QUEUE_CUTOFF - 1 {
             return Err(Fail::new(libc::EBUSY, "too many packets to send"));
         }
 
-        trace!("push(): total unsent segments={:?}", cb.sender.unsent_queue.len());
+        trace!(
+            "push(): total unsent segments={:?}",
+            cb.delivery.sender.unsent_queue.len()
+        );
 
         // Check if closing the socket and sending FIN.
         if bufs.is_empty() {
             // We can always send the FIN immediately.
-            cb.sender.fin_seq_no = Some(cb.sender.unsent_next_seq_no);
-            cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + 1.into();
+            cb.delivery.sender.fin_seq_no = Some(cb.delivery.sender.unsent_next_seq_no);
+            cb.delivery.sender.unsent_next_seq_no = cb.delivery.sender.unsent_next_seq_no + 1.into();
             Self::send_fin(cb, layer3_endpoint, runtime.now())?;
         } else {
             for mut buf in bufs.into_iter() {
-                cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
+                cb.delivery.sender.unsent_next_seq_no =
+                    cb.delivery.sender.unsent_next_seq_no + (buf.len() as u32).into();
                 if cb.flow_control.send_window.get() > 0 {
                     Self::send_segment(cb, layer3_endpoint, runtime.now(), &mut buf);
 
                     if !buf.is_empty() {
-                        cb.sender.unsent_queue.push(buf);
+                        cb.delivery.sender.unsent_queue.push(buf);
                     }
                 }
             }
         }
 
-        if !cb.sender.unacked_queue.is_empty() {
-            trace!("push(): total unacked segments={:?}", cb.sender.unacked_queue.len());
+        if !cb.delivery.sender.unacked_queue.is_empty() {
+            trace!(
+                "push(): total unacked segments={:?}",
+                cb.delivery.sender.unacked_queue.len()
+            );
         }
 
         // Wait until the sequnce number of the pushed buffer is acknowledged.
-        let mut send_unacked_watched = cb.sender.send_unacked.clone();
-        let ack_seq_no = cb.sender.unsent_next_seq_no;
+        let mut send_unacked_watched = cb.delivery.sender.send_unacked.clone();
+        let ack_seq_no = cb.delivery.sender.unsent_next_seq_no;
         debug_assert!(send_unacked_watched.get() < ack_seq_no);
         while send_unacked_watched.get() < ack_seq_no {
             send_unacked_watched.wait_for_change(None).await?;
@@ -231,30 +239,30 @@ impl Sender {
     ) -> Result<Never, Fail> {
         loop {
             // Get next bit of unsent data.
-            let buffer = cb.sender.unsent_queue.pop(None).await?;
+            let buffer = cb.delivery.sender.unsent_queue.pop(None).await?;
             Self::send_buffer(cb, layer3_endpoint, runtime.now(), buffer).await?;
         }
     }
 
     fn send_fin(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint, now: Instant) -> Result<(), Fail> {
-        debug_assert!(cb.sender.fin_seq_no.is_some());
+        debug_assert!(cb.delivery.sender.fin_seq_no.is_some());
 
-        let mut header = Self::tcp_header(cb, cb.sender.fin_seq_no);
+        let mut header = Self::tcp_header(cb, cb.delivery.sender.fin_seq_no);
         header.fin = true;
         Self::emit(cb, layer3_endpoint, header, None);
         // Update SND.NXT.
-        cb.sender.send_next_seq_no.modify(|s| s + 1.into());
+        cb.delivery.sender.send_next_seq_no.modify(|s| s + 1.into());
 
         // Add the FIN to our unacknowledged queue.
         let unacked_segment = UnackedSegment {
             bytes: None,
             initial_tx: Some(now),
         };
-        cb.sender.unacked_queue.push(unacked_segment);
+        cb.delivery.sender.unacked_queue.push(unacked_segment);
         // Set the retransmit timer.
-        if cb.sender.retransmit_deadline_time_secs.get().is_none() {
+        if cb.delivery.sender.retransmit_deadline_time_secs.get().is_none() {
             let rto = cb.congestion_control.rto_calculator.rto();
-            cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
+            cb.delivery.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         Ok(())
     }
@@ -265,7 +273,7 @@ impl Sender {
         now: Instant,
         mut buffer: DemiBuffer,
     ) -> Result<(), Fail> {
-        let mut send_unacked_watched = cb.sender.send_unacked.clone();
+        let mut send_unacked_watched = cb.delivery.sender.send_unacked.clone();
         let mut cwnd_watched = cb.congestion_control.cc_algorithm.get_cwnd();
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
@@ -293,7 +301,7 @@ impl Sender {
                 // the segment.
                 futures::select_biased! {
                     _ = send_unacked_watched.wait_for_change(None).fuse() => (),
-                    _ = cb.sender.send_next_seq_no.wait_for_change(None).fuse() => (),
+                    _ = cb.delivery.sender.send_next_seq_no.wait_for_change(None).fuse() => (),
                     _ = win_sz_watched.wait_for_change(None).fuse() => (),
                     _ = cwnd_watched.wait_for_change(None).fuse() => (),
                     _ = ltci_watched.wait_for_change(None).fuse() => (),
@@ -309,14 +317,14 @@ impl Sender {
         probe: DemiBuffer,
     ) -> Result<(), Fail> {
         // Update SND.NXT.
-        cb.sender.send_next_seq_no.modify(|s| s + SeqNumber::from(1));
+        cb.delivery.sender.send_next_seq_no.modify(|s| s + SeqNumber::from(1));
 
         // Add the probe byte (as a new separate buffer) to our unacknowledged queue.
         let unacked_segment = UnackedSegment {
             bytes: Some(probe.clone()),
             initial_tx: Some(now),
         };
-        cb.sender.unacked_queue.push(unacked_segment);
+        cb.delivery.sender.unacked_queue.push(unacked_segment);
 
         // Note that we loop here *forever*, exponentially backing off.
         // TODO: Use the correct PERSIST mode timer here.
@@ -374,7 +382,7 @@ impl Sender {
         let rto = cb.congestion_control.rto_calculator.rto();
         cb.congestion_control.cc_algorithm.on_send(
             rto,
-            (cb.sender.send_next_seq_no.get() - cb.sender.send_unacked.get()).into(),
+            (cb.delivery.sender.send_next_seq_no.get() - cb.delivery.sender.send_unacked.get()).into(),
         );
 
         // Prepare the segment and send it.
@@ -385,7 +393,8 @@ impl Sender {
         Self::emit(cb, layer3_endpoint, header, Some(segment_data.clone()));
 
         // Update SND.NXT.
-        cb.sender
+        cb.delivery
+            .sender
             .send_next_seq_no
             .modify(|s| s + SeqNumber::from(segment_data_len));
 
@@ -395,19 +404,19 @@ impl Sender {
             initial_tx: Some(now),
         };
 
-        if !cb.sender.unacked_queue.is_empty() {
+        if !cb.delivery.sender.unacked_queue.is_empty() {
             trace!(
                 "send_segment(): unacked_queue.len() = {:?}",
-                cb.sender.unacked_queue.len()
+                cb.delivery.sender.unacked_queue.len()
             );
         }
 
-        cb.sender.unacked_queue.push(unacked_segment);
+        cb.delivery.sender.unacked_queue.push(unacked_segment);
 
         // Set the retransmit timer.
-        if cb.sender.retransmit_deadline_time_secs.get().is_none() {
+        if cb.delivery.sender.retransmit_deadline_time_secs.get().is_none() {
             let rto = cb.congestion_control.rto_calculator.rto();
-            cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
+            cb.delivery.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         segment_data_len as usize
     }
@@ -420,20 +429,20 @@ impl Sender {
             cb.connection_management.local.port(),
             cb.connection_management.remote.port(),
         );
-        header.window_size = cb.receiver.hdr_window_size();
+        header.window_size = cb.delivery.receiver.hdr_window_size();
 
         // Note that once we reach a synchronized state we always include a valid acknowledgement number.
         header.ack = true;
-        header.ack_num = cb.receiver.receive_next_seq_no;
-        header.seq_num = seq_num.unwrap_or(cb.sender.send_next_seq_no.get());
+        header.ack_num = cb.delivery.receiver.receive_next_seq_no;
+        header.seq_num = seq_num.unwrap_or(cb.delivery.sender.send_next_seq_no.get());
 
         header
     }
 
     fn get_open_window_size_bytes(cb: &mut ControlBlock) -> usize {
         // Calculate amount of data in flight (SND.NXT - SND.UNA).
-        let send_unacknowledged = cb.sender.send_unacked.get();
-        let send_next = cb.sender.send_next_seq_no.get();
+        let send_unacknowledged = cb.delivery.sender.send_unacked.get();
+        let send_next = cb.delivery.sender.send_next_seq_no.get();
         let sent_data = (send_next - send_unacknowledged).into();
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
@@ -473,7 +482,7 @@ impl Sender {
         runtime: &mut SharedDemiRuntime,
     ) -> Result<Never, Fail> {
         // Watch the retransmission deadline.
-        let mut rtx_deadline_watched = cb.sender.retransmit_deadline_time_secs.clone();
+        let mut rtx_deadline_watched = cb.delivery.sender.retransmit_deadline_time_secs.clone();
         // Watch the fast retransmit flag.
         let mut rtx_fast_retransmit_watched = cb.congestion_control.cc_algorithm.get_retransmit_now_flag();
         loop {
@@ -497,8 +506,8 @@ impl Sender {
             };
             pin_mut!(something_changed);
             match conditional_yield_until(something_changed, rtx_deadline).await {
-                Ok(()) => match cb.sender.fin_seq_no {
-                    Some(fin_seq_no) if cb.sender.send_unacked.get() > fin_seq_no => {
+                Ok(()) => match cb.delivery.sender.fin_seq_no {
+                    Some(fin_seq_no) if cb.delivery.sender.send_unacked.get() > fin_seq_no => {
                         return Err(Fail::new(libc::ECONNRESET, "connection closed"));
                     },
                     _ => continue,
@@ -506,7 +515,9 @@ impl Sender {
                 Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
                     // Retransmit timeout.
                     // Notify congestion control about RTO.
-                    cb.congestion_control.cc_algorithm.on_rto(cb.sender.send_unacked.get());
+                    cb.congestion_control
+                        .cc_algorithm
+                        .on_rto(cb.delivery.sender.send_unacked.get());
 
                     // RFC 6298 Section 5.4: Retransmit earliest unacknowledged segment.
                     Self::retransmit(cb, layer3_endpoint);
@@ -516,7 +527,7 @@ impl Sender {
 
                     // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
                     let deadline = runtime.now() + cb.congestion_control.rto_calculator.rto();
-                    cb.sender.retransmit_deadline_time_secs.set(Some(deadline));
+                    cb.delivery.sender.retransmit_deadline_time_secs.set(Some(deadline));
                 },
                 Err(_) => {
                     unreachable!(
@@ -529,7 +540,7 @@ impl Sender {
 
     /// Retransmits the earliest segment that has not (yet) been acknowledged by our peer.
     pub fn retransmit(cb: &mut ControlBlock, layer3_endpoint: &mut SharedLayer3Endpoint) {
-        if let Some(segment) = cb.sender.unacked_queue.front_mut() {
+        if let Some(segment) = cb.delivery.sender.unacked_queue.front_mut() {
             // We're retransmitting this, so we can no longer use an ACK for it as an RTT measurement (as we can't tell
             // if the ACK is for the original or the retransmission).  Remove the transmission timestamp from the entry.
             segment.initial_tx.take();
@@ -539,7 +550,7 @@ impl Sender {
 
             // TODO: Issue #198 Repacketization - we should send a full MSS (and set the FIN flag if applicable).
 
-            let mut header = Self::tcp_header(cb, Some(cb.sender.send_unacked.get()));
+            let mut header = Self::tcp_header(cb, Some(cb.delivery.sender.send_unacked.get()));
 
             if data.is_some() {
                 // Regular packet, so set the PSH flag.
@@ -555,7 +566,7 @@ impl Sender {
 
     pub fn process_ack(cb: &mut ControlBlock, header: &TcpHeader, now: Instant) {
         // Start by checking that the ACK acknowledges something new.
-        let send_unacknowledged = cb.sender.send_unacked.get();
+        let send_unacknowledged = cb.delivery.sender.send_unacked.get();
         // Check and update send window if necessary.
         cb.flow_control.update_send_window(header);
 
@@ -564,19 +575,19 @@ impl Sender {
             // and update the sender window.
 
             // Convert the difference in sequence numbers into a u32.
-            let bytes_acknowledged: u32 = (header.ack_num - cb.sender.send_unacked.get()).into();
+            let bytes_acknowledged: u32 = (header.ack_num - cb.delivery.sender.send_unacked.get()).into();
             // Convert that into a usize for counting bytes to remove from the unacked queue.
             let mut bytes_remaining = bytes_acknowledged as usize;
             // Remove bytes from the unacked queue.
             while bytes_remaining != 0 {
-                bytes_remaining = match cb.sender.unacked_queue.try_pop() {
+                bytes_remaining = match cb.delivery.sender.unacked_queue.try_pop() {
                     Some(segment) if segment.bytes.is_none() => {
                         Self::process_acked_fin(cb, bytes_remaining, header.ack_num)
                     },
                     Some(segment) => {
                         // We add the sample outside the Sender function to separate state.
                         cb.congestion_control.add_sample(segment.initial_tx, now);
-                        cb.sender.process_acked_segment(bytes_remaining, segment)
+                        cb.delivery.sender.process_acked_segment(bytes_remaining, segment)
                     },
                     None => {
                         unreachable!("There should be enough data in the unacked_queue for the number of bytes acked")
@@ -585,18 +596,20 @@ impl Sender {
             }
 
             // Update SND.UNA to SEG.ACK.
-            cb.sender.send_unacked.set(header.ack_num);
+            cb.delivery.sender.send_unacked.set(header.ack_num);
 
             // Reset the retransmit timer if necessary. If there is more data that hasn't been acked, then set to the
             // next segment deadline, otherwise, do not set.
             let retransmit_deadline_time_secs = cb
+                .delivery
                 .sender
                 .update_retransmit_deadline(now, cb.congestion_control.rto_calculator.rto());
             #[cfg(debug_assertions)]
             if retransmit_deadline_time_secs.is_none() {
-                debug_assert_eq!(cb.sender.send_next_seq_no.get(), header.ack_num);
+                debug_assert_eq!(cb.delivery.sender.send_next_seq_no.get(), header.ack_num);
             }
-            cb.sender
+            cb.delivery
+                .sender
                 .retransmit_deadline_time_secs
                 .set(retransmit_deadline_time_secs);
         } else {
@@ -605,7 +618,7 @@ impl Sender {
             trace!(
                 "process_ack(): received duplicate ack ({:?}); unacked len = {:?}",
                 header.ack_num,
-                cb.sender.unacked_queue.len()
+                cb.delivery.sender.unacked_queue.len()
             );
         }
     }
@@ -664,7 +677,7 @@ impl Sender {
         // Review: We perform these after the send, in order to keep send latency as low as possible.
 
         // Since we sent an ACK, cancel any outstanding delayed ACK request.
-        cb.receiver.ack_deadline_time_secs.set(None);
+        cb.delivery.receiver.ack_deadline_time_secs.set(None);
     }
 }
 //======================================================================================================================
