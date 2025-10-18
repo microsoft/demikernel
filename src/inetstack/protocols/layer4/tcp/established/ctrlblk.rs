@@ -9,7 +9,8 @@ use crate::{
     inetstack::{
         config::TcpConfig,
         protocols::layer4::tcp::established::{
-            congestion_control, congestion_control_state::CongestionControlState, Receiver, Sender,
+            congestion_control, congestion_control_state::CongestionControlState, flow_control_state::FlowControlState,
+            Receiver, Sender,
         },
     },
     runtime::network::socket::option::TcpSocketOptions,
@@ -67,12 +68,16 @@ impl ConnectionManagementState {
 /// This struct has only public members because includes state for both the send and receive path and is accessed by
 /// both.
 pub struct ControlBlock {
+    // Connection management state, which mainly includes
+    // connection constants for TCP
     pub connection_management: ConnectionManagementState,
     pub sender: Sender,
     pub receiver: Receiver,
 
-    // Congestion control trait implementation we're currently using.
-    // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
+    // Flow control state
+    pub flow_control: FlowControlState,
+
+    // Congestion control state
     pub congestion_control: CongestionControlState,
 }
 
@@ -88,12 +93,14 @@ impl ControlBlock {
         socket_options: TcpSocketOptions,
         sender: Sender,
         receiver: Receiver,
+        flow_control: FlowControlState,
         congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
     ) -> Self {
         Self {
             connection_management: ConnectionManagementState::new(local, remote, tcp_config, socket_options),
             sender,
             receiver,
+            flow_control,
             congestion_control: CongestionControlState::new(congestion_control_algorithm),
         }
     }

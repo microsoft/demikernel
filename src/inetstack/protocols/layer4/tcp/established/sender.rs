@@ -92,18 +92,6 @@ pub struct Sender {
     // This is the send buffer (user data we do not yet have window to send). If the option is None, then it indicates
     // a FIN. This keeps us from having to allocate an empty Demibuffer to indicate FIN.
     unsent_queue: SharedAsyncQueue<DemiBuffer>,
-
-    // Available window to send into, as advertised by our peer.  In RFC 793 terms, this is SND.WND.
-    send_window: SharedAsyncValue<u32>,
-    send_window_last_update_seq: SeqNumber, // SND.WL1
-    send_window_last_update_ack: SeqNumber, // SND.WL2
-
-    // RFC 1323: Number of bits to shift advertised window, defaults to zero.
-    send_window_scale_shift_bits: u8,
-
-    // Maximum Segment Size currently in use for this connection.
-    // TODO: Revisit this once we support path MTU discovery.
-    mss: usize,
 }
 
 //======================================================================================================================
@@ -111,13 +99,7 @@ pub struct Sender {
 //======================================================================================================================
 
 impl Sender {
-    pub fn new(
-        local_seq_no: SeqNumber,
-        remote_seq_no: SeqNumber,
-        send_window: u32,
-        send_window_scale_shift_bits: u8,
-        mss: usize,
-    ) -> Self {
+    pub fn new(local_seq_no: SeqNumber) -> Self {
         Self {
             send_unacked: SharedAsyncValue::new(local_seq_no),
             unacked_queue: SharedAsyncQueue::with_capacity(MIN_UNACKED_QUEUE_SIZE_FRAMES),
@@ -126,11 +108,6 @@ impl Sender {
             unsent_next_seq_no: local_seq_no,
             fin_seq_no: None,
             unsent_queue: SharedAsyncQueue::with_capacity(MIN_UNSENT_QUEUE_SIZE_FRAMES),
-            send_window: SharedAsyncValue::new(send_window),
-            send_window_last_update_seq: remote_seq_no,
-            send_window_last_update_ack: local_seq_no,
-            send_window_scale_shift_bits,
-            mss,
         }
     }
 
@@ -197,26 +174,6 @@ impl Sender {
         }
     }
 
-    fn update_send_window(&mut self, header: &TcpHeader) {
-        // Make sure the ack num is bigger than the last one that we used to update the send window.
-        if self.send_window_last_update_seq < header.seq_num
-            || (self.send_window_last_update_seq == header.seq_num
-                && self.send_window_last_update_ack <= header.ack_num)
-        {
-            self.send_window
-                .set((header.window_size as u32) << self.send_window_scale_shift_bits);
-            self.send_window_last_update_seq = header.seq_num;
-            self.send_window_last_update_ack = header.ack_num;
-
-            debug!(
-                "Updating window size -> {} (hdr {}, scale {})",
-                self.send_window.get(),
-                header.window_size,
-                self.send_window_scale_shift_bits,
-            );
-        }
-    }
-
     // This function sends a list of packets (or FIN if empty) and waits for it to be acked.
     pub async fn push(
         cb: &mut ControlBlock,
@@ -243,7 +200,7 @@ impl Sender {
         } else {
             for mut buf in bufs.into_iter() {
                 cb.sender.unsent_next_seq_no = cb.sender.unsent_next_seq_no + (buf.len() as u32).into();
-                if cb.sender.send_window.get() > 0 {
+                if cb.flow_control.send_window.get() > 0 {
                     Self::send_segment(cb, layer3_endpoint, runtime.now(), &mut buf);
 
                     if !buf.is_empty() {
@@ -313,7 +270,7 @@ impl Sender {
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
         let mut ltci_watched = cb.congestion_control.cc_algorithm.get_limited_transmit_cwnd_increase();
-        let mut win_sz_watched = cb.sender.send_window.clone();
+        let mut win_sz_watched = cb.flow_control.send_window.clone();
 
         // Try in a loop until we send this segment.
         loop {
@@ -364,7 +321,7 @@ impl Sender {
         // Note that we loop here *forever*, exponentially backing off.
         // TODO: Use the correct PERSIST mode timer here.
         let mut timeout = Duration::from_secs(1);
-        let mut win_sz_watched = cb.sender.send_window.clone();
+        let mut win_sz_watched = cb.flow_control.send_window.clone();
         loop {
             // Create packet.
             let header = Self::tcp_header(cb, None);
@@ -490,10 +447,10 @@ impl Sender {
                 .get_limited_transmit_cwnd_increase()
                 .get();
 
-        let win_sz = cb.sender.send_window.get();
+        let win_sz = cb.flow_control.send_window.get();
 
         if Self::has_open_window(win_sz, sent_data, effective_cwnd) {
-            Self::calculate_open_window_bytes(win_sz, sent_data, cb.sender.mss, effective_cwnd)
+            Self::calculate_open_window_bytes(win_sz, sent_data, cb.flow_control.mss, effective_cwnd)
         } else {
             0
         }
@@ -600,7 +557,7 @@ impl Sender {
         // Start by checking that the ACK acknowledges something new.
         let send_unacknowledged = cb.sender.send_unacked.get();
         // Check and update send window if necessary.
-        cb.sender.update_send_window(header);
+        cb.flow_control.update_send_window(header);
 
         if send_unacknowledged < header.ack_num {
             // Remove the now acknowledged data from the unacknowledged queue, update the acked sequence number
@@ -719,9 +676,6 @@ impl fmt::Debug for Sender {
         f.debug_struct("Sender")
             .field("send_unacked", &self.send_unacked)
             .field("send_next", &self.send_next_seq_no)
-            .field("send_window", &self.send_window)
-            .field("window_scale", &self.send_window_scale_shift_bits)
-            .field("mss", &self.mss)
             .finish()
     }
 }

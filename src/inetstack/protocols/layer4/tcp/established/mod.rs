@@ -29,6 +29,7 @@ use crate::{
                 congestion_control::CongestionControlConstructor,
                 established::{
                     ctrlblk::{ControlBlock, State},
+                    flow_control_state::FlowControlState,
                     receiver::Receiver,
                     sender::Sender,
                 },
@@ -140,19 +141,20 @@ impl SharedEstablishedSocket {
             _ => (),
         };
 
-        let sender = Sender::new(
-            sender_seq_no,
-            receiver_seq_no,
-            sender_window_size_bytes,
-            sender_window_scale_bits,
-            sender_mss,
-        );
+        let sender = Sender::new(sender_seq_no);
         let receiver = Receiver::new(
             receiver_seq_no,
             receiver_seq_no,
             ack_delay_timeout_secs,
             receiver_window_size_bytes,
             receiver_window_scale_bits,
+        );
+        let flow_control = FlowControlState::new(
+            sender_seq_no,
+            receiver_seq_no,
+            sender_window_size_bytes,
+            sender_window_scale_bits,
+            sender_mss,
         );
 
         let congestion_control_algorithm = cc_constructor(sender_mss, sender_seq_no, congestion_control_options);
@@ -163,6 +165,7 @@ impl SharedEstablishedSocket {
             default_socket_options,
             sender,
             receiver,
+            flow_control,
             congestion_control_algorithm,
         );
         let mut me = Self(SharedObject::new(EstablishedSocket {
