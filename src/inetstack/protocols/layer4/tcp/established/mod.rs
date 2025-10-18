@@ -28,7 +28,9 @@ use crate::{
             layer4::tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::{
+                    congestion_control_state::CongestionControlState,
                     ctrlblk::{ConnectionManagementState, ControlBlock, State},
+                    delivery_state::DeliveryState,
                     flow_control_state::FlowControlState,
                     receiver::Receiver,
                     sender::Sender,
@@ -149,6 +151,8 @@ impl SharedEstablishedSocket {
             receiver_window_size_bytes,
             receiver_window_scale_bits,
         );
+        let delivery = DeliveryState::new(sender, receiver);
+
         let flow_control = FlowControlState::new(
             sender_seq_no,
             receiver_seq_no,
@@ -156,17 +160,12 @@ impl SharedEstablishedSocket {
             sender_window_scale_bits,
             sender_mss,
         );
-
         let connection_management = ConnectionManagementState::new(local, remote, tcp_config, default_socket_options);
 
+        // Initialize congestion control state, which starts with default RtoCalculator
         let congestion_control_algorithm = cc_constructor(sender_mss, sender_seq_no, congestion_control_options);
-        let cb = ControlBlock::new(
-            connection_management,
-            sender,
-            receiver,
-            flow_control,
-            congestion_control_algorithm,
-        );
+        let congestion_control = CongestionControlState::new(congestion_control_algorithm);
+        let cb = ControlBlock::new(connection_management, delivery, flow_control, congestion_control);
         let mut me = Self(SharedObject::new(EstablishedSocket {
             control_block: cb,
             runtime: runtime.clone(),

@@ -9,8 +9,8 @@ use crate::{
     inetstack::{
         config::TcpConfig,
         protocols::layer4::tcp::established::{
-            congestion_control, congestion_control_state::CongestionControlState, delivery_state::DeliveryState,
-            flow_control_state::FlowControlState, Receiver, Sender,
+            congestion_control_state::CongestionControlState, delivery_state::DeliveryState,
+            flow_control_state::FlowControlState,
         },
     },
     runtime::network::socket::option::TcpSocketOptions,
@@ -87,16 +87,15 @@ pub struct ControlBlock {
 impl ControlBlock {
     pub fn new(
         connection_management: ConnectionManagementState,
-        sender: Sender,
-        receiver: Receiver,
+        delivery: DeliveryState,
         flow_control: FlowControlState,
-        congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
+        congestion_control: CongestionControlState,
     ) -> Self {
         Self {
             connection_management,
-            delivery: DeliveryState::new(sender, receiver),
+            delivery,
             flow_control,
-            congestion_control: CongestionControlState::new(congestion_control_algorithm),
+            congestion_control,
         }
     }
 }
