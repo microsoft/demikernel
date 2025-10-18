@@ -12,7 +12,7 @@ use crate::{
         protocols::{
             layer3::SharedLayer3Endpoint,
             layer4::tcp::{
-                established::{ctrlblk::State, rto::RtoCalculator, ControlBlock},
+                established::{ctrlblk::State, ControlBlock},
                 header::TcpHeader,
                 SeqNumber,
             },
@@ -79,9 +79,6 @@ pub struct Sender {
     // TODO: Consider storing this directly in the RtoCalculator.
     retransmit_deadline_time_secs: SharedAsyncValue<Option<Instant>>,
 
-    // Retransmission Timeout (RTO) calculator.
-    rto_calculator: RtoCalculator,
-
     // In RFC 793 terms, this is SND.NXT.
     pub send_next_seq_no: SharedAsyncValue<SeqNumber>,
 
@@ -125,7 +122,6 @@ impl Sender {
             send_unacked: SharedAsyncValue::new(local_seq_no),
             unacked_queue: SharedAsyncQueue::with_capacity(MIN_UNACKED_QUEUE_SIZE_FRAMES),
             retransmit_deadline_time_secs: SharedAsyncValue::new(None),
-            rto_calculator: RtoCalculator::new(),
             send_next_seq_no: SharedAsyncValue::new(local_seq_no),
             unsent_next_seq_no: local_seq_no,
             fin_seq_no: None,
@@ -165,14 +161,7 @@ impl Sender {
         0
     }
 
-    fn process_acked_segment(&mut self, bytes_remaining: usize, mut segment: UnackedSegment, now: Instant) -> usize {
-        // Add sample for RTO if we have an initial transmit time.
-        // Note that in the case of repacketization, an ack for the first byte is enough for the time sample because it still represents the RTO for that single byte.
-        // TODO: TCP timestamp support.
-        if let Some(initial_tx) = segment.initial_tx {
-            self.rto_calculator.add_sample(now - initial_tx);
-        }
-
+    fn process_acked_segment(&mut self, bytes_remaining: usize, mut segment: UnackedSegment) -> usize {
         let mut data = segment
             .bytes
             .take()
@@ -194,16 +183,16 @@ impl Sender {
         }
     }
 
-    fn update_retransmit_deadline(&mut self, now: Instant) -> Option<Instant> {
+    fn update_retransmit_deadline(&mut self, now: Instant, rto: Duration) -> Option<Instant> {
         match self.unacked_queue.front() {
             Some(UnackedSegment {
                 bytes: _,
                 initial_tx: Some(initial_tx),
-            }) => Some(*initial_tx + self.rto_calculator.rto()),
+            }) => Some(*initial_tx + rto),
             Some(UnackedSegment {
                 bytes: _,
                 initial_tx: None,
-            }) => Some(now + self.rto_calculator.rto()),
+            }) => Some(now + rto),
             None => None,
         }
     }
@@ -307,7 +296,7 @@ impl Sender {
         cb.sender.unacked_queue.push(unacked_segment);
         // Set the retransmit timer.
         if cb.sender.retransmit_deadline_time_secs.get().is_none() {
-            let rto = cb.sender.rto_calculator.rto();
+            let rto = cb.congestion_control.rto_calculator.rto();
             cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         Ok(())
@@ -425,7 +414,7 @@ impl Sender {
 
         let segment_data_len = segment_data.len() as u32;
 
-        let rto = cb.sender.rto_calculator.rto();
+        let rto = cb.congestion_control.rto_calculator.rto();
         cb.congestion_control.cc_algorithm.on_send(
             rto,
             (cb.sender.send_next_seq_no.get() - cb.sender.send_unacked.get()).into(),
@@ -460,7 +449,7 @@ impl Sender {
 
         // Set the retransmit timer.
         if cb.sender.retransmit_deadline_time_secs.get().is_none() {
-            let rto = cb.sender.rto_calculator.rto();
+            let rto = cb.congestion_control.rto_calculator.rto();
             cb.sender.retransmit_deadline_time_secs.set(Some(now + rto));
         }
         segment_data_len as usize
@@ -566,10 +555,10 @@ impl Sender {
                     Self::retransmit(cb, layer3_endpoint);
 
                     // RFC 6298 Section 5.5: Back off the retransmission timer.
-                    cb.sender.rto_calculator.back_off();
+                    cb.congestion_control.rto_calculator.back_off();
 
                     // RFC 6298 Section 5.6: Restart the retransmission timer with the new RTO.
-                    let deadline = runtime.now() + cb.sender.rto_calculator.rto();
+                    let deadline = runtime.now() + cb.congestion_control.rto_calculator.rto();
                     cb.sender.retransmit_deadline_time_secs.set(Some(deadline));
                 },
                 Err(_) => {
@@ -627,7 +616,11 @@ impl Sender {
                     Some(segment) if segment.bytes.is_none() => {
                         Self::process_acked_fin(cb, bytes_remaining, header.ack_num)
                     },
-                    Some(segment) => cb.sender.process_acked_segment(bytes_remaining, segment, now),
+                    Some(segment) => {
+                        // We add the sample outside the Sender function to separate state.
+                        cb.congestion_control.add_sample(segment.initial_tx, now);
+                        cb.sender.process_acked_segment(bytes_remaining, segment)
+                    },
                     None => {
                         unreachable!("There should be enough data in the unacked_queue for the number of bytes acked")
                     }, // Shouldn't have bytes_remaining with no segments remaining in unacked_queue.
@@ -639,7 +632,9 @@ impl Sender {
 
             // Reset the retransmit timer if necessary. If there is more data that hasn't been acked, then set to the
             // next segment deadline, otherwise, do not set.
-            let retransmit_deadline_time_secs = cb.sender.update_retransmit_deadline(now);
+            let retransmit_deadline_time_secs = cb
+                .sender
+                .update_retransmit_deadline(now, cb.congestion_control.rto_calculator.rto());
             #[cfg(debug_assertions)]
             if retransmit_deadline_time_secs.is_none() {
                 debug_assert_eq!(cb.sender.send_next_seq_no.get(), header.ack_num);
