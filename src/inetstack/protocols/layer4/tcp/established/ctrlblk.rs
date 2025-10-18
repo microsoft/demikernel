@@ -8,7 +8,9 @@
 use crate::{
     inetstack::{
         config::TcpConfig,
-        protocols::layer4::tcp::{established::congestion_control, established::Receiver, established::Sender},
+        protocols::layer4::tcp::established::{
+            congestion_control, congestion_control_state::CongestionControlState, Receiver, Sender,
+        },
     },
     runtime::network::socket::option::TcpSocketOptions,
 };
@@ -71,7 +73,7 @@ pub struct ControlBlock {
 
     // Congestion control trait implementation we're currently using.
     // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
-    pub congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
+    pub congestion_control: CongestionControlState,
 }
 
 //======================================================================================================================
@@ -92,7 +94,7 @@ impl ControlBlock {
             connection_management: ConnectionManagementState::new(local, remote, tcp_config, socket_options),
             sender,
             receiver,
-            congestion_control_algorithm,
+            congestion_control: CongestionControlState::new(congestion_control_algorithm),
         }
     }
 }

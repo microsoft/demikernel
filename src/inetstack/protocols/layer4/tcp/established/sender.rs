@@ -320,10 +320,10 @@ impl Sender {
         mut buffer: DemiBuffer,
     ) -> Result<(), Fail> {
         let mut send_unacked_watched = cb.sender.send_unacked.clone();
-        let mut cwnd_watched = cb.congestion_control_algorithm.get_cwnd();
+        let mut cwnd_watched = cb.congestion_control.cc_algorithm.get_cwnd();
 
         // The limited transmit algorithm may increase the effective size of cwnd by up to 2 * mss.
-        let mut ltci_watched = cb.congestion_control_algorithm.get_limited_transmit_cwnd_increase();
+        let mut ltci_watched = cb.congestion_control.cc_algorithm.get_limited_transmit_cwnd_increase();
         let mut win_sz_watched = cb.sender.send_window.clone();
 
         // Try in a loop until we send this segment.
@@ -426,7 +426,7 @@ impl Sender {
         let segment_data_len = segment_data.len() as u32;
 
         let rto = cb.sender.rto_calculator.rto();
-        cb.congestion_control_algorithm.on_send(
+        cb.congestion_control.cc_algorithm.on_send(
             rto,
             (cb.sender.send_next_seq_no.get() - cb.sender.send_unacked.get()).into(),
         );
@@ -491,12 +491,13 @@ impl Sender {
         let sent_data = (send_next - send_unacknowledged).into();
 
         // Before we get cwnd for the check, we prompt it to shrink it if the connection has been idle.
-        cb.congestion_control_algorithm.on_cwnd_check_before_send();
-        let cwnd = cb.congestion_control_algorithm.get_cwnd();
+        cb.congestion_control.cc_algorithm.on_cwnd_check_before_send();
+        let cwnd = cb.congestion_control.cc_algorithm.get_cwnd();
 
         // The limited transmit algorithm can increase the effective size of cwnd by up to 2MSS.
         let effective_cwnd = cwnd.get()
-            + cb.congestion_control_algorithm
+            + cb.congestion_control
+                .cc_algorithm
                 .get_limited_transmit_cwnd_increase()
                 .get();
 
@@ -528,13 +529,13 @@ impl Sender {
         // Watch the retransmission deadline.
         let mut rtx_deadline_watched = cb.sender.retransmit_deadline_time_secs.clone();
         // Watch the fast retransmit flag.
-        let mut rtx_fast_retransmit_watched = cb.congestion_control_algorithm.get_retransmit_now_flag();
+        let mut rtx_fast_retransmit_watched = cb.congestion_control.cc_algorithm.get_retransmit_now_flag();
         loop {
             let rtx_deadline = rtx_deadline_watched.get();
             let rtx_fast_retransmit = rtx_fast_retransmit_watched.get();
             if rtx_fast_retransmit {
                 // Notify congestion control about fast retransmit.
-                cb.congestion_control_algorithm.on_fast_retransmit();
+                cb.congestion_control.cc_algorithm.on_fast_retransmit();
 
                 // Retransmit earliest unacknowledged segment.
                 Self::retransmit(cb, layer3_endpoint);
@@ -559,7 +560,7 @@ impl Sender {
                 Err(Fail { errno, cause: _ }) if errno == libc::ETIMEDOUT => {
                     // Retransmit timeout.
                     // Notify congestion control about RTO.
-                    cb.congestion_control_algorithm.on_rto(cb.sender.send_unacked.get());
+                    cb.congestion_control.cc_algorithm.on_rto(cb.sender.send_unacked.get());
 
                     // RFC 6298 Section 5.4: Retransmit earliest unacknowledged segment.
                     Self::retransmit(cb, layer3_endpoint);
