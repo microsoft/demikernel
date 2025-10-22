@@ -8,7 +8,10 @@
 use crate::{
     inetstack::{
         config::TcpConfig,
-        protocols::layer4::tcp::{established::congestion_control, established::Receiver, established::Sender},
+        protocols::layer4::tcp::established::{
+            congestion_control_state::CongestionControlState, delivery_state::DeliveryState,
+            flow_control_state::FlowControlState,
+        },
     },
     runtime::network::socket::option::TcpSocketOptions,
 };
@@ -33,21 +36,48 @@ pub enum State {
     Closed,
 }
 
-/// Transmission control block for representing our TCP connection.
-/// This struct has only public members because includes state for both the send and receive path and is accessed by
-/// both.
-pub struct ControlBlock {
+/// State block representing connection management parameters in a TCP connection.
+/// This struct has only public members since these parameters must be read by all TCP
+/// modules.
+pub struct ConnectionManagementState {
     pub local: SocketAddrV4,
     pub remote: SocketAddrV4,
     pub tcp_config: TcpConfig,
     pub socket_options: TcpSocketOptions,
     pub state: State,
-    pub sender: Sender,
-    pub receiver: Receiver,
+}
 
-    // Congestion control trait implementation we're currently using.
-    // TODO: Consider switching this to a static implementation to avoid V-table call overhead.
-    pub congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
+impl ConnectionManagementState {
+    pub fn new(
+        local: SocketAddrV4,
+        remote: SocketAddrV4,
+        tcp_config: TcpConfig,
+        socket_options: TcpSocketOptions,
+    ) -> Self {
+        Self {
+            local,
+            remote,
+            tcp_config,
+            socket_options,
+            state: State::Established,
+        }
+    }
+}
+
+/// Transmission control block for representing our TCP connection.
+/// This struct has only public members because includes state for both the send and receive path and is accessed by
+/// both.
+pub struct ControlBlock {
+    // Connection management state, which mainly includes
+    // connection constants for TCP
+    pub connection_management: ConnectionManagementState,
+    pub delivery: DeliveryState,
+
+    // Flow control state
+    pub flow_control: FlowControlState,
+
+    // Congestion control state
+    pub congestion_control: CongestionControlState,
 }
 
 //======================================================================================================================
@@ -56,23 +86,16 @@ pub struct ControlBlock {
 
 impl ControlBlock {
     pub fn new(
-        local: SocketAddrV4,
-        remote: SocketAddrV4,
-        tcp_config: TcpConfig,
-        socket_options: TcpSocketOptions,
-        sender: Sender,
-        receiver: Receiver,
-        congestion_control_algorithm: Box<dyn congestion_control::CongestionControl>,
+        connection_management: ConnectionManagementState,
+        delivery: DeliveryState,
+        flow_control: FlowControlState,
+        congestion_control: CongestionControlState,
     ) -> Self {
         Self {
-            local,
-            remote,
-            tcp_config,
-            socket_options,
-            state: State::Established,
-            sender,
-            receiver,
-            congestion_control_algorithm,
+            connection_management,
+            delivery,
+            flow_control,
+            congestion_control,
         }
     }
 }

@@ -6,7 +6,10 @@
 //======================================================================================================================
 
 pub mod congestion_control;
+mod congestion_control_state;
 pub mod ctrlblk;
+mod delivery_state;
+mod flow_control_state;
 mod receiver;
 mod rto;
 mod sender;
@@ -25,7 +28,10 @@ use crate::{
             layer4::tcp::{
                 congestion_control::CongestionControlConstructor,
                 established::{
-                    ctrlblk::{ControlBlock, State},
+                    congestion_control_state::CongestionControlState,
+                    ctrlblk::{ConnectionManagementState, ControlBlock, State},
+                    delivery_state::DeliveryState,
+                    flow_control_state::FlowControlState,
                     receiver::Receiver,
                     sender::Sender,
                 },
@@ -137,13 +143,7 @@ impl SharedEstablishedSocket {
             _ => (),
         };
 
-        let sender = Sender::new(
-            sender_seq_no,
-            receiver_seq_no,
-            sender_window_size_bytes,
-            sender_window_scale_bits,
-            sender_mss,
-        );
+        let sender = Sender::new(sender_seq_no);
         let receiver = Receiver::new(
             receiver_seq_no,
             receiver_seq_no,
@@ -151,17 +151,21 @@ impl SharedEstablishedSocket {
             receiver_window_size_bytes,
             receiver_window_scale_bits,
         );
+        let delivery = DeliveryState::new(sender, receiver);
 
-        let congestion_control_algorithm = cc_constructor(sender_mss, sender_seq_no, congestion_control_options);
-        let cb = ControlBlock::new(
-            local,
-            remote,
-            tcp_config,
-            default_socket_options,
-            sender,
-            receiver,
-            congestion_control_algorithm,
+        let flow_control = FlowControlState::new(
+            sender_seq_no,
+            receiver_seq_no,
+            sender_window_size_bytes,
+            sender_window_scale_bits,
+            sender_mss,
         );
+        let connection_management = ConnectionManagementState::new(local, remote, tcp_config, default_socket_options);
+
+        // Initialize congestion control state, which starts with default RtoCalculator
+        let congestion_control_algorithm = cc_constructor(sender_mss, sender_seq_no, congestion_control_options);
+        let congestion_control = CongestionControlState::new(congestion_control_algorithm);
+        let cb = ControlBlock::new(connection_management, delivery, flow_control, congestion_control);
         let mut me = Self(SharedObject::new(EstablishedSocket {
             control_block: cb,
             runtime: runtime.clone(),
@@ -183,7 +187,7 @@ impl SharedEstablishedSocket {
     pub fn receive(&mut self, tcp_hdr: TcpHeader, buf: DemiBuffer) {
         debug!(
             "{:?} Connection Receiving {} bytes + {:?}",
-            self.control_block.state,
+            self.control_block.connection_management.state,
             buf.len(),
             tcp_hdr,
         );
@@ -196,7 +200,7 @@ impl SharedEstablishedSocket {
     // This coroutine runs the close protocol.
     pub async fn close(&mut self) -> Result<(), Fail> {
         // Assert we are in a valid state and move to new state.
-        match self.control_block.state {
+        match self.control_block.connection_management.state {
             State::Established => self.local_close().await,
             State::CloseWait => self.remote_already_closed().await,
             _ => {
@@ -209,12 +213,12 @@ impl SharedEstablishedSocket {
 
     async fn local_close(&mut self) -> Result<(), Fail> {
         // 1. Start close protocol by setting state and sending FIN.
-        self.control_block.state = State::FinWait1;
+        self.control_block.connection_management.state = State::FinWait1;
 
         // 2. Wait for FIN and FIN ack.
         let mut me2 = self.clone();
         let mut me3 = self.clone();
-        let wait_for_fin = pin!(me3.control_block.receiver.wait_for_fin().fuse());
+        let wait_for_fin = pin!(me3.control_block.delivery.receiver.wait_for_fin().fuse());
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
         let push_fin_and_wait_for_ack = pin!(Sender::push(
@@ -229,17 +233,25 @@ impl SharedEstablishedSocket {
         result2?;
 
         // 3. TIMED_WAIT
-        debug_assert_eq!(self.control_block.state, State::TimeWait);
-        trace!("socket options: {:?}", self.control_block.socket_options.get_linger());
-        let timeout = self.control_block.socket_options.get_linger().unwrap_or(MSL * 2);
+        debug_assert_eq!(self.control_block.connection_management.state, State::TimeWait);
+        trace!(
+            "socket options: {:?}",
+            self.control_block.connection_management.socket_options.get_linger()
+        );
+        let timeout = self
+            .control_block
+            .connection_management
+            .socket_options
+            .get_linger()
+            .unwrap_or(MSL * 2);
         yield_with_timeout(timeout).await;
-        self.control_block.state = State::Closed;
+        self.control_block.connection_management.state = State::Closed;
         Ok(())
     }
 
     async fn remote_already_closed(&mut self) -> Result<(), Fail> {
         // 0. Move state forward
-        self.control_block.state = State::LastAck;
+        self.control_block.connection_management.state = State::LastAck;
         // 1. Send FIN and wait for ack before closing.
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
@@ -250,7 +262,7 @@ impl SharedEstablishedSocket {
             ArrayVec::new(),
         )
         .await?;
-        debug_assert_eq!(self.control_block.state, State::Closed);
+        debug_assert_eq!(self.control_block.connection_management.state, State::Closed);
 
         Ok(())
     }
@@ -262,11 +274,14 @@ impl SharedEstablishedSocket {
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
-        self.control_block.receiver.pop(size).await
+        self.control_block.delivery.receiver.pop(size).await
     }
 
     pub fn endpoints(&self) -> (SocketAddrV4, SocketAddrV4) {
-        (self.control_block.local, self.control_block.remote)
+        (
+            self.control_block.connection_management.local,
+            self.control_block.connection_management.remote,
+        )
     }
 
     async fn background(self) {
