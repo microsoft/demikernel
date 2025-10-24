@@ -66,7 +66,7 @@ const MIN_UNACKED_QUEUE_SIZE_FRAMES: usize = 64;
 // of the unacked queue, below which memory allocation is not required.
 const MIN_UNSENT_QUEUE_SIZE_FRAMES: usize = 64;
 
-pub struct DeliveryState {
+pub struct OrderedDeliveryState {
     //
     // Send Sequence Space:
     //
@@ -149,7 +149,7 @@ pub struct DeliveryState {
     out_of_order_frames: VecDeque<(SeqNumber, DemiBuffer)>,
 }
 
-impl DeliveryState {
+impl OrderedDeliveryState {
     pub fn new(
         // Required to initialize sender variables
         local_seq_no: SeqNumber,

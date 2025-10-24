@@ -7,9 +7,10 @@
 
 pub mod congestion_control;
 mod congestion_control_state;
+mod connection_management_state;
 pub mod ctrlblk;
-mod delivery_state;
 mod flow_control_state;
+mod ordered_delivery_state;
 mod rto;
 
 //======================================================================================================================
@@ -27,9 +28,10 @@ use crate::{
                 congestion_control::CongestionControlConstructor,
                 established::{
                     congestion_control_state::CongestionControlState,
-                    ctrlblk::{ConnectionManagementState, ControlBlock, State},
-                    delivery_state::DeliveryState,
+                    connection_management_state::ConnectionManagementState,
+                    ctrlblk::{ControlBlock, State},
                     flow_control_state::FlowControlState,
+                    ordered_delivery_state::OrderedDeliveryState,
                 },
                 header::TcpHeader,
                 SeqNumber,
@@ -139,7 +141,7 @@ impl SharedEstablishedSocket {
             _ => (),
         };
 
-        let delivery = DeliveryState::new(
+        let delivery = OrderedDeliveryState::new(
             sender_seq_no,
             receiver_seq_no,
             receiver_seq_no,
@@ -189,7 +191,7 @@ impl SharedEstablishedSocket {
 
         let now = self.runtime.now();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
-        DeliveryState::receive(&mut self.control_block, &mut layer3_endpoint, tcp_hdr, buf, now);
+        OrderedDeliveryState::receive(&mut self.control_block, &mut layer3_endpoint, tcp_hdr, buf, now);
     }
 
     // This coroutine runs the close protocol.
@@ -216,7 +218,7 @@ impl SharedEstablishedSocket {
         let wait_for_fin = pin!(me3.control_block.delivery.wait_for_fin().fuse());
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
-        let push_fin_and_wait_for_ack = pin!(DeliveryState::push(
+        let push_fin_and_wait_for_ack = pin!(OrderedDeliveryState::push(
             &mut me2.control_block,
             &mut layer3_endpoint,
             &mut runtime,
@@ -250,7 +252,7 @@ impl SharedEstablishedSocket {
         // 1. Send FIN and wait for ack before closing.
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
-        DeliveryState::push(
+        OrderedDeliveryState::push(
             &mut self.control_block,
             &mut layer3_endpoint,
             &mut runtime,
@@ -265,7 +267,7 @@ impl SharedEstablishedSocket {
     pub async fn push(&mut self, bufs: ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>) -> Result<(), Fail> {
         let mut runtime = self.runtime.clone();
         let mut layer3_endpoint = self.layer3_endpoint.clone();
-        DeliveryState::push(&mut self.control_block, &mut layer3_endpoint, &mut runtime, bufs).await
+        OrderedDeliveryState::push(&mut self.control_block, &mut layer3_endpoint, &mut runtime, bufs).await
     }
 
     pub async fn pop(&mut self, size: Option<usize>) -> Result<ArrayVec<DemiBuffer, MAX_BATCH_SIZE_NUM_PACKETS>, Fail> {
@@ -283,7 +285,7 @@ impl SharedEstablishedSocket {
         let mut me = self.clone();
         let acknowledger = async_timer!("tcp::established::background::acknowledger", async {
             let mut layer3_endpoint = me.layer3_endpoint.clone();
-            DeliveryState::acknowledger(&mut me.control_block, &mut layer3_endpoint).await
+            OrderedDeliveryState::acknowledger(&mut me.control_block, &mut layer3_endpoint).await
         })
         .fuse();
         pin_mut!(acknowledger);
@@ -292,7 +294,8 @@ impl SharedEstablishedSocket {
         let retransmitter = async_timer!("tcp::established::background::retransmitter", async {
             let mut layer3_endpoint = me2.layer3_endpoint.clone();
             let mut runtime = me2.runtime.clone();
-            DeliveryState::background_retransmitter(&mut me2.control_block, &mut layer3_endpoint, &mut runtime).await
+            OrderedDeliveryState::background_retransmitter(&mut me2.control_block, &mut layer3_endpoint, &mut runtime)
+                .await
         })
         .fuse();
         pin_mut!(retransmitter);
@@ -301,7 +304,7 @@ impl SharedEstablishedSocket {
         let sender = async_timer!("tcp::established::background::sender", async {
             let mut layer3_endpoint = me3.layer3_endpoint.clone();
             let mut runtime = me3.runtime.clone();
-            DeliveryState::background_sender(&mut me3.control_block, &mut layer3_endpoint, &mut runtime).await
+            OrderedDeliveryState::background_sender(&mut me3.control_block, &mut layer3_endpoint, &mut runtime).await
         })
         .fuse();
         pin_mut!(sender);
