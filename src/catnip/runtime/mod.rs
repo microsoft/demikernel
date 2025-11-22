@@ -25,7 +25,7 @@ use crate::{
             rte_delay_us_block, rte_eal_init, rte_errno, rte_eth_conf, rte_eth_dev_configure, rte_eth_dev_count_avail,
             rte_eth_dev_get_mtu, rte_eth_dev_info_get, rte_eth_dev_is_valid_port, rte_eth_dev_set_mtu,
             rte_eth_dev_start, rte_eth_find_next_owned_by, rte_eth_link_get_nowait, rte_eth_promiscuous_enable,
-            rte_eth_rss_ip, rte_eth_rx_burst, rte_eth_rx_mq_mode_RTE_ETH_MQ_RX_RSS as RTE_ETH_MQ_RX_RSS,
+            rte_eth_rx_burst, rte_eth_rx_mq_mode_RTE_ETH_MQ_RX_RSS as RTE_ETH_MQ_RX_RSS,
             rte_eth_rx_offload_tcp_cksum, rte_eth_rx_offload_udp_cksum, rte_eth_rx_queue_setup, rte_eth_rxconf,
             rte_eth_tx_burst, rte_eth_tx_mq_mode_RTE_ETH_MQ_TX_NONE as RTE_ETH_MQ_TX_NONE,
             rte_eth_tx_offload_multi_segs, rte_eth_tx_offload_tcp_cksum, rte_eth_tx_offload_udp_cksum,
@@ -174,7 +174,7 @@ impl SharedDPDKRuntime {
             port_conf.rxmode.offloads |= unsafe { rte_eth_rx_offload_udp_cksum() as u64 };
         }
         port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;
-        port_conf.rx_adv_conf.rss_conf.rss_hf = unsafe { rte_eth_rss_ip() as u64 } | dev_info.flow_type_rss_offloads;
+        port_conf.rx_adv_conf.rss_conf.rss_hf = dev_info.flow_type_rss_offloads;
 
         port_conf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
         if tcp_checksum_offload {
