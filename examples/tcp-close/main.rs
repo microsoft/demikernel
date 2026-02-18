@@ -2,8 +2,6 @@
 // Licensed under the MIT license.
 
 #![deny(clippy::all)]
-#![feature(extract_if)]
-#![feature(hash_extract_if)]
 
 //======================================================================================================================
 // Imports
