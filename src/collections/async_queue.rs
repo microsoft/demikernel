@@ -93,12 +93,12 @@ impl<T> AsyncQueue<T> {
     }
 
     #[allow(unused)]
-    pub fn values(&self) -> Iter<T> {
+    pub fn values(&self) -> Iter<'_, T> {
         self.queue.iter()
     }
 
     #[allow(unused)]
-    pub fn values_mut(&mut self) -> IterMut<T> {
+    pub fn values_mut(&mut self) -> IterMut<'_, T> {
         self.queue.iter_mut()
     }
 

@@ -6,7 +6,6 @@
 #![feature(test)]
 #![feature(allocator_api)]
 #![cfg_attr(target_os = "windows", feature(maybe_uninit_uninit_array))]
-#![feature(hash_extract_if)]
 
 mod collections;
 pub mod inetstack;
