@@ -8,8 +8,6 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  pull_request:
-    types: [opened, synchronize]
   push:
     branches:
       - main
