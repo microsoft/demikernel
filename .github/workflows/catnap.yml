@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         fetch-depth: 0
     - name: Setup SSH
@@ -64,7 +64,7 @@ jobs:
           --client-addr $CLIENT_ADDR
     - name: Archive Logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: catnap-debug-pipeline-logs
         path: |
@@ -81,7 +81,7 @@ jobs:
       run: echo "Release pipeline skipped because branch is not main, unstable, dev, or does not contain 'do-release'."
     - name: Checkout
       if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         fetch-depth: 0
     - name: Setup SSH
@@ -116,7 +116,7 @@ jobs:
     - name: Archive Logs
       if: always()
       continue-on-error: true
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: catnap-release-pipeline-logs
         path: |
@@ -140,12 +140,12 @@ jobs:
       run: echo "Release pipeline skipped because branch is not main, unstable, dev, or does not contain 'do-release'."
     - name: Checkout
       if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         fetch-depth: 0
     - name: Download Release Pipeline Logs
       if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         name: catnap-release-pipeline-logs
         path: ./catnap_release_pipeline_logs
@@ -165,7 +165,7 @@ jobs:
           --log-dir ./catnap_release_pipeline_logs)
     - name: Archive Performance Data
       if: ${{ env.SHOULD_RUN_RELEASE == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: performance-data
         path: |
