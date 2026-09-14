@@ -13,7 +13,7 @@ use crate::{
     expect_some,
     inetstack::{
         config::TcpConfig,
-        consts::{FALLBACK_MSS, MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
+        consts::{MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
         protocols::{
             layer3::SharedLayer3Endpoint,
             layer4::tcp::{
@@ -259,7 +259,7 @@ impl SharedPassiveSocket {
     ) {
         // Set up new inflight accept connection.
         let mut remote_window_scale = None;
-        let mut mss = FALLBACK_MSS;
+        let mut received_mss: Option<usize> = None;
         for option in tcp_hdr.iter_options() {
             match option {
                 TcpOptions2::WindowScale(w) => {
@@ -268,11 +268,15 @@ impl SharedPassiveSocket {
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
-                    mss = *m as usize;
+                    received_mss = Some(*m as usize);
                 },
                 _ => continue,
             }
         }
+        // The MSS advertised by the peer bounds the segments that we send, but it may be larger than what our own
+        // interface can carry, so clamp it to our advertised MSS (RFC 1122, Section 4.2.2.6).
+        let mss: usize = self.tcp_config.get_effective_mss(received_mss);
+        info!("Using MSS: {}", mss);
 
         let mut handshake_retries: usize = self.tcp_config.get_handshake_retries();
         let handshake_timeout: Duration = self.tcp_config.get_handshake_timeout();

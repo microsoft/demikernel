@@ -43,7 +43,7 @@ tcp_socket_options:
   nodelay: true
 inetstack_config:
   mtu: 1500
-  mss: 1500
+  # mss: 1460        # optional: defaults to the MSS derived from the mtu above
   enable_jumbo_frames: false
   udp_checksum_offload: false
   tcp_checksum_offload: false
