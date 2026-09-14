@@ -88,7 +88,10 @@ impl SharedCatpowderRuntime {
         let stats: CatpowderStats = CatpowderStats::new(&interface, vf_interface.as_ref())?;
         let always_send_on_vf: bool = config.xdp_always_send_on_vf()? && vf_interface.is_some();
 
-        let max_body_size: usize = config.mss()? as usize - MAX_HEADER_SIZE;
+        // The MSS is a *payload* size, so it must not be shrunk by the header sizes again. Derive the maximum body
+        // size from the MTU, just like the other runtimes do. Saturating subtraction keeps a bogus (too small) MTU
+        // from underflowing.
+        let max_body_size: usize = (config.mtu()? as usize).saturating_sub(MAX_HEADER_SIZE);
 
         Ok(Self(SharedObject::new(CatpowderRuntime {
             api,

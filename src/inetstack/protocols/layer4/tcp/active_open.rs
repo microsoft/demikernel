@@ -10,7 +10,7 @@ use crate::{
     expect_some,
     inetstack::{
         config::TcpConfig,
-        consts::{FALLBACK_MSS, MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
+        consts::{MAX_HEADER_SIZE, MAX_WINDOW_SCALE},
         protocols::{
             layer3::SharedLayer3Endpoint,
             layer4::tcp::{
@@ -140,7 +140,7 @@ impl SharedActiveOpenSocket {
             .transmit_tcp_packet_nonblocking(dst_ipv4_addr, pkt)?;
 
         let mut remote_window_scale_bits = None;
-        let mut mss = FALLBACK_MSS;
+        let mut received_mss: Option<usize> = None;
         for option in header.iter_options() {
             match option {
                 TcpOptions2::WindowScale(w) => {
@@ -149,11 +149,15 @@ impl SharedActiveOpenSocket {
                 },
                 TcpOptions2::MaximumSegmentSize(m) => {
                     info!("Received advertised MSS: {}", m);
-                    mss = *m as usize;
+                    received_mss = Some(*m as usize);
                 },
                 _ => continue,
             }
         }
+        // The MSS advertised by the peer bounds the segments that we send, but it may be larger than what our own
+        // interface can carry, so clamp it to our advertised MSS (RFC 1122, Section 4.2.2.6).
+        let mss: usize = self.tcp_config.get_effective_mss(received_mss);
+        info!("Using MSS: {}", mss);
 
         let (local_window_scale_bits, remote_window_scale_bits): (u8, u8) = match remote_window_scale_bits {
             Some(remote_window_scale_bits) => {
